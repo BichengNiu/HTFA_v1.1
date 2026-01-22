@@ -1,0 +1,564 @@
+/* 
+ * Dashboard Custom Styles
+ * 自定义样式文件
+ */
+
+/* 标签页字体样式 - 增大2号并加粗 */
+.stTabs [data-baseweb="tab-list"] button [data-testid="stMarkdownContainer"] p {
+    font-size: 18px !important;  /* 增大2号字体 */
+    font-weight: bold !important;  /* 加粗 */
+}
+
+/* 标签页按钮样式优化 */
+.stTabs [data-baseweb="tab-list"] button {
+    height: auto !important;
+    padding: 12px 20px !important;  /* 增加内边距以适应更大字体 */
+}
+
+/* 标签页激活状态样式 - 灰色 */
+.stTabs [data-baseweb="tab-list"] button[aria-selected="true"] [data-testid="stMarkdownContainer"] p {
+    font-size: 18px !important;
+    font-weight: bold !important;
+    color: #6b7280 !important;  /* 灰色 */
+}
+
+/* 标签页未激活状态样式 - 深沉商务风格 */
+.stTabs [data-baseweb="tab-list"] button[aria-selected="false"] [data-testid="stMarkdownContainer"] p {
+    font-size: 18px !important;
+    font-weight: bold !important;
+    color: #2d3748 !important;  /* 深灰色 */
+}
+
+/* 标签页悬停效果 - 灰色 */
+.stTabs [data-baseweb="tab-list"] button:hover [data-testid="stMarkdownContainer"] p {
+    font-size: 18px !important;
+    font-weight: bold !important;
+    color: #4b5563 !important;  /* 悬停时更深的灰色 */
+}
+
+/* 确保标签页容器有足够高度 */
+.stTabs [data-baseweb="tab-list"] {
+    min-height: 50px !important;
+}
+
+/* 标签页内容区域样式 */
+.stTabs [data-baseweb="tab-panel"] {
+    padding-top: 20px !important;
+}
+
+/* 侧边栏样式 - 深沉商务风格 - 超强特异性以覆盖emotion CSS */
+[data-testid="stSidebar"],
+[data-testid="stSidebar"].stSidebar,
+.stSidebar[data-testid="stSidebar"],
+[data-testid="stSidebar"][class*="st-emotion-cache"],
+.stSidebar[data-testid="stSidebar"][class*="st-emotion-cache"],
+[data-testid="stSidebar"].st-emotion-cache-r90ti5,
+.stSidebar[data-testid="stSidebar"].st-emotion-cache-r90ti5,
+[data-testid="stSidebar"][class*="st-emotion-cache"][class*="edtmxes"],
+.stSidebar[data-testid="stSidebar"][class*="st-emotion-cache"][class*="edtmxes"],
+[data-testid="stSidebar"][class*="st-emotion-cache"][class*="edtmxes0"],
+.stSidebar[data-testid="stSidebar"][class*="st-emotion-cache"][class*="edtmxes0"],
+div[data-testid="stSidebar"],
+div[data-testid="stSidebar"].stSidebar,
+div.stSidebar[data-testid="stSidebar"],
+div[data-testid="stSidebar"][class*="st-emotion-cache"],
+div.stSidebar[data-testid="stSidebar"][class*="st-emotion-cache"] {
+    background-color: #1a202c !important;  /* 深沉的深蓝灰色 */
+    color: #f7fafc !important;  /* 纯白色文字 */
+    border-right: 1px solid #2d3748 !important;  /* 深灰色边框 */
+}
+
+/* 侧边栏内所有文字 - 超强特异性 */
+[data-testid="stSidebar"] *,
+[data-testid="stSidebar"].stSidebar *,
+.stSidebar[data-testid="stSidebar"] *,
+[data-testid="stSidebar"][class*="st-emotion-cache"] *,
+.stSidebar[data-testid="stSidebar"][class*="st-emotion-cache"] *,
+[data-testid="stSidebar"].st-emotion-cache-r90ti5 *,
+.stSidebar[data-testid="stSidebar"].st-emotion-cache-r90ti5 *,
+[data-testid="stSidebar"][class*="st-emotion-cache"][class*="edtmxes"] *,
+.stSidebar[data-testid="stSidebar"][class*="st-emotion-cache"][class*="edtmxes"] *,
+[data-testid="stSidebar"][class*="st-emotion-cache"][class*="edtmxes0"] *,
+.stSidebar[data-testid="stSidebar"][class*="st-emotion-cache"][class*="edtmxes0"] *,
+div[data-testid="stSidebar"] *,
+div[data-testid="stSidebar"].stSidebar *,
+div.stSidebar[data-testid="stSidebar"] *,
+div[data-testid="stSidebar"][class*="st-emotion-cache"] *,
+div.stSidebar[data-testid="stSidebar"][class*="st-emotion-cache"] * {
+    color: #ffffff !important;
+}
+
+/* 侧边栏标题 */
+[data-testid="stSidebar"] h1 {
+    color: #ffffff !important;
+    font-weight: 700 !important;  /* 更粗的字体 */
+    font-size: 1.5rem !important;
+    margin-bottom: 2rem !important;
+}
+
+/* 侧边栏按钮样式 - 统一灰色 */
+[data-testid="stSidebar"] .stButton > button {
+    background-color: #6b7280 !important;  /* 灰色 */
+    color: #ffffff !important;  /* 白色文字 */
+    border: none !important;
+    border-radius: 4px !important;  /* 更方正的边角 */
+    font-weight: 600 !important;
+    font-size: 0.95rem !important;
+    padding: 14px 20px !important;
+    margin: 6px 0 !important;
+    width: 100% !important;
+    transition: all 0.2s ease !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;  /* 添加阴影 */
+}
+
+/* 侧边栏按钮悬停效果 */
+[data-testid="stSidebar"] .stButton > button:hover {
+    background-color: #4b5563 !important;  /* 悬停时更深的灰色 */
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 12px rgba(107, 114, 128, 0.3) !important;
+}
+
+/* 移除所有红色按钮样式 - 使用Streamlit默认样式 */
+
+/* 注入JavaScript代码的占位符 - 将在Python中替换为实际的script标签 */
+/* INJECT_BUTTON_STATE_SCRIPT */
+
+
+
+/* 侧边栏选择框样式 - 深沉商务风格 */
+[data-testid="stSidebar"] .stSelectbox > div > div {
+    background-color: #2d3748 !important;  /* 深灰色背景 */
+    color: #ffffff !important;  /* 纯白色文字 */
+    border: 1px solid #4a5568 !important;  /* 更深的灰色边框 */
+    border-radius: 4px !important;
+    font-weight: 500 !important;
+    transition: all 0.2s ease !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* 选择框悬停效果 */
+[data-testid="stSidebar"] .stSelectbox > div > div:hover {
+    border-color: #718096 !important;
+    box-shadow: 0 2px 8px rgba(45, 55, 72, 0.4) !important;
+}
+
+/* 全局文件上传器样式 - 确保所有位置的文件上传组件都使用黑色文字 */
+.stFileUploader,
+.stFileUploader *,
+.stFileUploader [data-testid="stFileUploaderDropzone"],
+.stFileUploader [data-testid="stFileUploaderDropzone"] *,
+.stFileUploader label,
+.stFileUploader label *,
+.stFileUploader button,
+.stFileUploader button *,
+.stFileUploader small,
+.stFileUploader div,
+.stFileUploader span,
+.stFileUploader p,
+/* 针对Streamlit emotion CSS类的超强选择器 */
+.stFileUploader [class*="st-emotion-cache"],
+.stFileUploader [class*="st-emotion-cache"] *,
+.stFileUploader [class*="e16xj5sw"],
+.stFileUploader [class*="e16xj5sw"] *,
+[data-testid="stFileUploaderDropzone"] [class*="st-emotion-cache"],
+[data-testid="stFileUploaderDropzone"] [class*="st-emotion-cache"] *,
+[data-testid="stFileUploaderDropzone"] [class*="e16xj5sw"],
+[data-testid="stFileUploaderDropzone"] [class*="e16xj5sw"] * {
+    color: #000000 !important;  /* 强制黑色文字 */
+}
+
+/* 侧边栏文件上传器样式 - 白底黑字 */
+[data-testid="stSidebar"] .stFileUploader {
+    background-color: #ffffff !important;  /* 白色背景 */
+    border: 2px dashed #94a3b8 !important;  /* 灰色虚线边框 */
+    border-radius: 8px !important;
+    padding: 20px !important;
+    color: #000000 !important;  /* 黑色文字 */
+}
+
+/* 侧边栏文件上传器内的所有文字元素 - 超高特异性 */
+[data-testid="stSidebar"] .stFileUploader,
+[data-testid="stSidebar"] .stFileUploader *,
+[data-testid="stSidebar"] .stFileUploader [data-testid="stFileUploaderDropzone"],
+[data-testid="stSidebar"] .stFileUploader [data-testid="stFileUploaderDropzone"] *,
+[data-testid="stSidebar"] .stFileUploader label,
+[data-testid="stSidebar"] .stFileUploader label *,
+[data-testid="stSidebar"] .stFileUploader button,
+[data-testid="stSidebar"] .stFileUploader button *,
+[data-testid="stSidebar"] .stFileUploader small,
+[data-testid="stSidebar"] .stFileUploader div,
+[data-testid="stSidebar"] .stFileUploader span,
+[data-testid="stSidebar"] .stFileUploader p,
+/* 针对侧边栏中Streamlit emotion CSS类的超强选择器 */
+[data-testid="stSidebar"] .stFileUploader [class*="st-emotion-cache"],
+[data-testid="stSidebar"] .stFileUploader [class*="st-emotion-cache"] *,
+[data-testid="stSidebar"] .stFileUploader [class*="e16xj5sw"],
+[data-testid="stSidebar"] .stFileUploader [class*="e16xj5sw"] *,
+[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] [class*="st-emotion-cache"],
+[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] [class*="st-emotion-cache"] *,
+[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] [class*="e16xj5sw"],
+[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] [class*="e16xj5sw"] * {
+    color: #000000 !important;  /* 强制黑色文字 */
+}
+
+/* 文件上传器的拖拽区域 */
+[data-testid="stSidebar"] .stFileUploader [data-testid="stFileUploaderDropzone"] {
+    background-color: #ffffff !important;
+    border: 2px dashed #94a3b8 !important;
+    border-radius: 8px !important;
+    color: #000000 !important;
+}
+
+/* 文件上传器的按钮 */
+[data-testid="stSidebar"] .stFileUploader button {
+    background-color: #f8f9fa !important;
+    color: #000000 !important;
+    border: 1px solid #dee2e6 !important;
+    border-radius: 4px !important;
+}
+
+/* 终极文件上传器文字颜色修复 - 针对所有具体的emotion CSS类 */
+.st-emotion-cache-u8hs99,
+.st-emotion-cache-u8hs99 *,
+.st-emotion-cache-j7qwjs,
+.st-emotion-cache-j7qwjs *,
+.st-emotion-cache-9ycgxx,
+.st-emotion-cache-9ycgxx *,
+.st-emotion-cache-1rpn56r,
+.st-emotion-cache-1rpn56r *,
+.st-emotion-cache-qm7g72,
+.st-emotion-cache-qm7g72 *,
+.e16xj5sw1,
+.e16xj5sw1 *,
+.e16xj5sw4,
+.e16xj5sw4 *,
+.e16xj5sw3,
+.e16xj5sw3 *,
+.ejh2rmr0,
+.ejh2rmr0 *,
+.eacrzsi2,
+.eacrzsi2 *,
+[class*="st-emotion-cache-u8hs99"],
+[class*="st-emotion-cache-u8hs99"] *,
+[class*="st-emotion-cache-j7qwjs"],
+[class*="st-emotion-cache-j7qwjs"] *,
+[class*="st-emotion-cache-9ycgxx"],
+[class*="st-emotion-cache-9ycgxx"] *,
+[class*="st-emotion-cache-1rpn56r"],
+[class*="st-emotion-cache-1rpn56r"] *,
+[class*="st-emotion-cache-qm7g72"],
+[class*="st-emotion-cache-qm7g72"] *,
+[class*="e16xj5sw1"],
+[class*="e16xj5sw1"] *,
+[class*="e16xj5sw4"],
+[class*="e16xj5sw4"] *,
+[class*="e16xj5sw3"],
+[class*="e16xj5sw3"] *,
+[class*="ejh2rmr0"],
+[class*="ejh2rmr0"] *,
+[class*="eacrzsi2"],
+[class*="eacrzsi2"] *,
+.stFileUploader .st-emotion-cache-u8hs99,
+.stFileUploader .st-emotion-cache-u8hs99 *,
+.stFileUploader .st-emotion-cache-j7qwjs,
+.stFileUploader .st-emotion-cache-j7qwjs *,
+.stFileUploader .st-emotion-cache-9ycgxx,
+.stFileUploader .st-emotion-cache-9ycgxx *,
+.stFileUploader .st-emotion-cache-1rpn56r,
+.stFileUploader .st-emotion-cache-1rpn56r *,
+.stFileUploader .st-emotion-cache-qm7g72,
+.stFileUploader .st-emotion-cache-qm7g72 *,
+.stFileUploader .e16xj5sw1,
+.stFileUploader .e16xj5sw1 *,
+.stFileUploader .e16xj5sw4,
+.stFileUploader .e16xj5sw4 *,
+.stFileUploader .e16xj5sw3,
+.stFileUploader .e16xj5sw3 *,
+.stFileUploader .ejh2rmr0,
+.stFileUploader .ejh2rmr0 *,
+.stFileUploader .eacrzsi2,
+.stFileUploader .eacrzsi2 *,
+[data-testid="stSidebar"] .st-emotion-cache-u8hs99,
+[data-testid="stSidebar"] .st-emotion-cache-u8hs99 *,
+[data-testid="stSidebar"] .st-emotion-cache-j7qwjs,
+[data-testid="stSidebar"] .st-emotion-cache-j7qwjs *,
+[data-testid="stSidebar"] .st-emotion-cache-9ycgxx,
+[data-testid="stSidebar"] .st-emotion-cache-9ycgxx *,
+[data-testid="stSidebar"] .st-emotion-cache-1rpn56r,
+[data-testid="stSidebar"] .st-emotion-cache-1rpn56r *,
+[data-testid="stSidebar"] .st-emotion-cache-qm7g72,
+[data-testid="stSidebar"] .st-emotion-cache-qm7g72 *,
+[data-testid="stSidebar"] .e16xj5sw1,
+[data-testid="stSidebar"] .e16xj5sw1 *,
+[data-testid="stSidebar"] .e16xj5sw4,
+[data-testid="stSidebar"] .e16xj5sw4 *,
+[data-testid="stSidebar"] .e16xj5sw3,
+[data-testid="stSidebar"] .e16xj5sw3 *,
+[data-testid="stSidebar"] .ejh2rmr0,
+[data-testid="stSidebar"] .ejh2rmr0 *,
+[data-testid="stSidebar"] .eacrzsi2,
+[data-testid="stSidebar"] .eacrzsi2 *,
+[data-testid="stFileUploaderDropzone"] .st-emotion-cache-u8hs99,
+[data-testid="stFileUploaderDropzone"] .st-emotion-cache-u8hs99 *,
+[data-testid="stFileUploaderDropzone"] .st-emotion-cache-j7qwjs,
+[data-testid="stFileUploaderDropzone"] .st-emotion-cache-j7qwjs *,
+[data-testid="stFileUploaderDropzone"] .st-emotion-cache-9ycgxx,
+[data-testid="stFileUploaderDropzone"] .st-emotion-cache-9ycgxx *,
+[data-testid="stFileUploaderDropzone"] .st-emotion-cache-1rpn56r,
+[data-testid="stFileUploaderDropzone"] .st-emotion-cache-1rpn56r *,
+[data-testid="stFileUploaderDropzone"] .st-emotion-cache-qm7g72,
+[data-testid="stFileUploaderDropzone"] .st-emotion-cache-qm7g72 *,
+[data-testid="stFileUploaderDropzone"] .e16xj5sw1,
+[data-testid="stFileUploaderDropzone"] .e16xj5sw1 *,
+[data-testid="stFileUploaderDropzone"] .e16xj5sw4,
+[data-testid="stFileUploaderDropzone"] .e16xj5sw4 *,
+[data-testid="stFileUploaderDropzone"] .e16xj5sw3,
+[data-testid="stFileUploaderDropzone"] .e16xj5sw3 *,
+[data-testid="stFileUploaderDropzone"] .ejh2rmr0,
+[data-testid="stFileUploaderDropzone"] .ejh2rmr0 *,
+[data-testid="stFileUploaderDropzone"] .eacrzsi2,
+[data-testid="stFileUploaderDropzone"] .eacrzsi2 * {
+    color: #000000 !important;
+    fill: #000000 !important;
+}
+
+/* 超级终极修复 - 直接覆盖侧边栏的通用白色文字规则 */
+[data-testid="stSidebar"] .stFileUploader .st-emotion-cache-u8hs99.e16xj5sw1,
+[data-testid="stSidebar"] .stFileUploader .st-emotion-cache-j7qwjs.e16xj5sw4,
+[data-testid="stSidebar"] .stFileUploader .st-emotion-cache-9ycgxx.e16xj5sw3,
+[data-testid="stSidebar"] .stFileUploader .st-emotion-cache-1rpn56r.ejh2rmr0,
+[data-testid="stSidebar"] .stFileUploader .st-emotion-cache-qm7g72.eacrzsi2,
+[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] .st-emotion-cache-u8hs99.e16xj5sw1,
+[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] .st-emotion-cache-j7qwjs.e16xj5sw4,
+[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] .st-emotion-cache-9ycgxx.e16xj5sw3,
+[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] .st-emotion-cache-1rpn56r.ejh2rmr0,
+[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] .st-emotion-cache-qm7g72.eacrzsi2 {
+    color: #000000 !important;
+    fill: #000000 !important;
+}
+
+/* 修复侧边栏所有白色文字问题 - 包括使用说明和标题 */
+[data-testid="stSidebar"] h1,
+[data-testid="stSidebar"] h2,
+[data-testid="stSidebar"] h3,
+[data-testid="stSidebar"] h4,
+[data-testid="stSidebar"] h5,
+[data-testid="stSidebar"] h6,
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] span,
+[data-testid="stSidebar"] div,
+[data-testid="stSidebar"] small,
+[data-testid="stSidebar"] strong,
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] .stMarkdown,
+[data-testid="stSidebar"] .stMarkdown *,
+[data-testid="stSidebar"] .st-emotion-cache-102y9h7,
+[data-testid="stSidebar"] .st-emotion-cache-102y9h7 *,
+[data-testid="stSidebar"] .st-emotion-cache-v40j46,
+[data-testid="stSidebar"] .st-emotion-cache-v40j46 *,
+[data-testid="stSidebar"] .st-emotion-cache-1xulwhk,
+[data-testid="stSidebar"] .st-emotion-cache-1xulwhk *,
+[data-testid="stSidebar"] .st-emotion-cache-p7i6r9,
+[data-testid="stSidebar"] .st-emotion-cache-p7i6r9 *,
+[data-testid="stSidebar"] .erovr380,
+[data-testid="stSidebar"] .erovr380 * {
+    color: #000000 !important;
+}
+
+/* 隐藏黑点tooltip图标 */
+[data-testid="stSidebar"] .stTooltipIcon,
+[data-testid="stSidebar"] .stTooltipHoverTarget,
+[data-testid="stSidebar"] .st-emotion-cache-oj1fi {
+    display: none !important;
+    visibility: hidden !important;
+}
+
+/* 隐藏主内容区域文件上传器中的黑色方块和tooltip图标 */
+.main .stFileUploader .stTooltipIcon,
+.main .stFileUploader .stTooltipHoverTarget,
+.main .stFileUploader .st-emotion-cache-oj1fi,
+.main [data-testid="stFileUploaderDropzone"] .stTooltipIcon,
+.main [data-testid="stFileUploaderDropzone"] .stTooltipHoverTarget,
+.main [data-testid="stFileUploaderDropzone"] .st-emotion-cache-oj1fi,
+/* 隐藏所有可能的黑色背景元素 */
+.main .stFileUploader div[style*="background-color: rgb(0, 0, 0)"],
+.main .stFileUploader div[style*="background: rgb(0, 0, 0)"],
+.main .stFileUploader div[style*="background-color: black"],
+.main .stFileUploader div[style*="background: black"],
+.main .stFileUploader span[style*="background-color: rgb(0, 0, 0)"],
+.main .stFileUploader span[style*="background: rgb(0, 0, 0)"],
+.main [data-testid="stFileUploaderDropzone"] div[style*="background-color: rgb(0, 0, 0)"],
+.main [data-testid="stFileUploaderDropzone"] div[style*="background: rgb(0, 0, 0)"],
+.main [data-testid="stFileUploaderDropzone"] span[style*="background-color: rgb(0, 0, 0)"],
+.main [data-testid="stFileUploaderDropzone"] span[style*="background: rgb(0, 0, 0)"],
+/* 隐藏可能的图标元素 */
+.main .stFileUploader svg[fill="black"],
+.main .stFileUploader svg[fill="#000000"],
+.main .stFileUploader svg[fill="rgb(0, 0, 0)"],
+.main [data-testid="stFileUploaderDropzone"] svg[fill="black"],
+.main [data-testid="stFileUploaderDropzone"] svg[fill="#000000"],
+.main [data-testid="stFileUploaderDropzone"] svg[fill="rgb(0, 0, 0)"],
+/* 隐藏可能的emotion CSS类生成的黑色元素 */
+.main .stFileUploader [class*="st-emotion-cache"][style*="background-color: rgb(0, 0, 0)"],
+.main .stFileUploader [class*="st-emotion-cache"][style*="background: rgb(0, 0, 0)"],
+.main [data-testid="stFileUploaderDropzone"] [class*="st-emotion-cache"][style*="background-color: rgb(0, 0, 0)"],
+.main [data-testid="stFileUploaderDropzone"] [class*="st-emotion-cache"][style*="background: rgb(0, 0, 0)"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+}
+
+/* 完全隐藏文件上传器中的所有SVG图标 - 终极解决方案 */
+.stFileUploader svg,
+[data-testid="stFileUploaderDropzone"] svg,
+[data-testid="stFileUploaderFile"] svg,
+.stFileUploader [data-testid="stFileUploaderFile"] svg,
+/* 隐藏文件图标和删除按钮图标 */
+.stFileUploader .st-emotion-cache-10ix4kq svg,
+.stFileUploader .st-emotion-cache-12xsiil svg,
+[data-testid="stFileUploaderFile"] .st-emotion-cache-10ix4kq svg,
+[data-testid="stFileUploaderFile"] .st-emotion-cache-12xsiil svg,
+/* 隐藏所有可能的图标容器 */
+.stFileUploader button svg,
+[data-testid="stFileUploaderFile"] button svg,
+/* 隐藏tooltip和其他装饰性图标 */
+.stFileUploader .stTooltipIcon,
+.stFileUploader .stTooltipHoverTarget,
+[data-testid="stFileUploaderDropzone"] .stTooltipIcon,
+[data-testid="stFileUploaderDropzone"] .stTooltipHoverTarget {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    width: 0 !important;
+    height: 0 !important;
+}
+
+/* 主体样式 - 深沉商务风格 */
+body {
+    background-color: #e2e8f0 !important;  /* 深沉的浅灰背景 */
+}
+
+.main .block-container {
+    color: #2d3748 !important;  /* 深色文字 */
+    background-color: #f7fafc !important;  /* 浅灰白色背景 */
+    border-radius: 6px !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;  /* 更深的阴影 */
+    padding: 2.5rem !important;
+    margin: 1rem !important;
+    border: 1px solid #e2e8f0 !important;  /* 添加边框 */
+}
+
+/* 图表容器样式优化 */
+.plotly-graph-div {
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* 下载按钮使用Streamlit默认样式 */
+
+/* Expander样式优化 */
+.streamlit-expanderHeader {
+    font-weight: bold;
+    font-size: 16px;
+}
+
+/* 表格样式优化 */
+.stDataFrame {
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+/* 成功消息样式 */
+.stSuccess {
+    border-radius: 8px;
+    border-left: 4px solid #4CAF50;
+}
+
+/* 错误消息样式 */
+.stError {
+    border-radius: 8px;
+    border-left: 4px solid #f44336;
+}
+
+/* 信息消息样式 */
+.stInfo {
+    border-radius: 8px;
+    border-left: 4px solid #2196F3;
+}
+
+/* 警告消息样式 */
+.stWarning {
+    border-radius: 8px;
+    border-left: 4px solid #ff9800;
+}
+
+/* 主内容区域标题样式 - 深沉商务风格 */
+.main h1 {
+    color: #1a202c !important;  /* 深沉的深蓝灰色 */
+    font-weight: 700 !important;  /* 更粗字体 */
+    font-size: 2.75rem !important;
+    margin-bottom: 2rem !important;
+    text-align: center !important;
+    line-height: 1.2 !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1) !important;  /* 添加文字阴影 */
+}
+
+/* 经济运行分析平台专用样式 - 标题、分割线、机构信息 */
+.platform-header {
+    text-align: center !important;
+    margin-bottom: 3rem !important;
+    /* 垂直居中 */
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: center !important;
+    min-height: 70vh !important;
+}
+
+.platform-title {
+    color: #1a202c !important;
+    font-weight: 800 !important;
+    font-size: 3.5rem !important;
+    margin-bottom: 1.5rem !important;
+    text-align: center !important;
+    line-height: 1.1 !important;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.15) !important;
+    letter-spacing: 0.05em !important;
+}
+
+.platform-divider {
+    width: 60% !important;
+    height: 3px !important;
+    background-color: #ffffff !important;
+    margin: 2rem auto !important;
+    border: none !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+}
+
+.platform-subtitle {
+    color: #4a5568 !important;
+    font-weight: 500 !important;
+    font-size: 1.5rem !important;  /* 增大2号字体：从1.1rem改为1.5rem */
+    text-align: center !important;
+    margin-top: 1.5rem !important;
+    letter-spacing: 0.025em !important;
+}
+
+/* 主内容区域副标题样式 - 深沉商务风格 */
+.main h2 {
+    color: #2d3748 !important;  /* 深灰色 */
+    font-weight: 600 !important;
+    font-size: 1.875rem !important;
+    margin-bottom: 1.5rem !important;
+    line-height: 1.3 !important;
+}
+
+/* 主内容区域三级标题样式 */
+.main h3 {
+    color: #4a5568 !important;
+    font-weight: 600 !important;
+    font-size: 1.5rem !important;
+    margin-bottom: 1rem !important;
+}
+
+/* 主内容区域按钮样式已删除 - 使用Streamlit原生type="primary"参数 */

@@ -1,0 +1,48 @@
+docs/github_token
+
+# Python缓存文件
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# 虚拟环境
+venv/
+env/
+ENV/
+
+# IDE配置
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# 数据文件和临时文件
+*.tmp
+*.temp
+*.log
+*.cache
+
+# 系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Excel临时文件
+~$*.xlsx
+~$*.xls
+~$*.doc*
+~$*.ppt*
+
+# Playwright MCP
+.playwright-mcp/
+
+# 输出目录
+outputs/
+temp/
+tmp/
+data/nul
