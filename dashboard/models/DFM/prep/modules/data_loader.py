@@ -12,36 +12,22 @@ import pandas as pd
 import numpy as np
 
 logger = logging.getLogger(__name__)
-from typing import Dict, List, Tuple, Optional, Any, Set
-from collections import defaultdict
+from typing import Dict, List, Tuple, Optional, Set
 
-from dashboard.models.DFM.prep.modules.format_detection import detect_sheet_format, parse_sheet_info
 from dashboard.models.DFM.prep.modules.data_cleaner import DataCleaner
 from dashboard.models.DFM.prep.modules.config_constants import (
     MIN_VALID_DATE_RATIO, MIN_TARGET_VALID_RATIO, MIN_PREDICTOR_VALID_RATIO
 )
-from dashboard.models.DFM.utils.text_utils import normalize_text
+
 
 class DataLoader:
     """数据加载器类"""
 
-    def __init__(
-        self,
-        reference_industry_map: Optional[Dict[str, str]] = None,
-        reference_frequency_map: Optional[Dict[str, str]] = None
-    ):
+    def __init__(self):
         """
         初始化数据加载器
-
-        Args:
-            reference_industry_map: 从指标字典加载的行业映射（可选，用于校验）
-            reference_frequency_map: 从指标字典加载的频率映射（用于数据分类）
         """
         self.cleaner = DataCleaner()
-        self.var_industry_map = {}  # 从sheet名称推断的行业映射（保留用于校验）
-        self.reference_industry_map = reference_industry_map or {}
-        self.reference_frequency_map = reference_frequency_map or {}
-        self.raw_columns_across_all_sheets = set()
 
     def _load_indexed_sheet(
         self,
@@ -94,39 +80,29 @@ class DataLoader:
 
         logger.info("Sheet '%s' (%s, %s) 加载完成。Shape: %s", sheet_name, industry_name, freq_type, df_numeric.shape)
 
-        self._update_var_mappings(df_numeric.columns, industry_name)
         return df_numeric
 
-    def _update_var_mappings(self, columns, industry_name: str):
-        """更新变量映射"""
-        for col in columns:
-            norm_col = normalize_text(col)
-            if norm_col:
-                self.var_industry_map[norm_col] = industry_name
-                self.raw_columns_across_all_sheets.add(norm_col)
-    
     def load_target_sheet(
-        self, 
-        excel_file, 
+        self,
+        excel_file,
         sheet_name: str,
         target_variable_name: str,
         industry_name: str = "Macro"
     ) -> Tuple[Optional[pd.Series], Optional[pd.Series], Optional[pd.DataFrame], Set[str]]:
         """
         加载目标表格数据
-        
+
         Args:
             excel_file: Excel文件对象
             sheet_name: 表格名称
             target_variable_name: 目标变量名称
             industry_name: 行业名称
-            
+
         Returns:
             Tuple: (发布日期, 目标变量值, 预测变量DataFrame, 目标表格列名集合)
         """
         logger.info("检测到目标 Sheet，行业: '%s'...", industry_name)
 
-        # 删除try-except包装，让异常直接抛出
         # 使用统一格式读取数据
         logger.info("[目标Sheet读取] 使用统一格式，第一行为列名，第一列为时间列")
 
@@ -166,10 +142,6 @@ class DataLoader:
         if target_valid_ratio < MIN_TARGET_VALID_RATIO:
             raise ValueError(f"目标变量数值转换质量不合格：仅 {target_valid_ratio:.1%} 的值有效（要求≥{MIN_TARGET_VALID_RATIO:.0%}）")
 
-        # 更新映射（同时记录sheet推断的行业用于后续校验）
-        norm_target_name = normalize_text(actual_target_variable_name)
-        self.var_industry_map[norm_target_name] = industry_name
-
         # 提取月度预测变量 (C列及以后)
         target_sheet_predictors = pd.DataFrame()
         if df_raw.shape[1] > 2:
@@ -204,12 +176,6 @@ class DataLoader:
                     index=publication_dates
                 )
 
-                # 更新映射和跟踪
-                norm_pred_col = normalize_text(col_name)
-                if norm_pred_col:
-                    self.var_industry_map[norm_pred_col] = industry_name
-                    self.raw_columns_across_all_sheets.add(norm_pred_col)
-
             target_sheet_predictors = pd.DataFrame(temp_monthly_predictors).sort_index()
             target_sheet_predictors = target_sheet_predictors.dropna(axis=1, how='all')
 
@@ -218,7 +184,7 @@ class DataLoader:
             logger.info("目标 Sheet 仅含 A, B 列。")
 
         return publication_dates, target_values, target_sheet_predictors, target_sheet_cols
-    
+
     def load_daily_weekly_sheet(
         self,
         excel_file,
@@ -278,7 +244,6 @@ class DataLoader:
         """
         logger.info("检测到非目标月度预测 Sheet，行业: '%s'...", industry_name)
 
-        # 删除try-except包装，让异常直接抛出
         # 使用统一格式读取数据
         logger.info("[使用统一格式] 第一行为列名，第一列为时间列")
 
@@ -322,18 +287,9 @@ class DataLoader:
 
         if not df_monthly_pred_sheet.empty:
             logger.info("提取了 %d 个有效的月度预测变量 (按发布日期索引)。", df_monthly_pred_sheet.shape[1])
-            self._update_var_mappings(df_monthly_pred_sheet.columns, industry_name)
             return df_monthly_pred_sheet
         else:
             raise ValueError(f"Sheet '{sheet_name}' 未包含有效的月度预测变量数据")
-
-    def get_var_industry_map(self) -> Dict[str, str]:
-        """获取变量行业映射"""
-        return self.var_industry_map.copy()
-
-    def get_raw_columns_set(self) -> Set[str]:
-        """获取所有加载的列名集合（标准化后）"""
-        return self.raw_columns_across_all_sheets.copy()
 
     def get_removed_variables_log(self) -> List[Dict]:
         """获取移除变量的日志"""

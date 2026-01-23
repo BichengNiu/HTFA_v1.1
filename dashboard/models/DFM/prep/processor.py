@@ -13,11 +13,10 @@ DFM数据预处理核心处理器（简化版）
 
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Tuple, Optional, Set
+from typing import Dict, List, Tuple, Optional
 from datetime import datetime
 import logging
 
-from dashboard.models.DFM.prep.modules.data_loader import DataLoader
 from dashboard.models.DFM.prep.modules.data_aligner import DataAligner, generate_theoretical_index
 from dashboard.models.DFM.prep.modules.data_cleaner import DataCleaner, clean_dataframe
 from dashboard.models.DFM.prep.modules.config_constants import FREQ_ORDER
@@ -105,10 +104,6 @@ class DataPreparationProcessor:
         self.parallel_config = parallel_config or create_default_prep_config()
 
         # 初始化组件
-        self.data_loader = DataLoader(
-            reference_industry_map=var_industry_map,
-            reference_frequency_map=var_frequency_map
-        )
         # DataAligner仅在启用频率对齐���使用
         if enable_freq_alignment:
             self.data_aligner = DataAligner(target_freq, enable_borrowing=enable_borrowing)
@@ -475,20 +470,6 @@ class DataPreparationProcessor:
 
         return result_data, {}  # 不借调，返回空日志
 
-    def _align_by_type(self, df: pd.DataFrame, freq_type: str) -> Tuple[pd.DataFrame, Dict]:
-        """根据频率类型对齐数据
-
-        Args:
-            df: 待对齐的DataFrame
-            freq_type: 频率类型（'daily', 'weekly', 'dekad', 'monthly', 'quarterly', 'yearly'）
-
-        Returns:
-            Tuple[pd.DataFrame, Dict]: (对齐后的DataFrame, 借调日志字典)
-        """
-        return self.data_aligner.align_by_type(
-            df, freq_type, self.data_start_date, self.data_end_date
-        )
-
     def _step6_merge_all_data(
         self,
         aligned_data: Dict[str, pd.DataFrame],
@@ -627,12 +608,6 @@ class DataPreparationProcessor:
             'processing_time': datetime.now().isoformat(),
             'borrowing_log': borrowing_log or {}
         }
-
-        # 合并去趋势日志（如果有）
-        if 'detrend' in self.transform_log:
-            transform_log['detrend'] = self.transform_log['detrend']
-        else:
-            transform_log['detrend'] = {'enabled': False}
 
         # 记录借调统计
         if borrowing_log:

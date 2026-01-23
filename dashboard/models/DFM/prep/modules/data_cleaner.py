@@ -14,7 +14,6 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 from typing import List, Dict, Set, Tuple, Optional
-from collections import Counter
 
 from dashboard.models.DFM.prep.utils.date_utils import filter_by_date_range
 
@@ -171,34 +170,6 @@ class DataCleaner:
     ) -> pd.DataFrame:
         """应用时间范围筛选"""
         return filter_by_date_range(df, start_date, end_date)
-
-    def _calculate_max_consecutive_nans(self, series: pd.Series) -> int:
-        """计算最大连续NaN数量"""
-        if series.empty:
-            return 0
-
-        # 找到第一个有效值
-        first_valid_idx = series.first_valid_index()
-        if first_valid_idx is None:
-            return len(series)  # 全为NaN
-
-        # 从第一个有效值开始分析
-        series_after_first_valid = series.loc[first_valid_idx:]
-        is_na = series_after_first_valid.isna()
-
-        if not is_na.any():
-            return 0  # 没有NaN
-
-        # 计算连续NaN块
-        na_blocks = is_na.ne(is_na.shift()).cumsum()[is_na]
-        max_consecutive_nan = 0
-
-        if not na_blocks.empty:
-            block_counts = na_blocks.value_counts()
-            if not block_counts.empty:
-                max_consecutive_nan = block_counts.max()
-
-        return max_consecutive_nan
 
     def _find_max_consecutive_nan_period(self, series: pd.Series) -> tuple:
         """
