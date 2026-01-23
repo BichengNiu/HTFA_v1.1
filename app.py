@@ -12,7 +12,7 @@ import logging
 import multiprocessing
 
 # 添加项目根目录到 Python 路径
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+project_root = os.path.dirname(os.path.abspath(__file__))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
@@ -105,7 +105,7 @@ logging.getLogger('dashboard').setLevel(logging.WARNING)
 
 # 添加项目根目录到Python路径，确保能正确导入dashboard包
 current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(current_dir)  # 上一级目录
+project_root = current_dir  # app.py 现在在根目录
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
@@ -541,7 +541,7 @@ if __name__ == '__main__':
 
         # 1. 清理Python缓存
         print("[1/4] 清理Python缓存文件...")
-        project_root = Path(__file__).parent.parent
+        project_root = Path(__file__).parent
         for pycache in project_root.rglob('__pycache__'):
             shutil.rmtree(pycache, ignore_errors=True)
         for pyc in project_root.rglob('*.pyc'):
