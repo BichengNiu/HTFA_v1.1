@@ -17,3 +17,6 @@ WARNING: 变量 '中国:制造业pmi:生产' 没有平稳性检验结果，跳�
 WARNING: 变量 '用电量:酒、饮料和精制茶制造业' 没有平稳性检验结果，跳过
 WARNING: 变量 '中国:制造业PMI' 没有检验结果
 WARNING: 变量 '中国:制造业PMI:生产' 没有检验结果
+
+
+❯ c:\Users\NIU\Desktop\HTFA\models 这个文件夹中存放了DDFM最原始的算法代码，你现在需要比较它和现在c:\Users\NIU\Desktop\HTFA\dashboard\models\DFM 的代码中在算法上的区别，我需要你进行全面而深入的比较。   

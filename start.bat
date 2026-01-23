@@ -1,5 +1,4 @@
 @echo off
-chcp 65001 >nul
 echo ========================================
 echo HTFA Dashboard Startup
 echo ========================================
@@ -7,65 +6,68 @@ echo.
 
 cd /d "%~dp0"
 
-REM 清理Python缓存文件
-echo [1/4] 清理Python缓存文件...
-echo [信息] 正在删除 __pycache__ 目录和 .pyc 文件...
+REM ����������ǣ���ֹapp.py�ظ�ִ�������߼�
+set HTFA_LAUNCHER_ACTIVE=true
 
-REM 删除所有的 .pyc 和 .pyo 文件
+REM ����Python�����ļ�
+echo [1/4] ����Python�����ļ�...
+echo [��Ϣ] ����ɾ�� __pycache__ Ŀ¼�� .pyc �ļ�...
+
+REM ɾ�����е� .pyc �� .pyo �ļ�
 for /r %%i in (*.pyc *.pyo) do (
     del /f /q "%%i" >nul 2>&1
 )
 
-REM 删除所有的 __pycache__ 目录
+REM ɾ�����е� __pycache__ Ŀ¼
 for /d /r %%i in (__pycache__) do (
     rd /s /q "%%i" >nul 2>&1
 )
 
-echo [完成] Python缓存已清理
+echo [���] Python����������
 echo.
 
-REM 检查端口8501是否被占用
-echo [2/4] 检查端口占用情况...
+REM ���˿�8501�Ƿ�ռ��
+echo [2/4] ���˿�ռ�����...
 netstat -ano | findstr ":8501" >nul 2>&1
 if %errorlevel% equ 0 (
-    echo [警告] 端口8501已被占用，正在关闭占用进程...
+    echo [����] �˿�8501�ѱ�ռ�ã����ڹر�ռ�ý���...
 
-    REM 获取占用端口的进程ID并关闭
+    REM ��ȡռ�ö˿ڵĽ���ID���ر�
     for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8501" ^| findstr "LISTENING"') do (
-        echo [信息] 正在关闭进程 PID: %%a
+        echo [��Ϣ] ���ڹرս��� PID: %%a
         taskkill /F /PID %%a >nul 2>&1
     )
 
-    REM 等待端口释放
-    echo [信息] 等待端口释放...
+    REM �ȴ��˿��ͷ�
+    echo [��Ϣ] �ȴ��˿��ͷ�...
     timeout /t 2 /nobreak >nul
-    echo [完成] 端口已清理
+    echo [���] �˿�������
 ) else (
-    echo [完成] 端口8501空闲
+    echo [���] �˿�8501����
 )
 
 echo.
-echo [3/4] 配置运行环境...
+echo [3/4] �������л���...
 REM ========================================
-REM 调试模式配置
+REM ����ģʽ����
 REM ========================================
-REM 调试模式：跳过用户认证和权限检查（适用于开发调试）
-REM 正常模式：启用完整的用户认证和权限控制（适用于生产环境）
+REM ����ģʽ�������û���֤��Ȩ�޼�飨�����ڿ������ԣ�
+REM ����ģʽ�������������û���֤��Ȩ�޿��ƣ�����������������
 REM
-REM 设置 HTFA_DEBUG_MODE=true  -> 调试模式（默认）
-REM 设置 HTFA_DEBUG_MODE=false -> 正常模式
+REM ���� HTFA_DEBUG_MODE=true  -> ����ģʽ��Ĭ�ϣ�
+REM ���� HTFA_DEBUG_MODE=false -> ����ģʽ
 REM ========================================
 
-REM 设置调试模式（开发时使用true，生产时使用false）
+REM ���õ���ģʽ������ʱʹ��true������ʱʹ��false��
 set HTFA_DEBUG_MODE=true
 
-echo [信息] 调试模式: %HTFA_DEBUG_MODE%
+echo [��Ϣ] ����ģʽ: %HTFA_DEBUG_MODE%
 echo.
-echo [4/5] 启动应用程序...
+echo [4/5] ����Ӧ�ó���...
 echo.
-REM 自动输入空邮箱(直接回车)跳过邮箱提示
-echo. | py -m streamlit run dashboard/app.py --server.port=8501
+REM �Զ����������(ֱ�ӻس�)����������ʾ
+echo. | py -m streamlit run app.py --server.port=8501
 
 echo.
-echo [5/5] 应用程序已退出
+echo [5/5] Ӧ�ó������˳�
 pause

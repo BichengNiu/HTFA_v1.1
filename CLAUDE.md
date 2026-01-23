@@ -14,10 +14,10 @@ HTFA（经济运行分析平台）是一个基于 Streamlit 的数据分析仪�
 
 ```bash
 # 启动应用（开发模式）
-streamlit run dashboard/app.py --server.port=8501
+streamlit run app.py --server.port=8501
 
 # 直接运行（会自动清理缓存和端口）
-python dashboard/app.py
+python app.py
 
 # Docker 部署
 docker-compose up -d
@@ -31,37 +31,41 @@ pip install -r requirements.txt
 ### 目录结构
 
 ```
-dashboard/
+HTFA/
 ├── app.py                    # 应用入口，页面配置和主路由
-├── core/                     # 核心框架
-│   ├── backend/              # 后端服务
-│   │   ├── config/           # 配置管理
-│   │   ├── navigation/       # 导航状态管理
-│   │   ├── resource/         # 资源加载器
-│   │   └── initialization/   # 初始化器
-│   └── ui/                   # UI 框架
-│       ├── components/       # 通用组件（sidebar, content_router, layout）
-│       └── utils/            # UI 工具（样式加载、状态管理、调试）
-├── auth/                     # 认证模块
-│   ├── authentication.py     # AuthManager 认证管理器
-│   ├── models.py             # User, UserSession 数据模型
-│   ├── database.py           # SQLite 数据库操作
-│   ├── security.py           # 密码哈希、输入验证
-│   └── ui/                   # 登录界面、用户管理界面
-├── analysis/                 # 监测分析模块
-│   └── industrial/           # 工业分析（图表、计算、UI）
-├── models/                   # 模型分析模块
-│   └── DFM/                  # 动态因子模型
-│       ├── prep/             # 数据准备
-│       ├── train/            # 模型训练
-│       ├── results/          # 结果分析
-│       └── decomp/           # 影响分解
-├── explore/                  # 数据探索模块
-│   ├── ui/                   # 单变量/双变量分析页面
-│   └── metrics/              # 相关性计算
-└── preview/                  # 数据预览模块
-    ├── core/                 # 基础加载器和渲染器
-    └── modules/              # 各领域预览模块
+├── dashboard/                # Dashboard 模块
+│   ├── core/                 # 核心框架
+│   │   ├── backend/          # 后端服务
+│   │   │   ├── config/       # 配置管理
+│   │   │   ├── navigation/   # 导航状态管理
+│   │   │   ├── resource/     # 资源加载器
+│   │   │   └── initialization/   # 初始化器
+│   │   └── ui/               # UI 框架
+│   │       ├── components/   # 通用组件（sidebar, content_router, layout）
+│   │       └── utils/        # UI 工具（样式加载、状态管理、调试）
+│   ├── auth/                 # 认证模块
+│   │   ├── authentication.py # AuthManager 认证管理器
+│   │   ├── models.py         # User, UserSession 数据模型
+│   │   ├── database.py       # SQLite 数据库操作
+│   │   ├── security.py       # 密码哈希、输入验证
+│   │   └── ui/               # 登录界面、用户管理界面
+│   ├── analysis/             # 监测分析模块
+│   │   └── industrial/       # 工业分析（图表、计算、UI）
+│   ├── models/               # 模型分析模块
+│   │   └── DFM/              # 动态因子模型
+│   │       ├── prep/         # 数据准备
+│   │       ├── train/        # 模型训练
+│   │       ├── results/      # 结果分析
+│   │       └── decomp/       # 影响分解
+│   ├── explore/              # 数据探索模块
+│   │   ├── ui/               # 单变量/双变量分析页面
+│   │   └── metrics/          # 相关性计算
+│   └── preview/              # 数据预览模块
+│       ├── core/             # 基础加载器和渲染器
+│       └── modules/          # 各领域预览模块
+├── data/                     # 数据文件
+├── logs/                     # 日志文件
+└── config/                   # 配置文件
 ```
 
 ### 模块配置（app.py:230-245）
