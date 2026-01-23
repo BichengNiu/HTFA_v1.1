@@ -199,6 +199,38 @@ def get_dekad_friday(dt: pd.Timestamp) -> pd.Timestamp:
     return target_friday
 
 
+def get_yoy_friday_no_cross_month(current_friday: pd.Timestamp) -> pd.Timestamp:
+    """
+    计算去年同期对应的周五（不跨月）
+
+    用于智能同比差分：找到去年同期日期最近的周五，但不跨月。
+
+    逻辑：
+        1. 计算去年同期日期（如 2025-10-31 → 2024-10-31）
+        2. 找该日期最近的周五
+        3. 如果跨月则调整到当月最后/第一个周五
+
+    Args:
+        current_friday: 当前周五日期
+
+    Returns:
+        pd.Timestamp: 去年同期对应的周五（保证在同月内）
+
+    示例：
+        2025-10-31 (Fri) → 2024-10-31 (Thu) → 2024-10-25 (Fri)
+        （不能跨到 2024-11-01，虽然更近）
+    """
+    # 计算去年同期日期
+    try:
+        yoy_date = current_friday.replace(year=current_friday.year - 1)
+    except ValueError:
+        # 处理闰年2月29日的情况：回退到2月28日
+        yoy_date = current_friday.replace(year=current_friday.year - 1, day=28)
+
+    # 复用 get_monthly_friday 的逻辑：找最近周五但不跨月
+    return get_monthly_friday(yoy_date)
+
+
 # ============================================================================
 # 发布日期校准专用函数（带滞后天数）
 # ============================================================================
@@ -303,5 +335,6 @@ __all__ = [
     'get_quarterly_friday',
     'get_yearly_friday',
     'get_dekad_friday',
+    'get_yoy_friday_no_cross_month',
     'get_friday_with_lag',
 ]

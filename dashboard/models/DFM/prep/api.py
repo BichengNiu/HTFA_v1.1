@@ -430,16 +430,11 @@ def prepare_dfm_data_simple(
             elif len(processed_data.columns) == 0:
                 logger.warning("prepared_data没有列，跳过平稳性检验")
             else:
-                raw_results = StationarityChecker.batch_check_variables(
+                stationarity_check_results = StationarityChecker.batch_check_variables(
                     processed_data,
                     variables=list(processed_data.columns),
-                    alpha=0.05,
-                    parallel=False
+                    alpha=0.05
                 )
-                # 标准化键名，确保与export_service查询时使用的normalize_text一致
-                stationarity_check_results = {
-                    normalize_text(k): v for k, v in raw_results.items()
-                }
                 logger.info(f"平稳性检验完成: {len(stationarity_check_results)}个变量")
         except (ValueError, np.linalg.LinAlgError) as e:
             logger.error(f"平稳性检验执行失败: {e}")
