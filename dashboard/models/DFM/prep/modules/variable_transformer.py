@@ -113,6 +113,40 @@ class VariableTransformer:
 
         return result
 
+    def preprocess_negatives(self, series: pd.Series, method: str) -> pd.Series:
+        """
+        负值预处理
+
+        Args:
+            series: 输入序列
+            method: 处理方法 ('none', 'missing', 'adjust')
+
+        Returns:
+            处理后的序列
+        """
+        if method == 'none':
+            return series.copy()
+
+        var_name = series.name if series.name else "未命名"
+        result = series.copy()
+        negative_mask = result < 0
+        negative_count = negative_mask.sum()
+
+        if negative_count == 0:
+            return result
+
+        if method == 'missing':
+            result[negative_mask] = np.nan
+            self.logger.info(f"变量 '{var_name}' 将 {negative_count} 个负值设为缺失值")
+        elif method == 'adjust':
+            # 将负值调正：加上最小值的绝对值再加1
+            min_val = result[negative_mask].min()
+            adjustment = abs(min_val) + 1
+            result[negative_mask] = result[negative_mask] + adjustment
+            self.logger.info(f"变量 '{var_name}' 将 {negative_count} 个负值调正（+{adjustment:.4f}）")
+
+        return result
+
     def apply_log(self, series: pd.Series) -> pd.Series:
         """
         对数变换
@@ -178,11 +212,82 @@ class VariableTransformer:
         )
         return result
 
+    def _needs_smart_yoy_diff(self, freq: str) -> bool:
+        """
+        判断是否需要智能同比差分（旬度、周度）
+
+        Args:
+            freq: 原始数据频率
+
+        Returns:
+            bool: 是否需要智能同比差分
+        """
+        if not freq:
+            return False
+        freq_lower = freq.lower()
+        return '旬' in freq_lower or 'dekad' in freq_lower or '周' in freq_lower or 'week' in freq_lower
+
+    def apply_smart_yoy_diff(self, series: pd.Series) -> pd.Series:
+        """
+        智能同比差分（适用于旬度、周度）
+
+        对每个周五：
+        1. 计算去年同期对应的周五（不跨月）
+        2. 如果该周五有数据则差分，否则为NaN
+
+        这是确定性映射，不是搜索有数据的周五。
+
+        Args:
+            series: 输入时间序列（已对齐到周五）
+
+        Returns:
+            pd.Series: 智能同比差分后的序列
+        """
+        from dashboard.models.DFM.prep.utils.friday_utils import get_yoy_friday_no_cross_month
+
+        var_name = series.name if series.name else "未命名"
+        result = pd.Series(index=series.index, dtype=float)
+        result[:] = np.nan
+
+        matched_count = 0
+        unmatched_count = 0
+
+        for current_friday in series.index:
+            current_val = series.loc[current_friday]
+
+            # 如果当前值为NaN，跳过
+            if pd.isna(current_val):
+                continue
+
+            # 计算去年同期对应的周五（不跨月）
+            yoy_friday = get_yoy_friday_no_cross_month(current_friday)
+
+            # 检查去年同期周五是否在数据索引中且有值
+            if yoy_friday in series.index:
+                yoy_val = series.loc[yoy_friday]
+                if pd.notna(yoy_val):
+                    # 计算差分（假设已经取过对数）
+                    result.loc[current_friday] = current_val - yoy_val
+                    matched_count += 1
+                else:
+                    unmatched_count += 1
+            else:
+                unmatched_count += 1
+
+        self.logger.debug(
+            f"变量 '{var_name}' 智能同比差分: "
+            f"成功匹配 {matched_count} 个，未匹配 {unmatched_count} 个"
+        )
+
+        return result
+
     def transform_variable(
         self,
         series: pd.Series,
         operations: List[str],
-        zero_method: str = 'none'
+        zero_method: str = 'none',
+        negative_method: str = 'none',
+        original_freq: str = None
     ) -> pd.Series:
         """
         按顺序对单个变量应用多个转换操作
@@ -191,19 +296,27 @@ class VariableTransformer:
             series: 输入时间序列
             operations: 操作列表，按顺序执行
             zero_method: 0值处理方法 ('none', 'missing', 'adjust')
+            negative_method: 负值处理方法 ('none', 'missing', 'adjust')
+            original_freq: 原始数据频率（用于智能同比差分，如 '旬度'、'周度'）
 
         Returns:
             pd.Series: 转换后的序列
         """
-        # 1. 预处理0值
+        # 1. 预处理0值（按表格列顺序：零值处理在前）
         result = self.preprocess_zeros(series, zero_method)
+        # 2. 预处理负值
+        result = self.preprocess_negatives(result, negative_method)
 
         # 如果没有后续操作，直接返回预处理后的结果
         if not operations:
             # 只有预处理时也记录详情
-            if zero_method != 'none':
+            if zero_method != 'none' or negative_method != 'none':
                 var_name = series.name if series.name else "未命名"
-                preprocess_ops = [f'zero_{zero_method}']
+                preprocess_ops = []
+                if zero_method != 'none':
+                    preprocess_ops.append(f'zero_{zero_method}')
+                if negative_method != 'none':
+                    preprocess_ops.append(f'negative_{negative_method}')
                 self._transform_details[var_name] = {
                     'operations': preprocess_ops,
                     'original_stats': {
@@ -225,13 +338,15 @@ class VariableTransformer:
 
         # 过滤掉 'none' 操作
         valid_ops = [op for op in operations if op != 'none']
-        if not valid_ops and zero_method == 'none':
+        if not valid_ops and zero_method == 'none' and negative_method == 'none':
             return series.copy()
 
         applied_ops = []
-        # 记录预处理操作
+        # 记录预处理操作（按执行顺序：零值处理 → 负值处理）
         if zero_method != 'none':
             applied_ops.append(f'zero_{zero_method}')
+        if negative_method != 'none':
+            applied_ops.append(f'negative_{negative_method}')
 
         # 3. 应用转换操作
         for op in valid_ops:
@@ -242,9 +357,14 @@ class VariableTransformer:
                 result = self.apply_diff(result, periods=1)
                 applied_ops.append('diff_1')
             elif op == 'diff_yoy':
-                # 使用动态周期
-                result = self.apply_diff(result, periods=self.yoy_period)
-                applied_ops.append(f'diff_{self.yoy_period}')
+                # 判断是否需要智能同比差分（旬度、周度）
+                if self._needs_smart_yoy_diff(original_freq):
+                    result = self.apply_smart_yoy_diff(result)
+                    applied_ops.append('diff_yoy_smart')
+                else:
+                    # 其他频率使用固定周期差分
+                    result = self.apply_diff(result, periods=self.yoy_period)
+                    applied_ops.append(f'diff_{self.yoy_period}')
             else:
                 self.logger.warning(f"未知操作 '{op}'，跳过")
 
@@ -385,8 +505,7 @@ def get_default_transform_config(
         freq: 目标频率
 
     Returns:
-        List[Dict]: 配置列表，每项包含 {变量名, 性质, 第一次处理, 第二次处理, 第三次处理}
-        注：零值处理已在基础设置中全局配置，无需单独配置
+        List[Dict]: 配置列表，每项包含 {变量名, 性质, 零值处理, 负值处理, 第一次处理, 第二次处理, 第三次处理}
     """
     from dashboard.models.DFM.utils.text_utils import normalize_text
 
@@ -404,6 +523,8 @@ def get_default_transform_config(
         config_list.append({
             '变量名': var,
             '性质': nature,
+            '零值处理': '缺失值',      # 默认值：缺失值
+            '负值处理': '不处理',      # 默认值：不处理
             '第一次处理': transformer.OPERATIONS.get(first_op, '不处理'),
             '第二次处理': transformer.OPERATIONS.get(second_op, '不处理'),
             '第三次处理': '不处理'

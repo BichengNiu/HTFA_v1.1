@@ -8,9 +8,64 @@ Sheet读取并行处理器
 import pandas as pd
 import numpy as np
 from typing import Dict, Tuple, List, Optional, Any
+from calendar import monthrange
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _fix_invalid_dates(df: pd.DataFrame, sheet_name: str) -> pd.DataFrame:
+    """
+    修正无效日期（如2月30日、4月31日等）
+
+    某些数据源（如电网旬度数据）可能包含无效日期，
+    将其修正为该月的最后一天。
+
+    Args:
+        df: 原始DataFrame，第一列为日期
+        sheet_name: 工作表名称（用于日志）
+
+    Returns:
+        pd.DataFrame: 修正后的DataFrame
+    """
+    date_col = df.columns[0]
+    fixed_count = 0
+
+    # 遍历检查日期列
+    for idx, val in df[date_col].items():
+        if pd.isna(val):
+            continue
+
+        # 尝试解析日期字符串
+        val_str = str(val)
+
+        # 检查常见的无效日期模式（如 2025/2/30, 2025-2-30 等）
+        for sep in ['/', '-']:
+            if sep in val_str:
+                parts = val_str.split(sep)
+                if len(parts) >= 3:
+                    try:
+                        year = int(parts[0])
+                        month = int(parts[1])
+                        day = int(parts[2].split()[0])  # 处理可能的时间部分
+
+                        # 获取该月的最后一天
+                        last_day = monthrange(year, month)[1]
+
+                        if day > last_day:
+                            # 修正为该月最后一天
+                            fixed_date = f"{year}{sep}{month:02d}{sep}{last_day:02d}"
+                            df.at[idx, date_col] = fixed_date
+                            fixed_count += 1
+                            logger.debug(f"    修正无效日期: {val_str} -> {fixed_date}")
+                    except (ValueError, IndexError):
+                        pass
+                break
+
+    if fixed_count > 0:
+        logger.info(f"    {sheet_name}: 修正了 {fixed_count} 个无效日期")
+
+    return df
 
 
 # ========== 可序列化的顶层函数 ==========
@@ -47,6 +102,9 @@ def _read_single_sheet(
         if df.shape[1] < 2:
             logger.debug(f"    {sheet_name}: 列数不足，跳过")
             return (sheet_name, None, {})
+
+        # 修正无效日期（如电网数据中的2月30日）
+        df = _fix_invalid_dates(df, sheet_name)
 
         # 解析日期列
         date_col = pd.to_datetime(df.iloc[:, 0], errors='coerce')

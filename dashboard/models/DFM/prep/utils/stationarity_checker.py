@@ -9,6 +9,8 @@ import logging
 from typing import Dict, Optional, List, Any
 import pandas as pd
 
+from dashboard.models.DFM.utils.text_utils import normalize_text
+
 logger = logging.getLogger(__name__)
 
 
@@ -100,17 +102,15 @@ class StationarityChecker:
         df: pd.DataFrame,
         variables: Optional[List[str]] = None,
         alpha: float = 0.05,
-        parallel: bool = False,
         n_jobs: int = -1
     ) -> Dict[str, Dict[str, Any]]:
         """
-        批量检验多个变量的平稳性
+        批量检验多个变量的平稳性（并行执行）
 
         Args:
             df: 包含时间序列的DataFrame
             variables: 需要检验的变量列表，默认为None表示检验所有列
             alpha: 显著性水平，默认0.05
-            parallel: 是否使用并行，默认False
             n_jobs: 并行任务数，-1表示使用所有CPU核心
 
         Returns:
@@ -123,43 +123,21 @@ class StationarityChecker:
         if variables is None:
             variables = df.columns.tolist()
 
-        logger.info(f"开始批量检验平稳性: {len(variables)}个变量, alpha={alpha}, parallel={parallel}")
+        logger.info(f"开始批量检验平稳性: {len(variables)}个变量, alpha={alpha}")
         results = {}
 
-        if parallel:
-            # 并行执行（使用joblib）
-            try:
-                from joblib import Parallel, delayed
+        from joblib import Parallel, delayed
 
-                results_list = Parallel(n_jobs=n_jobs, backend='loky')(
-                    delayed(StationarityChecker.check_variable_stationarity)(
-                        df[var], alpha=alpha
-                    )
-                    for var in variables if var in df.columns
-                )
+        results_list = Parallel(n_jobs=n_jobs, backend='loky')(
+            delayed(StationarityChecker.check_variable_stationarity)(
+                df[var], alpha=alpha
+            )
+            for var in variables if var in df.columns
+        )
 
-                for var, result in zip([v for v in variables if v in df.columns], results_list):
-                    results[var] = result
-                    logger.debug(f"检验完成: {var} -> {result['formatted']}")
-
-            except Exception as e:
-                logger.warning(f"并行检验失败，降级到串行模式: {e}")
-                parallel = False
-
-        if not parallel:
-            # 串行执行
-            logger.info(f"串行执行检验...")
-            for i, var in enumerate(variables, 1):
-                if var not in df.columns:
-                    logger.warning(f"  [{i}/{len(variables)}] 变量 '{var}' 不在DataFrame中，跳过")
-                    continue
-
-                logger.debug(f"  [{i}/{len(variables)}] 检验变量: {var}")
-                result = StationarityChecker.check_variable_stationarity(
-                    df[var], alpha=alpha
-                )
-                results[var] = result
-                logger.info(f"  [{i}/{len(variables)}] {var}: {result['formatted']}")
+        for var, result in zip([v for v in variables if v in df.columns], results_list):
+            results[normalize_text(var)] = result
+            logger.debug(f"检验完成: {var} -> {result['formatted']}")
 
         logger.info(f"平稳性检验完成: 共检验 {len(results)} 个变量, 成功 {len(results)}/{len(variables)}")
         return results

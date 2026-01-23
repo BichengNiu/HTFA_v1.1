@@ -36,7 +36,8 @@ class UIBackendService:
                 {
                     'variable': str,          # 变量名
                     'operations': List[str],  # 操作序列: ['log', 'diff_yoy'] 或 ['diff_1']
-                    'zero_handling': str      # 零值处理
+                    'zero_handling': str,     # 零值处理 ('none', 'missing', 'adjust')
+                    'negative_handling': str  # 负值处理 ('none', 'missing', 'adjust')
                 }
                 注：兼容旧格式 'operation': str（单个操作）
             target_freq: 目标频率
@@ -82,11 +83,17 @@ class UIBackendService:
                     # 提取单个变量的 Series
                     series = transformed_data[var_name].copy()
 
-                    # 执行转换
+                    # 获取变量的原始频率（用于智能同比差分）
+                    var_name_normalized = normalize_text(var_name)
+                    original_freq = var_frequency_map.get(var_name_normalized) if var_frequency_map else None
+
+                    # 执行转换，传递频率信息和负值处理
                     transformed_series = transformer.transform_variable(
                         series=series,
                         operations=operations,
-                        zero_method=config.get('zero_handling', 'none')
+                        zero_method=config.get('zero_handling', 'none'),
+                        negative_method=config.get('negative_handling', 'none'),
+                        original_freq=original_freq
                     )
 
                     # 更新 DataFrame
@@ -112,8 +119,7 @@ class UIBackendService:
             stationarity_results = StationarityChecker.batch_check_variables(
                 transformed_data,
                 variables=transformed_data.columns.tolist(),
-                alpha=0.05,
-                parallel=True
+                alpha=0.05
             )
 
             logger.info(f"平稳性检验完成: {len(stationarity_results)}个变量")

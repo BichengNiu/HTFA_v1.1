@@ -267,8 +267,6 @@ def _render_parameter_config(st_obj, detected_start, detected_end, min_date, max
         PrepStateKeys.PARAM_DATA_END_DATE: default_end_date,
         PrepStateKeys.PARAM_ENABLE_FREQ_ALIGNMENT: '否',
         PrepStateKeys.PARAM_ENABLE_BORROWING: '否',
-        PrepStateKeys.PARAM_ZERO_HANDLING: 'missing',
-        PrepStateKeys.PARAM_NEGATIVE_HANDLING: 'none',
         PrepStateKeys.PARAM_PUBLICATION_DATE_CALIBRATION: '否'
     }
 
@@ -397,46 +395,6 @@ def _render_parameter_config(st_obj, detected_start, detected_end, min_date, max
         else:
             _set_state(PrepStateKeys.PARAM_CONSECUTIVE_NAN_THRESHOLD, None)
 
-    # 第5行：零值处理和负值处理
-    row5_col1, row5_col2 = st_obj.columns(2)
-    with row5_col1:
-        zero_options = {
-            'none': '不处理',
-            'missing': '缺失值',
-            'adjust': '调正（+1）'
-        }
-        current_zero = _get_state(PrepStateKeys.PARAM_ZERO_HANDLING, 'missing')
-        zero_keys = list(zero_options.keys())
-        zero_index = zero_keys.index(current_zero) if current_zero in zero_keys else 1
-        zero_handling = st_obj.selectbox(
-            "零值处理",
-            options=zero_keys,
-            format_func=lambda x: zero_options[x],
-            index=zero_index,
-            key="ss_dfm_zero_handling",
-            help="设置全局零值处理方式，对所有变量生效"
-        )
-        _set_state(PrepStateKeys.PARAM_ZERO_HANDLING, zero_handling)
-
-    with row5_col2:
-        negative_options = {
-            'none': '不处理',
-            'missing': '缺失值',
-            'adjust': '调正（+1）'
-        }
-        current_negative = _get_state(PrepStateKeys.PARAM_NEGATIVE_HANDLING, 'none')
-        negative_keys = list(negative_options.keys())
-        negative_index = negative_keys.index(current_negative) if current_negative in negative_keys else 0
-        negative_handling = st_obj.selectbox(
-            "负值处理",
-            options=negative_keys,
-            format_func=lambda x: negative_options[x],
-            index=negative_index,
-            key="ss_dfm_negative_handling",
-            help="设置全局负值处理方式，对所有变量生效"
-        )
-        _set_state(PrepStateKeys.PARAM_NEGATIVE_HANDLING, negative_handling)
-
     return True
 
 
@@ -499,9 +457,9 @@ def _prepare_processing_params(uploaded_file, st_obj) -> Optional[dict]:
     if not enable_freq_alignment:
         enable_borrowing = False
 
-    # 其他参数
-    zero_handling = _get_state(PrepStateKeys.PARAM_ZERO_HANDLING, 'missing')
-    negative_handling = _get_state(PrepStateKeys.PARAM_NEGATIVE_HANDLING, 'none')
+    # 零值/负值处理已移至变量处理表格，此处不做全局处理
+    zero_handling = 'none'
+    negative_handling = 'none'
     enable_publication_calibration = _get_state(PrepStateKeys.PARAM_PUBLICATION_DATE_CALIBRATION, '否') == '是'
 
     return {
@@ -976,7 +934,8 @@ def _render_variable_transform_section(st_obj):
 
     # 操作选项列表
     OPERATIONS = ['不处理', '对数', '环比差分', '同比差分']
-    # 注：零值处理已在基础设置中全局配置，变量处理区只配置转换操作
+    # 零值处理和负值处理选项
+    ZERO_NEGATIVE_OPTIONS = ['不处理', '缺失值', '调正（+1）']
 
     # 获取或初始化配置DataFrame
     config_df = _get_state(PrepStateKeys.TRANSFORM_CONFIG_DF)
@@ -1016,6 +975,18 @@ def _render_variable_transform_section(st_obj):
                 '性质',
                 disabled=True,
                 width='small'
+            ),
+            '零值处理': st.column_config.SelectboxColumn(
+                '零值处理',
+                options=ZERO_NEGATIVE_OPTIONS,
+                width='small',
+                required=True
+            ),
+            '负值处理': st.column_config.SelectboxColumn(
+                '负值处理',
+                options=ZERO_NEGATIVE_OPTIONS,
+                width='small',
+                required=True
             ),
             '第一次处理': st.column_config.SelectboxColumn(
                 '第一次处理',
@@ -1075,8 +1046,13 @@ def _render_variable_transform_section(st_obj):
     if needs_sync:
         st.rerun()
 
-    # 统计需要转换的变量数量
-    vars_with_transform = len(edited_df[edited_df['第一次处理'] != '不处理'])
+    # 统计需要处理的变量数量（包括零值/负值处理和转换操作）
+    has_any_processing = (
+        (edited_df['零值处理'] != '不处理') |
+        (edited_df['负值处理'] != '不处理') |
+        (edited_df['第一次处理'] != '不处理')
+    )
+    vars_with_transform = has_any_processing.sum()
 
     if vars_with_transform > 0:
         st_obj.info(f"将对 {vars_with_transform} 个变量应用转换")
@@ -1103,7 +1079,7 @@ def _apply_variable_transforms(st_obj, config_df):
 
     Args:
         st_obj: Streamlit对象
-        config_df: 配置DataFrame，包含 {变量名, 性质, 第一次处理, 第二次处理, 第三次处理}
+        config_df: 配置DataFrame，包含 {变量名, 性质, 零值处理, 负值处理, 第一次处理, 第二次处理, 第三次处理}
     """
     from dashboard.models.DFM.prep.services.ui_backend_service import UIBackendService
 
@@ -1129,10 +1105,19 @@ def _apply_variable_transforms(st_obj, config_df):
         '同比差分': 'diff_yoy'
     }
 
+    # 零值/负值处理名称到代码的映射
+    ZERO_NEGATIVE_NAME_TO_CODE = {
+        '不处理': 'none',
+        '缺失值': 'missing',
+        '调正（+1）': 'adjust'
+    }
+
     # 构建转换配置列表（格式为后端服务期望的格式）
     transform_config = []
     for _, row in config_df.iterrows():
         var_name = row['变量名']
+        zero_handling = ZERO_NEGATIVE_NAME_TO_CODE.get(row.get('零值处理', '不处理'), 'none')
+        negative_handling = ZERO_NEGATIVE_NAME_TO_CODE.get(row.get('负值处理', '不处理'), 'none')
         first_op = OP_NAME_TO_CODE.get(row['第一次处理'], 'none')
         second_op = OP_NAME_TO_CODE.get(row['第二次处理'], 'none')
         third_op = OP_NAME_TO_CODE.get(row.get('第三次处理', '不处理'), 'none')
@@ -1146,13 +1131,13 @@ def _apply_variable_transforms(st_obj, config_df):
         if third_op != 'none':
             ops.append(third_op)
 
-        # 如果有任何操作，添加到配置
-        if ops:
-            # 传递完整的操作序列
+        # 如果有任何操作或预处理，添加到配置
+        if ops or zero_handling != 'none' or negative_handling != 'none':
             transform_config.append({
                 'variable': var_name,
-                'operations': ops,  # 传递操作列表
-                'zero_handling': 'none'
+                'operations': ops,
+                'zero_handling': zero_handling,
+                'negative_handling': negative_handling
             })
 
     if not transform_config:
