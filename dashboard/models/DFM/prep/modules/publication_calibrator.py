@@ -87,26 +87,6 @@ class PublicationCalibrator:
             return df
 
 
-def calibrate_publication_dates(
-    df: pd.DataFrame,
-    freq_type: str,
-    publication_lag_map: Dict[str, int]
-) -> pd.DataFrame:
-    """便利函数：校准发布日期
-
-    Args:
-        df: 输入DataFrame
-        freq_type: 频率类型
-        publication_lag_map: 变量名到滞后天数的映射
-
-    Returns:
-        pd.DataFrame: 校准后的DataFrame
-    """
-    calibrator = PublicationCalibrator(publication_lag_map)
-    return calibrator.calibrate(df, freq_type)
-
-
 __all__ = [
-    'PublicationCalibrator',
-    'calibrate_publication_dates'
+    'PublicationCalibrator'
 ]

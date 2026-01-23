@@ -7,7 +7,6 @@
 - data_loader: 数据加载
 - data_aligner: 数据对齐
 - data_cleaner: 数据清理
-- detrend_processor: 去趋势处理
 - variable_transformer: 变量转换
 - publication_calibrator: 发布日期校准
 """
@@ -33,14 +32,6 @@ from dashboard.models.DFM.prep.modules.format_detection import (
     parse_sheet_info
 )
 
-# 去趋势处理
-from dashboard.models.DFM.prep.modules.detrend_processor import (
-    DetrendProcessor,
-    DetrendError,
-    InsufficientDataError,
-    RegressionFailedError
-)
-
 # 变量转换
 from dashboard.models.DFM.prep.modules.variable_transformer import (
     VariableTransformer,
@@ -50,8 +41,7 @@ from dashboard.models.DFM.prep.modules.variable_transformer import (
 
 # 发布日期校准
 from dashboard.models.DFM.prep.modules.publication_calibrator import (
-    PublicationCalibrator,
-    calibrate_publication_dates
+    PublicationCalibrator
 )
 
 __version__ = "2.1.0"
@@ -69,16 +59,10 @@ __all__ = [
     # 格式检测
     'detect_sheet_format',
     'parse_sheet_info',
-    # 去趋势处理
-    'DetrendProcessor',
-    'DetrendError',
-    'InsufficientDataError',
-    'RegressionFailedError',
     # 变量转换
     'VariableTransformer',
     'get_default_transform_config',
     'FREQUENCY_PERIOD_MAP',
     # 发布日期校准
     'PublicationCalibrator',
-    'calibrate_publication_dates',
 ]
