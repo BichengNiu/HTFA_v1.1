@@ -95,8 +95,7 @@ class BackwardSelector:
             SelectionResult对象
         """
         # 验证params中的必需键
-        required_param_keys = ['k_factors', 'rmse_tolerance_percent', 'win_rate_tolerance_percent',
-                               'selection_criterion', 'prioritize_win_rate', 'training_weight',
+        required_param_keys = ['k_factors', 'win_rate_tolerance', 'training_weight',
                                'factor_selection_method', 'pca_threshold', 'kaiser_threshold',
                                'tolerance', 'alignment_mode']
         for key in required_param_keys:
@@ -117,10 +116,7 @@ class BackwardSelector:
             'tolerance': params['tolerance'],
             'alignment_mode': params['alignment_mode'],
             'progress_callback': progress_callback,
-            'rmse_tolerance_percent': params['rmse_tolerance_percent'],
-            'win_rate_tolerance_percent': params['win_rate_tolerance_percent'],
-            'selection_criterion': params['selection_criterion'],
-            'prioritize_win_rate': params['prioritize_win_rate'],
+            'win_rate_tolerance': params['win_rate_tolerance'],
             'training_weight': params['training_weight']
         }
 
@@ -172,10 +168,7 @@ class BackwardSelector:
             comparison = compare_scores_with_winrate(
                 best_score_this_iter,
                 current_best_score,
-                rmse_tolerance_percent=self._eval_params['rmse_tolerance_percent'],
-                win_rate_tolerance_percent=self._eval_params['win_rate_tolerance_percent'],
-                selection_criterion=self._eval_params['selection_criterion'],
-                prioritize_win_rate=self._eval_params['prioritize_win_rate']
+                win_rate_tolerance=self._eval_params['win_rate_tolerance']
             )
             if comparison < 0:
                 logger.warning(
@@ -418,8 +411,7 @@ class BackwardSelector:
                     continue
 
         # 获取容忍度配置
-        rmse_tolerance = self._eval_params['rmse_tolerance_percent']
-        win_rate_tolerance = self._eval_params['win_rate_tolerance_percent']
+        win_rate_tolerance = self._eval_params['win_rate_tolerance']
 
         # 处理评估结果，计算得分并找出最佳候选
         best_is_win_rate = np.nan
@@ -445,10 +437,7 @@ class BackwardSelector:
             comparison = compare_scores_with_winrate(
                 score,
                 best_score,
-                rmse_tolerance_percent=rmse_tolerance,
-                win_rate_tolerance_percent=win_rate_tolerance,
-                selection_criterion=self._eval_params['selection_criterion'],
-                prioritize_win_rate=self._eval_params['prioritize_win_rate']
+                win_rate_tolerance=win_rate_tolerance
             )
             if np.isfinite(score[1]) and comparison > 0:
                 best_score = score

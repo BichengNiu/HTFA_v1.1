@@ -65,13 +65,8 @@ class TrainingConfig:
     # 目标变量配对模式（2025-12新增）
     target_alignment_mode: str = 'next_month'  # 'current_month'(本月) 或 'next_month'(下月)
 
-    # Win Rate优化配置（2025-12-19新增）
-    rmse_tolerance_percent: float = 1.0  # RMSE相近的容忍度（百分比）
-    win_rate_tolerance_percent: float = 5.0  # Win Rate相近的容忍度（百分比），用于胜率优先策略
-
-    # 筛选策略配置（2025-12-20新增）
-    selection_criterion: str = 'hybrid'  # 筛选标准: 'rmse', 'win_rate', 'hybrid'
-    prioritize_win_rate: Optional[bool] = True  # 混合策略时的优先级，仅hybrid模式有效
+    # 胜率阈值配置（2025-01简化）
+    win_rate_tolerance: float = 5.0  # 胜率阈值（百分比），差异≤此值视为"相同胜率"，选RMSE更小的
 
     # 训练期权重配置（2025-12-20新增）
     training_weight: float = 0.5  # 训练期权重 (0.0-1.0)，验证期权重自动为 1-training_weight
@@ -168,24 +163,11 @@ class TrainingConfig:
                 f"当前值: {self.target_alignment_mode}"
             )
 
-        # 验证Win Rate配置（2025-12-19）
-        if self.rmse_tolerance_percent < 0 or self.rmse_tolerance_percent > 100:
+        # 验证胜率阈值配置（2025-01简化）
+        if self.win_rate_tolerance < 0 or self.win_rate_tolerance > 100:
             raise ValueError(
-                f"rmse_tolerance_percent必须在0-100之间，"
-                f"当前值: {self.rmse_tolerance_percent}"
-            )
-        if self.win_rate_tolerance_percent < 0 or self.win_rate_tolerance_percent > 100:
-            raise ValueError(
-                f"win_rate_tolerance_percent必须在0-100之间，"
-                f"当前值: {self.win_rate_tolerance_percent}"
-            )
-
-        # 验证筛选策略配置（2025-12-20）
-        valid_criteria = ['rmse', 'win_rate', 'hybrid']
-        if self.selection_criterion not in valid_criteria:
-            raise ValueError(
-                f"selection_criterion必须是{valid_criteria}之一，"
-                f"当前值: {self.selection_criterion}"
+                f"win_rate_tolerance必须在0-100之间，"
+                f"当前值: {self.win_rate_tolerance}"
             )
 
         # 验证训练期权重（2025-12-20）

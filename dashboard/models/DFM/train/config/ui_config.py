@@ -62,34 +62,14 @@ class UIConfig:
     MIN_VARIABLES_AFTER_SELECTION_MIN = 3
     MIN_VARIABLES_AFTER_SELECTION_MAX = 20
 
-    # 筛选策略选项
-    SELECTION_CRITERIA = {
-        'rmse': "RMSE",
-        'win_rate': "胜率",
-        'hybrid': "混合"
-    }
-    DEFAULT_SELECTION_CRITERION = 'hybrid'
-
-    # 混合策略优先级选项
-    HYBRID_PRIORITIES = {
-        'win_rate_first': "胜率优先",
-        'rmse_first': "RMSE优先"
-    }
-    DEFAULT_HYBRID_PRIORITY = 'win_rate_first'
-
     # 训练期权重配置 (2025-12新增)
     DEFAULT_TRAINING_WEIGHT = 50  # 默认50%训练期权重（百分比）
     TRAINING_WEIGHT_MIN = 0       # 0%=仅验证期
     TRAINING_WEIGHT_MAX = 100     # 100%=仅训练期
     TRAINING_WEIGHT_STEP = 10
 
-    # 容忍度配置 (2026-01新增)
-    DEFAULT_RMSE_TOLERANCE = 1.0  # RMSE容忍度（百分比）
-    RMSE_TOLERANCE_MIN = 0.5
-    RMSE_TOLERANCE_MAX = 5.0
-    RMSE_TOLERANCE_STEP = 0.1
-
-    DEFAULT_WIN_RATE_TOLERANCE = 5.0  # Win Rate容忍度（百分比）
+    # 胜率阈值配置 (2025-01简化)
+    DEFAULT_WIN_RATE_TOLERANCE = 5.0  # 胜率阈值（百分比），差异≤此值视为相同胜率
     WIN_RATE_TOLERANCE_MIN = 1.0
     WIN_RATE_TOLERANCE_MAX = 10.0
     WIN_RATE_TOLERANCE_STEP = 0.5
