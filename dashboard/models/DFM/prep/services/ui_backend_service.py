@@ -36,10 +36,7 @@ class UIBackendService:
                 {
                     'variable': str,          # 变量名
                     'operations': List[str],  # 操作序列: ['log', 'diff_yoy'] 或 ['diff_1']
-                    'zero_handling': str,     # 零值处理 ('none', 'missing', 'adjust')
-                    'negative_handling': str  # 负值处理 ('none', 'missing', 'adjust')
                 }
-                注：兼容旧格式 'operation': str（单个操作）
             target_freq: 目标频率
             var_frequency_map: 变量频率映射（用于同比差分）
 
@@ -87,12 +84,10 @@ class UIBackendService:
                     var_name_normalized = normalize_text(var_name)
                     original_freq = var_frequency_map.get(var_name_normalized) if var_frequency_map else None
 
-                    # 执行转换，传递频率信息和负值处理
+                    # 执行转换
                     transformed_series = transformer.transform_variable(
                         series=series,
                         operations=operations,
-                        zero_method=config.get('zero_handling', 'none'),
-                        negative_method=config.get('negative_handling', 'none'),
                         original_freq=original_freq
                     )
 

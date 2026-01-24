@@ -299,7 +299,7 @@ def _render_parameter_config(st_obj, detected_start, detected_end, min_date, max
         )
         _set_state(PrepStateKeys.PARAM_DATA_END_DATE, end_date_value)
 
-    # 第2行：发布日期校准和频率对齐
+    # 第2行：发布日期校准和数据借调
     row2_col1, row2_col2 = st_obj.columns(2)
     with row2_col1:
         publication_options = ["否", "是"]
@@ -315,6 +315,50 @@ def _render_parameter_config(st_obj, detected_start, detected_end, min_date, max
         _set_state(PrepStateKeys.PARAM_PUBLICATION_DATE_CALIBRATION, publication_calibration)
 
     with row2_col2:
+        # 数据借调（针对周度和旬度数据）
+        borrowing_options = ["是", "否"]
+        current_borrowing = _get_state(PrepStateKeys.PARAM_ENABLE_BORROWING, '否')
+        borrowing_index = 0 if current_borrowing == "是" else 1
+        enable_borrowing = st_obj.selectbox(
+            "数据借调",
+            options=borrowing_options,
+            index=borrowing_index,
+            key="ss_dfm_enable_borrowing",
+            help="开启时，对周度和旬度数据进行借调预处理，当某个时间窗口无数据但下个窗口有多个数据时，会将数据借调到前一个窗口"
+        )
+        _set_state(PrepStateKeys.PARAM_ENABLE_BORROWING, enable_borrowing)
+
+    # 第3行：移除选项和缺失值阈值
+    row3_col1, row3_col2 = st_obj.columns(2)
+    with row3_col1:
+        remove_nans = st_obj.selectbox(
+            "移除存在过多连续缺失值的变量",
+            options=["是", "否"],
+            index=0 if _get_state(PrepStateKeys.PARAM_REMOVE_CONSECUTIVE_NANS) == "是" else 1,
+            key="ss_dfm_remove_nans",
+            help="移除列中连续缺失值数量超过阈值的变量"
+        )
+        _set_state(PrepStateKeys.PARAM_REMOVE_CONSECUTIVE_NANS, remove_nans)
+
+    with row3_col2:
+        # 连续缺失值阈值（仅在移除=是时启用）
+        threshold_disabled = (remove_nans == "否")
+        nan_threshold = st_obj.number_input(
+            "连续缺失值阈值",
+            min_value=0,
+            value=_get_state(PrepStateKeys.PARAM_CONSECUTIVE_NAN_THRESHOLD) or 10,
+            step=1,
+            key="ss_dfm_nan_thresh",
+            disabled=threshold_disabled
+        )
+        if remove_nans == "是":
+            _set_state(PrepStateKeys.PARAM_CONSECUTIVE_NAN_THRESHOLD, nan_threshold)
+        else:
+            _set_state(PrepStateKeys.PARAM_CONSECUTIVE_NAN_THRESHOLD, None)
+
+    # 第4行：频率对齐和目标频率
+    row4_col1, row4_col2 = st_obj.columns(2)
+    with row4_col1:
         freq_alignment_options = ["是", "否"]
         current_freq_alignment = _get_state(PrepStateKeys.PARAM_ENABLE_FREQ_ALIGNMENT, '否')
         freq_alignment_index = 0 if current_freq_alignment == "是" else 1
@@ -327,9 +371,7 @@ def _render_parameter_config(st_obj, detected_start, detected_end, min_date, max
         )
         _set_state(PrepStateKeys.PARAM_ENABLE_FREQ_ALIGNMENT, enable_freq_alignment)
 
-    # 第3行：目标频率和启用数据借调
-    row3_col1, row3_col2 = st_obj.columns(2)
-    with row3_col1:
+    with row4_col2:
         # 目标频率选择（仅在频率对齐=是时启用）
         freq_disabled = (enable_freq_alignment == "否")
         freq_options = {
@@ -347,53 +389,9 @@ def _render_parameter_config(st_obj, detected_start, detected_end, min_date, max
             index=list(freq_options.keys()).index(current_freq) if current_freq in freq_options else 0,
             key="ss_dfm_target_freq",
             disabled=freq_disabled,
-            help="选择模型的目标频率（仅在频率对齐=是时有效）。日度数据转换为周度时默认取均值聚合，其他频率转换时取最后值。"
+            help="选择模型的目标频率（仅在频率对齐=是时有效）"
         )
         _set_state(PrepStateKeys.PARAM_TARGET_FREQ, target_freq)
-
-    with row3_col2:
-        # 启用数据借调（改为selectbox，仅在频率对齐=是时启用）
-        borrowing_disabled = (enable_freq_alignment == "否")
-        borrowing_options = ["是", "否"]
-        current_borrowing = _get_state(PrepStateKeys.PARAM_ENABLE_BORROWING, '否')
-        borrowing_index = 0 if current_borrowing == "是" else 1
-        enable_borrowing = st_obj.selectbox(
-            "启用数据借调",
-            options=borrowing_options,
-            index=borrowing_index,
-            key="ss_dfm_enable_borrowing",
-            disabled=borrowing_disabled,
-            help="开启时，当某个时间窗口无数据但下个窗口有多个数据时，会将数据借调到前一个窗口（仅在频率对齐=是时有效）"
-        )
-        _set_state(PrepStateKeys.PARAM_ENABLE_BORROWING, enable_borrowing)
-
-    # 第4行：移除选项和缺失值阈值（第三执行：步骤5）
-    row4_col1, row4_col2 = st_obj.columns(2)
-    with row4_col1:
-        remove_nans = st_obj.selectbox(
-            "移除存在过多连续缺失值的变量",
-            options=["是", "否"],
-            index=0 if _get_state(PrepStateKeys.PARAM_REMOVE_CONSECUTIVE_NANS) == "是" else 1,
-            key="ss_dfm_remove_nans",
-            help="移除列中连续缺失值数量超过阈值的变量"
-        )
-        _set_state(PrepStateKeys.PARAM_REMOVE_CONSECUTIVE_NANS, remove_nans)
-
-    with row4_col2:
-        # 连续缺失值阈值（仅在移除=是时启用）
-        threshold_disabled = (remove_nans == "否")
-        nan_threshold = st_obj.number_input(
-            "连续缺失值阈值",
-            min_value=0,
-            value=_get_state(PrepStateKeys.PARAM_CONSECUTIVE_NAN_THRESHOLD) or 10,
-            step=1,
-            key="ss_dfm_nan_thresh",
-            disabled=threshold_disabled
-        )
-        if remove_nans == "是":
-            _set_state(PrepStateKeys.PARAM_CONSECUTIVE_NAN_THRESHOLD, nan_threshold)
-        else:
-            _set_state(PrepStateKeys.PARAM_CONSECUTIVE_NAN_THRESHOLD, None)
 
     return True
 
@@ -405,13 +403,27 @@ def _render_processing_section(st_obj, uploaded_file):
     Returns:
         bool - 是否点击了处理按钮
     """
+    col1, col2 = st_obj.columns([1, 1])
 
-    # 开始预处理按钮
-    run_button_clicked = st_obj.button(
-        "开始处理",
-        key="ss_dfm_run_preprocessing",
-        type="primary"
-    )
+    with col1:
+        run_button_clicked = st_obj.button(
+            "开始处理",
+            key="ss_dfm_run_preprocessing",
+            type="primary"
+        )
+
+    with col2:
+        processed_outputs = _get_state(PrepStateKeys.PROCESSED_OUTPUTS)
+        if processed_outputs and processed_outputs.get('excel_file'):
+            st_obj.download_button(
+                label="下载数据",
+                data=processed_outputs['excel_file'],
+                file_name="DFM预处理数据.xlsx",
+                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                key='download_processed_excel_basic',
+                type="secondary",
+                help="下载处理后的数据（Excel格式）"
+            )
 
     return run_button_clicked
 
@@ -454,11 +466,10 @@ def _prepare_processing_params(uploaded_file, st_obj) -> Optional[dict]:
     # 频率对齐和数据借调参数
     enable_freq_alignment = _get_state(PrepStateKeys.PARAM_ENABLE_FREQ_ALIGNMENT, '否') == '是'
     enable_borrowing = _get_state(PrepStateKeys.PARAM_ENABLE_BORROWING, '否') == '是'
-    if not enable_freq_alignment:
-        enable_borrowing = False
 
-    # 零值/负值处理已移至变量处理表格，此处不做全局处理
-    zero_handling = 'none'
+    # 零值处理：基础设置阶段自动将0值替换为缺失值
+    # 负值处理：在变量处理阶段的对数变换中自动处理
+    zero_handling = 'missing'
     negative_handling = 'none'
     enable_publication_calibration = _get_state(PrepStateKeys.PARAM_PUBLICATION_DATE_CALIBRATION, '否') == '是'
 
@@ -553,50 +564,44 @@ def _process_success_result(st_obj, result: dict, excel_file_like_object) -> boo
     # 生成导出文件
     processed_outputs = {'excel_file': None}
 
-    if industry_map:
-        try:
-            from dashboard.models.DFM.prep.api import load_mappings_once
-            from dashboard.models.DFM.prep.services.export_service import ExportService
+    from dashboard.models.DFM.prep.api import load_mappings_once
+    from dashboard.models.DFM.prep.services.export_service import ExportService
 
-            excel_file_like_object.seek(0)
-            mapping_result = load_mappings_once(
-                excel_path=excel_file_like_object,
-                reference_sheet_name=_get_state(PrepStateKeys.PARAM_TYPE_MAPPING_SHEET),
-                reference_column_name='指标名称'
-            )
+    excel_file_like_object.seek(0)
+    mapping_result = load_mappings_once(
+        excel_path=excel_file_like_object,
+        reference_sheet_name=_get_state(PrepStateKeys.PARAM_TYPE_MAPPING_SHEET),
+        reference_column_name='指标名称'
+    )
 
-            if mapping_result['status'] != 'success':
-                raise ValueError(mapping_result['message'])
+    if mapping_result['status'] == 'success':
+        mappings = mapping_result['mappings']
+    else:
+        mappings = {}
 
-            mappings = mapping_result['mappings']
+    # 保存性质映射和频率映射到状态
+    _set_state(PrepStateKeys.VAR_NATURE_MAP_OBJ, mappings.get('var_nature_map', {}))
+    _set_state(PrepStateKeys.VAR_FREQUENCY_MAP_OBJ, mappings.get('var_frequency_map', {}))
 
-            # 保存性质映射和频率映射到状态
-            _set_state(PrepStateKeys.VAR_NATURE_MAP_OBJ, mappings.get('var_nature_map', {}))
-            _set_state(PrepStateKeys.VAR_FREQUENCY_MAP_OBJ, mappings.get('var_frequency_map', {}))
+    # 平稳性过滤：清除不平稳变量的"一次估计"和"一阶段预测"标记
+    updated_mappings = ExportService.clear_non_stationary_markers(
+        mappings=mappings,
+        stationarity_check_results=stationarity_check_results
+    )
 
-            # 平稳性过滤：清除不平稳变量的"一次估计"和"一阶段预测"标记
-            updated_mappings = ExportService.clear_non_stationary_markers(
-                mappings=mappings,
-                stationarity_check_results=stationarity_check_results
-            )
+    # 生成Excel文件
+    processed_outputs['excel_file'] = ExportService.generate_excel(
+        prepared_data=prepared_data,
+        industry_map=industry_map or {},
+        mappings=updated_mappings,
+        removed_vars_log=removed_variables_log,
+        transform_details=_get_state(PrepStateKeys.VARIABLE_TRANSFORM_DETAILS),
+        replacement_history=_get_state(PrepStateKeys.VALUE_REPLACEMENT_HISTORY),
+        stationarity_check_results=stationarity_check_results
+    )
 
-            # 生成Excel文件
-            processed_outputs['excel_file'] = ExportService.generate_excel(
-                prepared_data=prepared_data,
-                industry_map=industry_map,
-                mappings=updated_mappings,
-                removed_vars_log=removed_variables_log,
-                transform_details=_get_state(PrepStateKeys.VARIABLE_TRANSFORM_DETAILS),
-                replacement_history=_get_state(PrepStateKeys.VALUE_REPLACEMENT_HISTORY),
-                stationarity_check_results=stationarity_check_results
-            )
-
-            logger.info("导出Excel文件: 数据形状 %s, 映射 %d 条记录",
-                       prepared_data.shape, len(industry_map))
-
-        except Exception as e:
-            st_obj.warning(f"生成Excel文件时出错: {e}")
-            processed_outputs['excel_file'] = None
+    logger.info("导出Excel文件: 数据形状 %s, 映射 %d 条记录",
+               prepared_data.shape, len(industry_map) if industry_map else 0)
 
     _set_state(PrepStateKeys.PROCESSED_OUTPUTS, processed_outputs)
     return True
@@ -934,8 +939,6 @@ def _render_variable_transform_section(st_obj):
 
     # 操作选项列表
     OPERATIONS = ['不处理', '对数', '环比差分', '同比差分']
-    # 零值处理和负值处理选项
-    ZERO_NEGATIVE_OPTIONS = ['不处理', '缺失值', '调正（+1）']
 
     # 获取或初始化配置DataFrame
     config_df = _get_state(PrepStateKeys.TRANSFORM_CONFIG_DF)
@@ -975,18 +978,6 @@ def _render_variable_transform_section(st_obj):
                 '性质',
                 disabled=True,
                 width='small'
-            ),
-            '零值处理': st.column_config.SelectboxColumn(
-                '零值处理',
-                options=ZERO_NEGATIVE_OPTIONS,
-                width='small',
-                required=True
-            ),
-            '负值处理': st.column_config.SelectboxColumn(
-                '负值处理',
-                options=ZERO_NEGATIVE_OPTIONS,
-                width='small',
-                required=True
             ),
             '第一次处理': st.column_config.SelectboxColumn(
                 '第一次处理',
@@ -1046,12 +1037,8 @@ def _render_variable_transform_section(st_obj):
     if needs_sync:
         st.rerun()
 
-    # 统计需要处理的变量数量（包括零值/负值处理和转换操作）
-    has_any_processing = (
-        (edited_df['零值处理'] != '不处理') |
-        (edited_df['负值处理'] != '不处理') |
-        (edited_df['第一次处理'] != '不处理')
-    )
+    # 统计需要处理的变量数量（只检查转换操作）
+    has_any_processing = (edited_df['第一次处理'] != '不处理')
     vars_with_transform = has_any_processing.sum()
 
     if vars_with_transform > 0:
@@ -1105,19 +1092,10 @@ def _apply_variable_transforms(st_obj, config_df):
         '同比差分': 'diff_yoy'
     }
 
-    # 零值/负值处理名称到代码的映射
-    ZERO_NEGATIVE_NAME_TO_CODE = {
-        '不处理': 'none',
-        '缺失值': 'missing',
-        '调正（+1）': 'adjust'
-    }
-
     # 构建转换配置列表（格式为后端服务期望的格式）
     transform_config = []
     for _, row in config_df.iterrows():
         var_name = row['变量名']
-        zero_handling = ZERO_NEGATIVE_NAME_TO_CODE.get(row.get('零值处理', '不处理'), 'none')
-        negative_handling = ZERO_NEGATIVE_NAME_TO_CODE.get(row.get('负值处理', '不处理'), 'none')
         first_op = OP_NAME_TO_CODE.get(row['第一次处理'], 'none')
         second_op = OP_NAME_TO_CODE.get(row['第二次处理'], 'none')
         third_op = OP_NAME_TO_CODE.get(row.get('第三次处理', '不处理'), 'none')
@@ -1131,13 +1109,11 @@ def _apply_variable_transforms(st_obj, config_df):
         if third_op != 'none':
             ops.append(third_op)
 
-        # 如果有任何操作或预处理，添加到配置
-        if ops or zero_handling != 'none' or negative_handling != 'none':
+        # 如果有任何操作，添加到配置
+        if ops:
             transform_config.append({
                 'variable': var_name,
-                'operations': ops,
-                'zero_handling': zero_handling,
-                'negative_handling': negative_handling
+                'operations': ops
             })
 
     if not transform_config:
@@ -1345,6 +1321,8 @@ def render_dfm_data_prep_page(st_obj):
         _set_state(PrepStateKeys.TRANSFORM_CONFIG_DF, None)
         _set_state(PrepStateKeys.VARIABLE_TRANSFORM_DETAILS, None)
         _execute_data_preparation(st_obj, uploaded_file)
+        # 处理完成后刷新页面以显示下载按钮
+        st.rerun()
 
     # 6. 显示移除变量详情和数据借调详情（同一行布局）
     _render_details_row(st_obj)
