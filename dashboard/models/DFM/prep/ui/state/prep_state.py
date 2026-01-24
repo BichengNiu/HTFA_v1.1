@@ -40,8 +40,6 @@ class PrepStateKeys:
     # 参数配置
     # ============================================================================
     PARAM_TARGET_FREQ = "param_target_freq"
-    PARAM_REMOVE_CONSECUTIVE_NANS = "param_remove_consecutive_nans"
-    PARAM_CONSECUTIVE_NAN_THRESHOLD = "param_consecutive_nan_threshold"
     PARAM_TYPE_MAPPING_SHEET = "param_type_mapping_sheet"
     PARAM_DATA_START_DATE = "param_data_start_date"
     PARAM_DATA_END_DATE = "param_data_end_date"
@@ -183,8 +181,6 @@ class PrepStateManager:
         """清空所有参数配置状态（文件变更时调用）"""
         param_keys = [
             PrepStateKeys.PARAM_TARGET_FREQ,
-            PrepStateKeys.PARAM_REMOVE_CONSECUTIVE_NANS,
-            PrepStateKeys.PARAM_CONSECUTIVE_NAN_THRESHOLD,
             PrepStateKeys.PARAM_TYPE_MAPPING_SHEET,
             PrepStateKeys.PARAM_DATA_START_DATE,
             PrepStateKeys.PARAM_DATA_END_DATE,

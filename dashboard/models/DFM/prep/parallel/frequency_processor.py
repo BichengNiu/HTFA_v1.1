@@ -28,7 +28,6 @@ def _process_single_frequency(
     freq_data_serialized: Dict[str, Tuple[np.ndarray, np.ndarray]],
     original_freq: str,
     target_level: int,
-    consecutive_nan_threshold: int,
     data_start_date: Optional[str],
     data_end_date: Optional[str],
     target_freq: str,
@@ -42,7 +41,6 @@ def _process_single_frequency(
         freq_data_serialized: 该频率的数据字典 {变量名: (values, index)}
         original_freq: 原始频率代码 ('D', 'W', 'M', etc.)
         target_level: 目标频率等级
-        consecutive_nan_threshold: 连续NaN阈值
         data_start_date: 数据开始日期
         data_end_date: 数据结束日期
         target_freq: 目标频率字符串
@@ -89,24 +87,10 @@ def _process_single_frequency(
 
         logger.info(f"    [并行-{freq_name}] 合并后形状: {combined_df.shape}")
 
-        # 统一处理顺序：所有频率先检测缺失值（原始频率）再对齐（含借调）
-        # 1. 先检测连续缺失值（在原始频率上检测）
-        logger.info(f"    [并行-{freq_name}] 检测连续缺失值（原始频率）...")
-        cleaned_df = data_cleaner.handle_consecutive_nans(
-            combined_df,
-            consecutive_nan_threshold,
-            f"[{freq_name}原始频率] ",
-            data_start_date,
-            data_end_date
-        )
-        removal_log.extend(data_cleaner.get_removed_variables_log())
-        data_cleaner.clear_log()
-        logger.info(f"    [并行-{freq_name}] 检测后形状: {cleaned_df.shape}")
-
-        # 2. 再对齐到目标频率（含借调）
+        # 对齐到目标频率（含借调）
         logger.info(f"    [并行-{freq_name}] 对齐到目标频率...")
         aligned_df, borrowing_log = data_aligner.align_by_type(
-            cleaned_df, freq_name, data_start_date, data_end_date
+            combined_df, freq_name, data_start_date, data_end_date
         )
 
         logger.info(f"  [并行-{freq_name}] 完成, 形状: {aligned_df.shape}")
@@ -152,7 +136,6 @@ def _serialize_freq_data(freq_data: Dict[str, pd.DataFrame]) -> Dict[str, Tuple[
 def parallel_process_frequencies(
     data_by_freq: Dict[str, Dict],
     target_level: int,
-    consecutive_nan_threshold: int,
     data_start_date: Optional[str],
     data_end_date: Optional[str],
     target_freq: str,
@@ -166,7 +149,6 @@ def parallel_process_frequencies(
     Args:
         data_by_freq: 按频率分类的数据
         target_level: 目标频率等级
-        consecutive_nan_threshold: 连续NaN阈值
         data_start_date: 数据开始日期
         data_end_date: 数据结束日期
         target_freq: 目标频率
@@ -210,7 +192,6 @@ def parallel_process_frequencies(
             freq_data,
             original_freq,
             target_level,
-            consecutive_nan_threshold,
             data_start_date,
             data_end_date,
             target_freq,

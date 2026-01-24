@@ -260,8 +260,6 @@ def _render_parameter_config(st_obj, detected_start, detected_end, min_date, max
 
     param_defaults = {
         PrepStateKeys.PARAM_TARGET_FREQ: 'W-FRI',
-        PrepStateKeys.PARAM_REMOVE_CONSECUTIVE_NANS: "是",
-        PrepStateKeys.PARAM_CONSECUTIVE_NAN_THRESHOLD: 10,
         PrepStateKeys.PARAM_TYPE_MAPPING_SHEET: '指标字典',
         PrepStateKeys.PARAM_DATA_START_DATE: default_start_date,
         PrepStateKeys.PARAM_DATA_END_DATE: default_end_date,
@@ -328,37 +326,9 @@ def _render_parameter_config(st_obj, detected_start, detected_end, min_date, max
         )
         _set_state(PrepStateKeys.PARAM_ENABLE_BORROWING, enable_borrowing)
 
-    # 第3行：移除选项和缺失值阈值
+    # 第3行：频率对齐和目标频率
     row3_col1, row3_col2 = st_obj.columns(2)
     with row3_col1:
-        remove_nans = st_obj.selectbox(
-            "移除存在过多连续缺失值的变量",
-            options=["是", "否"],
-            index=0 if _get_state(PrepStateKeys.PARAM_REMOVE_CONSECUTIVE_NANS) == "是" else 1,
-            key="ss_dfm_remove_nans",
-            help="移除列中连续缺失值数量超过阈值的变量"
-        )
-        _set_state(PrepStateKeys.PARAM_REMOVE_CONSECUTIVE_NANS, remove_nans)
-
-    with row3_col2:
-        # 连续缺失值阈值（仅在移除=是时启用）
-        threshold_disabled = (remove_nans == "否")
-        nan_threshold = st_obj.number_input(
-            "连续缺失值阈值",
-            min_value=0,
-            value=_get_state(PrepStateKeys.PARAM_CONSECUTIVE_NAN_THRESHOLD) or 10,
-            step=1,
-            key="ss_dfm_nan_thresh",
-            disabled=threshold_disabled
-        )
-        if remove_nans == "是":
-            _set_state(PrepStateKeys.PARAM_CONSECUTIVE_NAN_THRESHOLD, nan_threshold)
-        else:
-            _set_state(PrepStateKeys.PARAM_CONSECUTIVE_NAN_THRESHOLD, None)
-
-    # 第4行：频率对齐和目标频率
-    row4_col1, row4_col2 = st_obj.columns(2)
-    with row4_col1:
         freq_alignment_options = ["是", "否"]
         current_freq_alignment = _get_state(PrepStateKeys.PARAM_ENABLE_FREQ_ALIGNMENT, '否')
         freq_alignment_index = 0 if current_freq_alignment == "是" else 1
@@ -371,7 +341,7 @@ def _render_parameter_config(st_obj, detected_start, detected_end, min_date, max
         )
         _set_state(PrepStateKeys.PARAM_ENABLE_FREQ_ALIGNMENT, enable_freq_alignment)
 
-    with row4_col2:
+    with row3_col2:
         # 目标频率选择（仅在频率对齐=是时启用）
         freq_disabled = (enable_freq_alignment == "否")
         freq_options = {
@@ -453,16 +423,6 @@ def _prepare_processing_params(uploaded_file, st_obj) -> Optional[dict]:
     start_date_str = start_date.strftime('%Y-%m-%d') if start_date else None
     end_date_str = end_date.strftime('%Y-%m-%d') if end_date else None
 
-    # NaN阈值参数
-    nan_threshold_int = None
-    if _get_state(PrepStateKeys.PARAM_REMOVE_CONSECUTIVE_NANS) == "是":
-        nan_threshold = _get_state(PrepStateKeys.PARAM_CONSECUTIVE_NAN_THRESHOLD)
-        if not pd.isna(nan_threshold):
-            try:
-                nan_threshold_int = int(nan_threshold)
-            except ValueError:
-                st_obj.warning(f"连续缺失值阈值 '{nan_threshold}' 不是有效整数，将忽略此阈值")
-
     # 频率对齐和数据借调参数
     enable_freq_alignment = _get_state(PrepStateKeys.PARAM_ENABLE_FREQ_ALIGNMENT, '否') == '是'
     enable_borrowing = _get_state(PrepStateKeys.PARAM_ENABLE_BORROWING, '否') == '是'
@@ -476,7 +436,6 @@ def _prepare_processing_params(uploaded_file, st_obj) -> Optional[dict]:
     return {
         'excel_file': excel_file_like_object,
         'target_freq': _get_state(PrepStateKeys.PARAM_TARGET_FREQ),
-        'consecutive_nan_threshold': nan_threshold_int,
         'data_start_date': start_date_str,
         'data_end_date': end_date_str,
         'reference_sheet_name': _get_state(PrepStateKeys.PARAM_TYPE_MAPPING_SHEET),
@@ -502,7 +461,6 @@ def _call_prepare_api(params: dict) -> dict:
 
     logger.info("调用prepare_dfm_data_simple参数:")
     logger.info("  - target_freq: %s", params['target_freq'])
-    logger.info("  - consecutive_nan_threshold: %s", params['consecutive_nan_threshold'])
     logger.info("  - data_start_date: %s", params['data_start_date'])
     logger.info("  - data_end_date: %s", params['data_end_date'])
     logger.info("  - enable_freq_alignment: %s", params['enable_freq_alignment'])
@@ -515,7 +473,6 @@ def _call_prepare_api(params: dict) -> dict:
         uploaded_file=params['excel_file'],
         target_variable_name=None,
         target_freq=params['target_freq'],
-        consecutive_nan_threshold=params['consecutive_nan_threshold'],
         data_start_date=params['data_start_date'],
         data_end_date=params['data_end_date'],
         reference_sheet_name=params['reference_sheet_name'],
@@ -751,27 +708,27 @@ def _render_removed_variables_summary(st_obj):
     渲染移除变量摘要和详情
 
     格式：按原因分组，变量名横向流式排列
-    始终显示，即使没有变量被移除
+    仅在有变量被移除时显示
     """
     removed_vars_log = _get_state(PrepStateKeys.REMOVED_VARS_LOG_OBJ)
     removed_count = len(removed_vars_log) if removed_vars_log else 0
 
-    with st_obj.expander(f"移除变量详情 ({removed_count}个)", expanded=False):
-        if removed_count > 0:
-            # 按原因分组显示详情
-            reason_groups = {}
-            for entry in removed_vars_log:
-                reason = entry.get('Reason', '未知原因')
-                if reason not in reason_groups:
-                    reason_groups[reason] = []
-                reason_groups[reason].append(entry.get('Variable', '未知变量'))
+    if removed_count == 0:
+        return
 
-            # 每个原因分组，变量名横向流式排列
-            for reason, var_names in reason_groups.items():
-                st.markdown(f"**[{reason}]** ({len(var_names)}个变量)")
-                st.markdown(render_tag_group(var_names), unsafe_allow_html=True)
-        else:
-            st.success("所有变量都通过了筛选，没有变量被移除")
+    with st_obj.expander(f"移除变量详情 ({removed_count}个)", expanded=False):
+        # 按原因分组显示详情
+        reason_groups = {}
+        for entry in removed_vars_log:
+            reason = entry.get('Reason', '未知原因')
+            if reason not in reason_groups:
+                reason_groups[reason] = []
+            reason_groups[reason].append(entry.get('Variable', '未知变量'))
+
+        # 每个原因分组，变量名横向流式排列
+        for reason, var_names in reason_groups.items():
+            st.markdown(f"**[{reason}]** ({len(var_names)}个变量)")
+            st.markdown(render_tag_group(var_names), unsafe_allow_html=True)
 
 
 def _render_borrowing_details_expander(st_obj):

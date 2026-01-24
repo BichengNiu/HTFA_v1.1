@@ -312,7 +312,6 @@ def prepare_dfm_data_simple(
     data_start_date: str = None,
     data_end_date: str = None,
     target_freq: str = "W-FRI",
-    consecutive_nan_threshold: int = 10,
     reference_sheet_name: str = "指标字典",
     reference_column_name: str = "指标名称",
     enable_borrowing: bool = True,
@@ -339,7 +338,6 @@ def prepare_dfm_data_simple(
         data_start_date: 数据起始日期，格式："YYYY-MM-DD"（None表示使用数据实际起始日期）
         data_end_date: 数据结束日期，格式："YYYY-MM-DD"（None表示使用数据实际结束日期）
         target_freq: 目标频率，默认"W-FRI"（周五结尾的周度数据）
-        consecutive_nan_threshold: 允许的最大连续NaN值数量
         reference_sheet_name: 指标映射表的工作表名称
         reference_column_name: 映射表中的参考列名
         enable_borrowing: 是否启用数据借调，默认True
@@ -403,7 +401,6 @@ def prepare_dfm_data_simple(
             var_industry_map=var_industry_map,
             var_frequency_map=var_frequency_map,
             target_freq=target_freq,
-            consecutive_nan_threshold=consecutive_nan_threshold,
             data_start_date=data_start_date,
             data_end_date=data_end_date,
             enable_borrowing=enable_borrowing,
@@ -459,8 +456,7 @@ def prepare_dfm_data_simple(
                 'target_variable_name': target_variable_name,
                 'data_start_date': data_start_date,
                 'data_end_date': data_end_date,
-                'target_freq': target_freq,
-                'nan_threshold': consecutive_nan_threshold
+                'target_freq': target_freq
             }
         }
 
