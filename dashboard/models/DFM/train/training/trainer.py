@@ -3,6 +3,7 @@
 DFM训练器 - 简化版（真正的轻量级协调器）
 
 仅负责协调训练流程，直接调用底层函数，避免不必要的包装
+经典DFM模型：所有变量平等参与因子提取，无目标变量概念
 """
 
 import time
@@ -16,9 +17,9 @@ from dashboard.models.DFM.train.core.models import TrainingResult
 
 # 导入统一训练和评估函数
 from dashboard.models.DFM.train.training.model_ops import (
-    train_dfm_with_forecast,
-    train_ddfm_with_forecast,
-    evaluate_model_performance
+    train_dfm_model,
+    train_ddfm_model,
+    evaluate_model_fit
 )
 
 # 导入流程步骤
@@ -42,6 +43,8 @@ logger = get_logger(__name__)
 class DFMTrainer:
     """
     DFM主训练器（轻量级协调器）
+
+    经典DFM模型：所有变量平等参与因子提取，无目标变量概念
 
     两阶段训练流程:
     1. 阶段1: 变量选择(可选)
@@ -69,26 +72,6 @@ class DFMTrainer:
         self.total_evaluations = 0
         self.svd_error_count = 0
 
-    def _detect_observation_end(self, data: pd.DataFrame, validation_end: str) -> Optional[str]:
-        """
-        检测观察期结束日期
-
-        Args:
-            data: 完整数据框
-            validation_end: 验证期结束日期
-
-        Returns:
-            observation_end日期字符串，如果无观察期则返回None
-        """
-        val_end_dt = pd.to_datetime(validation_end)
-        data_end_dt = data.index.max()
-
-        if data_end_dt > val_end_dt:
-            return data_end_dt.strftime('%Y-%m-%d')
-        else:
-            logger.info("数据未超出验证期，无观察期")
-            return None
-
     def train(
         self,
         progress_callback: Optional[Callable[[str], None]] = None,
@@ -109,10 +92,9 @@ class DFMTrainer:
         start_time = time.time()
 
         try:
-            # 步骤1: 加载和验证数据
-            data, target_data, predictor_vars = load_and_validate_data(
+            # 步骤1: 加载和验证数据（无目标变量）
+            data, variable_names = load_and_validate_data(
                 data_path=self.config.data_path,
-                target_variable=self.config.target_variable,
                 selected_indicators=self.config.selected_indicators,
                 progress_callback=progress_callback
             )
@@ -120,12 +102,6 @@ class DFMTrainer:
             # 确保索引排序（pandas切片要求单调索引）
             if not data.index.is_monotonic_increasing:
                 data = data.sort_index()
-                target_data = data[self.config.target_variable]
-
-            # 检测观察期
-            observation_end = self._detect_observation_end(data, self.config.validation_end)
-            if observation_end:
-                logger.info(f"检测到观察期数据，结束日期: {observation_end}")
 
             # 输出训练配置摘要
             # 根据training_start切分训练数据
@@ -139,7 +115,7 @@ class DFMTrainer:
                 validation_end=self.config.validation_end,
                 train_samples=len(train_data),
                 validation_samples=len(val_data),
-                initial_vars=len(predictor_vars),
+                initial_vars=len(variable_names),
                 k_factors=self.config.k_factors,
                 is_ddfm=(self.config.algorithm == 'deep_learning')
             )
@@ -151,7 +127,7 @@ class DFMTrainer:
             # ========== 算法分支：深度学习 vs 经典 ==========
             if self.config.algorithm == 'deep_learning':
                 # DDFM: 使用全部变量，不进行变量选择
-                selected_vars = predictor_vars
+                selected_vars = variable_names
                 selection_history = []
                 if not self.config.encoder_structure:
                     raise ValueError(
@@ -163,17 +139,14 @@ class DFMTrainer:
                 if progress_callback:
                     progress_callback(f"[DDFM] 使用深度学习算法，因子数={k_factors}")
 
-                # DDFM训练
-                predictor_data = data[selected_vars]
+                # DDFM训练（无目标变量预测）
+                observation_data = data[selected_vars]
 
-                model_result = train_ddfm_with_forecast(
-                    predictor_data=predictor_data,
-                    target_data=target_data,
+                model_result = train_ddfm_model(
+                    observation_data=observation_data,
                     encoder_structure=self.config.encoder_structure,
                     training_start=self.config.training_start,
                     train_end=self.config.train_end,
-                    validation_start=self.config.validation_start,
-                    validation_end=self.config.validation_end,
                     decoder_structure=self.config.decoder_structure,
                     use_bias=self.config.use_bias,
                     factor_order=self.config.factor_order,
@@ -200,7 +173,7 @@ class DFMTrainer:
 
                 # 步骤2: 阶段1变量选择
                 if self.config.enable_variable_selection:
-                    # 创建变量筛选专用评估器（使用下月配对RMSE）
+                    # 创建变量筛选专用评估器（使用对数似然）
                     evaluator = create_variable_selection_evaluator(self.config)
 
                     # 根据选择方法创建对应的选择器
@@ -208,23 +181,19 @@ class DFMTrainer:
                         # 后向选择器
                         selector = BackwardSelector(
                             evaluator_func=evaluator,
-                            criterion='rmse',
                             min_variables=self.config.min_variables_after_selection,
                             parallel_config=self.config.get_parallel_config()
                         )
                     elif self.config.variable_selection_method == 'stepwise':
-                        # 向前向后法选择器
-                        from dashboard.models.DFM.train.selection import StepwiseSelector
-                        selector = StepwiseSelector(
-                            evaluator_func=evaluator,
-                            criterion='rmse',
-                            min_variables=self.config.min_variables_after_selection,
-                            parallel_config=self.config.get_parallel_config()
+                        # Stepwise选择器暂时禁用（需要重构以支持经典DFM）
+                        raise ValueError(
+                            "Stepwise变量选择方法暂时不可用（正在重构中）。"
+                            "请使用 'backward' 方法进行变量选择。"
                         )
                     else:
                         raise ValueError(
                             f"不支持的变量选择方法: '{self.config.variable_selection_method}'。"
-                            f"支持的方法: 'backward', 'stepwise'"
+                            f"支持的方法: 'backward'"
                         )
 
                     # 根据因子选择策略确定k_factors用于变量选择
@@ -234,45 +203,34 @@ class DFMTrainer:
                     else:  # cumulative, kaiser
                         # 如果使用累积方差贡献策略或Kaiser准则，计算合理的k_factors用于变量选择
                         # 最终的k_factors会在阶段2通过PCA确定
-                        k_for_selection = max(2, min(len(predictor_vars) // 2, len(predictor_vars) - 2))
+                        k_for_selection = max(2, min(len(variable_names) // 2, len(variable_names) - 2))
 
                     # 执行变量选择
-                    initial_vars = [self.config.target_variable] + predictor_vars
                     selection_result = selector.select(
-                        initial_variables=initial_vars,
-                        target_variable=self.config.target_variable,
+                        initial_variables=variable_names,
                         full_data=data,
                         params={
                             'k_factors': k_for_selection,
-                            'win_rate_tolerance': self.config.win_rate_tolerance,
-                            'training_weight': self.config.training_weight,
                             'factor_selection_method': self.config.factor_selection_method,
                             'pca_threshold': self.config.pca_threshold,
                             'kaiser_threshold': self.config.kaiser_threshold,
-                            'tolerance': self.config.tolerance,
-                            'alignment_mode': self.config.target_alignment_mode
+                            'tolerance': self.config.tolerance
                         },
-                        validation_start=self.config.validation_start,
-                        validation_end=self.config.validation_end,
-                        target_freq=self.config.target_freq,
                         training_start_date=self.config.training_start,
                         train_end_date=self.config.train_end,
                         max_iter=self.config.max_iterations,
                         progress_callback=progress_callback
                     )
 
-                    # 提取选定的预测变量
-                    selected_vars = [
-                        v for v in selection_result.selected_variables
-                        if v != self.config.target_variable
-                    ]
+                    # 提取选定的变量
+                    selected_vars = selection_result.selected_variables
                     selection_history = selection_result.selection_history
 
                     # 更新统计
                     self.total_evaluations += selection_result.total_evaluations
                     self.svd_error_count += selection_result.svd_error_count
                 else:
-                    selected_vars = predictor_vars
+                    selected_vars = variable_names
                     selection_history = []
 
                 # 步骤3: 阶段2因子数选择
@@ -286,46 +244,40 @@ class DFMTrainer:
                     train_end=self.config.train_end
                 )
 
-                # 步骤4: 最终模型训练（直接调用）
-                # 准备数据并训练
-                predictor_data = data[selected_vars]
+                # 步骤4: 最终模型训练（无目标变量预测）
+                observation_data = data[selected_vars]
 
-                model_result = train_dfm_with_forecast(
-                    predictor_data=predictor_data,
-                    target_data=target_data,
+                model_result = train_dfm_model(
+                    observation_data=observation_data,
                     k_factors=k_factors,
                     training_start=self.config.training_start,
                     train_end=self.config.train_end,
-                    validation_start=self.config.validation_start,
-                    validation_end=self.config.validation_end,
-                    observation_end=observation_end,
                     max_iter=self.config.max_iterations,
-                    max_lags=1,
+                    max_lags=self.config.max_lags,
                     tolerance=self.config.tolerance,
                     progress_callback=progress_callback
                 )
 
             # ========== 公共部分：评估和结果构建 ==========
 
-            # 步骤5: 模型评估（直接调用）
-            is_ddfm = (self.config.algorithm == 'deep_learning')
+            # 步骤5: 模型评估（基于模型拟合质量）
+            observation_data = data[selected_vars]
 
-            metrics = evaluate_model_performance(
+            metrics = evaluate_model_fit(
                 model_result=model_result,
-                target_data=target_data,
-                train_end=self.config.train_end,
-                validation_start=self.config.validation_start,
-                validation_end=self.config.validation_end,
-                observation_end=observation_end,
-                alignment_mode=self.config.target_alignment_mode,
-                is_ddfm=is_ddfm
+                observation_data=observation_data,
+                training_start=self.config.training_start,
+                train_end=self.config.train_end
             )
 
-            # 步骤6: 构建结果（直接调用）
+            # 保存变量名到模型结果
+            model_result.variable_names = selected_vars
+
+            # 步骤6: 构建结果
             training_time = time.time() - start_time
 
             result = TrainingResult.build(
-                selected_variables=[self.config.target_variable] + selected_vars,
+                selected_variables=selected_vars,
                 selection_history=selection_history,
                 k_factors=k_factors,
                 factor_selection_method=self.config.factor_selection_method,
@@ -338,17 +290,17 @@ class DFMTrainer:
                 output_dir=self.config.output_dir
             )
 
-            # 步骤7: 打印摘要（直接调用）
+            # 步骤7: 打印摘要
             print_training_summary(result, progress_callback, logger)
 
-            # 步骤8: 导出结果文件（直接调用）
+            # 步骤8: 导出结果文件
             if enable_export:
                 exporter = TrainingResultExporter()
                 file_paths = exporter.export_all(
                     result,
                     self.config,
                     output_dir=export_dir,
-                    prepared_data=data  # 传递完整观测数据用于影响分解
+                    prepared_data=data  # 传递完整观测数据
                 )
 
                 result.export_files = file_paths

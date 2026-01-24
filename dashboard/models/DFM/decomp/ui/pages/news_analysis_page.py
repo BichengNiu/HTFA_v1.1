@@ -38,7 +38,21 @@ def render_dfm_news_analysis_page(st_module: Any) -> Dict[str, Any]:
         渲染结果字典
     """
     try:
+        # 功能暂时禁用提示
+        st_module.warning(
+            "**功能暂时禁用**\n\n"
+            "新闻分解功能依赖目标变量预测，当前版本已切换为经典DFM模型（无目标变量），"
+            "该功能正在重构中。\n\n"
+            "如需使用新闻分解功能，请使用旧版本模型文件。"
+        )
+        st_module.info(
+            "**经典DFM模型说明**\n\n"
+            "当前版本的DFM模型提取公共因子，所有变量平等参与因子提取，"
+            "输出因子时间序列和载荷矩阵。如需分析因子贡献，请使用模型分析页面。"
+        )
+        return {'status': 'disabled', 'message': '功能暂时禁用'}
 
+        # 以下为原有代码，暂时禁用
         # 文件上传区域
         st_module.markdown("### 模型文件上传")
 

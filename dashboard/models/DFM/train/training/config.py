@@ -16,11 +16,11 @@ class TrainingConfig:
     """完整训练配置
 
     包含DFM模型训练所需的全部配置参数,与trainer.py配合使用
+    经典DFM模型：所有变量平等参与因子提取，无目标变量概念
     """
     # ========== 必填字段（无默认值） ==========
     # 核心配置
     data_path: str
-    target_variable: str
 
     # 训练/验证期配置
     training_start: str  # 训练期开始日期
@@ -35,7 +35,6 @@ class TrainingConfig:
     # ========== 可选字段（有默认值） ==========
     # 核心配置
     selected_indicators: List[str] = field(default_factory=list)
-    target_freq: str = 'W-FRI'
 
     # 模型参数
     k_factors: int = 4
@@ -61,15 +60,6 @@ class TrainingConfig:
 
     # 输出配置
     output_dir: Optional[str] = None
-
-    # 目标变量配对模式（2025-12新增）
-    target_alignment_mode: str = 'next_month'  # 'current_month'(本月) 或 'next_month'(下月)
-
-    # 胜率阈值配置（2025-01简化）
-    win_rate_tolerance: float = 5.0  # 胜率阈值（百分比），差异≤此值视为"相同胜率"，选RMSE更小的
-
-    # 训练期权重配置（2025-12-20新增）
-    training_weight: float = 0.5  # 训练期权重 (0.0-1.0)，验证期权重自动为 1-training_weight
 
     # ========== 算法选择配置（2025-12-21新增）==========
     algorithm: str = 'classical'  # 算法类型: 'classical'(经典EM算法) 或 'deep_learning'(深度学习)
@@ -112,8 +102,6 @@ class TrainingConfig:
         # 验证必填字段
         if not self.data_path:
             raise ValueError("data_path不能为空")
-        if not self.target_variable:
-            raise ValueError("target_variable不能为空")
 
         # 验证数据文件存在
         data_file = Path(self.data_path)
@@ -153,28 +141,6 @@ class TrainingConfig:
             raise ValueError(
                 f"parallel_backend必须是{valid_backends}之一,"
                 f"当前值: {self.parallel_backend}"
-            )
-
-        # 验证目标配对模式（2025-12）
-        valid_alignment_modes = ['current_month', 'next_month']
-        if self.target_alignment_mode not in valid_alignment_modes:
-            raise ValueError(
-                f"target_alignment_mode必须是{valid_alignment_modes}之一,"
-                f"当前值: {self.target_alignment_mode}"
-            )
-
-        # 验证胜率阈值配置（2025-01简化）
-        if self.win_rate_tolerance < 0 or self.win_rate_tolerance > 100:
-            raise ValueError(
-                f"win_rate_tolerance必须在0-100之间，"
-                f"当前值: {self.win_rate_tolerance}"
-            )
-
-        # 验证训练期权重（2025-12-20）
-        if not 0.0 <= self.training_weight <= 1.0:
-            raise ValueError(
-                f"training_weight必须在0.0到1.0之间，"
-                f"当前值: {self.training_weight}"
             )
 
         # 验证算法选择（2025-12-21）
@@ -306,7 +272,6 @@ class TrainingConfig:
         base_repr = (
             f"TrainingConfig(\n"
             f"  data_path={self.data_path},\n"
-            f"  target_variable={self.target_variable},\n"
             f"  indicators={len(self.selected_indicators)},\n"
             f"  algorithm={self.algorithm},\n"
         )

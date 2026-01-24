@@ -6,6 +6,8 @@
 1. 职责分离：UI负责展示，Builder负责配置构建
 2. 可测试性：业务逻辑可独立单元测试
 3. 可复用性：配置构建逻辑可在其他地方复用
+
+经典DFM模型：所有变量平等参与因子提取，无目标变量概念
 """
 
 import pandas as pd
@@ -16,7 +18,6 @@ from typing import Dict, List, Optional, Any
 
 from dashboard.models.DFM.train import TrainingConfig
 from dashboard.models.DFM.train.ui.utils.date_helpers import (
-    get_target_frequency,
     get_previous_period_date,
     freq_code_to_pandas_freq,
     validate_date_ranges,
@@ -24,7 +25,7 @@ from dashboard.models.DFM.train.ui.utils.date_helpers import (
 
 
 class TrainingConfigBuilder:
-    """训练配置构建器"""
+    """训练配置构建器（经典DFM版，无目标变量）"""
 
     def __init__(self, state_manager):
         """
@@ -63,7 +64,7 @@ class TrainingConfigBuilder:
         var_frequency_map: Optional[Dict[str, str]] = None
     ) -> TrainingConfig:
         """
-        构建TrainingConfig对象
+        构建TrainingConfig对象（经典DFM版，无目标变量）
 
         Args:
             input_df: 输入数据DataFrame
@@ -76,13 +77,12 @@ class TrainingConfigBuilder:
         Raises:
             ValueError: 配置验证失败
         """
-        # 1. 获取核心配置
-        target_variable = self._get_required('dfm_target_variable')
+        # 1. 获取核心配置（无目标变量）
         current_selected_indicators = self._get_required('dfm_selected_indicators')
 
         # 验证非空
         if not current_selected_indicators:
-            raise ValueError("预测指标列表不能为空")
+            raise ValueError("变量列表不能为空")
 
         # 2. 获取日期配置
         training_start_value = self.state.get('dfm_training_start_date')
@@ -96,14 +96,10 @@ class TrainingConfigBuilder:
         # 获取算法类型（需要提前获取以计算train_end_date）
         algorithm = self._get_required('dfm_algorithm')
 
-        # 获取目标变量的频率
-        target_freq_code = get_target_frequency(
-            target_variable,
-            var_frequency_map or {},
-            default_freq='W'
-        )
+        # 默认使用周频率
+        target_freq_code = 'W'
 
-        # 根据算法类型和数据频率计算train_end_date
+        # 根据算法类型计算train_end_date
         if algorithm == 'deep_learning':
             # DDFM模式：训练期延伸到观察期开始前一期
             prev_period = get_previous_period_date(observation_start_value, target_freq_code, periods=1)
@@ -134,33 +130,18 @@ class TrainingConfigBuilder:
         # 5. 获取因子选择配置
         factor_selection_method, factor_params = self._get_factor_selection_params()
 
-        # 6. 获取目标变量配对模式（2025-12新增）
-        target_alignment_mode = self._get_required('dfm_target_alignment_mode')
-
-        # 7. 获取胜率阈值配置（2025-01简化）
-        win_rate_tolerance = 5.0
-        training_weight = 0.5
-
-        if enable_var_selection:
-            win_rate_tolerance = self._get_required('dfm_win_rate_tolerance')
-            training_weight_pct = self._get_required('dfm_training_weight')
-            training_weight = training_weight_pct / 100.0  # 转换为0-1范围
-
-        # 7.8 algorithm已在步骤2中获取（用于计算train_end_date）
-
-        # 7.9 获取DDFM专用参数（仅当algorithm='deep_learning'时）
+        # 6. 获取DDFM专用参数（仅当algorithm='deep_learning'时）
         ddfm_params = {}
         if algorithm == 'deep_learning':
             ddfm_params = self._get_ddfm_params()
 
-        # 8. 保存DataFrame到临时文件
+        # 7. 保存DataFrame到临时文件
         temp_data_path = self._save_dataframe_to_temp(input_df)
 
-        # 9. 构建TrainingConfig（基础配置）
+        # 8. 构建TrainingConfig（基础配置，无目标变量）
         config_kwargs = {
-            # 核心配置
+            # 核心配置（无目标变量）
             'data_path': temp_data_path,
-            'target_variable': target_variable,
             'selected_indicators': corrected_indicators,
 
             # 训练/验证期配置
@@ -168,7 +149,6 @@ class TrainingConfigBuilder:
             'train_end': train_end_date.strftime('%Y-%m-%d'),
             'validation_start': validation_start_value.strftime('%Y-%m-%d'),
             'validation_end': validation_end_value.strftime('%Y-%m-%d'),
-            'target_freq': freq_code_to_pandas_freq(target_freq_code),
 
             # 模型参数
             'k_factors': factor_params.get('k_factors', 4),
@@ -179,7 +159,7 @@ class TrainingConfigBuilder:
             # 变量选择配置
             'enable_variable_selection': enable_var_selection,
             'variable_selection_method': mapped_var_selection_method,
-            'min_variables_after_selection': self._get_required('dfm_min_variables_after_selection') if enable_var_selection else None,
+            'min_variables_after_selection': self._get_required('dfm_min_variables_after_selection') if enable_var_selection else 1,
 
             # 因子数选择配置
             'factor_selection_method': factor_selection_method,
@@ -192,19 +172,10 @@ class TrainingConfigBuilder:
             'parallel_backend': 'loky',
             'min_variables_for_parallel': 5,
 
-            # 目标变量配对模式（2025-12新增）
-            'target_alignment_mode': target_alignment_mode,
-
-            # 胜率阈值配置（2025-01简化）
-            'win_rate_tolerance': win_rate_tolerance,
-
-            # 训练期权重配置（2025-12-20新增）
-            'training_weight': training_weight,
-
-            # 算法选择（2025-12-21新增）
+            # 算法选择
             'algorithm': algorithm,
 
-            # 行业映射（用于R²分析）
+            # 行业映射（用于分析）
             'industry_map': var_industry_map,
         }
 

@@ -22,18 +22,17 @@ from dashboard.models.DFM.train.core.models import (
     DFMModelResult,
     SelectionResult,
     KalmanFilterResult,
-    KalmanSmootherResult,
-    MetricsResult
+    KalmanSmootherResult
 )
 
 # 核心算法
 from dashboard.models.DFM.train.core.factor_model import DFMModel
 from dashboard.models.DFM.train.core.kalman import KalmanFilter
-from dashboard.models.DFM.train.core.prediction import generate_target_forecast
+from dashboard.models.DFM.train.core.prediction import generate_factor_forecast
 
 # 评估指标
 from dashboard.models.DFM.train.evaluation.metrics import (
-    calculate_aligned_win_rate
+    evaluate_dfm_model
 )
 
 # 变量选择
