@@ -154,16 +154,13 @@ class VariableTransformer:
         处理规则：
         - 全为正值：直接使用np.log
         - 包含零值：使用np.log1p (log(1+x))
-        - 包含负值：抛出ValueError异常
+        - 包含负值：将负值设为NaN后继续变换
 
         Args:
             series: 输入时间序列
 
         Returns:
             pd.Series: 对数变换后的序列
-
-        Raises:
-            ValueError: 当序列包含负值时抛出
         """
         var_name = series.name if series.name else "未命名"
 
@@ -175,21 +172,31 @@ class VariableTransformer:
 
         min_val = valid_values.min()
 
+        # 包含负值时，先将负值设为NaN
+        if min_val < 0:
+            result = series.copy()
+            negative_mask = result < 0
+            negative_count = negative_mask.sum()
+            result[negative_mask] = np.nan
+            self.logger.info(f"变量 '{var_name}' 将 {negative_count} 个负值设为缺失值（对数变换前）")
+
+            # 重新计算最小值
+            valid_values = result.dropna()
+            if valid_values.empty:
+                self.logger.warning(f"变量 '{var_name}' 处理负值后全为NaN，跳过对数变换")
+                return result
+            min_val = valid_values.min()
+        else:
+            result = series
+
         if min_val > 0:
             # 全为正值，直接取对数
-            result = np.log(series)
+            result = np.log(result)
             self.logger.debug(f"变量 '{var_name}' 应用对数变换 (np.log)")
         elif min_val >= 0:
             # 包含零值，使用log1p
-            result = np.log1p(series)
+            result = np.log1p(result)
             self.logger.debug(f"变量 '{var_name}' 应用对数变换 (np.log1p)")
-        else:
-            # 包含负值，抛出异常
-            raise ValueError(
-                f"变量 '{var_name}' 包含负值(min={min_val:.4f})，"
-                f"无法进行对数变换。请先使用值替换功能处理负值，"
-                f"或选择其他转换方式（如差分）。"
-            )
 
         return result
 
@@ -285,70 +292,35 @@ class VariableTransformer:
         self,
         series: pd.Series,
         operations: List[str],
-        zero_method: str = 'none',
-        negative_method: str = 'none',
         original_freq: str = None
     ) -> pd.Series:
         """
         按顺序对单个变量应用多个转换操作
 
+        注意：零值处理已在基础设置阶段完成，负值在对数变换时自动处理
+
         Args:
             series: 输入时间序列
             operations: 操作列表，按顺序执行
-            zero_method: 0值处理方法 ('none', 'missing', 'adjust')
-            negative_method: 负值处理方法 ('none', 'missing', 'adjust')
             original_freq: 原始数据频率（用于智能同比差分，如 '旬度'、'周度'）
 
         Returns:
             pd.Series: 转换后的序列
         """
-        # 1. 预处理0值（按表格列顺序：零值处理在前）
-        result = self.preprocess_zeros(series, zero_method)
-        # 2. 预处理负值
-        result = self.preprocess_negatives(result, negative_method)
+        result = series.copy()
 
-        # 如果没有后续操作，直接返回预处理后的结果
+        # 如果没有操作，直接返回
         if not operations:
-            # 只有预处理时也记录详情
-            if zero_method != 'none' or negative_method != 'none':
-                var_name = series.name if series.name else "未命名"
-                preprocess_ops = []
-                if zero_method != 'none':
-                    preprocess_ops.append(f'zero_{zero_method}')
-                if negative_method != 'none':
-                    preprocess_ops.append(f'negative_{negative_method}')
-                self._transform_details[var_name] = {
-                    'operations': preprocess_ops,
-                    'original_stats': {
-                        'mean': float(series.mean()) if not series.isna().all() else None,
-                        'std': float(series.std()) if not series.isna().all() else None,
-                        'min': float(series.min()) if not series.isna().all() else None,
-                        'max': float(series.max()) if not series.isna().all() else None,
-                    },
-                    'transformed_stats': {
-                        'mean': float(result.mean()) if not result.isna().all() else None,
-                        'std': float(result.std()) if not result.isna().all() else None,
-                        'min': float(result.min()) if not result.isna().all() else None,
-                        'max': float(result.max()) if not result.isna().all() else None,
-                    },
-                    'nan_count_before': int(series.isna().sum()),
-                    'nan_count_after': int(result.isna().sum()),
-                }
             return result
 
         # 过滤掉 'none' 操作
         valid_ops = [op for op in operations if op != 'none']
-        if not valid_ops and zero_method == 'none' and negative_method == 'none':
-            return series.copy()
+        if not valid_ops:
+            return result
 
         applied_ops = []
-        # 记录预处理操作（按执行顺序：零值处理 → 负值处理）
-        if zero_method != 'none':
-            applied_ops.append(f'zero_{zero_method}')
-        if negative_method != 'none':
-            applied_ops.append(f'negative_{negative_method}')
 
-        # 3. 应用转换操作
+        # 应用转换操作
         for op in valid_ops:
             if op == 'log':
                 result = self.apply_log(result)
@@ -400,7 +372,7 @@ class VariableTransformer:
 
         Args:
             df: 输入DataFrame
-            transform_config: 变换配置字典 {变量名: {'zero_method': str, 'operations': list}}
+            transform_config: 变换配置字典 {变量名: {'operations': list}}
 
         Returns:
             Tuple[pd.DataFrame, Dict]:
@@ -428,10 +400,9 @@ class VariableTransformer:
                 continue
 
             # 解析配置
-            zero_method = config.get('zero_method', 'none')
             operations = config.get('operations', [])
 
-            if not operations and zero_method == 'none':
+            if not operations:
                 # 无任何操作，直接复制原始数据（确保变量被包含在输出中以进行平稳性检验）
                 if var_name in df.columns:
                     result_df[var_name] = df[var_name].copy()
@@ -441,8 +412,7 @@ class VariableTransformer:
             original_series = result_df[var_name]
             transformed_series = self.transform_variable(
                 original_series,
-                operations,
-                zero_method=zero_method
+                operations
             )
 
             # 替换原变量
@@ -451,11 +421,9 @@ class VariableTransformer:
 
             # 构建操作描述
             ops_parts = []
-            if zero_method != 'none':
-                ops_parts.append(f'0值:{zero_method}')
             for op in operations:
                 ops_parts.append(self.OPERATIONS.get(op, op))
-            ops_str = ' -> '.join(ops_parts)
+            ops_str = ' -> '.join(ops_parts) if ops_parts else '不处理'
             self.logger.info(f"  {var_name}: {ops_str}")
 
         self.logger.info(
@@ -505,7 +473,7 @@ def get_default_transform_config(
         freq: 目标频率
 
     Returns:
-        List[Dict]: 配置列表，每项包含 {变量名, 性质, 零值处理, 负值处理, 第一次处理, 第二次处理, 第三次处理}
+        List[Dict]: 配置列表，每项包含 {变量名, 性质, 第一次处理, 第二次处理, 第三次处理}
     """
     from dashboard.models.DFM.utils.text_utils import normalize_text
 
@@ -523,8 +491,6 @@ def get_default_transform_config(
         config_list.append({
             '变量名': var,
             '性质': nature,
-            '零值处理': '缺失值',      # 默认值：缺失值
-            '负值处理': '不处理',      # 默认值：不处理
             '第一次处理': transformer.OPERATIONS.get(first_op, '不处理'),
             '第二次处理': transformer.OPERATIONS.get(second_op, '不处理'),
             '第三次处理': '不处理'

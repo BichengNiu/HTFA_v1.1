@@ -89,47 +89,25 @@ def _process_single_frequency(
 
         logger.info(f"    [并行-{freq_name}] 合并后形状: {combined_df.shape}")
 
-        # 获取频率等级
-        original_level = _get_freq_level(original_freq)
+        # 统一处理顺序：所有频率先检测缺失值（原始频率）再对齐（含借调）
+        # 1. 先检测连续缺失值（在原始频率上检测）
+        logger.info(f"    [并行-{freq_name}] 检测连续缺失值（原始频率）...")
+        cleaned_df = data_cleaner.handle_consecutive_nans(
+            combined_df,
+            consecutive_nan_threshold,
+            f"[{freq_name}原始频率] ",
+            data_start_date,
+            data_end_date
+        )
+        removal_log.extend(data_cleaner.get_removed_variables_log())
+        data_cleaner.clear_log()
+        logger.info(f"    [并行-{freq_name}] 检测后形状: {cleaned_df.shape}")
 
-        # 根据频率关系选择检测时机
-        if original_level <= target_level:
-            # 原始频率 >= 目标频率（需要降频）：先对齐再检测
-            logger.info(f"    [并行-{freq_name}] 先对齐到目标频率...")
-            aligned_df, borrowing_log = data_aligner.align_by_type(
-                combined_df, freq_name, data_start_date, data_end_date
-            )
-
-            logger.info(f"    [并行-{freq_name}] 再检测连续缺失值（对齐后）...")
-            aligned_df = data_cleaner.handle_consecutive_nans(
-                aligned_df,
-                consecutive_nan_threshold,
-                f"[{freq_name}对齐后] ",
-                data_start_date,
-                data_end_date
-            )
-            removal_log.extend(data_cleaner.get_removed_variables_log())
-            data_cleaner.clear_log()
-
-        else:
-            # 原始频率 < 目标频率（需要升频）：先检测再对齐
-            logger.info(f"    [并行-{freq_name}] 先检测连续缺失值（原始频率）...")
-            cleaned_df = data_cleaner.handle_consecutive_nans(
-                combined_df,
-                consecutive_nan_threshold,
-                f"[{freq_name}原始频率] ",
-                data_start_date,
-                data_end_date
-            )
-            removal_log.extend(data_cleaner.get_removed_variables_log())
-            data_cleaner.clear_log()
-            logger.info(f"    [并行-{freq_name}] 检测后形状: {cleaned_df.shape}")
-
-            # 对齐到目标频率
-            logger.info(f"    [并行-{freq_name}] 对齐到目标频率...")
-            aligned_df, borrowing_log = data_aligner.align_by_type(
-                cleaned_df, freq_name, data_start_date, data_end_date
-            )
+        # 2. 再对齐到目标频率（含借调）
+        logger.info(f"    [并行-{freq_name}] 对齐到目标频率...")
+        aligned_df, borrowing_log = data_aligner.align_by_type(
+            cleaned_df, freq_name, data_start_date, data_end_date
+        )
 
         logger.info(f"  [并行-{freq_name}] 完成, 形状: {aligned_df.shape}")
 

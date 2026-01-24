@@ -17,7 +17,9 @@ from typing import Dict, List, Tuple, Optional
 from datetime import datetime
 import logging
 
-from dashboard.models.DFM.prep.modules.data_aligner import DataAligner, generate_theoretical_index
+from dashboard.models.DFM.prep.modules.data_aligner import (
+    DataAligner, generate_theoretical_index, align_to_theoretical_index
+)
 from dashboard.models.DFM.prep.modules.data_cleaner import DataCleaner, clean_dataframe
 from dashboard.models.DFM.prep.modules.config_constants import FREQ_ORDER
 from dashboard.models.DFM.prep.modules.publication_calibrator import PublicationCalibrator
@@ -356,10 +358,31 @@ class DataPreparationProcessor:
                         series_list.append(series)
                     if series_list:
                         combined_df = pd.concat(series_list, axis=1)
-                        # 应用全局零值和负值预处理
+
+                        # 1. 日期筛选（在所有处理之前）
+                        if self.data_start_date or self.data_end_date:
+                            original_shape = combined_df.shape
+                            if self.data_start_date:
+                                start_dt = pd.to_datetime(self.data_start_date)
+                                combined_df = combined_df[combined_df.index >= start_dt]
+                            if self.data_end_date:
+                                end_dt = pd.to_datetime(self.data_end_date)
+                                combined_df = combined_df[combined_df.index <= end_dt]
+                            if combined_df.shape[0] != original_shape[0]:
+                                logger.info(f"    [{freq_type}] 日期筛选: {original_shape[0]} -> {combined_df.shape[0]} 行")
+
+                        if combined_df.empty:
+                            logger.warning(f"    [{freq_type}] 日期筛选后数据为空，跳过")
+                            data_by_freq[freq_type] = {}
+                            continue
+
+                        # 2. 应用全局零值和负值预处理
                         combined_df = self._apply_global_preprocessing(combined_df)
-                        # 应用发布日期校准（传入频率类型）
+
+                        # 3. 应用发布日期校准（传入频率类型）
                         combined_df = self._apply_publication_date_calibration(combined_df, freq_type)
+
+                        # 借调逻辑已移至步骤5（缺失值检测之后）
                         data_by_freq[freq_type] = {'combined': combined_df}
 
             return data_by_freq
@@ -403,7 +426,7 @@ class DataPreparationProcessor:
         # 统计有数据的频率数量
         active_freqs = sum(1 for f in data_by_freq.values() if f)
 
-        # 使用并行频率处理
+        # 使用并行频率处理（借调在缺失值检测之后执行）
         logger.info(f"  使用并行频率处理 ({active_freqs}个频率, n_jobs={self.parallel_config.get_effective_n_jobs()})...")
         aligned_data, all_borrowing_log, removal_log = parallel_process_frequencies(
             data_by_freq=data_by_freq,
@@ -429,10 +452,11 @@ class DataPreparationProcessor:
             data_by_freq: 按频率分类的数据
 
         Returns:
-            Tuple[Dict, Dict]: (各频率数据字典, 空的借调日志)
+            Tuple[Dict, Dict]: (各频率数据字典, 借调日志)
         """
         logger.info("  [不对齐模式] 保留原始发布日期，仅检测缺失值...")
         result_data = {}
+        all_borrowing_log = {}
 
         for freq_name in ['daily', 'weekly', 'dekad', 'monthly', 'quarterly', 'yearly']:
             if not data_by_freq.get(freq_name):
@@ -468,7 +492,7 @@ class DataPreparationProcessor:
                 result_data[freq_name] = cleaned_df
                 logger.info(f"    {freq_name}数据形状: {cleaned_df.shape}")
 
-        return result_data, {}  # 不借调，返回空日志
+        return result_data, all_borrowing_log
 
     def _step6_merge_all_data(
         self,
@@ -521,21 +545,13 @@ class DataPreparationProcessor:
             combined_df = combined_df[~combined_df.index.duplicated(keep='last')]
             logger.info(f"  清理后形状: {combined_df.shape}")
 
-        # 不对齐模式：直接按日期范围过滤，保留原始日期
+        # 不对齐模式：直接保留原始日期（日期筛选已在步骤4完成）
         if not self.enable_freq_alignment:
             logger.info("  [不对齐模式] 保留原始发布日期...")
 
-            # 按日期范围过滤
-            if start_date:
-                start_dt = pd.to_datetime(start_date)
-                combined_df = combined_df[combined_df.index >= start_dt]
-            if end_date:
-                end_dt = pd.to_datetime(end_date)
-                combined_df = combined_df[combined_df.index <= end_dt]
-
             # 按日期排序
             combined_df = combined_df.sort_index()
-            logger.info(f"  过滤后日期范围: {combined_df.index.min()} 至 {combined_df.index.max()}")
+            logger.info(f"  日期范围: {combined_df.index.min()} 至 {combined_df.index.max()}")
 
         else:
             # 对齐模式：创建完整日期范围并对齐

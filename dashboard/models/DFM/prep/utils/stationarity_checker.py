@@ -1,13 +1,14 @@
 """
 平稳性检验工具模块
 
-提供单变量和批量变量的平稳性检验功能，
-集成explore模块的ADF检验工具
+提供单变量和批量变量的平稳性检验功能
 """
 
 import logging
-from typing import Dict, Optional, List, Any
+import warnings
+from typing import Dict, Optional, List, Any, Tuple
 import pandas as pd
+from statsmodels.tsa.stattools import adfuller
 
 from dashboard.models.DFM.utils.text_utils import normalize_text
 
@@ -18,6 +19,44 @@ class StationarityChecker:
     """平稳性检验工具类"""
 
     MIN_SAMPLES_ADF = 5
+
+    @staticmethod
+    def _run_adf_test(series: pd.Series, alpha: float = 0.05) -> Tuple[Optional[float], str]:
+        """
+        执行ADF平稳性检验（内部方法）
+
+        Args:
+            series: 时间序列数据（已清理NaN）
+            alpha: 显著性水平
+
+        Returns:
+            Tuple[Optional[float], str]: (p值, 状态)
+            状态: '是', '否', '数据不足', '常量序列', '计算失败(...)'
+        """
+        series_cleaned = series.dropna()
+
+        # 数据量检查
+        if series_cleaned.empty or len(series_cleaned) < StationarityChecker.MIN_SAMPLES_ADF:
+            return None, '数据不足'
+
+        # 常量检查：避免 "Invalid input, x is constant" 错误
+        if series_cleaned.nunique() == 1:
+            return None, '常量序列'
+
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                result = adfuller(series_cleaned, regression='ct')
+
+            p_value = result[1]
+            is_stationary = '是' if p_value < alpha else '否'
+            return p_value, is_stationary
+
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "sample size" in error_msg or "regression" in error_msg:
+                return None, '计算失败(样本不足)'
+            return None, f'计算失败({type(e).__name__})'
 
     @staticmethod
     def check_variable_stationarity(
@@ -35,52 +74,32 @@ class StationarityChecker:
             {
                 'p_value': float or None,
                 'is_stationary': bool,
-                'status': str,              # '是', '否', '数据不足', '计算失败(...)'
+                'status': str,              # '是', '否', '数据不足', '常量序列', '计算失败(...)'
                 'formatted': str            # 格式化结果字符串
             }
         """
-        from dashboard.explore.analysis.stationarity import run_adf_test
-
         try:
-            # 清理数据
-            series_clean = series.dropna()
             var_name = getattr(series, 'name', 'unknown')
+            logger.debug(f"检验变量 '{var_name}': 原始{len(series)}条")
 
-            logger.debug(f"检验变量 '{var_name}': 原始{len(series)}条, 清理后{len(series_clean)}条")
-
-            # 检查数据量
-            if len(series_clean) < StationarityChecker.MIN_SAMPLES_ADF:
-                logger.debug(f"  -> 数据不足 ({len(series_clean)} < {StationarityChecker.MIN_SAMPLES_ADF})")
-                return {
-                    'p_value': None,
-                    'is_stationary': False,
-                    'status': '数据不足',
-                    'formatted': '数据不足'
-                }
-
-            # 执行ADF检验
-            logger.debug(f"  -> 执行ADF检验...")
-            p_value, status = run_adf_test(series_clean, alpha=alpha)
+            # 执行ADF检验（内部方法已包含数据清理和常量检查）
+            p_value, status = StationarityChecker._run_adf_test(series, alpha=alpha)
             logger.debug(f"  -> ADF结果: p={p_value}, status={status}")
 
             # 判断是否平稳
             is_stationary = (status == '是')
 
-            # 格式化结果字符串：ADF-P=0.001 (平稳) 或 ADF-P=0.250 (非平稳)
+            # 格式化结果字符串
             if status == '数据不足':
                 formatted = '数据不足'
+            elif status == '常量序列':
+                formatted = '常量序列'
             elif status.startswith('计算失败'):
-                formatted = status  # 保留错误信息，如 '计算失败(滞后阶数不足)'
+                formatted = status
             elif is_stationary:
-                if p_value is not None:
-                    formatted = f"ADF-P={p_value:.3f} (平稳)"
-                else:
-                    formatted = "平稳"
+                formatted = f"ADF-P={p_value:.3f} (平稳)" if p_value is not None else "平稳"
             else:
-                if p_value is not None:
-                    formatted = f"ADF-P={p_value:.3f} (非平稳)"
-                else:
-                    formatted = "非平稳"
+                formatted = f"ADF-P={p_value:.3f} (非平稳)" if p_value is not None else "非平稳"
 
             return {
                 'p_value': p_value,
