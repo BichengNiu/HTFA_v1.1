@@ -3,76 +3,44 @@
 统一数据模型定义
 
 整合所有train模块使用的数据类，确保类型一致性和可维护性
+经典DFM模型：所有变量平等参与因子提取，无目标变量概念
 """
 
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Optional
-from dashboard.models.DFM.train.constants import ZERO_STD_REPLACEMENT
 
 
 # ==================== 评估指标相关 ====================
 
 @dataclass
 class EvaluationMetrics:
-    """评估指标
+    """评估指标（经典DFM版）
 
-    术语说明：
-    - is (in-sample): 训练期指标
-    - oos (out-of-sample): 验证期指标（仅经典DFM，用于变量选择）
-    - obs (observation): 观察期指标（最优模型的样本外预测，两种DFM都有）
+    基于模型拟合质量的评估指标，只保留重构RMSE作为唯一评估指标。
     """
-    is_rmse: float = np.inf       # 训练期RMSE
-    oos_rmse: float = np.inf      # 验证期RMSE（仅经典DFM）
-    is_mae: float = np.inf        # 训练期MAE
-    oos_mae: float = np.inf       # 验证期MAE（仅经典DFM）
+    # 模型拟合指标
+    reconstruction_rmse: float = np.inf   # 重构RMSE（越小越好）
 
-    # Win Rate（2025-12-19新增）
-    is_win_rate: float = np.nan   # 训练期胜率（0-100）
-    oos_win_rate: float = np.nan  # 验证期胜率（仅经典DFM）
+    # 收敛信息
+    converged: bool = False
+    iterations: int = 0
 
-    # 观察期指标（两种DFM都有）
-    obs_rmse: float = np.inf      # 观察期RMSE
-    obs_mae: float = np.inf       # 观察期MAE
-    obs_win_rate: float = np.nan  # 观察期胜率（0-100）
-
-    def to_tuple(self) -> Tuple[float, float, float, float, float, float, bool, float, float]:
-        """转换为9元组用于evaluator兼容性
-
-        Returns:
-            (is_rmse, oos_rmse, is_mae, oos_mae, is_win_rate, oos_win_rate, False, obs_rmse, obs_mae)
-        """
-        return (
-            self.is_rmse,
-            self.oos_rmse,
-            self.is_mae,
-            self.oos_mae,
-            self.is_win_rate,
-            self.oos_win_rate,
-            False,  # SVD error flag (固定False，实际错误在调用处处理)
-            self.obs_rmse,
-            self.obs_mae
-        )
-
-
-@dataclass
-class MetricsResult:
-    """详细评估指标结果"""
-    is_rmse: float
-    is_mae: float
-    is_win_rate: float
-    oos_rmse: float
-    oos_mae: float
-    oos_win_rate: float
-    aligned_data: Optional[pd.DataFrame] = None
+    def to_dict(self) -> Dict[str, float]:
+        """转换为字典"""
+        return {
+            'reconstruction_rmse': self.reconstruction_rmse,
+            'converged': self.converged,
+            'iterations': self.iterations
+        }
 
 
 # ==================== DFM模型相关 ====================
 
 @dataclass
 class DFMModelResult:
-    """DFM模型完整结果（统一版）
+    """DFM模型完整结果（经典版，无目标变量）
 
     整合了原DFMResults和DFMModelResult的功能，
     提供统一的数据模型，避免重复和转换开销。
@@ -92,16 +60,14 @@ class DFMModelResult:
     # 卡尔曼滤波结果
     factors: np.ndarray = None  # 因子时间序列（滤波）
     factors_smooth: np.ndarray = None  # 平滑因子
-    kalman_gains_history: Optional[List[np.ndarray]] = None  # 卡尔曼增益历史（用于新闻分解）
-    factor_states_predicted: Optional[np.ndarray] = None  # 先验因子状态 (n_time, n_factors)，用于新闻分解的expected_value计算
+    kalman_gains_history: Optional[List[np.ndarray]] = None  # 卡尔曼增益历史
+    factor_states_predicted: Optional[np.ndarray] = None  # 先验因子状态 (n_time, n_factors)
 
     # 变量名列表（用于导出时H矩阵维度匹配）
     variable_names: Optional[List[str]] = None  # 训练时使用的变量名列表
 
-    # 预测结果
-    forecast_is: np.ndarray = None  # 训练期预测
-    forecast_oos: np.ndarray = None  # 观察期预测
-    forecast_obs: np.ndarray = None  # 扩展观察期预测
+    # 重构数据（用于评估）
+    reconstructed_data: Optional[np.ndarray] = None
 
     # 训练信息
     converged: bool = False
@@ -138,7 +104,7 @@ class SelectionResult:
     """变量选择结果"""
     selected_variables: List[str]  # 最终选中的变量列表
     selection_history: List[Dict]  # 选择历史记录
-    final_score: Tuple[float, float]  # 最终得分 (HR, -RMSE)
+    final_score: float  # 最终得分（对数似然）
     total_evaluations: int  # 总评估次数
     svd_error_count: int  # SVD错误次数
 
@@ -170,10 +136,6 @@ class TrainingResult:
 
     # 导出文件路径
     export_files: Optional[Dict[str, str]] = None
-
-    # 数据统计
-    target_mean_original: float = 0.0
-    target_std_original: float = ZERO_STD_REPLACEMENT
 
     # 输出路径
     output_dir: Optional[str] = None
@@ -232,9 +194,8 @@ class TrainingResult:
 __all__ = [
     # 评估指标
     'EvaluationMetrics',
-    'MetricsResult',
 
-    # DFM模型（已合并DFMResults到DFMModelResult）
+    # DFM模型
     'DFMModelResult',
 
     # 卡尔曼滤波

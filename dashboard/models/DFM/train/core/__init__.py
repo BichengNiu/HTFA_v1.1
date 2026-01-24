@@ -15,7 +15,6 @@
 # 数据模型
 from dashboard.models.DFM.train.core.models import (
     EvaluationMetrics,
-    MetricsResult,
     DFMModelResult,
     KalmanFilterResult,
     KalmanSmootherResult,
@@ -33,7 +32,7 @@ from dashboard.models.DFM.train.core.factor_model import DFMModel
 from dashboard.models.DFM.train.core.estimator import estimate_loadings
 
 # 目标预测
-from dashboard.models.DFM.train.core.prediction import generate_target_forecast
+from dashboard.models.DFM.train.core.prediction import generate_factor_forecast
 
 # PCA工具
 from dashboard.models.DFM.train.core.pca_utils import select_num_factors
@@ -56,7 +55,6 @@ from dashboard.models.DFM.train.core.preprocessing import (
 __all__ = [
     # 数据模型（已合并DFMResults到DFMModelResult）
     'EvaluationMetrics',
-    'MetricsResult',
     'DFMModelResult',
     'KalmanFilterResult',
     'KalmanSmootherResult',
@@ -67,7 +65,7 @@ __all__ = [
     'KalmanFilter',
     'DFMModel',
     'estimate_loadings',
-    'generate_target_forecast',
+    'generate_factor_forecast',
     'select_num_factors',
 
     # 验证工具

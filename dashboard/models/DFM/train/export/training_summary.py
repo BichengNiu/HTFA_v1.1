@@ -3,14 +3,15 @@
 训练摘要信息生成模块
 
 生成用户可读的训练信息文本文件，包含：
-- 目标变量
-- 预测变量（进入训练、最终保留）
+- 变量信息
 - 模型参数
-- 评估指标
+- 评估指标（只保留重构RMSE）
 - 训练统计
+
+经典DFM模型：所有变量平等参与因子提取，无目标变量概念
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional
 import numpy as np
 from datetime import datetime
 
@@ -21,7 +22,7 @@ def generate_training_summary(
     timestamp: Optional[str] = None
 ) -> str:
     """
-    生成训练摘要文本
+    生成训练摘要文本（经典DFM版）
 
     Args:
         result: 训练结果对象（TrainingResult）
@@ -42,29 +43,24 @@ def generate_training_summary(
     lines.append("DFM 模型训练摘要")
     lines.append("=" * 80)
     lines.append(f"生成时间: {timestamp}")
+    lines.append(f"算法类型: {'深度学习DFM (DDFM)' if is_ddfm else '经典DFM (EM算法)'}")
     lines.append("")
 
-    # 目标变量
-    lines.append("[目标变量]")
-    lines.append(f"  目标变量: {config.target_variable}")
-    lines.append("")
-
-    # 预测变量信息
-    lines.append("[预测变量]")
-    # 预测变量统计
+    # 变量信息（经典DFM：所有变量平等参与因子提取）
+    lines.append("[变量信息]")
     initial_indicators = config.selected_indicators
-    lines.append(f"  进入训练的预测变量数: {len(initial_indicators)}")
+    lines.append(f"  进入训练的变量数: {len(initial_indicators)}")
     if initial_indicators:
-        lines.append("  进入训练的预测变量明细:")
+        lines.append("  进入训练的变量明细:")
         for var in initial_indicators:
             lines.append(f"    - {var}")
 
     lines.append("")
-    final_predictors = [v for v in result.selected_variables if v != config.target_variable]
-    lines.append(f"  最终保留的预测变量数: {len(final_predictors)}")
-    if final_predictors:
-        lines.append("  最终保留的预测变量明细:")
-        for var in final_predictors:
+    final_variables = result.selected_variables
+    lines.append(f"  最终保留的变量数: {len(final_variables)}")
+    if final_variables:
+        lines.append("  最终保留的变量明细:")
+        for var in final_variables:
             lines.append(f"    - {var}")
 
     lines.append("")
@@ -80,7 +76,6 @@ def generate_training_summary(
     lines.append(f"    最大迭代次数: {config.max_iterations}")
     lines.append(f"    因子AR阶数: {config.max_lags}")
     lines.append(f"    收敛容差: {config.tolerance}")
-    lines.append(f"    目标频率: {config.target_freq}")
 
     # 变量选择方法
     if config.enable_variable_selection:
@@ -94,76 +89,32 @@ def generate_training_summary(
     else:
         lines.append("    并行计算: 未启用")
 
-    # 目标配对模式
-    alignment_desc = "下月值" if config.target_alignment_mode == 'next_month' else "本月值"
-    lines.append(f"    目标配对模式: {alignment_desc} ({config.target_alignment_mode})")
-
     lines.append("")
 
-    # 训练期/观察期设置（根据算法类型调整术语）
-    period_label = "观察期" if is_ddfm else "验证期"
-    section_title = "训练与观察期设置" if is_ddfm else "训练与验证期设置"
-    lines.append(f"[{section_title}]")
+    # 训练期设置
+    lines.append("[训练期设置]")
     lines.append(f"  训练期: {config.training_start} 至 {config.train_end}")
-    lines.append(f"  {period_label}: {config.validation_start} 至 {config.validation_end}")
+    lines.append(f"  验证期: {config.validation_start} 至 {config.validation_end}")
     lines.append("")
 
-    # 评估指标
-    lines.append("[评估指标]")
-    # 评估指标（区分DDFM和经典DFM）
-    oos_label = "观察期" if is_ddfm else "验证期"
-
+    # 评估指标（只保留重构RMSE）
+    lines.append("[模型拟合指标]")
     if result.metrics:
         metrics = result.metrics
-        lines.append(f"  训练期RMSE: {metrics.is_rmse:.4f}")
 
-        # DDFM使用obs指标，经典DFM使用oos指标
-        if is_ddfm:
-            # DDFM：输出obs指标作为"观察期"
-            if metrics.obs_rmse != np.inf:
-                lines.append(f"  {oos_label}RMSE: {metrics.obs_rmse:.4f}")
-                lines.append(f"  训练期MAE: {metrics.is_mae:.4f}")
-                lines.append(f"  {oos_label}MAE: {metrics.obs_mae:.4f}")
-
-                is_wr = metrics.is_win_rate
-                obs_wr = metrics.obs_win_rate
-                is_wr_str = f"{is_wr:.2f}%" if not np.isnan(is_wr) and not np.isinf(is_wr) else "N/A"
-                obs_wr_str = f"{obs_wr:.2f}%" if not np.isnan(obs_wr) and not np.isinf(obs_wr) else "N/A"
-
-                lines.append(f"  训练期胜率: {is_wr_str}")
-                lines.append(f"  {oos_label}胜率: {obs_wr_str}")
-            else:
-                lines.append(f"  {oos_label}RMSE: N/A")
-                lines.append(f"  训练期MAE: {metrics.is_mae:.4f}")
-                lines.append(f"  {oos_label}MAE: N/A")
-
-                is_wr = metrics.is_win_rate
-                is_wr_str = f"{is_wr:.2f}%" if not np.isnan(is_wr) and not np.isinf(is_wr) else "N/A"
-
-                lines.append(f"  训练期胜率: {is_wr_str}")
-                lines.append(f"  {oos_label}胜率: N/A")
+        # 重构RMSE
+        reconstruction_rmse = metrics.reconstruction_rmse
+        if reconstruction_rmse is not None and np.isfinite(reconstruction_rmse):
+            lines.append(f"  重构RMSE: {reconstruction_rmse:.4f}")
         else:
-            # 经典DFM：输出oos指标作为"验证期"
-            lines.append(f"  {oos_label}RMSE: {metrics.oos_rmse:.4f}")
-            lines.append(f"  训练期MAE: {metrics.is_mae:.4f}")
-            lines.append(f"  {oos_label}MAE: {metrics.oos_mae:.4f}")
+            lines.append("  重构RMSE: N/A")
 
-            # Win Rate处理
-            is_wr = metrics.is_win_rate
-            oos_wr = metrics.oos_win_rate
-            is_wr_str = f"{is_wr:.2f}%" if not np.isnan(is_wr) and not np.isinf(is_wr) else "N/A"
-            oos_wr_str = f"{oos_wr:.2f}%" if not np.isnan(oos_wr) and not np.isinf(oos_wr) else "N/A"
+        # 收敛信息
+        lines.append(f"  模型收敛: {'是' if metrics.converged else '否'}")
+        lines.append(f"  迭代次数: {metrics.iterations}")
 
-            lines.append(f"  训练期胜率: {is_wr_str}")
-            lines.append(f"  {oos_label}胜率: {oos_wr_str}")
-
-            # 观察期指标（经典DFM才有）
-            if metrics.obs_rmse != np.inf:
-                obs_wr = metrics.obs_win_rate
-                obs_wr_str = f"{obs_wr:.2f}%" if not np.isnan(obs_wr) and not np.isinf(obs_wr) else "N/A"
-                lines.append(f"  观察期RMSE: {metrics.obs_rmse:.4f}")
-                lines.append(f"  观察期MAE: {metrics.obs_mae:.4f}")
-                lines.append(f"  观察期胜率: {obs_wr_str}")
+    else:
+        lines.append("  评估指标不可用")
 
     lines.append("")
 

@@ -3,6 +3,7 @@
 DFM模型训练页面组件
 
 提供DFM模型训练的完整UI界面，包括数据上传、参数配置、变量选择和训练执行
+经典DFM模型：所有变量平等参与因子提取，无目标变量概念
 """
 
 import streamlit as st
@@ -31,12 +32,11 @@ from dashboard.models.DFM.utils.text_utils import normalize_text
 from dashboard.models.DFM.train.ui.components.training_status import TrainingStatusComponent
 
 # 导入新增工具和组件
-from dashboard.models.DFM.train.utils import StateManager, filter_industries_by_target, get_non_target_indicators
+from dashboard.models.DFM.train.utils import StateManager
 from dashboard.models.DFM.train.ui.components.file_uploader_component import FileUploaderComponent
 from dashboard.models.DFM.train.config import UIConfig
 from dashboard.models.DFM.train.ui.utils.config_builder import TrainingConfigBuilder
 from dashboard.models.DFM.train.ui.utils.date_helpers import (
-    get_target_frequency,
     get_previous_period_date,
     get_frequency_label,
     validate_date_ranges,
@@ -45,9 +45,6 @@ from dashboard.models.DFM.train.ui.utils.text_helpers import (
     normalize_variable_name,
     normalize_variable_name_no_space,
     build_normalized_mapping,
-    filter_exclude_targets,
-    get_valid_indicators_for_industry,
-    build_exclude_targets_list
 )
 
 # 配置日志记录器
@@ -64,11 +61,9 @@ class TrainModelConfig:
 
     # UI默认配置值
     TYPE_MAPPING_SHEET = '指标字典'
-    TARGET_VARIABLE = '规模以上工业增加值:当月同比'
     INDICATOR_COLUMN_NAME_IN_EXCEL = '指标名称'
     INDUSTRY_COLUMN_NAME_IN_EXCEL = '行业'
     TYPE_COLUMN_NAME_IN_EXCEL = '类型'
-    EXCLUDE_COLS_FROM_TARGET = []  # 排除的目标变量列名列表
 
 config = TrainModelConfig()
 
@@ -111,11 +106,6 @@ def _reset_training_state():
     _state.set('dfm_model_results', None)
 
     debug_log("状态重置 - 已重置所有训练状态到初始值", "DEBUG")
-
-
-def _get_default_target_variable() -> str:
-    """获取默认目标变量名称"""
-    return config.TARGET_VARIABLE
 
 
 def render_dfm_model_training_page(st_instance):
@@ -179,44 +169,9 @@ def render_dfm_model_training_page(st_instance):
     if input_df is None or not var_industry_map:
         return
 
-    available_target_vars = []
-    if input_df is not None:
-        # 从已加载数据中获取可选的目标变量
-        available_target_vars = [col for col in input_df.columns if 'date' not in col.lower() and 'time' not in col.lower() and col not in config.EXCLUDE_COLS_FROM_TARGET]
-
-        default_target = _get_default_target_variable()
-
-        # 如果默认目标变量在数据中存在但不在过滤列表中，则添加它
-        if default_target and default_target in input_df.columns and default_target not in available_target_vars:
-            available_target_vars.insert(0, default_target)  # 插入到开头作为首选
-
-
-        # 如果过滤后的列表为空，但默认目标变量存在，则使用它
-        if not available_target_vars and default_target and default_target in input_df.columns:
-            available_target_vars = [default_target]
-
-
-        if not available_target_vars:
-            st_instance.warning("预处理数据中未找到合适的目标变量候选。")
-            # 即使没找到，也提供一个默认选项避免selectbox为空
-            if default_target:
-                available_target_vars = [default_target]
-                st_instance.info(f"使用默认目标变量: {default_target}")
-
-
-    else:
-
-        st_instance.warning("数据尚未准备，请先在\"数据准备\"选项卡中处理数据。变量选择功能将受限。")
-
-        default_target = _get_default_target_variable()
-
-        if default_target:
-            available_target_vars = [default_target]
-            st_instance.info(f"使用默认目标变量: {default_target}")
-
-
     # 直接使用文件上传器加载的映射数据（已由FileUploaderComponent处理）
     # 完全解耦，不从其他模块的session_state读取数据
+    # 经典DFM：所有变量平等参与因子提取，无目标变量概念
 
     # 构建行业到指标的映射
     industry_to_indicators_temp = defaultdict(list)
@@ -386,10 +341,8 @@ def render_dfm_model_training_page(st_instance):
 
     # ===== 训练周期设置 =====
 
-    # 获取目标变量的频率标签（用于动态文案）
-    target_variable = _state.get('dfm_target_variable', '')
-    var_frequency_map = _state.get('dfm_frequency_map_obj', {})
-    target_freq_code = get_target_frequency(target_variable, var_frequency_map, default_freq='W')
+    # 经典DFM：使用默认周频率
+    target_freq_code = 'W'
     freq_label = get_frequency_label(target_freq_code)
 
     col_time1, col_time2, col_time3 = st_instance.columns(3)
@@ -747,47 +700,16 @@ def render_dfm_model_training_page(st_instance):
     # 添加变量选择大标题
     st_instance.subheader("变量选择")
 
-    # 1. 目标变量选择/识别
-    # 从映射文件自动识别目标变量
-    target_map = _state.get('dfm_target_map', {})
-
-    # 将标准化的键转换回原始列名
-    target_candidates = []
-
-    if input_df is not None:
-        for col in input_df.columns:
-            col_norm = normalize_text(col)
-            if col_norm in target_map:
-                target_candidates.append(col)
-
-    # 验证唯一性
-    if len(target_candidates) == 0:
-        st_instance.error("[ERROR] 映射文件'目标变量'列中未标记任何目标变量")
-        st_instance.info("提示：目标变量通过映射文件'目标变量'列标记")
-        _state.set('dfm_target_variable', None)
-    elif len(target_candidates) > 1:
-        st_instance.error(f"[ERROR] 映射文件'目标变量'列中标记了多个目标变量，请确保只有一个目标变量标记为'是'")
-        st_instance.warning(f"当前识别到的目标变量：{', '.join(target_candidates)}")
-        _state.set('dfm_target_variable', None)
-    else:
-        # 唯一目标变量
-        target_var = target_candidates[0]
-        _state.set('dfm_target_variable', target_var)
+    # 经典DFM：所有变量平等参与因子提取，无目标变量概念
+    # 直接进入预测变量选择
 
     # 根据映射文件选择预测变量默认配置
     # dfm_default_map 已从 file_uploader.render() 加载（line 176）
 
-    # 2. 过滤行业：移除仅包含目标变量的行业（使用工具函数）
-    current_target_var = _state.get('dfm_target_variable', None)
-    filtered_industries = filter_industries_by_target(
-        unique_industries,
-        var_to_indicators_map_by_industry,
-        current_target_var
-    )
+    # 过滤行业（不再需要排除目标变量）
+    filtered_industries = unique_industries
 
-    # 预计算各行业有效指标（DRY：只计算一次，后续复用）
-    exclude_targets = build_exclude_targets_list(current_target_var, first_stage_targets=None)
-
+    # 预计算各行业有效指标
     var_industry_map = _state.get('dfm_industry_map_obj')
     if not var_industry_map:
         raise ValueError("行业映射数据未加载，请先上传并加载指标字典文件")
@@ -796,22 +718,15 @@ def render_dfm_model_training_page(st_instance):
     industry_available_indicators = {}
     for industry in filtered_industries:
         all_indicators = var_to_indicators_map_by_industry.get(industry, [])
-        valid_indicators = get_valid_indicators_for_industry(
-            all_indicators,
-            exclude_targets,
-            var_industry_map,
-        )
-        if valid_indicators:
-            industry_available_indicators[industry] = valid_indicators
+        if all_indicators:
+            industry_available_indicators[industry] = all_indicators
 
-    # 暂时存储过滤后的行业，以供后续步骤3中使用
+    # 暂时存储过滤后的行业，以供后续步骤中使用
     if not filtered_industries:
         st_instance.info("没有可用的行业数据。")
         _state.set('dfm_selected_industries', [])
-    else:
-        pass  # 继续进行到步骤3，用户将直接选择指标
 
-    # 3. 根据选定行业选择预测指标 (每个行业一个多选下拉菜单，默认全选)
+    # 根据选定行业选择预测指标 (每个行业一个多选下拉菜单，默认全选)
     with st_instance.expander("选择预测指标", expanded=False):
         indicators_state_key = 'dfm_selected_indicators_per_industry'
 
@@ -994,20 +909,17 @@ def render_dfm_model_training_page(st_instance):
     # 变量选择完成
 
     # 显示变量选择汇总信息
-    current_target_var = _state.get('dfm_target_variable', None)
     current_selected_indicators = _state.get('dfm_selected_indicators', [])
     current_selected_industries_for_display = _state.get('dfm_selected_industries', [])
 
-    # 计算总预测变量数
-    total_predictor_count = len(current_selected_indicators)
+    # 计算总变量数
+    total_variable_count = len(current_selected_indicators)
 
-    st_instance.text(f" - 目标变量: {current_target_var if current_target_var else '未选择'}")
     st_instance.text(f" - 选定行业数: {len(current_selected_industries_for_display)}")
-    st_instance.text(f" - 选定预测指标总数: {total_predictor_count}")
+    st_instance.text(f" - 选定变量总数: {total_variable_count}")
 
     # 第四行：开始训练按钮（左对齐）
     # 重新获取变量选择状态（用于训练条件检查）
-    current_target_var = _state.get('dfm_target_variable', None)
     current_selected_indicators = _state.get('dfm_selected_indicators', [])
 
     # 日期验证 - 使用算法感知的验证函数
@@ -1033,9 +945,8 @@ def render_dfm_model_training_page(st_instance):
         st_instance.warning("[WARNING] 请设置完整的日期范围")
         date_validation_passed = False
 
-    # 检查训练准备状态
+    # 检查训练准备状态（经典DFM：无目标变量要求）
     training_ready = (
-        current_target_var is not None and
         len(current_selected_indicators) > 0 and
         date_validation_passed and
         input_df is not None
@@ -1116,18 +1027,13 @@ def render_dfm_model_training_page(st_instance):
                     export_dir=None
                 )
 
-                # 处理训练结果并保存
+                # 处理训练结果并保存（经典DFM版，只保留重构RMSE）
                 result_summary = {
                     'algorithm': algorithm_value,  # 保存算法类型
                     'selected_variables': result.selected_variables,
                     'k_factors': result.k_factors,
                     'metrics': {
-                        'is_rmse': result.metrics.is_rmse if result.metrics else None,
-                        'oos_rmse': result.metrics.oos_rmse if result.metrics else None,
-                        'obs_rmse': result.metrics.obs_rmse if result.metrics else None,
-                        'is_win_rate': result.metrics.is_win_rate if result.metrics else None,
-                        'oos_win_rate': result.metrics.oos_win_rate if result.metrics else None,
-                        'obs_win_rate': result.metrics.obs_win_rate if result.metrics else None
+                        'reconstruction_rmse': result.metrics.reconstruction_rmse if result.metrics else None,
                     },
                     'training_time': result.training_time
                 }
@@ -1151,29 +1057,10 @@ def render_dfm_model_training_page(st_instance):
                 ]
 
                 if metrics_obj:
-                    is_ddfm = (algorithm_value == 'deep_learning')
-
-                    # 经典DFM：显示验证期指标（用于变量选择）
-                    if not is_ddfm:
-                        oos_rmse = metrics_obj.oos_rmse
-                        oos_win_rate = metrics_obj.oos_win_rate
-                        if oos_rmse is not None and not (np.isnan(oos_rmse) or np.isinf(oos_rmse)):
-                            new_log_entries.append(f"[METRICS] 验证期RMSE: {oos_rmse:.4f}")
-                        if oos_win_rate is not None and not (np.isnan(oos_win_rate) or np.isinf(oos_win_rate)):
-                            new_log_entries.append(f"[METRICS] 验证期Win Rate: {oos_win_rate:.2f}%")
-
-                    # 观察期指标（两种模型都显示）
-                    obs_rmse = metrics_obj.obs_rmse
-                    obs_win_rate = metrics_obj.obs_win_rate
-                    if obs_rmse is not None and not (np.isnan(obs_rmse) or np.isinf(obs_rmse)):
-                        new_log_entries.append(f"[METRICS] 观察期RMSE: {obs_rmse:.4f}")
-                    else:
-                        new_log_entries.append(f"[METRICS] 观察期RMSE: N/A")
-
-                    if obs_win_rate is not None and not (np.isnan(obs_win_rate) or np.isinf(obs_win_rate)):
-                        new_log_entries.append(f"[METRICS] 观察期Win Rate: {obs_win_rate:.2f}%")
-                    else:
-                        new_log_entries.append(f"[METRICS] 观察期Win Rate: N/A (数据不足)")
+                    # 经典DFM：只显示重构RMSE
+                    reconstruction_rmse = metrics_obj.reconstruction_rmse
+                    if reconstruction_rmse is not None and not (np.isnan(reconstruction_rmse) or np.isinf(reconstruction_rmse)):
+                        new_log_entries.append(f"[METRICS] 重构RMSE: {reconstruction_rmse:.4f}")
 
                 training_log = _state.get('dfm_training_log', [])
                 _state.set('dfm_training_log', training_log + new_log_entries)
