@@ -8,69 +8,11 @@
 import pandas as pd
 import numpy as np
 from typing import Tuple
-from sklearn.metrics import mean_squared_error, mean_absolute_error
+from sklearn.metrics import mean_squared_error
 from dashboard.models.DFM.train.utils.logger import get_logger
 
 
 logger = get_logger(__name__)
-
-
-def calculate_rmse(y_true, y_pred) -> float:
-    """
-    统一的RMSE计算函数
-
-    Args:
-        y_true: 真实值（array-like或Series）
-        y_pred: 预测值（array-like或Series）
-
-    Returns:
-        float: RMSE值，无有效数据时返回np.inf
-    """
-    # 转换为numpy数组
-    if isinstance(y_true, pd.Series):
-        y_true = y_true.values
-    if isinstance(y_pred, pd.Series):
-        y_pred = y_pred.values
-
-    # 移除NaN值
-    valid_mask = ~(np.isnan(y_true) | np.isnan(y_pred))
-    if not valid_mask.any():
-        logger.warning("[RMSE] 无有效数据，返回np.inf")
-        return np.inf
-
-    y_true_clean = y_true[valid_mask]
-    y_pred_clean = y_pred[valid_mask]
-
-    # 使用sklearn计算RMSE
-    rmse = np.sqrt(mean_squared_error(y_true_clean, y_pred_clean))
-
-    return float(rmse)
-
-
-def calculate_combined_score_with_winrate(
-    oos_rmse: float,
-    oos_win_rate: float
-) -> Tuple[float, float, float]:
-    """
-    计算组合得分（RMSE为主，Win Rate为辅）
-
-    Args:
-        oos_rmse: 观察期RMSE（主指标）
-        oos_win_rate: 观察期胜率（0-100，辅助指标）
-
-    Returns:
-        Tuple[float, float, float]: (win_rate, -rmse, rmse)
-            - 第1元素：观察期胜率（用于显示和比较）
-            - 第2元素：负RMSE（主排序键）
-            - 第3元素：原始RMSE（用于容忍度计算）
-    """
-    if not np.isfinite(oos_rmse):
-        return (np.nan, -np.inf, np.inf)
-
-    if not np.isfinite(oos_win_rate):
-        oos_win_rate = np.nan
-
-    return (oos_win_rate, -oos_rmse, oos_rmse)
 
 
 def calculate_weighted_score(
@@ -140,44 +82,26 @@ def calculate_weighted_score(
 def compare_scores_with_winrate(
     score_a: Tuple[float, float, float],
     score_b: Tuple[float, float, float],
-    rmse_tolerance_percent: float = 1.0,
-    win_rate_tolerance_percent: float = 5.0,
-    selection_criterion: str = 'hybrid',
-    prioritize_win_rate: bool = True
+    win_rate_tolerance: float = 5.0
 ) -> int:
     """
-    比较两个得分（支持RMSE+Win Rate组合）
+    比较两个得分（胜率优先策略）
 
-    比较规则（可选策略）：
-
-    纯策略（selection_criterion='rmse'或'win_rate'）：
-        - rmse: 仅比较RMSE，忽略Win Rate
-        - win_rate: 仅比较Win Rate，忽略RMSE
-
-    混合策略（selection_criterion='hybrid'）：
-        策略A（Win Rate优先，prioritize_win_rate=True）：
-            1. Win Rate差异 > win_rate_tolerance_percent：选Win Rate更高的
-            2. Win Rate差异 <= win_rate_tolerance_percent：选RMSE更小的
-            3. 都相等时返回0
-
-        策略B（RMSE优先，prioritize_win_rate=False）：
-            1. RMSE差异 > rmse_tolerance_percent：选RMSE更小的
-            2. RMSE差异 <= rmse_tolerance_percent：选Win Rate更高的
-            3. 都相等时返回0
+    比较规则：
+        1. 胜率差异 > win_rate_tolerance：选胜率更高的
+        2. 胜率差异 <= win_rate_tolerance（视为"相同胜率"）：选RMSE更小的
+        3. 都相等时返回0
 
     Args:
         score_a: 得分A (win_rate, -rmse, rmse)
         score_b: 得分B (win_rate, -rmse, rmse)
-        rmse_tolerance_percent: RMSE容忍度（百分比，默认1%）
-        win_rate_tolerance_percent: Win Rate容忍度（百分比，默认5%）
-        selection_criterion: 筛选标准（'rmse', 'win_rate', 'hybrid'）
-        prioritize_win_rate: 是否优先Win Rate（True=胜率优先，False=RMSE优先），仅hybrid模式有效
+        win_rate_tolerance: 胜率阈值（百分比，默认5%），差异≤此值视为"相同胜率"
 
     Returns:
         int: 1 if A > B, -1 if B > A, 0 if equal
     """
-    win_rate_a, neg_rmse_a, rmse_a = score_a
-    win_rate_b, neg_rmse_b, rmse_b = score_b
+    win_rate_a, neg_rmse_a, _ = score_a
+    win_rate_b, neg_rmse_b, _ = score_b
 
     # 处理无效RMSE
     if not np.isfinite(neg_rmse_a) and not np.isfinite(neg_rmse_b):
@@ -187,77 +111,24 @@ def compare_scores_with_winrate(
     if not np.isfinite(neg_rmse_b):
         return 1   # B无效，A更好
 
-    # 辅助函数：比较RMSE
-    def _compare_rmse() -> int:
-        if neg_rmse_a > neg_rmse_b:  # A的RMSE更小
-            return 1
-        elif neg_rmse_a < neg_rmse_b:
-            return -1
-        return 0
+    # 计算胜率差异
+    if np.isfinite(win_rate_a) and np.isfinite(win_rate_b):
+        win_rate_diff = abs(win_rate_a - win_rate_b)
 
-    # 辅助函数：比较Win Rate
-    def _compare_win_rate() -> int:
-        if np.isnan(win_rate_a) and np.isnan(win_rate_b):
-            return 0
-        if np.isnan(win_rate_a):
-            return -1  # A无Win Rate，B更好
-        if np.isnan(win_rate_b):
-            return 1   # B无Win Rate，A更好
-        if win_rate_a > win_rate_b:
-            return 1
-        elif win_rate_a < win_rate_b:
-            return -1
-        return 0
+        # 胜率差异 > 阈值：选胜率更高的
+        if win_rate_diff > win_rate_tolerance:
+            if win_rate_a > win_rate_b:
+                return 1
+            elif win_rate_a < win_rate_b:
+                return -1
 
-    # 纯策略模式
-    if selection_criterion == 'rmse':
-        # 仅比较RMSE，忽略Win Rate
-        return _compare_rmse()
-    elif selection_criterion == 'win_rate':
-        # 仅比较Win Rate，忽略RMSE
-        return _compare_win_rate()
+    # 胜率相同（或无胜率数据）：选RMSE更小的
+    if neg_rmse_a > neg_rmse_b:  # -rmse越大，rmse越小
+        return 1
+    elif neg_rmse_a < neg_rmse_b:
+        return -1
 
-    # 混合策略模式
-    if prioritize_win_rate:
-        # 策略A：Win Rate优先
-        # 1. 计算Win Rate差异（绝对值）
-        win_rate_diff = abs(win_rate_a - win_rate_b) if (
-            np.isfinite(win_rate_a) and np.isfinite(win_rate_b)
-        ) else np.inf
-
-        # 2. Win Rate差异 > 容忍度，仅比较Win Rate
-        if win_rate_diff > win_rate_tolerance_percent:
-            result = _compare_win_rate()
-            if result != 0:
-                return result
-            # Win Rate完全相等时，使用RMSE作为决胜
-            return _compare_rmse()
-
-        # 3. Win Rate相近，比较RMSE
-        result = _compare_rmse()
-        if result != 0:
-            return result
-        # RMSE也相等，最终比较Win Rate作为决胜
-        return _compare_win_rate()
-
-    else:
-        # 策略B：RMSE优先（原逻辑）
-        # 1. 计算RMSE差异百分比（以较大值为基准）
-        base_rmse = max(rmse_a, rmse_b)
-        if base_rmse == 0:
-            base_rmse = 1e-10
-        rmse_diff_percent = abs(rmse_a - rmse_b) / base_rmse * 100
-
-        # 2. RMSE差异 > 容忍度，仅比较RMSE
-        if rmse_diff_percent > rmse_tolerance_percent:
-            return _compare_rmse()
-
-        # 3. RMSE相近，比较Win Rate
-        result = _compare_win_rate()
-        if result != 0:
-            return result
-        # Win Rate也相等，最终比较RMSE
-        return _compare_rmse()
+    return 0
 
 
 # ==================== 下月配对评估函数（新定义）====================

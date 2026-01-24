@@ -244,10 +244,7 @@ class DFMTrainer:
                         full_data=data,
                         params={
                             'k_factors': k_for_selection,
-                            'rmse_tolerance_percent': self.config.rmse_tolerance_percent,
-                            'win_rate_tolerance_percent': self.config.win_rate_tolerance_percent,
-                            'selection_criterion': self.config.selection_criterion,
-                            'prioritize_win_rate': self.config.prioritize_win_rate,
+                            'win_rate_tolerance': self.config.win_rate_tolerance,
                             'training_weight': self.config.training_weight,
                             'factor_selection_method': self.config.factor_selection_method,
                             'pca_threshold': self.config.pca_threshold,

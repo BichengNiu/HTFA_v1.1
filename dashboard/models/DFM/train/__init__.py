@@ -33,7 +33,6 @@ from dashboard.models.DFM.train.core.prediction import generate_target_forecast
 
 # 评估指标
 from dashboard.models.DFM.train.evaluation.metrics import (
-    calculate_rmse,
     calculate_aligned_win_rate
 )
 

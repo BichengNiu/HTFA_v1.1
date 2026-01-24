@@ -68,12 +68,8 @@ class StepwiseSelector:
         target_freq: str,
         training_start_date: str,
         train_end_date: str,
-        target_mean_original: float = 0.0,
-        target_std_original: float = 1.0,
         max_iter: int = 30,
-        max_lags: int = 1,
-        progress_callback: Optional[Callable[[str], None]] = None,
-        use_optimization: bool = False
+        progress_callback: Optional[Callable[[str], None]] = None
     ) -> SelectionResult:
         """
         执行向前向后变量选择
@@ -88,12 +84,8 @@ class StepwiseSelector:
             target_freq: 目标频率
             training_start_date: 训练集开始日期（必填）
             train_end_date: 训练集结束日期（必填）
-            target_mean_original: 目标变量原始均值
-            target_std_original: 目标变量原始标准差
             max_iter: 最大EM迭代次数
-            max_lags: 最大滞后阶数
             progress_callback: 进度回调函数
-            use_optimization: 是否使用预计算优化
 
         Returns:
             SelectionResult对象
@@ -108,16 +100,10 @@ class StepwiseSelector:
             'target_freq': target_freq,
             'training_start_date': training_start_date,
             'train_end_date': train_end_date,
-            'target_mean_original': target_mean_original,
-            'target_std_original': target_std_original,
             'max_iter': max_iter,
-            'max_lags': max_lags,
             'progress_callback': progress_callback,
-            'rmse_tolerance_percent': params.get('rmse_tolerance_percent', 1.0),  # RMSE容忍度配置
-            'win_rate_tolerance_percent': params.get('win_rate_tolerance_percent', 5.0),  # Win Rate容忍度配置
-            'selection_criterion': params.get('selection_criterion', 'hybrid'),  # 筛选标准
-            'prioritize_win_rate': params.get('prioritize_win_rate', True),  # 混合策略优先级
-            'training_weight': params.get('training_weight', 0.5)  # 训练期权重（2025-12-20新增）
+            'win_rate_tolerance': params.get('win_rate_tolerance', 5.0),
+            'training_weight': params.get('training_weight', 0.5)
         }
 
         total_evaluations = 0
@@ -446,10 +432,7 @@ class StepwiseSelector:
             comparison = compare_scores_with_winrate(
                 score,
                 best_score,
-                rmse_tolerance_percent=self._eval_params.get('rmse_tolerance_percent', 1.0),
-                win_rate_tolerance_percent=self._eval_params.get('win_rate_tolerance_percent', 5.0),
-                selection_criterion=self._eval_params.get('selection_criterion', 'hybrid'),
-                prioritize_win_rate=self._eval_params.get('prioritize_win_rate', True)
+                win_rate_tolerance=self._eval_params.get('win_rate_tolerance', 5.0)
             )
             if np.isfinite(score[1]) and comparison > 0:
                 best_score = score
@@ -662,10 +645,7 @@ class StepwiseSelector:
             comparison = compare_scores_with_winrate(
                 score,
                 best_score,
-                rmse_tolerance_percent=self._eval_params.get('rmse_tolerance_percent', 1.0),
-                win_rate_tolerance_percent=self._eval_params.get('win_rate_tolerance_percent', 5.0),
-                selection_criterion=self._eval_params.get('selection_criterion', 'hybrid'),
-                prioritize_win_rate=self._eval_params.get('prioritize_win_rate', True)
+                win_rate_tolerance=self._eval_params.get('win_rate_tolerance', 5.0)
             )
             if np.isfinite(score[1]) and comparison > 0:
                 best_score = score
@@ -775,10 +755,7 @@ class StepwiseSelector:
                 comparison = compare_scores_with_winrate(
                     score,
                     best_removal_score,
-                    rmse_tolerance_percent=self._eval_params.get('rmse_tolerance_percent', 1.0),
-                    win_rate_tolerance_percent=self._eval_params.get('win_rate_tolerance_percent', 5.0),
-                    selection_criterion=self._eval_params.get('selection_criterion', 'hybrid'),
-                    prioritize_win_rate=self._eval_params.get('prioritize_win_rate', True)
+                    win_rate_tolerance=self._eval_params.get('win_rate_tolerance', 5.0)
                 )
                 if np.isfinite(score[1]) and comparison > 0:
                     best_removal_score = score

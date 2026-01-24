@@ -708,60 +708,12 @@ def render_dfm_model_training_page(st_instance):
                     )
                     _state.set('dfm_min_variables_after_selection', min_vars_value)
 
-        # 筛选策略和混合优先级（筛选启用时显示）- 两列布局
+        # 胜率阈值配置（筛选启用时显示）- 简化版
         if enable_var_selection:
             st_instance.divider()
 
-            current_criterion = _state.get('dfm_selection_criterion', UIConfig.DEFAULT_SELECTION_CRITERION)
-            # 验证策略有效性
-            if current_criterion not in UIConfig.SELECTION_CRITERIA:
-                raise ValueError(f"无效的筛选策略: {current_criterion}，有效值: {list(UIConfig.SELECTION_CRITERIA.keys())}")
-
-            # 两列布局：左列筛选策略，右列混合优先级
-            selection_col1, selection_col2 = st_instance.columns(2)
-
-            with selection_col1:
-                criterion_value = st_instance.selectbox(
-                    "筛选策略",
-                    options=list(UIConfig.SELECTION_CRITERIA.keys()),
-                    format_func=lambda x: UIConfig.SELECTION_CRITERIA[x],
-                    index=UIConfig.get_safe_option_index(
-                        UIConfig.SELECTION_CRITERIA, current_criterion, UIConfig.DEFAULT_SELECTION_CRITERION
-                    ),
-                    key='dfm_selection_criterion_input',
-                    help="RMSE/胜率/混合"
-                )
-                _state.set('dfm_selection_criterion', criterion_value)
-
-            # 右列：混合优先级（仅在混合策略时显示）
-            with selection_col2:
-                if criterion_value == 'hybrid':
-                    current_priority = _state.get('dfm_hybrid_priority', UIConfig.DEFAULT_HYBRID_PRIORITY)
-                    # 验证优先级有效性
-                    if current_priority not in UIConfig.HYBRID_PRIORITIES:
-                        raise ValueError(f"无效的混合优先级: {current_priority}，有效值: {list(UIConfig.HYBRID_PRIORITIES.keys())}")
-
-                    priority_value = st_instance.selectbox(
-                        "混合优先级",
-                        options=list(UIConfig.HYBRID_PRIORITIES.keys()),
-                        format_func=lambda x: UIConfig.HYBRID_PRIORITIES[x],
-                        index=UIConfig.get_safe_option_index(
-                            UIConfig.HYBRID_PRIORITIES, current_priority, UIConfig.DEFAULT_HYBRID_PRIORITY
-                        ),
-                        key='dfm_hybrid_priority_input',
-                        help="胜率优先或RMSE优先"
-                    )
-                    _state.set('dfm_hybrid_priority', priority_value)
-
-            # 训练期权重（始终显示）+ 阈值（仅混合策略显示）
-            st_instance.divider()
-
-            if criterion_value == 'hybrid':
-                # 混合策略：三列布局
-                weight_col1, weight_col2, weight_col3 = st_instance.columns(3)
-            else:
-                # 非混合策略：单列显示训练期权重
-                weight_col1 = st_instance.container()
+            # 两列布局：训练期权重 + 胜率阈值
+            weight_col1, weight_col2 = st_instance.columns(2)
 
             with weight_col1:
                 current_weight = _state.get('dfm_training_weight', UIConfig.DEFAULT_TRAINING_WEIGHT)
@@ -776,32 +728,18 @@ def render_dfm_model_training_page(st_instance):
                 )
                 _state.set('dfm_training_weight', training_weight_value)
 
-            if criterion_value == 'hybrid':
-                with weight_col2:
-                    current_rmse_tolerance = _state.get('dfm_rmse_tolerance', UIConfig.DEFAULT_RMSE_TOLERANCE)
-                    rmse_tolerance_value = st_instance.slider(
-                        "RMSE相近阈值 (%)",
-                        min_value=UIConfig.RMSE_TOLERANCE_MIN,
-                        max_value=UIConfig.RMSE_TOLERANCE_MAX,
-                        value=float(current_rmse_tolerance),
-                        step=UIConfig.RMSE_TOLERANCE_STEP,
-                        key='dfm_rmse_tolerance_input',
-                        help="当两个模型RMSE差异小于此百分比时视为相近"
-                    )
-                    _state.set('dfm_rmse_tolerance', rmse_tolerance_value)
-
-                with weight_col3:
-                    current_win_rate_tolerance = _state.get('dfm_win_rate_tolerance', UIConfig.DEFAULT_WIN_RATE_TOLERANCE)
-                    win_rate_tolerance_value = st_instance.slider(
-                        "胜率相近阈值 (%)",
-                        min_value=UIConfig.WIN_RATE_TOLERANCE_MIN,
-                        max_value=UIConfig.WIN_RATE_TOLERANCE_MAX,
-                        value=float(current_win_rate_tolerance),
-                        step=UIConfig.WIN_RATE_TOLERANCE_STEP,
-                        key='dfm_win_rate_tolerance_input',
-                        help="当两个模型胜率差异小于此百分点时视为相近"
-                    )
-                    _state.set('dfm_win_rate_tolerance', win_rate_tolerance_value)
+            with weight_col2:
+                current_win_rate_tolerance = _state.get('dfm_win_rate_tolerance', UIConfig.DEFAULT_WIN_RATE_TOLERANCE)
+                win_rate_tolerance_value = st_instance.slider(
+                    "胜率阈值 (%)",
+                    min_value=UIConfig.WIN_RATE_TOLERANCE_MIN,
+                    max_value=UIConfig.WIN_RATE_TOLERANCE_MAX,
+                    value=float(current_win_rate_tolerance),
+                    step=UIConfig.WIN_RATE_TOLERANCE_STEP,
+                    key='dfm_win_rate_tolerance_input',
+                    help="胜率差异≤此值时视为相同胜率，选RMSE更小的模型"
+                )
+                _state.set('dfm_win_rate_tolerance', win_rate_tolerance_value)
 
     # ===== 变量选择 =====
     st_instance.markdown("--- ")

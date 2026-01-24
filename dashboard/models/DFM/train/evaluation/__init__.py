@@ -7,7 +7,6 @@
 
 # 指标计算
 from dashboard.models.DFM.train.evaluation.metrics import (
-    calculate_rmse,
     # Win Rate计算（支持不同配对模式）
     calculate_current_month_win_rate,
     calculate_next_month_win_rate,
@@ -16,7 +15,6 @@ from dashboard.models.DFM.train.evaluation.metrics import (
     calculate_aligned_rmse,
     calculate_aligned_mae,
     # 得分计算
-    calculate_combined_score_with_winrate,
     calculate_weighted_score,
     compare_scores_with_winrate
 )
@@ -25,7 +23,6 @@ from dashboard.models.DFM.train.evaluation.metrics import (
 from dashboard.models.DFM.train.core.models import MetricsResult
 
 __all__ = [
-    'calculate_rmse',
     # Win Rate
     'calculate_current_month_win_rate',
     'calculate_next_month_win_rate',
@@ -34,7 +31,6 @@ __all__ = [
     'calculate_aligned_rmse',
     'calculate_aligned_mae',
     # 得分计算
-    'calculate_combined_score_with_winrate',
     'calculate_weighted_score',
     'compare_scores_with_winrate',
     'MetricsResult',

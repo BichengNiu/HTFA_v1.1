@@ -137,22 +137,14 @@ class TrainingConfigBuilder:
         # 6. 获取目标变量配对模式（2025-12新增）
         target_alignment_mode = self._get_required('dfm_target_alignment_mode')
 
-        # 7. 获取筛选策略配置（2025-12-20新增）
-        selection_criterion = 'hybrid'
-        prioritize_win_rate = True
+        # 7. 获取胜率阈值配置（2025-01简化）
+        win_rate_tolerance = 5.0
         training_weight = 0.5
 
         if enable_var_selection:
-            selection_criterion = self._get_required('dfm_selection_criterion')
+            win_rate_tolerance = self._get_required('dfm_win_rate_tolerance')
             training_weight_pct = self._get_required('dfm_training_weight')
             training_weight = training_weight_pct / 100.0  # 转换为0-1范围
-
-            # 转换为后端参数
-            if selection_criterion == 'hybrid':
-                hybrid_priority = self._get_required('dfm_hybrid_priority')
-                prioritize_win_rate = (hybrid_priority == 'win_rate_first')
-            else:
-                prioritize_win_rate = None  # 纯策略不需要此参数
 
         # 7.8 algorithm已在步骤2中获取（用于计算train_end_date）
 
@@ -203,16 +195,11 @@ class TrainingConfigBuilder:
             # 目标变量配对模式（2025-12新增）
             'target_alignment_mode': target_alignment_mode,
 
-            # 筛选策略配置（2025-12-20新增）
-            'selection_criterion': selection_criterion,
-            'prioritize_win_rate': prioritize_win_rate,
+            # 胜率阈值配置（2025-01简化）
+            'win_rate_tolerance': win_rate_tolerance,
 
             # 训练期权重配置（2025-12-20新增）
             'training_weight': training_weight,
-
-            # 容忍度配置（2026-01新增）
-            'rmse_tolerance_percent': self._get_required('dfm_rmse_tolerance') if enable_var_selection else 1.0,
-            'win_rate_tolerance_percent': self._get_required('dfm_win_rate_tolerance') if enable_var_selection else 5.0,
 
             # 算法选择（2025-12-21新增）
             'algorithm': algorithm,
