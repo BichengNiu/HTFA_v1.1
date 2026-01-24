@@ -26,8 +26,6 @@ class DataPrepStateKeys:
 
     # 参数配置
     PARAM_TARGET_FREQ = f'{PREFIX}.param_target_freq'
-    PARAM_REMOVE_CONSECUTIVE_NANS = f'{PREFIX}.param_remove_consecutive_nans'
-    PARAM_CONSECUTIVE_NAN_THRESHOLD = f'{PREFIX}.param_consecutive_nan_threshold'
     PARAM_TYPE_MAPPING_SHEET = f'{PREFIX}.param_type_mapping_sheet'
     PARAM_DATA_START_DATE = f'{PREFIX}.param_data_start_date'
     PARAM_DATA_END_DATE = f'{PREFIX}.param_data_end_date'

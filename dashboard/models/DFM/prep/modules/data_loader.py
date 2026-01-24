@@ -78,6 +78,12 @@ class DataLoader:
         if df_numeric.empty or df_numeric.isnull().all().all():
             raise ValueError(f"Sheet '{sheet_name}' 转换后数据为空或全为NaN")
 
+        # 确保时间索引按升序排列（从旧到新）
+        if not df_numeric.index.is_monotonic_increasing:
+            logger.info("检测到 '%s' 的时间索引为倒序，正在转换为升序...", sheet_name)
+            df_numeric = df_numeric.sort_index(ascending=True)
+            logger.info("时间索引已转换为升序: %s 到 %s", df_numeric.index[0], df_numeric.index[-1])
+
         logger.info("Sheet '%s' (%s, %s) 加载完成。Shape: %s", sheet_name, industry_name, freq_type, df_numeric.shape)
 
         return df_numeric

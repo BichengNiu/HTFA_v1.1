@@ -51,7 +51,6 @@ class DataPreparationProcessor:
         var_industry_map: Dict[str, str],
         var_frequency_map: Dict[str, str],
         target_freq: str = 'W-FRI',
-        consecutive_nan_threshold: int = 10,
         data_start_date: Optional[str] = None,
         data_end_date: Optional[str] = None,
         enable_borrowing: bool = True,
@@ -70,7 +69,6 @@ class DataPreparationProcessor:
             var_industry_map: 变量-行业映射字典（从指标字典加载）
             var_frequency_map: 变量-频率映射字典（从指标字典加载）
             target_freq: 目标频率，默认'W-FRI'
-            consecutive_nan_threshold: 连续缺失值阈值
             data_start_date: 数据起始日期
             data_end_date: 数据结束日期
             enable_borrowing: 是否启用数据借调，默认True
@@ -94,7 +92,6 @@ class DataPreparationProcessor:
         self.var_industry_map = var_industry_map
         self.var_frequency_map = var_frequency_map
         self.target_freq = target_freq
-        self.consecutive_nan_threshold = consecutive_nan_threshold
         self.data_start_date = standardize_date(data_start_date)
         self.data_end_date = standardize_date(data_end_date)
         self.enable_borrowing = enable_borrowing
@@ -431,7 +428,6 @@ class DataPreparationProcessor:
         aligned_data, all_borrowing_log, removal_log = parallel_process_frequencies(
             data_by_freq=data_by_freq,
             target_level=target_level,
-            consecutive_nan_threshold=self.consecutive_nan_threshold,
             data_start_date=self.data_start_date,
             data_end_date=self.data_end_date,
             target_freq=self.target_freq,
@@ -473,20 +469,6 @@ class DataPreparationProcessor:
             combined_df = self.data_cleaner.remove_duplicate_columns(combined_df, f"[{freq_name}] ")
             self.removal_log.extend(self.data_cleaner.get_removed_variables_log())
             self.data_cleaner.clear_log()
-
-            # 检测连续缺失值（在原始频率上检测）
-            if self.consecutive_nan_threshold:
-                cleaned_df = self.data_cleaner.handle_consecutive_nans(
-                    combined_df,
-                    self.consecutive_nan_threshold,
-                    f"[{freq_name}原始频率] ",
-                    self.data_start_date,
-                    self.data_end_date
-                )
-                self.removal_log.extend(self.data_cleaner.get_removed_variables_log())
-                self.data_cleaner.clear_log()
-            else:
-                cleaned_df = combined_df
 
             if not cleaned_df.empty:
                 result_data[freq_name] = cleaned_df
@@ -619,7 +601,6 @@ class DataPreparationProcessor:
             'target_freq': self.target_freq,
             'data_start_date': self.data_start_date,
             'data_end_date': self.data_end_date,
-            'consecutive_nan_threshold': self.consecutive_nan_threshold,
             'final_shape': final_df.shape,
             'processing_time': datetime.now().isoformat(),
             'borrowing_log': borrowing_log or {}

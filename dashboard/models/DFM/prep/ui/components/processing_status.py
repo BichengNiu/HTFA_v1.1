@@ -215,7 +215,7 @@ class ProcessingStatusComponent(DFMComponent):
     def _get_all_processing_params(self) -> Dict[str, Any]:
         """
         获取所有处理参数
-        
+
         Returns:
             处理参数字典
         """
@@ -224,8 +224,6 @@ class ProcessingStatusComponent(DFMComponent):
             'target_freq': self._get_state('dfm_param_target_freq', 'W-FRI'),
             'target_sheet_name': self._get_state('dfm_param_target_sheet_name', ''),
             'target_variable': self._get_state('dfm_param_target_variable', ''),
-            'consecutive_nan_threshold': self._get_state('dfm_param_consecutive_nan_threshold', 10),
-            'remove_consecutive_nans': self._get_state('dfm_param_remove_consecutive_nans', True),
             'data_start_date': self._get_state('dfm_param_data_start_date', '2020-01-01'),
             'data_end_date': self._get_state('dfm_param_data_end_date', '2025-04-30'),
             'type_mapping_sheet': self._get_state('dfm_param_type_mapping_sheet', '指标字典')
@@ -253,20 +251,11 @@ class ProcessingStatusComponent(DFMComponent):
             
             # 更新进度：开始处理
             self._update_processing_progress(progress_bar, status_text, 10, "[CONFIG] 正在准备数据处理...")
-            
+
             # 准备文件对象
             file_bytes = uploaded_file.getvalue()
             excel_file_like_object = io.BytesIO(file_bytes)
-            
-            # 处理NaN阈值
-            nan_threshold_int = None
-            if processing_params['remove_consecutive_nans']:
-                try:
-                    nan_threshold_int = int(processing_params['consecutive_nan_threshold'])
-                except (ValueError, TypeError):
-                    logger.warning("连续NaN阈值无效，将忽略此设置")
-                    nan_threshold_int = None
-            
+
             # 更新进度：执行预处理
             self._update_processing_progress(progress_bar, status_text, 30, "[CONFIG] 正在执行数据预处理...")
 
@@ -277,7 +266,6 @@ class ProcessingStatusComponent(DFMComponent):
                 data_start_date=str(processing_params['data_start_date']),
                 data_end_date=str(processing_params['data_end_date']),
                 target_freq=processing_params['target_freq'],
-                consecutive_nan_threshold=nan_threshold_int,
                 reference_sheet_name=processing_params['type_mapping_sheet']
             )
 
@@ -293,11 +281,7 @@ class ProcessingStatusComponent(DFMComponent):
                 
                 # 更新进度：分析结果
                 self._update_processing_progress(progress_bar, status_text, 80, "[INFO] 正在处理结果数据...")
-                
-                # 分析移除的变量
-                if removed_variables_detailed_log:
-                    self._analyze_removed_variables(st, removed_variables_detailed_log, nan_threshold_int)
-                
+
                 # 加载映射数据（不影响主要数据处理流程）
                 try:
                     mapping_file = excel_file_like_object
@@ -363,24 +347,15 @@ class ProcessingStatusComponent(DFMComponent):
         except Exception as e:
             logger.error(f"更新进度失败: {e}")
     
-    def _analyze_removed_variables(self, st_obj, removed_variables_log: List[Dict], 
-                                 nan_threshold: Optional[int]) -> None:
+    def _analyze_removed_variables(self, st_obj, removed_variables_log: List[Dict]) -> None:
         """
         分析移除的变量
-        
+
         Args:
             st_obj: Streamlit对象
             removed_variables_log: 移除变量日志
-            nan_threshold: NaN阈值
         """
         try:
-            # 统计连续NaN移除的变量
-            nan_removed = [item for item in removed_variables_log 
-                          if 'consecutive_nan' in item.get('Reason', '').lower()]
-            
-            if nan_removed and nan_threshold is not None:
-                st_obj.info(f"注意: {len(nan_removed)} 个变量因连续缺失值 ≥ {nan_threshold} 被移除。")
-            
             # 显示详细的移除信息
             if len(removed_variables_log) > 0:
                 with st_obj.expander("[VIEW] 查看被移除的变量详情", expanded=False):
@@ -390,14 +365,11 @@ class ProcessingStatusComponent(DFMComponent):
                         if reason not in removal_reasons:
                             removal_reasons[reason] = []
                         removal_reasons[reason].append(item.get('Variable', 'unknown'))
-                    
+
                     for reason, vars_list in removal_reasons.items():
                         st_obj.write(f"**{reason}**: {len(vars_list)} 个变量")
-                        if 'consecutive_nan' in reason.lower():
-                            st_obj.error(f"因连续缺失值过多被移除: {vars_list[:10]}")
-                        else:
-                            st_obj.write(f"变量: {vars_list[:5]}")
-                            
+                        st_obj.write(f"变量: {vars_list[:5]}")
+
         except Exception as e:
             logger.error(f"分析移除变量失败: {e}")
     
