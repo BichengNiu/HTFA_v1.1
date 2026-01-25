@@ -3,7 +3,7 @@
 统一数据模型定义
 
 整合所有train模块使用的数据类，确保类型一致性和可维护性
-经典DFM模型：所有变量平等参与因子提取，无目标变量概念
+支持目标变量概念：变量选择基于目标变量的重构RMSE
 """
 
 import numpy as np
@@ -16,12 +16,14 @@ from typing import List, Dict, Tuple, Optional
 
 @dataclass
 class EvaluationMetrics:
-    """评估指标（经典DFM版）
+    """评估指标
 
-    基于模型拟合质量的评估指标，只保留重构RMSE作为唯一评估指标。
+    基于目标变量重构RMSE的评估指标，用于变量选择和模型评估。
     """
-    # 模型拟合指标
-    reconstruction_rmse: float = np.inf   # 重构RMSE（越小越好）
+    # 目标变量RMSE指标
+    target_rmse: float = np.inf           # 目标变量训练期RMSE
+    target_rmse_validation: float = np.inf  # 目标变量验证期RMSE
+    weighted_target_rmse: float = np.inf  # 加权目标变量RMSE
 
     # 收敛信息
     converged: bool = False
@@ -30,7 +32,9 @@ class EvaluationMetrics:
     def to_dict(self) -> Dict[str, float]:
         """转换为字典"""
         return {
-            'reconstruction_rmse': self.reconstruction_rmse,
+            'target_rmse': self.target_rmse,
+            'target_rmse_validation': self.target_rmse_validation,
+            'weighted_target_rmse': self.weighted_target_rmse,
             'converged': self.converged,
             'iterations': self.iterations
         }
@@ -40,7 +44,7 @@ class EvaluationMetrics:
 
 @dataclass
 class DFMModelResult:
-    """DFM模型完整结果（经典版，无目标变量）
+    """DFM模型完整结果
 
     整合了原DFMResults和DFMModelResult的功能，
     提供统一的数据模型，避免重复和转换开销。

@@ -16,7 +16,7 @@ class TrainingConfig:
     """完整训练配置
 
     包含DFM模型训练所需的全部配置参数,与trainer.py配合使用
-    经典DFM模型：所有变量平等参与因子提取，无目标变量概念
+    支持目标变量概念：变量选择基于目标变量的重构RMSE
     """
     # ========== 必填字段（无默认值） ==========
     # 核心配置
@@ -46,6 +46,10 @@ class TrainingConfig:
     enable_variable_selection: bool = False
     variable_selection_method: str = 'backward'
     min_variables_after_selection: int = 1
+
+    # 目标变量配置（变量选择时使用）
+    target_variable: Optional[str] = None  # 目标变量名称
+    training_weight: float = 0.5  # 训练期权重 (0.0-1.0)，0=仅验证期，1=仅训练期
 
     # 因子数选择配置
     factor_selection_method: str = 'fixed'  # fixed, cumulative, kaiser
@@ -132,6 +136,13 @@ class TrainingConfig:
                     f"variable_selection_method必须是{valid_selection_methods}之一,"
                     f"当前值: {self.variable_selection_method}"
                 )
+            # 验证目标变量配置
+            if not self.target_variable:
+                raise ValueError("启用变量选择时必须指定target_variable")
+
+        # 验证训练期权重范围
+        if not 0.0 <= self.training_weight <= 1.0:
+            raise ValueError(f"training_weight必须在[0,1]范围内，当前值: {self.training_weight}")
 
         # 验证并行配置
         if self.n_jobs == 0:

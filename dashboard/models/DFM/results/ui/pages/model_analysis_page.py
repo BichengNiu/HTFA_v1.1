@@ -262,7 +262,113 @@ def _add_period_annotation(fig, start_str: str, end_str: str, label: str,
 
 def _render_nowcast_chart(st, accessor: DFMMetadataAccessor, is_ddfm: bool) -> None:
     """
-    渲染Nowcast vs 实际值图表
+    渲染Nowcast图表入口函数
+
+    根据是否有目标变量，分发到不同的渲染函数：
+    - 有目标变量（监督模型）：显示 Nowcast vs 目标变量
+    - 无目标变量（无监督模型）：显示变量的原始值 vs 重构值对比
+
+    Args:
+        st: Streamlit模块
+        accessor: 元数据访问器
+        is_ddfm: 是否为DDFM模型
+    """
+    training_info = accessor.training_info
+    target_variable = training_info.target_variable
+
+    if target_variable:
+        _render_supervised_nowcast_chart(st, accessor, is_ddfm)
+    else:
+        _render_unsupervised_reconstruction_chart(st, accessor, is_ddfm)
+
+
+def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor, is_ddfm: bool) -> None:
+    """
+    渲染无监督模型的变量重构效果图
+
+    Args:
+        st: Streamlit模块
+        accessor: 元数据访问器
+        is_ddfm: 是否为DDFM模型
+    """
+    # 获取数据
+    prepared_data = accessor.get('prepared_data')
+    factor_loadings_df = accessor.factor_loadings_df
+    factor_series = accessor.factor_series
+
+    if prepared_data is None or factor_loadings_df is None or factor_series is None:
+        st.warning("缺少重构所需数据（prepared_data/factor_loadings_df/factor_series）")
+        return
+
+    # 获取可选变量列表（与模型使用的变量一致）
+    model_variables = factor_loadings_df.index.tolist()
+    available_vars = [v for v in model_variables if v in prepared_data.columns]
+
+    if not available_vars:
+        st.warning("没有可用于重构对比的变量")
+        return
+
+    # 用户选择变量
+    selected_var = st.selectbox(
+        "选择变量查看重构效果",
+        options=available_vars,
+        key="reconstruction_var_select"
+    )
+
+    # 计算重构值
+    H = factor_loadings_df.loc[available_vars].values  # (n_vars, k_factors)
+    factors = factor_series.values  # (T, k_factors)
+    reconstructed_all = factors @ H.T  # (T, n_vars)
+
+    var_idx = available_vars.index(selected_var)
+    reconstructed_series = reconstructed_all[:, var_idx]
+
+    # 获取原始值（去均值后）
+    original_data = prepared_data[selected_var].values
+    original_mean = np.nanmean(original_data)
+    original_centered = original_data - original_mean
+
+    # 对齐时间索引
+    time_index = factor_series.index
+    min_len = min(len(time_index), len(original_centered), len(reconstructed_series))
+
+    comparison_df = pd.DataFrame({
+        '原始值': original_centered[:min_len],
+        '重构值': reconstructed_series[:min_len]
+    }, index=time_index[:min_len])
+
+    # 绘制图表
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=comparison_df.index, y=comparison_df['原始值'],
+        mode='lines', name='原始值（去均值）', line=dict(color='red')
+    ))
+    fig.add_trace(go.Scatter(
+        x=comparison_df.index, y=comparison_df['重构值'],
+        mode='lines', name='重构值', line=dict(color='blue')
+    ))
+
+    fig.update_layout(
+        title=dict(text=f'{selected_var} 重构效果对比', x=0.5),
+        xaxis_title="", yaxis_title="值",
+        legend=dict(orientation="h", y=-0.2, x=0.5, xanchor="center"),
+        height=500
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # 下载按钮
+    csv_data = comparison_df.to_csv(index=True).encode('utf-8-sig')
+    st.download_button(
+        label="数据下载", data=csv_data,
+        file_name=f"{selected_var}_重构对比.csv", mime="text/csv",
+        key="download_reconstruction_comparison"
+    )
+
+
+def _render_supervised_nowcast_chart(st, accessor: DFMMetadataAccessor, is_ddfm: bool) -> None:
+    """
+    渲染监督模型的Nowcast vs 实际值图表
 
     Args:
         st: Streamlit模块
@@ -272,9 +378,6 @@ def _render_nowcast_chart(st, accessor: DFMMetadataAccessor, is_ddfm: bool) -> N
     complete_aligned_table = accessor.complete_aligned_table
     training_info = accessor.training_info
     target_variable_name_for_plot = training_info.target_variable
-
-    if not target_variable_name_for_plot:
-        raise KeyError("元数据中缺少'target_variable'字段")
 
     if complete_aligned_table is not None and isinstance(complete_aligned_table, pd.DataFrame) and not complete_aligned_table.empty:
         logger.info("[SUCCESS] 使用pickle文件中的complete_aligned_table数据")

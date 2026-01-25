@@ -45,7 +45,7 @@ class MetricsPanel:
         formatter: Optional[Callable] = None
     ) -> None:
         """
-        渲染某个时期的三个指标（MAE、RMSE、胜率）
+        渲染某个时期的两个指标（MAE、RMSE）
 
         Args:
             label: 时期标签（如"训练期"、"验证期"）
@@ -55,13 +55,11 @@ class MetricsPanel:
         if formatter is None:
             formatter = DFMMetadataAccessor.format_metric
 
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
         with col1:
             st.metric(f"{label}MAE", formatter(metrics.mae))
         with col2:
             st.metric(f"{label}RMSE", formatter(metrics.rmse))
-        with col3:
-            st.metric(f"{label}胜率", formatter(metrics.hit_rate, is_percent=True))
 
     @staticmethod
     def render_all_metrics(accessor: DFMMetadataAccessor) -> None:
@@ -115,7 +113,8 @@ class TrainingInfoPanel:
             st.text(f"开始: {info.validation_start}")
             st.text(f"结束: {info.validation_end}")
 
-        st.markdown(f"**目标变量**: {info.target_variable}")
+        if info.target_variable:
+            st.markdown(f"**目标变量**: {info.target_variable}")
         st.markdown(f"**估计方法**: {info.estimation_method}")
 
         st.markdown("---")

@@ -5,10 +5,10 @@
 生成用户可读的训练信息文本文件，包含：
 - 变量信息
 - 模型参数
-- 评估指标（只保留重构RMSE）
+- 评估指标（目标变量RMSE）
 - 训练统计
 
-经典DFM模型：所有变量平等参与因子提取，无目标变量概念
+支持目标变量概念：变量选择基于目标变量的加权RMSE
 """
 
 from typing import Optional
@@ -22,7 +22,7 @@ def generate_training_summary(
     timestamp: Optional[str] = None
 ) -> str:
     """
-    生成训练摘要文本（经典DFM版）
+    生成训练摘要文本
 
     Args:
         result: 训练结果对象（TrainingResult）
@@ -46,7 +46,7 @@ def generate_training_summary(
     lines.append(f"算法类型: {'深度学习DFM (DDFM)' if is_ddfm else '经典DFM (EM算法)'}")
     lines.append("")
 
-    # 变量信息（经典DFM：所有变量平等参与因子提取）
+    # 变量信息
     lines.append("[变量信息]")
     initial_indicators = config.selected_indicators
     lines.append(f"  进入训练的变量数: {len(initial_indicators)}")
@@ -54,6 +54,13 @@ def generate_training_summary(
         lines.append("  进入训练的变量明细:")
         for var in initial_indicators:
             lines.append(f"    - {var}")
+
+    # 目标变量信息
+    target_var = getattr(config, 'target_variable', None)
+    if target_var:
+        lines.append(f"  目标变量: {target_var}")
+        training_weight = getattr(config, 'training_weight', 0.5)
+        lines.append(f"  训练期权重: {training_weight:.0%}")
 
     lines.append("")
     final_variables = result.selected_variables
@@ -97,17 +104,31 @@ def generate_training_summary(
     lines.append(f"  验证期: {config.validation_start} 至 {config.validation_end}")
     lines.append("")
 
-    # 评估指标（只保留重构RMSE）
+    # 评估指标（目标变量RMSE）
     lines.append("[模型拟合指标]")
     if result.metrics:
         metrics = result.metrics
 
-        # 重构RMSE
-        reconstruction_rmse = metrics.reconstruction_rmse
-        if reconstruction_rmse is not None and np.isfinite(reconstruction_rmse):
-            lines.append(f"  重构RMSE: {reconstruction_rmse:.4f}")
+        # 目标变量训练期RMSE
+        target_rmse = getattr(metrics, 'target_rmse', None)
+        if target_rmse is not None and np.isfinite(target_rmse):
+            lines.append(f"  目标变量训练期RMSE: {target_rmse:.4f}")
         else:
-            lines.append("  重构RMSE: N/A")
+            lines.append("  目标变量训练期RMSE: N/A")
+
+        # 目标变量验证期RMSE
+        target_rmse_val = getattr(metrics, 'target_rmse_validation', None)
+        if target_rmse_val is not None and np.isfinite(target_rmse_val):
+            lines.append(f"  目标变量验证期RMSE: {target_rmse_val:.4f}")
+        else:
+            lines.append("  目标变量验证期RMSE: N/A")
+
+        # 加权RMSE
+        weighted_rmse = getattr(metrics, 'weighted_target_rmse', None)
+        if weighted_rmse is not None and np.isfinite(weighted_rmse):
+            lines.append(f"  加权目标变量RMSE: {weighted_rmse:.4f}")
+        else:
+            lines.append("  加权目标变量RMSE: N/A")
 
         # 收敛信息
         lines.append(f"  模型收敛: {'是' if metrics.converged else '否'}")

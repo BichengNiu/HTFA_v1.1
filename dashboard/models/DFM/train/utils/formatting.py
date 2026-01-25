@@ -63,24 +63,21 @@ def format_training_summary(result: TrainingResult) -> str:
     Returns:
         str: 格式化的摘要字符串
     """
+    # 获取目标变量RMSE（优先使用加权RMSE）
+    weighted_rmse = getattr(result.metrics, 'weighted_target_rmse', np.inf)
+    target_rmse = getattr(result.metrics, 'target_rmse', np.inf)
+    rmse_value = weighted_rmse if np.isfinite(weighted_rmse) else target_rmse
+
     lines = [
         "========== 最终模型 ==========",
-        f"最终变量数: {len(result.selected_variables) - 1}",
+        f"最终变量数: {len(result.selected_variables)}",
         f"因子数: {result.k_factors}",
-        f"训练期RMSE: {result.metrics.is_rmse:.4f}",
+        f"目标变量RMSE: {rmse_value:.4f}",
+        f"模型收敛: {'是' if result.metrics.converged else '否'}",
+        f"迭代次数: {result.metrics.iterations}",
+        f"训练时间: {result.training_time:.2f}秒",
+        "============================",
     ]
-
-    # 经典DFM：显示验证期RMSE（用于变量选择）
-    if result.metrics.oos_rmse != np.inf:
-        lines.append(f"验证期RMSE: {result.metrics.oos_rmse:.4f}")
-
-    # 观察期RMSE（两种模型都显示）
-    if result.metrics.obs_rmse != np.inf:
-        lines.append(f"观察期RMSE: {result.metrics.obs_rmse:.4f}")
-
-    lines.append(f"训练时间: {result.training_time:.2f}秒")
-    lines.append("============================")
-
     return "\n" + "\n".join(lines) + "\n"
 
 
