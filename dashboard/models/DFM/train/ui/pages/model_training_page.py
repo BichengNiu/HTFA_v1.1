@@ -1027,13 +1027,15 @@ def render_dfm_model_training_page(st_instance):
                     export_dir=None
                 )
 
-                # 处理训练结果并保存（经典DFM版，只保留重构RMSE）
+                # 处理训练结果并保存（支持目标变量RMSE）
                 result_summary = {
                     'algorithm': algorithm_value,  # 保存算法类型
                     'selected_variables': result.selected_variables,
                     'k_factors': result.k_factors,
                     'metrics': {
-                        'reconstruction_rmse': result.metrics.reconstruction_rmse if result.metrics else None,
+                        'target_rmse': result.metrics.target_rmse if result.metrics else None,
+                        'target_rmse_validation': result.metrics.target_rmse_validation if result.metrics else None,
+                        'weighted_target_rmse': result.metrics.weighted_target_rmse if result.metrics else None,
                     },
                     'training_time': result.training_time
                 }
@@ -1057,10 +1059,16 @@ def render_dfm_model_training_page(st_instance):
                 ]
 
                 if metrics_obj:
-                    # 经典DFM：只显示重构RMSE
-                    reconstruction_rmse = metrics_obj.reconstruction_rmse
-                    if reconstruction_rmse is not None and not (np.isnan(reconstruction_rmse) or np.isinf(reconstruction_rmse)):
-                        new_log_entries.append(f"[METRICS] 重构RMSE: {reconstruction_rmse:.4f}")
+                    # 显示目标变量RMSE
+                    target_rmse = metrics_obj.target_rmse
+                    if target_rmse is not None and not (np.isnan(target_rmse) or np.isinf(target_rmse)):
+                        new_log_entries.append(f"[METRICS] 目标变量训练期RMSE: {target_rmse:.4f}")
+                    target_rmse_val = metrics_obj.target_rmse_validation
+                    if target_rmse_val is not None and not (np.isnan(target_rmse_val) or np.isinf(target_rmse_val)):
+                        new_log_entries.append(f"[METRICS] 目标变量验证期RMSE: {target_rmse_val:.4f}")
+                    weighted_rmse = metrics_obj.weighted_target_rmse
+                    if weighted_rmse is not None and not (np.isnan(weighted_rmse) or np.isinf(weighted_rmse)):
+                        new_log_entries.append(f"[METRICS] 加权目标变量RMSE: {weighted_rmse:.4f}")
 
                 training_log = _state.get('dfm_training_log', [])
                 _state.set('dfm_training_log', training_log + new_log_entries)

@@ -58,19 +58,17 @@ def load_dfm_results_from_uploads(loaded_model_object, loaded_metadata_object):
 
     logger.info("检查并加载评估指标")
 
-    # 检查元数据中是否包含训练模块计算的标准指标
-    standard_metric_keys = ['is_rmse', 'oos_rmse', 'is_mae', 'oos_mae', 'is_win_rate', 'oos_win_rate']
-    has_standard_metrics = all(key in metadata for key in standard_metric_keys)
+    # 检查元数据中是否包含必要的重构指标（无监督模型只有RMSE和MAE）
+    required_metric_keys = ['is_rmse', 'oos_rmse', 'is_mae', 'oos_mae']
+    has_standard_metrics = all(key in metadata for key in required_metric_keys)
 
-    # 添加调试日志：输出元数据中实际包含的键
-    logger.info(f"元数据中包含的指标相关键: {[k for k in metadata.keys() if any(x in k for x in ['rmse', 'mae', 'win_rate'])]}")
+    logger.info(f"元数据中包含的指标键: {[k for k in metadata.keys() if any(x in k for x in ['rmse', 'mae'])]}")
 
     if not has_standard_metrics:
         raise ValueError("元数据中缺少必要的性能指标，请使用最新版本的训练模块重新训练模型")
 
     logger.info("发现训练模块计算的标准指标，直接使用...")
-    logger.info(f"已加载标准指标: IS胜率={_safe_format(metadata['is_win_rate'])}%, OOS胜率={_safe_format(metadata['oos_win_rate'])}%")
-    logger.info(f"                 IS_RMSE={_safe_format(metadata['is_rmse'], '.4f')}, OOS_RMSE={_safe_format(metadata['oos_rmse'], '.4f')}")
+    logger.info(f"已加载标准指标: IS_RMSE={_safe_format(metadata['is_rmse'], '.4f')}, OOS_RMSE={_safe_format(metadata['oos_rmse'], '.4f')}")
     logger.info(f"                 IS_MAE={_safe_format(metadata['is_mae'], '.4f')}, OOS_MAE={_safe_format(metadata['oos_mae'], '.4f')}")
 
     return model, metadata, load_errors

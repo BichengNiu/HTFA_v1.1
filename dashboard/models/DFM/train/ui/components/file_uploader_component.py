@@ -290,26 +290,10 @@ class FileUploaderComponent:
                     for k, v in zip(industry_map_df['指标名称'], industry_map_df['目标变量'])
                     if pd.notna(k) and pd.notna(v) and str(v).strip() == '是'
                 }
-                print(f"[模型训练] 目标变量标记: {len(target_map)}个")
-
-                if len(target_map) == 0:
-                    st_instance.error("映射表'目标变量'列中未标记任何变量。请在'目标变量'列中标记至少一个变量为'是'。")
-                    return None, {}, {}, {}, {}
+                print(f"[模型训练] Excel中标记的目标变量: {len(target_map)}个（仅作为默认值参考，实际目标变量在UI中选择）")
             else:
-                st_instance.error("映射表格式错误：缺少'目标变量'列。请重新运行数据准备模块导出最新版本的Excel文件。")
-                with st_instance.expander("查看解决方法"):
-                    st_instance.markdown("""
-                    **解决步骤：**
-                    1. 切换到"数据准备"页面
-                    2. 重新上传原始数据文件并运行数据处理
-                    3. 导出新的Excel文件（将包含'目标变量'列）
-                    4. 返回此页面，上传新导出的Excel文件
-
-                    **说明：**
-                    - '目标变量'列用于标记DFM模型的预测目标
-                    - 不再支持旧的'二阶段目标'列名，请使用最新格式
-                    """)
-                return None, {}, {}, {}, {}
+                # 目标变量列是可选的，目标变量在UI中选择
+                print("[模型训练] Excel中无'目标变量'列，目标变量将在UI中选择")
 
             # 解析频率映射（必需）
             if '频率' not in industry_map_df.columns:

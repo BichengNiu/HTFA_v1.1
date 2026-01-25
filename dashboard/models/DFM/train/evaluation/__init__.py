@@ -2,12 +2,13 @@
 """
 评估层
 
-模型评估指标计算（只保留重构RMSE）
+模型评估指标计算（目标变量RMSE）
 """
 
 # 指标计算
 from dashboard.models.DFM.train.evaluation.metrics import (
-    calculate_reconstruction_rmse,
+    calculate_target_reconstruction_rmse,
+    calculate_weighted_rmse,
     evaluate_dfm_model,
     compare_model_scores
 )
@@ -16,7 +17,8 @@ from dashboard.models.DFM.train.evaluation.metrics import (
 from dashboard.models.DFM.train.core.models import EvaluationMetrics
 
 __all__ = [
-    'calculate_reconstruction_rmse',
+    'calculate_target_reconstruction_rmse',
+    'calculate_weighted_rmse',
     'evaluate_dfm_model',
     'compare_model_scores',
     'EvaluationMetrics',

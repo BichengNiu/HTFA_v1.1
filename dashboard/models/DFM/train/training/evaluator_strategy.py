@@ -3,18 +3,18 @@
 DFM评估策略 - 函数式接口
 
 提供简洁的函数式接口创建DFM评估器
-经典DFM模型：所有变量平等参与因子提取，无目标变量概念
+支持目标变量概念：变量选择基于目标变量的加权RMSE
 
 重构说明:
 - 将闭包函数改为模块级顶层函数,解决pickle序列化问题
 - 通过参数显式传递config数据,而非闭包捕获
 - 保持API兼容性
-- 使用重构RMSE作为唯一评估标准（越小越好）
+- 使用目标变量加权RMSE作为评估标准（越小越好）
 """
 
 import numpy as np
 import pandas as pd
-from typing import List, Callable, Dict
+from typing import List, Callable, Dict, Optional
 from dashboard.models.DFM.train.utils.logger import get_logger
 from dashboard.models.DFM.train.training.model_ops import train_dfm_model, evaluate_model_fit
 from dashboard.models.DFM.train.core.pca_utils import compute_optimal_k_factors
@@ -32,6 +32,10 @@ def _evaluate_variable_selection_model(
     train_end: str,
     max_iterations: int,
     tolerance: float,
+    target_variable: str,
+    validation_start: str,
+    validation_end: str,
+    training_weight: float = 0.5,
     factor_selection_method: str = 'fixed',
     pca_threshold: float = 0.9,
     kaiser_threshold: float = 1.0
@@ -47,12 +51,16 @@ def _evaluate_variable_selection_model(
         train_end: 训练结束日期
         max_iterations: 最大迭代次数
         tolerance: 容差
+        target_variable: 目标变量名称
+        validation_start: 验证期开始日期
+        validation_end: 验证期结束日期
+        training_weight: 训练期权重 (0.0-1.0)
         factor_selection_method: 因子选择方法 ('fixed', 'cumulative', 'kaiser')
         pca_threshold: PCA累积方差阈值（method='cumulative'时使用）
         kaiser_threshold: Kaiser特征值阈值（method='kaiser'时使用）
 
     Returns:
-        float: 重构RMSE（越小越好）
+        float: 加权目标变量RMSE（越小越好）
 
     Note:
         当factor_selection_method!='fixed'时，会基于当前变量集动态计算最优k_factors。
@@ -97,16 +105,20 @@ def _evaluate_variable_selection_model(
             progress_callback=None
         )
 
-        # 评估模型拟合质量
+        # 评估模型拟合质量（使用目标变量和验证期）
         metrics = evaluate_model_fit(
             model_result=model_result,
             observation_data=observation_data,
             training_start=training_start,
-            train_end=train_end
+            train_end=train_end,
+            target_variable=target_variable,
+            validation_start=validation_start,
+            validation_end=validation_end,
+            training_weight=training_weight
         )
 
-        # 返回重构RMSE（越小越好）
-        return metrics.reconstruction_rmse
+        # 返回加权目标变量RMSE（越小越好）
+        return metrics.weighted_target_rmse
 
     except Exception as e:
         logger.exception(f"[VarSelectionEvaluator] 评估失败: {e}")
@@ -119,7 +131,7 @@ def create_variable_selection_evaluator(config: 'TrainingConfig') -> Callable:
     """
     创建变量筛选专用评估器（函数式接口）
 
-    使用重构RMSE作为评估指标（越小越好），专门用于变量筛选阶段。
+    使用加权目标变量RMSE作为评估指标（越小越好），专门用于变量筛选阶段。
 
     重构后：返回一个lambda包装器，调用可序列化的顶层函数。
 
@@ -134,11 +146,11 @@ def create_variable_selection_evaluator(config: 'TrainingConfig') -> Callable:
             variables: 变量列表
             **kwargs: 必需参数
                 - full_data: pd.DataFrame
-                - params: Dict (必须包含 k_factors)
+                - params: Dict (必须包含 k_factors, target_variable, validation_start, validation_end)
                 - max_iter: int (可选，默认使用config.max_iterations)
 
         Returns:
-            float: 重构RMSE（越小越好）
+            float: 加权目标变量RMSE（越小越好）
         """
         # 验证必需参数
         full_data = kwargs.get('full_data')
@@ -155,6 +167,12 @@ def create_variable_selection_evaluator(config: 'TrainingConfig') -> Callable:
         k_factors = params['k_factors']
         max_iterations = kwargs.get('max_iter', config.max_iterations)
 
+        # 获取目标变量和验证期参数
+        target_variable = params.get('target_variable', config.target_variable)
+        validation_start = params.get('validation_start', config.validation_start)
+        validation_end = params.get('validation_end', config.validation_end)
+        training_weight = params.get('training_weight', config.training_weight)
+
         # 调用可序列化的顶层函数
         return _evaluate_variable_selection_model(
             variables=variables,
@@ -164,6 +182,10 @@ def create_variable_selection_evaluator(config: 'TrainingConfig') -> Callable:
             train_end=config.train_end,
             max_iterations=max_iterations,
             tolerance=config.tolerance,
+            target_variable=target_variable,
+            validation_start=validation_start,
+            validation_end=validation_end,
+            training_weight=training_weight,
             factor_selection_method=params.get('factor_selection_method', config.factor_selection_method),
             pca_threshold=params.get('pca_threshold', config.pca_threshold),
             kaiser_threshold=params.get('kaiser_threshold', config.kaiser_threshold)

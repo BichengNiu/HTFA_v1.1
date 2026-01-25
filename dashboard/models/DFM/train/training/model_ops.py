@@ -5,7 +5,7 @@ DFM模型操作模块
 合并训练和评估功能，提供统一的模型操作接口
 支持经典DFM（EM算法）和深度学习DFM（DDFM自编码器）
 
-经典DFM模型：所有变量平等参与因子提取，无目标变量概念
+支持目标变量概念：变量选择基于目标变量的重构RMSE
 """
 
 import pandas as pd
@@ -14,6 +14,10 @@ from typing import Optional, Callable, Tuple, List
 from dashboard.models.DFM.train.utils.logger import get_logger
 from dashboard.models.DFM.train.core.models import DFMModelResult, EvaluationMetrics
 from dashboard.models.DFM.train.core.factor_model import DFMModel
+from dashboard.models.DFM.train.evaluation.metrics import (
+    calculate_target_reconstruction_rmse,
+    calculate_weighted_rmse
+)
 
 logger = get_logger(__name__)
 
@@ -226,22 +230,38 @@ def evaluate_model_fit(
     model_result: DFMModelResult,
     observation_data: pd.DataFrame,
     training_start: str,
-    train_end: str
+    train_end: str,
+    target_variable: Optional[str] = None,
+    validation_start: Optional[str] = None,
+    validation_end: Optional[str] = None,
+    training_weight: float = 0.5
 ) -> EvaluationMetrics:
     """
     评估DFM模型拟合质量
 
-    基于模型拟合质量的评估，只计算重构RMSE。
+    基于目标变量重构RMSE的评估，支持训练期和验证期加权。
 
     Args:
         model_result: DFM模型结果
         observation_data: 观测数据
         training_start: 训练期开始日期
         train_end: 训练期结束日期
+        target_variable: 目标变量名称（可选，不指定则使用第一个变量）
+        validation_start: 验证期开始日期（可选）
+        validation_end: 验证期结束日期（可选）
+        training_weight: 训练期权重 (0.0-1.0)
 
     Returns:
-        EvaluationMetrics: 包含重构RMSE的评估指标对象
+        EvaluationMetrics: 包含目标变量RMSE的评估指标对象
     """
+    # 确定目标变量索引
+    if target_variable and target_variable in observation_data.columns:
+        target_idx = observation_data.columns.get_loc(target_variable)
+    else:
+        target_idx = 0  # 默认使用第一个变量
+        if target_variable:
+            logger.warning(f"目标变量'{target_variable}'不在数据中，使用第一个变量")
+
     # 获取训练期数据
     train_start_dt = pd.to_datetime(training_start)
     train_end_dt = pd.to_datetime(train_end)
@@ -252,8 +272,8 @@ def evaluate_model_fit(
 
     n_time = len(train_data)
 
-    # 计算重构RMSE
-    reconstruction_rmse = np.inf
+    # 计算目标变量训练期RMSE
+    target_rmse = np.inf
 
     if model_result.H is not None and model_result.factors_smooth is not None:
         try:
@@ -276,17 +296,71 @@ def evaluate_model_fit(
             obs_centered = obs_centered[:min_time, :]
             reconstructed = reconstructed[:min_time, :]
 
-            # 计算重构RMSE
-            reconstruction_rmse = np.sqrt(np.nanmean((obs_centered - reconstructed) ** 2))
+            # 计算目标变量训练期RMSE
+            target_rmse = calculate_target_reconstruction_rmse(
+                obs_centered, reconstructed, target_idx
+            )
 
             # 存储重构数据
             model_result.reconstructed_data = reconstructed
 
         except Exception as e:
-            logger.warning(f"重构误差计算失败: {e}")
+            logger.warning(f"训练期目标变量RMSE计算失败: {e}")
+
+    # 计算验证期目标变量RMSE
+    target_rmse_validation = np.inf
+    if validation_start and validation_end:
+        try:
+            val_start_dt = pd.to_datetime(validation_start)
+            val_end_dt = pd.to_datetime(validation_end)
+            val_data = observation_data[
+                (observation_data.index >= val_start_dt) &
+                (observation_data.index <= val_end_dt)
+            ]
+
+            if len(val_data) > 0 and model_result.H is not None and model_result.factors_smooth is not None:
+                H = model_result.H
+                factors = model_result.factors_smooth.T  # (n_time, n_factors)
+
+                # 计算验证期对应的因子索引范围
+                full_data = observation_data[
+                    (observation_data.index >= train_start_dt) &
+                    (observation_data.index <= val_end_dt)
+                ]
+                val_start_idx = len(full_data) - len(val_data)
+                val_end_idx = len(full_data)
+
+                # 确保因子数据足够
+                if factors.shape[0] >= val_end_idx:
+                    val_factors = factors[val_start_idx:val_end_idx, :]
+                    val_reconstructed = val_factors @ H.T
+
+                    # 中心化验证期数据（使用训练期均值）
+                    train_mean = np.nanmean(train_data.values, axis=0)
+                    val_obs_centered = val_data.values - train_mean
+
+                    # 确保维度匹配
+                    min_val_time = min(val_obs_centered.shape[0], val_reconstructed.shape[0])
+                    val_obs_centered = val_obs_centered[:min_val_time, :]
+                    val_reconstructed = val_reconstructed[:min_val_time, :]
+
+                    # 计算目标变量验证期RMSE
+                    target_rmse_validation = calculate_target_reconstruction_rmse(
+                        val_obs_centered, val_reconstructed, target_idx
+                    )
+
+        except Exception as e:
+            logger.warning(f"验证期目标变量RMSE计算失败: {e}")
+
+    # 计算加权RMSE
+    weighted_target_rmse = calculate_weighted_rmse(
+        target_rmse, target_rmse_validation, training_weight
+    )
 
     return EvaluationMetrics(
-        reconstruction_rmse=reconstruction_rmse,
+        target_rmse=target_rmse,
+        target_rmse_validation=target_rmse_validation,
+        weighted_target_rmse=weighted_target_rmse,
         converged=model_result.converged,
         iterations=model_result.iterations
     )

@@ -18,7 +18,6 @@ class ModelMetrics:
     """模型评估指标数据类"""
     mae: Optional[float] = None
     rmse: Optional[float] = None
-    hit_rate: Optional[float] = None
 
 
 @dataclass
@@ -106,8 +105,7 @@ class DFMMetadataAccessor:
         """获取训练期指标"""
         return ModelMetrics(
             mae=self._get_metric('is_mae'),
-            rmse=self._get_metric('is_rmse'),
-            hit_rate=self._get_metric('is_win_rate')
+            rmse=self._get_metric('is_rmse')
         )
 
     @property
@@ -115,8 +113,7 @@ class DFMMetadataAccessor:
         """获取验证期指标"""
         return ModelMetrics(
             mae=self._get_metric('oos_mae'),
-            rmse=self._get_metric('oos_rmse'),
-            hit_rate=self._get_metric('oos_win_rate')
+            rmse=self._get_metric('oos_rmse')
         )
 
     @property
@@ -124,8 +121,7 @@ class DFMMetadataAccessor:
         """获取观察期指标"""
         return ModelMetrics(
             mae=self._get_metric('obs_mae'),
-            rmse=self._get_metric('obs_rmse'),
-            hit_rate=self._get_metric('obs_win_rate')
+            rmse=self._get_metric('obs_rmse')
         )
 
     def _get_metric(self, base_key: str) -> Optional[float]:
@@ -136,11 +132,7 @@ class DFMMetadataAccessor:
     def has_observation_metrics(self) -> bool:
         """检查是否有观察期指标"""
         metrics = self.observation_metrics
-        return any([
-            metrics.rmse is not None,
-            metrics.mae is not None,
-            metrics.hit_rate is not None
-        ])
+        return metrics.rmse is not None or metrics.mae is not None
 
     @property
     def has_valid_validation_metrics(self) -> bool:

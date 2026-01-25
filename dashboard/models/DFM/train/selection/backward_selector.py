@@ -2,8 +2,8 @@
 """
 后向逐步变量选择器
 
-实现后向逐步变量剔除算法，以重构RMSE作为优化目标（越小越好）。
-经典DFM模型：所有变量平等参与因子提取，无目标变量概念。
+实现后向逐步变量剔除算法，以目标变量加权RMSE作为优化目标（越小越好）。
+支持目标变量保护：目标变量不会被剔除。
 """
 import numpy as np
 import pandas as pd
@@ -23,25 +23,27 @@ class BackwardSelector:
 
     算法流程:
     1. 从全部变量开始
-    2. 逐个尝试剔除每个变量
-    3. 评估剔除后的模型拟合质量（重构RMSE）
+    2. 逐个尝试剔除每个变量（目标变量除外）
+    3. 评估剔除后的模型拟合质量（目标变量加权RMSE）
     4. 选择性能提升最大的变量剔除
     5. 重复直到无法提升
 
-    优化目标: 最小化重构RMSE
+    优化目标: 最小化目标变量加权RMSE
     """
 
     def __init__(
         self,
         evaluator_func: Callable,
         min_variables: int = 1,
-        parallel_config: ParallelConfig = None
+        parallel_config: ParallelConfig = None,
+        target_variable: Optional[str] = None
     ):
         """
         Args:
-            evaluator_func: 评估函数,签名为 (variables, **kwargs) -> float (重构RMSE，越小越好)
+            evaluator_func: 评估函数,签名为 (variables, **kwargs) -> float (加权RMSE，越小越好)
             min_variables: 最少保留的变量数
             parallel_config: 并行配置（必填）
+            target_variable: 目标变量名称（不会被剔除）
         """
         if parallel_config is None:
             raise ValueError("parallel_config参数必填，请提供ParallelConfig对象")
@@ -50,6 +52,7 @@ class BackwardSelector:
         self.evaluator_func = evaluator_func
         self.min_variables = min_variables
         self.parallel_config = parallel_config
+        self.target_variable = target_variable
 
     def select(
         self,
@@ -137,7 +140,7 @@ class BackwardSelector:
                 logger.warning("本轮无可行的移除候选，筛选结束")
                 break
 
-            # 检查是否有性能提升（重构RMSE越小越好）
+            # 检查是否有性能提升（目标变量RMSE越小越好）
             comparison = compare_model_scores(best_score_this_iter, current_best_score)
             if comparison <= 0:
                 logger.warning(
@@ -180,15 +183,16 @@ class BackwardSelector:
                 score = np.inf
 
             logger.info(
-                f"初始基准得分 - 重构RMSE: {score:.4f}, "
+                f"初始基准得分 - 目标变量RMSE: {score:.4f}, "
                 f"变量数: {len(current_variables)}"
             )
 
             # 输出基线信息
+            target_info = f"（目标变量: {self.target_variable}）" if self.target_variable else ""
             baseline_msg = (
                 f"========== 变量选择开始 ==========\n"
-                f"初始变量数: {len(current_variables)}\n"
-                f"基线重构RMSE: {score:.4f}"
+                f"初始变量数: {len(current_variables)}{target_info}\n"
+                f"基线目标变量RMSE: {score:.4f}"
             )
             print(baseline_msg)
             if progress_callback:
@@ -232,7 +236,7 @@ class BackwardSelector:
         current_variables: List[str]
     ) -> Tuple[Optional[str], float, int, int]:
         """找到本轮最佳移除候选"""
-        best_score = np.inf  # 重构RMSE越小越好
+        best_score = np.inf  # 目标变量RMSE越小越好
         best_var = None
         total_evals = 0
         total_svd_errors = 0
@@ -243,6 +247,14 @@ class BackwardSelector:
         candidate_results = []
 
         for idx, var in enumerate(current_variables, 1):
+            # 跳过目标变量，不允许剔除
+            if self.target_variable and var == self.target_variable:
+                msg = f"  [{idx}/{len(current_variables)}] 跳过目标变量'{var}'，不允许剔除"
+                logger.debug(msg)
+                if progress_callback:
+                    progress_callback(msg)
+                continue
+
             temp_variables = [v for v in current_variables if v != var]
             if not temp_variables:
                 continue
@@ -264,7 +276,7 @@ class BackwardSelector:
                 total_evals += 1
 
                 # 打印评估结果
-                msg = f"    重构RMSE: {score:.4f}"
+                msg = f"    目标变量RMSE: {score:.4f}"
                 logger.info(msg)
                 if progress_callback:
                     progress_callback(msg)
@@ -279,7 +291,7 @@ class BackwardSelector:
                 logger.error(f"    评估移除'{var}'时出错: {e}")
                 continue
 
-        # 找出最佳候选（重构RMSE最小）
+        # 找出最佳候选（目标变量RMSE最小）
         for result in candidate_results:
             score = result['score']
 
@@ -304,7 +316,7 @@ class BackwardSelector:
 
             for res in candidate_results:
                 is_best = " <- 最佳" if res['var'] == best_var else ""
-                msg = f"    '{res['var']}': 重构RMSE={res['score']:.4f}{is_best}"
+                msg = f"    '{res['var']}': 目标变量RMSE={res['score']:.4f}{is_best}"
                 logger.info(msg)
                 if progress_callback:
                     progress_callback(msg)
@@ -337,18 +349,18 @@ class BackwardSelector:
             'remaining_count': len(current_variables)
         })
 
-        # 计算改善量（重构RMSE越小越好）
+        # 计算改善量（目标变量RMSE越小越好）
         delta = old_score - new_score
         improve_str = f"降低{delta:.4f}" if delta > 0 else f"上升{-delta:.4f}"
 
         logger.info(
             f"\n第{iteration}轮决策: 移除'{removed_var}', 剩余{len(current_variables)}个变量\n"
-            f"  重构RMSE: {old_score:.4f} -> {new_score:.4f} ({improve_str})"
+            f"  目标变量RMSE: {old_score:.4f} -> {new_score:.4f} ({improve_str})"
         )
 
         removal_msg = (
             f"第{iteration}轮: 移除'{removed_var}', 剩余{len(current_variables)}个变量\n"
-            f"  重构RMSE: {old_score:.4f} -> {new_score:.4f} ({improve_str})"
+            f"  目标变量RMSE: {old_score:.4f} -> {new_score:.4f} ({improve_str})"
         )
         print(removal_msg)
         if progress_callback:
@@ -368,14 +380,14 @@ class BackwardSelector:
         """构建选择结果对象"""
         logger.info(
             f"变量选择完成: 从{n_initial_vars}个变量剔除到{len(final_variables)}个, "
-            f"最终重构RMSE={final_score:.4f}"
+            f"最终目标变量RMSE={final_score:.4f}"
         )
 
         # 输出最终汇总
         if len(history) > 0:
             removed_vars = [h['removed_variable'] for h in history]
 
-            # 重构RMSE越小越好
+            # 目标变量RMSE越小越好
             delta = baseline_score - final_score
             improve_str = f"降低{delta:.4f}" if delta > 0 else f"上升{-delta:.4f}"
 
@@ -383,7 +395,7 @@ class BackwardSelector:
                 f"\n========== 变量选择完成 ==========\n"
                 f"总轮次: {len(history)}\n"
                 f"移除变量: {', '.join(removed_vars)}\n"
-                f"重构RMSE总改善: {baseline_score:.4f} -> {final_score:.4f} ({improve_str})\n"
+                f"目标变量RMSE总改善: {baseline_score:.4f} -> {final_score:.4f} ({improve_str})\n"
                 f"最终变量数: {len(final_variables)}个"
             )
             print(final_msg)

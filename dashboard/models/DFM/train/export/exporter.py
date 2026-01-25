@@ -151,13 +151,18 @@ class TrainingResultExporter:
             # 基本信息
             'timestamp': timestamp,
             'selected_variables': result.selected_variables,
+            'best_variables': result.selected_variables,  # 兼容模型分析模块
             'N_variables': len(result.selected_variables),
             'initial_selected_indicators': getattr(config, 'selected_indicators', []),
 
-            # 模型参数
+            # 模型参数（兼容模型分析模块的best_params格式）
             'model_params': {
                 'k_factors': int(result.k_factors),
                 'variable_selection_method': config.variable_selection_method if config.enable_variable_selection else '全选',
+                'algorithm': config.algorithm,
+            },
+            'best_params': {
+                'k_factors': int(result.k_factors),
                 'algorithm': config.algorithm,
             },
 
@@ -172,12 +177,27 @@ class TrainingResultExporter:
             'var_industry_map': config.industry_map,
         }
 
-        # 评估指标（只保留重构RMSE）
+        # 评估指标（分期计算重构RMSE和MAE）
         if result.metrics is None:
             raise ValueError("训练结果缺少评估指标(metrics)，无法导出元数据")
 
+        # 计算训练期指标
+        is_rmse, is_mae = self._calculate_period_metrics(
+            result, prepared_data, config.training_start, config.train_end
+        )
+        # 计算验证期指标
+        oos_rmse, oos_mae = self._calculate_period_metrics(
+            result, prepared_data, config.validation_start, config.validation_end
+        )
+
         metadata.update({
-            'reconstruction_rmse': float(result.metrics.reconstruction_rmse),
+            # 训练期指标 (in-sample)
+            'is_rmse': is_rmse,
+            'is_mae': is_mae,
+            # 验证期指标 (out-of-sample)
+            'oos_rmse': oos_rmse,
+            'oos_mae': oos_mae,
+            # 收敛信息
             'converged': result.metrics.converged,
             'iterations': result.metrics.iterations,
         })
@@ -278,6 +298,68 @@ class TrainingResultExporter:
             raise ValueError(f"元数据缺少必需字段: {missing_fields}")
 
         logger.debug(f"元数据验证通过,包含 {len(metadata)} 个字段")
+
+    def _calculate_period_metrics(
+        self,
+        result,
+        prepared_data: Optional[pd.DataFrame],
+        period_start: str,
+        period_end: str
+    ) -> Tuple[float, float]:
+        """计算指定时期的重构 RMSE 和 MAE"""
+        if prepared_data is None or result.model_result is None:
+            return np.inf, np.inf
+        if result.model_result.H is None or result.model_result.factors_smooth is None:
+            return np.inf, np.inf
+
+        try:
+            # 获取模型使用的变量列表
+            if hasattr(result.model_result, 'variable_names') and result.model_result.variable_names is not None:
+                selected_vars = result.model_result.variable_names
+            else:
+                selected_vars = result.selected_variables
+
+            # 筛选出模型使用的变量
+            available_vars = [v for v in selected_vars if v in prepared_data.columns]
+            if len(available_vars) == 0:
+                logger.warning("prepared_data 中没有模型使用的变量")
+                return np.inf, np.inf
+
+            filtered_data = prepared_data[available_vars]
+
+            start_dt = pd.to_datetime(period_start)
+            end_dt = pd.to_datetime(period_end)
+            period_mask = (filtered_data.index >= start_dt) & (filtered_data.index <= end_dt)
+            period_data = filtered_data[period_mask]
+
+            if len(period_data) == 0:
+                logger.warning(f"时期 {period_start} ~ {period_end} 无数据")
+                return np.inf, np.inf
+
+            full_index = filtered_data.index
+            period_indices = [i for i, idx in enumerate(full_index) if start_dt <= idx <= end_dt]
+
+            H = result.model_result.H
+            factors = result.model_result.factors_smooth.T
+            period_factors = factors[period_indices, :]
+            reconstructed = period_factors @ H.T
+
+            obs_values = period_data.values
+            obs_mean = np.nanmean(obs_values, axis=0)
+            obs_centered = obs_values - obs_mean
+
+            min_time = min(obs_centered.shape[0], reconstructed.shape[0])
+            obs_centered = obs_centered[:min_time, :]
+            reconstructed = reconstructed[:min_time, :]
+
+            residuals = obs_centered - reconstructed
+            rmse = float(np.sqrt(np.nanmean(residuals ** 2)))
+            mae = float(np.nanmean(np.abs(residuals)))
+            return rmse, mae
+
+        except Exception as e:
+            logger.warning(f"计算时期 {period_start}~{period_end} 指标失败: {e}")
+            return np.inf, np.inf
 
     # ========== 工具方法 ==========
 
