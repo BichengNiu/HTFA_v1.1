@@ -107,9 +107,8 @@ class SelectionResult:
     """变量选择结果"""
     selected_variables: List[str]  # 最终选中的变量列表
     selection_history: List[Dict]  # 选择历史记录
-    final_score: float  # 最终得分（对数似然）
+    final_score: float  # 最终得分（加权RMSE）
     total_evaluations: int  # 总评估次数
-    svd_error_count: int  # SVD错误次数
 
 
 # ==================== 训练结果相关 ====================
@@ -134,7 +133,6 @@ class TrainingResult:
 
     # 训练统计
     total_evaluations: int = 0
-    svd_error_count: int = 0
     training_time: float = 0.0
 
     # 导出文件路径
@@ -154,7 +152,6 @@ class TrainingResult:
         model_result: DFMModelResult,
         metrics: EvaluationMetrics,
         total_evaluations: int,
-        svd_error_count: int,
         training_time: float,
         output_dir: Optional[str] = None
     ) -> 'TrainingResult':
@@ -170,7 +167,6 @@ class TrainingResult:
             model_result: 模型结果
             metrics: 评估指标
             total_evaluations: 总评估次数
-            svd_error_count: SVD错误次数
             training_time: 训练时间（秒）
             output_dir: 输出目录
 
@@ -186,7 +182,6 @@ class TrainingResult:
             model_result=model_result,
             metrics=metrics,
             total_evaluations=total_evaluations,
-            svd_error_count=svd_error_count,
             training_time=training_time,
             output_dir=output_dir
         )

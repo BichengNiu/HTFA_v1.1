@@ -159,7 +159,7 @@ class TrainingConfigBuilder:
             # 变量选择配置
             'enable_variable_selection': enable_var_selection,
             'variable_selection_method': mapped_var_selection_method,
-            'min_variables_after_selection': self._get_required('dfm_min_variables_after_selection') if enable_var_selection else 1,
+            'target_variable': self.state.get('dfm_target_variable') if enable_var_selection else None,
 
             # 因子数选择配置
             'factor_selection_method': factor_selection_method,
@@ -259,9 +259,7 @@ class TrainingConfigBuilder:
         """
         var_selection_method_map = {
             'none': 'none',
-            'backward': 'backward',
-            'forward': 'forward',
-            'stepwise': 'stepwise'
+            'backward': 'backward'
         }
         if var_selection_method not in var_selection_method_map:
             raise ValueError(f"无效的变量选择方法: {var_selection_method}，有效值: {list(var_selection_method_map.keys())}")

@@ -9,7 +9,6 @@ from dashboard.models.DFM.train.ui.pages import render_dfm_model_training_page
 from dashboard.models.DFM.train.ui.components import (
     VariableSelectionComponent,
     DateRangeComponent,
-    ModelParametersComponent,
     TrainingStatusComponent
 )
 
@@ -17,7 +16,6 @@ __all__ = [
     'render_dfm_model_training_page',
     'VariableSelectionComponent',
     'DateRangeComponent',
-    'ModelParametersComponent',
     'TrainingStatusComponent'
 ]
 

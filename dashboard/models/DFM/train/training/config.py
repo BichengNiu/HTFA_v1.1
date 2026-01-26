@@ -45,7 +45,7 @@ class TrainingConfig:
     # 变量选择配置
     enable_variable_selection: bool = False
     variable_selection_method: str = 'backward'
-    min_variables_after_selection: int = 1
+    target_variable: Optional[str] = None  # 目标变量（后向剔除时不会被移除）
 
     # 因子数选择配置
     factor_selection_method: str = 'fixed'  # fixed, cumulative, kaiser
@@ -88,7 +88,6 @@ class TrainingConfig:
 
     # 随机种子
     ddfm_seed: int = 3  # DDFM随机种子
-    dfm_random_seed: int = 42  # 经典DFM随机种子
 
     # 行业映射（用于R²分析）
     industry_map: Optional[Dict[str, str]] = None
@@ -126,7 +125,7 @@ class TrainingConfig:
 
         # 验证变量选择方法
         if self.enable_variable_selection:
-            valid_selection_methods = ['backward', 'forward', 'stepwise', 'none']
+            valid_selection_methods = ['backward', 'none']
             if self.variable_selection_method not in valid_selection_methods:
                 raise ValueError(
                     f"variable_selection_method必须是{valid_selection_methods}之一,"

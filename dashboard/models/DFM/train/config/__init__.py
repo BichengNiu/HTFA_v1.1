@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Mn!W
+UI配置管理模块
 """
 
 from .ui_config import UIConfig
