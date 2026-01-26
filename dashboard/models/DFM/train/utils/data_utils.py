@@ -13,9 +13,6 @@ from dashboard.models.DFM.train.utils.file_io import read_data_file
 
 logger = get_logger(__name__)
 
-# 常量定义
-MIN_REQUIRED_DATA_POINTS = 10  # 变量需要的最小有效数据点数
-
 
 def load_and_validate_data(
     data_path: str,

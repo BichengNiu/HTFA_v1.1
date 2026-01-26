@@ -70,7 +70,6 @@ class DFMTrainer:
 
         # 训练统计
         self.total_evaluations = 0
-        self.svd_error_count = 0
 
     def train(
         self,
@@ -106,19 +105,36 @@ class DFMTrainer:
             # 输出训练配置摘要
             # 根据training_start切分训练数据
             train_data = data.loc[self.config.training_start:self.config.train_end]
-            val_data = data.loc[self.config.validation_start:self.config.validation_end]
 
-            config_summary = format_training_config(
-                train_start=self.config.training_start,
-                train_end=self.config.train_end,
-                validation_start=self.config.validation_start,
-                validation_end=self.config.validation_end,
-                train_samples=len(train_data),
-                validation_samples=len(val_data),
-                initial_vars=len(variable_names),
-                k_factors=self.config.k_factors,
-                is_ddfm=(self.config.algorithm == 'deep_learning')
-            )
+            # DDFM模式没有验证期，显示观察期信息
+            is_ddfm = (self.config.algorithm == 'deep_learning')
+            if is_ddfm:
+                # DDFM: validation_start/end 实际存储的是观察期日期
+                obs_data = data.loc[self.config.validation_start:self.config.validation_end]
+                config_summary = format_training_config(
+                    train_start=self.config.training_start,
+                    train_end=self.config.train_end,
+                    validation_start=self.config.validation_start,  # 观察期开始
+                    validation_end=self.config.validation_end,      # 观察期结束
+                    train_samples=len(train_data),
+                    validation_samples=len(obs_data),               # 观察期样本数
+                    initial_vars=len(variable_names),
+                    k_factors=self.config.k_factors,
+                    is_ddfm=True
+                )
+            else:
+                val_data = data.loc[self.config.validation_start:self.config.validation_end]
+                config_summary = format_training_config(
+                    train_start=self.config.training_start,
+                    train_end=self.config.train_end,
+                    validation_start=self.config.validation_start,
+                    validation_end=self.config.validation_end,
+                    train_samples=len(train_data),
+                    validation_samples=len(val_data),
+                    initial_vars=len(variable_names),
+                    k_factors=self.config.k_factors,
+                    is_ddfm=False
+                )
 
             logger.info(config_summary)
             if progress_callback:
@@ -181,14 +197,9 @@ class DFMTrainer:
                         # 后向选择器
                         selector = BackwardSelector(
                             evaluator_func=evaluator,
-                            min_variables=self.config.min_variables_after_selection,
-                            parallel_config=self.config.get_parallel_config()
-                        )
-                    elif self.config.variable_selection_method == 'stepwise':
-                        # Stepwise选择器暂时禁用（需要重构以支持经典DFM）
-                        raise ValueError(
-                            "Stepwise变量选择方法暂时不可用（正在重构中）。"
-                            "请使用 'backward' 方法进行变量选择。"
+                            min_variables=1,
+                            parallel_config=self.config.get_parallel_config(),
+                            target_variable=self.config.target_variable
                         )
                     else:
                         raise ValueError(
@@ -230,7 +241,6 @@ class DFMTrainer:
 
                     # 更新统计
                     self.total_evaluations += selection_result.total_evaluations
-                    self.svd_error_count += selection_result.svd_error_count
                 else:
                     selected_vars = variable_names
                     selection_history = []
@@ -265,14 +275,25 @@ class DFMTrainer:
             # 步骤5: 模型评估（基于平均RMSE）
             observation_data = data[selected_vars]
 
-            metrics = evaluate_model_fit(
-                model_result=model_result,
-                observation_data=observation_data,
-                training_start=self.config.training_start,
-                train_end=self.config.train_end,
-                validation_start=self.config.validation_start,
-                validation_end=self.config.validation_end
-            )
+            # DDFM模式不计算验证期RMSE（因为没有验证期）
+            if self.config.algorithm == 'deep_learning':
+                metrics = evaluate_model_fit(
+                    model_result=model_result,
+                    observation_data=observation_data,
+                    training_start=self.config.training_start,
+                    train_end=self.config.train_end,
+                    validation_start=None,
+                    validation_end=None
+                )
+            else:
+                metrics = evaluate_model_fit(
+                    model_result=model_result,
+                    observation_data=observation_data,
+                    training_start=self.config.training_start,
+                    train_end=self.config.train_end,
+                    validation_start=self.config.validation_start,
+                    validation_end=self.config.validation_end
+                )
 
             # 保存变量名到模型结果
             model_result.variable_names = selected_vars
@@ -289,7 +310,6 @@ class DFMTrainer:
                 model_result=model_result,
                 metrics=metrics,
                 total_evaluations=self.total_evaluations,
-                svd_error_count=self.svd_error_count,
                 training_time=training_time,
                 output_dir=self.config.output_dir
             )

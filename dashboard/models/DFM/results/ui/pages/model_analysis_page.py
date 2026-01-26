@@ -346,16 +346,19 @@ def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor,
     if not isinstance(time_index, pd.DatetimeIndex):
         time_index = pd.to_datetime(time_index)
 
-    # 使用位置索引对齐原始数据（更可靠，避免日期格式不匹配问题）
-    # 假设 prepared_data 和 factor_series 的时间顺序一致
+    # 使用位置索引对齐原始数据（prepared_data 和 factor_series 长度相同且顺序一致）
     if selected_var in prepared_data.columns:
-        original_series = prepared_data[selected_var].values
-        if len(original_series) >= n_time:
-            original_values = original_series[:n_time]
+        if len(prepared_data) == n_time:
+            # 长度相同，直接使用位置索引对齐
+            original_values = prepared_data[selected_var].values
+            logger.info(f"[重构图] 位置索引对齐成功: 长度={n_time}")
         else:
-            # 如果 prepared_data 比 factor_series 短，用 NaN 填充
-            original_values = np.full(n_time, np.nan)
-            original_values[:len(original_series)] = original_series
+            # 长度不同（异常情况），记录警告并尝试日期对齐
+            logger.warning(f"数据长度不匹配: prepared_data={len(prepared_data)}, factor_series={n_time}")
+            if not isinstance(prepared_data.index, pd.DatetimeIndex):
+                prepared_data = prepared_data.copy()
+                prepared_data.index = pd.to_datetime(prepared_data.index)
+            original_values = prepared_data[selected_var].reindex(time_index).values
     else:
         st.error(f"变量 {selected_var} 不在 prepared_data 中")
         return

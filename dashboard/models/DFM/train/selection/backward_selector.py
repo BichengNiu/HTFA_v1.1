@@ -7,7 +7,7 @@
 """
 import numpy as np
 import pandas as pd
-from typing import List, Dict, Tuple, Callable, Optional
+from typing import List, Dict, Tuple, Callable, Optional, Any
 from dashboard.models.DFM.train.utils.logger import get_logger
 from dashboard.models.DFM.train.core.models import SelectionResult
 from dashboard.models.DFM.train.evaluation.metrics import compare_model_scores
@@ -35,13 +35,15 @@ class BackwardSelector:
         self,
         evaluator_func: Callable,
         min_variables: int = 1,
-        parallel_config: ParallelConfig = None
+        parallel_config: ParallelConfig = None,
+        target_variable: Optional[str] = None
     ):
         """
         Args:
             evaluator_func: 评估函数,签名为 (variables, **kwargs) -> float (加权RMSE，越小越好)
             min_variables: 最少保留的变量数
             parallel_config: 并行配置（必填）
+            target_variable: 目标变量（受保护，不会被移除）
         """
         if parallel_config is None:
             raise ValueError("parallel_config参数必填，请提供ParallelConfig对象")
@@ -50,6 +52,7 @@ class BackwardSelector:
         self.evaluator_func = evaluator_func
         self.min_variables = min_variables
         self.parallel_config = parallel_config
+        self.target_variable = target_variable
 
     def select(
         self,
@@ -95,7 +98,6 @@ class BackwardSelector:
         }
 
         total_evaluations = 0
-        svd_error_count = 0
         selection_history = []
 
         # 1. 初始化变量列表
@@ -105,16 +107,14 @@ class BackwardSelector:
                 selected_variables=initial_variables,
                 selection_history=[],
                 final_score=np.inf,
-                total_evaluations=0,
-                svd_error_count=0
+                total_evaluations=0
             )
 
         # 2. 计算初始基准性能
-        current_best_score, eval_count, svd_count = self._evaluate_baseline(
+        current_best_score, eval_count = self._evaluate_baseline(
             current_variables, progress_callback
         )
         total_evaluations += eval_count
-        svd_error_count += svd_count
 
         # 保存基线值用于最终汇总
         baseline_score = current_best_score
@@ -126,11 +126,10 @@ class BackwardSelector:
             self._log_iteration_start(iteration, len(current_variables), progress_callback)
 
             # 找到本轮最佳移除候选
-            best_removal, best_score_this_iter, eval_count, svd_count = self._find_best_removal_candidate(
+            best_removal, best_score_this_iter, eval_count = self._find_best_removal_candidate(
                 current_variables
             )
             total_evaluations += eval_count
-            svd_error_count += svd_count
 
             # 检查是否找到有效的移除候选
             if best_removal is None:
@@ -158,7 +157,7 @@ class BackwardSelector:
         # 4. 返回结果
         return self._build_selection_result(
             current_variables, selection_history,
-            current_best_score, total_evaluations, svd_error_count,
+            current_best_score, total_evaluations,
             len(initial_variables), progress_callback,
             baseline_score
         )
@@ -167,13 +166,12 @@ class BackwardSelector:
         self,
         current_variables: List[str],
         progress_callback: Optional[Callable]
-    ) -> Tuple[float, int, int]:
+    ) -> Tuple[float, int]:
         """计算初始基准性能"""
         logger.info(f"计算初始基准性能，变量数: {len(current_variables)}")
 
         try:
             score = self.evaluator_func(variables=current_variables, **self._eval_params)
-            svd_count = 0
 
             if not np.isfinite(score):
                 logger.warning(f"初始基准评估返回无效分数，使用最差分数")
@@ -194,7 +192,7 @@ class BackwardSelector:
             if progress_callback:
                 progress_callback(baseline_msg)
 
-            return (score, 1, svd_count)
+            return (score, 1)
 
         except Exception as e:
             logger.error(f"计算初始基准性能时出错: {e}")
@@ -230,30 +228,99 @@ class BackwardSelector:
     def _find_best_removal_candidate(
         self,
         current_variables: List[str]
-    ) -> Tuple[Optional[str], float, int, int]:
-        """找到本轮最佳移除候选"""
-        best_score = np.inf  # 加权RMSE越小越好
-        best_var = None
-        total_evals = 0
-        total_svd_errors = 0
-
+    ) -> Tuple[Optional[str], float, int]:
+        """找到本轮最佳移除候选（支持并行）"""
         k_factors = self._eval_params['params']['k_factors']
         progress_callback = self._eval_params['progress_callback']
 
+        # 构建候选变量列表（排除目标变量）
+        candidate_vars = [v for v in current_variables if v != self.target_variable]
+
+        # 检查是否使用并行
+        if self.parallel_config.should_use_parallel(len(candidate_vars)):
+            return self._find_best_removal_parallel(
+                current_variables, candidate_vars, k_factors, progress_callback
+            )
+        else:
+            return self._find_best_removal_serial(
+                current_variables, candidate_vars, k_factors, progress_callback
+            )
+
+    def _find_best_removal_parallel(
+        self,
+        current_variables: List[str],
+        candidate_vars: List[str],
+        k_factors: int,
+        progress_callback: Optional[Callable]
+    ) -> Tuple[Optional[str], float, int]:
+        """并行评估移除候选"""
+        from dashboard.models.DFM.train.utils.parallel_evaluator import evaluate_variable_removals
+
+        # 构建评估配置
+        evaluator_config = {
+            'training_start': self._eval_params['training_start_date'],
+            'train_end': self._eval_params['train_end_date'],
+            'validation_start': self._eval_params['params'].get('validation_start'),
+            'validation_end': self._eval_params['params'].get('validation_end'),
+            'max_iterations': self._eval_params['max_iter'],
+            'tolerance': self._eval_params['tolerance'],
+            'training_weight': self._eval_params['params'].get('training_weight', 0.5),
+            'factor_selection_method': self._eval_params['params']['factor_selection_method'],
+            'pca_threshold': self._eval_params['params']['pca_threshold'],
+            'kaiser_threshold': self._eval_params['params']['kaiser_threshold']
+        }
+
+        # 并行评估
+        candidate_results = evaluate_variable_removals(
+            current_variables=current_variables,
+            candidate_vars=candidate_vars,
+            full_data=self._eval_params['full_data'],
+            k_factors=k_factors,
+            evaluator_config=evaluator_config,
+            n_jobs=self.parallel_config.get_effective_n_jobs(),
+            backend=self.parallel_config.backend,
+            verbose=self.parallel_config.verbose,
+            progress_callback=progress_callback
+        )
+
+        # 找出最佳候选
+        best_var = None
+        best_score = np.inf
+        for result in candidate_results:
+            if compare_model_scores(result['score'], best_score) > 0:
+                best_score = result['score']
+                best_var = result['var']
+
+        # 打印本轮汇总
+        self._print_candidate_summary(candidate_results, best_var, progress_callback)
+
+        return (best_var, best_score, len(candidate_results))
+
+    def _find_best_removal_serial(
+        self,
+        current_variables: List[str],
+        candidate_vars: List[str],
+        k_factors: int,
+        progress_callback: Optional[Callable]
+    ) -> Tuple[Optional[str], float, int]:
+        """串行评估移除候选"""
+        best_score = np.inf
+        best_var = None
+        total_evals = 0
         candidate_results = []
 
-        for idx, var in enumerate(current_variables, 1):
+        for idx, var in enumerate(candidate_vars, 1):
             temp_variables = [v for v in current_variables if v != var]
             if not temp_variables:
                 continue
 
             # 检查因子数约束
             if k_factors >= len(temp_variables):
-                logger.debug(f"  [{idx}/{len(current_variables)}] 跳过'{var}': k_factors({k_factors}) >= 剩余变量数({len(temp_variables)})")
+                logger.debug(f"  [{idx}/{len(candidate_vars)}] 跳过'{var}': k_factors({k_factors}) >= 剩余变量数({len(temp_variables)})")
                 continue
 
             # 打印正在尝试的变量
-            msg = f"  [{idx}/{len(current_variables)}] 尝试移除: '{var}'"
+            msg = f"  [{idx}/{len(candidate_vars)}] 尝试移除: '{var}'"
             logger.info(msg)
             if progress_callback:
                 progress_callback(msg)
@@ -269,11 +336,7 @@ class BackwardSelector:
                 if progress_callback:
                     progress_callback(msg)
 
-                # 记录候选结果
-                candidate_results.append({
-                    'var': var,
-                    'score': score
-                })
+                candidate_results.append({'var': var, 'score': score})
 
             except Exception as e:
                 logger.error(f"    评估移除'{var}'时出错: {e}")
@@ -282,34 +345,37 @@ class BackwardSelector:
         # 找出最佳候选（加权RMSE最小）
         for result in candidate_results:
             score = result['score']
-
-            # 更新最佳候选
             comparison = compare_model_scores(score, best_score)
             if np.isfinite(score) and comparison > 0:
                 best_score = score
                 best_var = result['var']
 
-                # 实时标记最佳候选
-                msg = f"    *** 当前最佳候选 ***"
-                logger.info(msg)
-                if progress_callback:
-                    progress_callback(msg)
-
         # 打印本轮汇总
-        if candidate_results:
-            summary_msg = f"\n  本轮候选汇总 (共{len(candidate_results)}个):"
-            logger.info(summary_msg)
+        self._print_candidate_summary(candidate_results, best_var, progress_callback)
+
+        return (best_var, best_score, total_evals)
+
+    def _print_candidate_summary(
+        self,
+        candidate_results: List[Dict],
+        best_var: Optional[str],
+        progress_callback: Optional[Callable]
+    ):
+        """打印候选汇总"""
+        if not candidate_results:
+            return
+
+        summary_msg = f"\n  本轮候选汇总 (共{len(candidate_results)}个):"
+        logger.info(summary_msg)
+        if progress_callback:
+            progress_callback(summary_msg)
+
+        for res in candidate_results:
+            is_best = " <- 最佳" if res['var'] == best_var else ""
+            msg = f"    '{res['var']}': 加权RMSE={res['score']:.4f}{is_best}"
+            logger.info(msg)
             if progress_callback:
-                progress_callback(summary_msg)
-
-            for res in candidate_results:
-                is_best = " <- 最佳" if res['var'] == best_var else ""
-                msg = f"    '{res['var']}': 加权RMSE={res['score']:.4f}{is_best}"
-                logger.info(msg)
-                if progress_callback:
-                    progress_callback(msg)
-
-        return (best_var, best_score, total_evals, total_svd_errors)
+                progress_callback(msg)
 
     def _apply_removal_and_record(
         self,
@@ -360,7 +426,6 @@ class BackwardSelector:
         history: List[Dict],
         final_score: float,
         total_evals: int,
-        svd_errors: int,
         n_initial_vars: int,
         progress_callback: Optional[Callable] = None,
         baseline_score: float = 0.0
@@ -394,6 +459,5 @@ class BackwardSelector:
             selected_variables=final_variables,
             selection_history=history,
             final_score=final_score,
-            total_evaluations=total_evals,
-            svd_error_count=svd_errors
+            total_evaluations=total_evals
         )

@@ -127,29 +127,9 @@ def generate_progress_bar(current: int, total: int, width: int = 20) -> str:
     return f"[{bar}]"
 
 
-def format_rmse_change(old_rmse: float, new_rmse: float) -> str:
-    """
-    格式化RMSE变化
-
-    Args:
-        old_rmse: 原RMSE值
-        new_rmse: 新RMSE值
-
-    Returns:
-        str: 格式化的变化字符串，如 "降低5.2%" 或 "上升3.1%" 或 "N/A"
-    """
-    if old_rmse <= 0 or not np.isfinite(old_rmse) or not np.isfinite(new_rmse):
-        return "N/A"
-    pct = (old_rmse - new_rmse) / old_rmse * 100
-    if pct >= 0:
-        return f"降低{pct:.1f}%"
-    return f"上升{abs(pct):.1f}%"
-
-
 __all__ = [
     'format_training_config',
     'format_training_summary',
     'print_training_summary',
     'generate_progress_bar',
-    'format_rmse_change',
 ]

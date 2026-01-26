@@ -78,33 +78,3 @@ def build_normalized_mapping(
         result[new_key] = new_value
 
     return result
-
-
-def filter_exclude_zonghe(
-    indicators: List[str],
-    var_industry_map: Dict[str, str]
-) -> List[str]:
-    """
-    从指标列表中排除"综合"类变量
-
-    Args:
-        indicators: 指标列表
-        var_industry_map: 变量名(标准化) -> 行业名的映射
-
-    Returns:
-        排除"综合"变量后的指标列表
-
-    Examples:
-        >>> filter_exclude_zonghe(
-        ...     ['工业增加值', '综合指标'],
-        ...     {'综合指标': '综合'}
-        ... )
-        ['工业增加值']
-    """
-    if not var_industry_map:
-        return indicators
-
-    return [
-        ind for ind in indicators
-        if var_industry_map.get(normalize_variable_name(ind), None) != '综合'
-    ]

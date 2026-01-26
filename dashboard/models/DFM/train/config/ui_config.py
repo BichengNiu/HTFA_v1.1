@@ -45,15 +45,12 @@ class UIConfig:
     # 变量选择方法
     VARIABLE_SELECTION_METHODS = {
         'none': "无筛选 (使用全部已选变量)",
-        'backward': "后向选择法 (逐步移除不重要变量)",
-        'stepwise': "向前向后法 (逐步添加并检查冗余变量)"
+        'backward': "后向选择法 (逐步移除不重要变量)"
     }
     DEFAULT_VAR_SELECTION = 'none'
 
-    # 变量选择保留数配置 (2026-01新增)
-    MIN_VARIABLES_AFTER_SELECTION_DEFAULT = 5  # 默认最少保留变量数
-    MIN_VARIABLES_AFTER_SELECTION_MIN = 3
-    MIN_VARIABLES_AFTER_SELECTION_MAX = 20
+    # 目标变量配置 (2026-01新增)
+    TARGET_VARIABLE_HELP = "选择一个目标变量，该变量在后向剔除过程中不会被移除"
 
     # 训练期权重配置 (2025-12新增)
     DEFAULT_TRAINING_WEIGHT = 50  # 默认50%训练期权重（百分比）

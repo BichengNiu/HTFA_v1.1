@@ -141,8 +141,6 @@ def generate_training_summary(
 
     if result.total_evaluations > 0:
         lines.append(f"  变量选择评估次数: {result.total_evaluations}")
-    if result.svd_error_count > 0:
-        lines.append(f"  SVD错误次数: {result.svd_error_count}")
 
     lines.append("")
     lines.append("=" * 80)

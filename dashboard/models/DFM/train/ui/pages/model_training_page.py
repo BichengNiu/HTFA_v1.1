@@ -15,7 +15,7 @@ import re
 from datetime import datetime, timedelta, date
 from collections import defaultdict
 import traceback
-from typing import Dict, List, Optional, Union, Any
+from typing import Dict, List, Optional, Any
 
 # 添加路径以导入状态管理辅助函数
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -43,12 +43,13 @@ from dashboard.models.DFM.train.ui.utils.date_helpers import (
 )
 from dashboard.models.DFM.train.ui.utils.text_helpers import (
     normalize_variable_name,
-    normalize_variable_name_no_space,
-    build_normalized_mapping,
 )
 
 # 配置日志记录器
 logger = logging.getLogger(__name__)
+
+# 导入调试日志工具
+from dashboard.core.ui.utils.debug_helpers import debug_log
 
 # 创建全局状态管理器实例
 _state = StateManager('train_model')
@@ -78,7 +79,6 @@ except ImportError as e:
 
 def _reset_training_state():
     """重置所有训练相关状态"""
-    from dashboard.core.ui.utils.debug_helpers import debug_log
 
     training_keys = [
         'dfm_training_status',
@@ -157,7 +157,6 @@ def render_dfm_model_training_page(st_instance):
         _state.set('dfm_training_status', '训练完成')
         training_status = '训练完成'
 
-    from dashboard.core.ui.utils.debug_helpers import debug_log
     debug_log(f"UI状态检查 - 当前训练状态: {training_status}", "DEBUG")
 
     # 使用组件化的文件上传器
@@ -253,19 +252,66 @@ def render_dfm_model_training_page(st_instance):
     # 深度学习模式标志
     is_deep_learning_mode = (current_algorithm == 'deep_learning')
 
-    # 选择算法（经典DFM无目标变量概念）
-    algorithm_value = st_instance.selectbox(
-        "选择算法",
-        options=list(UIConfig.ALGORITHM_OPTIONS.keys()),
-        format_func=lambda x: UIConfig.ALGORITHM_OPTIONS[x],
-        index=UIConfig.get_safe_option_index(
-            UIConfig.ALGORITHM_OPTIONS, current_algorithm, UIConfig.DEFAULT_ALGORITHM
-        ),
-        key='dfm_algorithm_selector',
-        help="经典DFM使用EM算法，深度学习DFM使用神经网络自编码器"
-    )
-    _state.set('dfm_algorithm', algorithm_value)
-    current_algorithm = algorithm_value
+    # 提前获取变量筛选方法状态（用于决定目标变量是否显示）
+    current_var_method = _state.get('dfm_variable_selection_method', UIConfig.DEFAULT_VAR_SELECTION)
+    if current_var_method not in UIConfig.VARIABLE_SELECTION_METHODS:
+        current_var_method = UIConfig.DEFAULT_VAR_SELECTION
+    enable_var_selection_for_target = (current_var_method != 'none')
+
+    # 选择算法 + 目标变量 + EM最大迭代次数（3列布局）
+    algo_col1, algo_col2, algo_col3 = st_instance.columns(3)
+
+    with algo_col1:
+        algorithm_value = st_instance.selectbox(
+            "选择算法",
+            options=list(UIConfig.ALGORITHM_OPTIONS.keys()),
+            format_func=lambda x: UIConfig.ALGORITHM_OPTIONS[x],
+            index=UIConfig.get_safe_option_index(
+                UIConfig.ALGORITHM_OPTIONS, current_algorithm, UIConfig.DEFAULT_ALGORITHM
+            ),
+            key='dfm_algorithm_selector',
+            help="经典DFM使用EM算法，深度学习DFM使用神经网络自编码器"
+        )
+        _state.set('dfm_algorithm', algorithm_value)
+        current_algorithm = algorithm_value
+
+    # 目标变量选择（仅经典DFM且启用变量筛选时显示）
+    with algo_col2:
+        if current_algorithm != 'deep_learning' and enable_var_selection_for_target:
+            selected_indicators = _state.get('dfm_selected_indicators', [])
+            if selected_indicators:
+                target_var_options = ['无'] + list(selected_indicators)
+                current_target = _state.get('dfm_target_variable')
+                if current_target and current_target in selected_indicators:
+                    default_index = target_var_options.index(current_target)
+                else:
+                    default_index = 0
+
+                target_var_value = st_instance.selectbox(
+                    "目标变量（受保护）",
+                    options=target_var_options,
+                    index=default_index,
+                    key='dfm_target_variable_input',
+                    help=UIConfig.TARGET_VARIABLE_HELP
+                )
+                _state.set('dfm_target_variable', target_var_value if target_var_value != '无' else None)
+            else:
+                st_instance.info("请先选择指标")
+                _state.set('dfm_target_variable', None)
+
+    # EM算法最大迭代次数（仅经典DFM显示）
+    with algo_col3:
+        if current_algorithm != 'deep_learning':
+            max_iterations_value = st_instance.number_input(
+                "EM算法最大迭代次数",
+                min_value=UIConfig.EM_MAX_ITERATIONS_MIN,
+                max_value=UIConfig.EM_MAX_ITERATIONS_MAX,
+                value=_state.get('dfm_max_iterations', UIConfig.EM_MAX_ITERATIONS_DEFAULT),
+                step=UIConfig.EM_MAX_ITERATIONS_STEP,
+                key='dfm_max_iterations_input',
+                help="EM算法的最大迭代次数，影响训练时间和收敛质量"
+            )
+            _state.set('dfm_max_iterations', max_iterations_value)
 
     # 检测算法变化，触发rerun以更新UI布局
     if algorithm_value != _state.get('_prev_dfm_algorithm'):
@@ -363,13 +409,16 @@ def render_dfm_model_training_page(st_instance):
         # ===== 经典DFM变量筛选和因子策略（仅经典算法显示）=====
         if not is_deep_learning:
             st_instance.markdown("**变量筛选与因子策略**")
+
+            # 获取变量筛选方法
+            current_var_method = _state.get('dfm_variable_selection_method', UIConfig.DEFAULT_VAR_SELECTION)
+            if current_var_method not in UIConfig.VARIABLE_SELECTION_METHODS:
+                current_var_method = UIConfig.DEFAULT_VAR_SELECTION
+
+            # 2列布局：变量筛选方法 + 因子选择策略
             adv_col1, adv_col2 = st_instance.columns(2)
 
             with adv_col1:
-                current_var_method = _state.get('dfm_variable_selection_method', UIConfig.DEFAULT_VAR_SELECTION)
-                if current_var_method not in UIConfig.VARIABLE_SELECTION_METHODS:
-                    current_var_method = UIConfig.DEFAULT_VAR_SELECTION
-
                 var_method_value = st_instance.selectbox(
                     "变量筛选方法",
                     options=list(UIConfig.VARIABLE_SELECTION_METHODS.keys()),
@@ -617,37 +666,6 @@ def render_dfm_model_training_page(st_instance):
                     help="因子的自回归阶数，通常设为1"
                 )
                 _state.set('dfm_factor_ar_order', ar_order_value)
-
-            # EM算法最大迭代次数（始终显示）+ 最少保留变量数（仅启用筛选时显示）
-            if enable_var_selection:
-                em_var_col1, em_var_col2 = st_instance.columns(2)
-            else:
-                em_var_col1 = st_instance.container()
-
-            with em_var_col1:
-                max_iterations_value = st_instance.number_input(
-                    "EM算法最大迭代次数",
-                    min_value=UIConfig.EM_MAX_ITERATIONS_MIN,
-                    max_value=UIConfig.EM_MAX_ITERATIONS_MAX,
-                    value=_state.get('dfm_max_iterations', UIConfig.EM_MAX_ITERATIONS_DEFAULT),
-                    step=UIConfig.EM_MAX_ITERATIONS_STEP,
-                    key='dfm_max_iterations_input',
-                    help="EM算法的最大迭代次数，影响训练时间和收敛质量"
-                )
-                _state.set('dfm_max_iterations', max_iterations_value)
-
-            if enable_var_selection:
-                with em_var_col2:
-                    min_vars_value = st_instance.number_input(
-                        "最少保留变量数",
-                        min_value=UIConfig.MIN_VARIABLES_AFTER_SELECTION_MIN,
-                        max_value=UIConfig.MIN_VARIABLES_AFTER_SELECTION_MAX,
-                        value=_state.get('dfm_min_variables_after_selection', UIConfig.MIN_VARIABLES_AFTER_SELECTION_DEFAULT),
-                        step=1,
-                        key='dfm_min_variables_after_selection_input',
-                        help="变量筛选后至少保留的变量数，防止过度删减"
-                    )
-                    _state.set('dfm_min_variables_after_selection', min_vars_value)
 
 
     # ===== 变量选择 =====
@@ -1016,9 +1034,11 @@ def render_dfm_model_training_page(st_instance):
                     avg_rmse = metrics_obj.average_rmse
                     if avg_rmse is not None and not (np.isnan(avg_rmse) or np.isinf(avg_rmse)):
                         new_log_entries.append(f"[METRICS] 训练期平均RMSE: {avg_rmse:.4f}")
-                    avg_rmse_val = metrics_obj.average_rmse_validation
-                    if avg_rmse_val is not None and not (np.isnan(avg_rmse_val) or np.isinf(avg_rmse_val)):
-                        new_log_entries.append(f"[METRICS] 验证期平均RMSE: {avg_rmse_val:.4f}")
+                    # 仅经典DFM显示验证期RMSE（DDFM没有验证期）
+                    if algorithm_value != 'deep_learning':
+                        avg_rmse_val = metrics_obj.average_rmse_validation
+                        if avg_rmse_val is not None and not (np.isnan(avg_rmse_val) or np.isinf(avg_rmse_val)):
+                            new_log_entries.append(f"[METRICS] 验证期平均RMSE: {avg_rmse_val:.4f}")
                     weighted_avg_rmse = metrics_obj.weighted_average_rmse
                     if weighted_avg_rmse is not None and not (np.isnan(weighted_avg_rmse) or np.isinf(weighted_avg_rmse)):
                         new_log_entries.append(f"[METRICS] 加权平均RMSE: {weighted_avg_rmse:.4f}")
@@ -1075,7 +1095,6 @@ def render_dfm_model_training_page(st_instance):
     training_status = _state.get('dfm_training_status') or '等待开始'
     training_results = _state.get('dfm_model_results_paths')
 
-    from dashboard.core.ui.utils.debug_helpers import debug_log
     debug_log(f"UI状态检查 - 当前训练状态: {training_status}", "DEBUG")
     debug_log(f"UI状态检查 - 结果文件数量: {len(training_results) if training_results else 0}", "DEBUG")
 
@@ -1130,16 +1149,3 @@ def render_dfm_model_training_page(st_instance):
             st_instance.error(f"错误详情: {training_error}")
 
 
-def _get_file_size(file_path: str) -> str:
-    """获取文件大小的可读格式"""
-    try:
-        size_bytes = os.path.getsize(file_path)
-        if size_bytes < 1024:
-            return f"{size_bytes} B"
-        elif size_bytes < 1024 * 1024:
-            return f"{size_bytes / 1024:.1f} KB"
-        else:
-            return f"{size_bytes / (1024 * 1024):.1f} MB"
-    except Exception as e:
-        logger.warning(f"获取文件大小失败: {e}")
-        return "未知大小"

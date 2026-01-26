@@ -224,6 +224,10 @@ class TrainingResultExporter:
                                 else:
                                     date_index = pd.to_datetime(data.index)
 
+                                # 确保日期索引按升序排列（与训练时数据顺序一致）
+                                if not date_index.is_monotonic_increasing:
+                                    date_index = date_index.sort_values()
+
                                 # 确保长度匹配
                                 if len(date_index) != factors_transposed.shape[0]:
                                     logger.warning(
@@ -277,6 +281,9 @@ class TrainingResultExporter:
 
         # 保存完整观测数据矩阵
         if prepared_data is not None:
+            # 确保 prepared_data 按时间升序排列
+            if not prepared_data.index.is_monotonic_increasing:
+                prepared_data = prepared_data.sort_index()
             metadata['prepared_data'] = prepared_data
             logger.info(f"保存完整观测数据: 形状={prepared_data.shape}")
 
