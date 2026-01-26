@@ -53,45 +53,6 @@ def check_dict_picklable(params: Dict[str, Any], dict_name: str = "params") -> T
     return (len(unpicklable_keys) == 0, unpicklable_keys)
 
 
-def validate_parallel_params(
-    current_predictors: List[str],
-    target_variable: str,
-    full_data: Any,
-    k_factors: int,
-    evaluator_config: Dict[str, Any]
-) -> Tuple[bool, str]:
-    """
-    验证并行评估所需的所有参数是否可序列化
-
-    Args:
-        current_predictors: 预测变量列表
-        target_variable: 目标变量名
-        full_data: 数据DataFrame
-        k_factors: 因子数
-        evaluator_config: 评估器配置
-
-    Returns:
-        (是否全部可序列化, 错误信息)
-    """
-    # 检查简单参数
-    for name, obj in [
-        ("current_predictors", current_predictors),
-        ("target_variable", target_variable),
-        ("full_data", full_data),
-        ("k_factors", k_factors)
-    ]:
-        is_picklable, error_msg = check_picklable(obj, name)
-        if not is_picklable:
-            return (False, error_msg)
-
-    # 检查配置字典
-    is_dict_picklable, unpicklable_keys = check_dict_picklable(evaluator_config, "evaluator_config")
-    if not is_dict_picklable:
-        return (False, f"evaluator_config包含不可序列化的键: {unpicklable_keys}")
-
-    return (True, "所有参数均可序列化")
-
-
 def get_object_size_info(obj: Any) -> str:
     """
     获取对象的序列化大小信息
@@ -119,6 +80,5 @@ def get_object_size_info(obj: Any) -> str:
 __all__ = [
     'check_picklable',
     'check_dict_picklable',
-    'validate_parallel_params',
     'get_object_size_info'
 ]

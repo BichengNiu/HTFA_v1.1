@@ -69,12 +69,7 @@ class TrainingStatusComponent(DFMComponent):
             if isinstance(training_data, pd.DataFrame) and training_data.empty:
                 logger.warning("训练数据为空")
                 return False
-            
-            # 检查目标变量
-            if 'target_variable' not in data or not data['target_variable']:
-                logger.warning("缺少目标变量")
-                return False
-            
+
             # 检查日期范围
             required_dates = ['training_start_date', 'validation_start_date', 'validation_end_date']
             for date_key in required_dates:
@@ -409,7 +404,6 @@ class TrainingStatusComponent(DFMComponent):
             # 创建TrainingConfig对象
             config = TrainingConfig(
                 data=prepared_data,
-                target_variable=training_config['target_variable'],
                 predictor_variables=training_config.get('selected_indicators', []),
                 training_start_date=training_config['training_start_date'],
                 validation_start_date=training_config['validation_start_date'],
@@ -462,10 +456,9 @@ class TrainingStatusComponent(DFMComponent):
         # [CRITICAL FIX] 修正参数名称映射
         params = {
             'input_df': prepared_data,  # 修正：使用正确的参数名 input_df
-            'target_variable': training_config['target_variable'],
             'selected_indicators': training_config.get('selected_indicators', []),
             'training_start_date': training_config['training_start_date'],
-            'validation_start_date': training_config['validation_start_date'], 
+            'validation_start_date': training_config['validation_start_date'],
             'validation_end_date': training_config['validation_end_date'],
             'progress_callback': progress_callback
         }
@@ -532,7 +525,6 @@ class TrainingStatusComponent(DFMComponent):
         # [CRITICAL FIX] 添加参数验证和调试输出
         logger.info("=== 训练参数验证 ===")
         logger.info(f"input_df: {'已设置' if 'input_df' in params and params['input_df'] is not None else '未设置'}")
-        logger.info(f"target_variable: {params.get('target_variable', '未设置')}")
         logger.info(f"selected_indicators: {len(params.get('selected_indicators', []))} 个变量")
         logger.info(f"factor_selection_strategy: {params.get('factor_selection_strategy', '未设置')}")
         logger.info(f"variable_selection_method: {params.get('variable_selection_method', '未设置')}")
@@ -598,10 +590,6 @@ class TrainingStatusComponent(DFMComponent):
             elif isinstance(training_config['training_data'], pd.DataFrame):
                 if training_config['training_data'].empty:
                     errors.append("训练数据为空")
-
-            # 检查变量
-            if 'target_variable' not in training_config or not training_config['target_variable']:
-                errors.append("缺少目标变量")
 
             # 检查日期
             required_dates = ['training_start_date', 'validation_start_date', 'validation_end_date']

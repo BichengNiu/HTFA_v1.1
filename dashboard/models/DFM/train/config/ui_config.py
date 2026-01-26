@@ -17,13 +17,6 @@ class UIConfig:
     DEFAULT_VALIDATION_START = date(2025, 4, 1)  # 验证期开始日期，至少在观察期开始前3个月
     DEFAULT_OBSERVATION_START = date(2025, 7, 1)  # 观察期开始日期（DDFM模式使用）
 
-    # 目标值选项
-    TARGET_ALIGNMENT_OPTIONS = {
-        'next_month': "下月值",
-        'current_month': "本月值"
-    }
-    DEFAULT_TARGET_ALIGNMENT = 'next_month'
-
     # 因子选择策略
     FACTOR_STRATEGIES = {
         'fixed_number': "固定因子数 (默认)",
@@ -67,12 +60,6 @@ class UIConfig:
     TRAINING_WEIGHT_MIN = 0       # 0%=仅验证期
     TRAINING_WEIGHT_MAX = 100     # 100%=仅训练期
     TRAINING_WEIGHT_STEP = 10
-
-    # 胜率阈值配置 (2025-01简化)
-    DEFAULT_WIN_RATE_TOLERANCE = 5.0  # 胜率阈值（百分比），差异≤此值视为相同胜率
-    WIN_RATE_TOLERANCE_MIN = 1.0
-    WIN_RATE_TOLERANCE_MAX = 10.0
-    WIN_RATE_TOLERANCE_STEP = 0.5
 
     # ========== 算法选择配置（2025-12-21新增）==========
     ALGORITHM_OPTIONS = {

@@ -7,7 +7,7 @@
 2. 可测试性：业务逻辑可独立单元测试
 3. 可复用性：配置构建逻辑可在其他地方复用
 
-支持目标变量概念：变量选择基于目标变量的加权RMSE
+经典DFM：所有变量平等参与因子提取，无目标变量概念
 """
 
 import pandas as pd
@@ -25,7 +25,7 @@ from dashboard.models.DFM.train.ui.utils.date_helpers import (
 
 
 class TrainingConfigBuilder:
-    """训练配置构建器（支持目标变量）"""
+    """训练配置构建器（经典DFM无监督模型）"""
 
     def __init__(self, state_manager):
         """
@@ -64,7 +64,7 @@ class TrainingConfigBuilder:
         var_frequency_map: Optional[Dict[str, str]] = None
     ) -> TrainingConfig:
         """
-        构建TrainingConfig对象（支持目标变量）
+        构建TrainingConfig对象（经典DFM无监督模型）
 
         Args:
             input_df: 输入数据DataFrame
@@ -127,12 +127,6 @@ class TrainingConfigBuilder:
         enable_var_selection = (var_selection_method != 'none')
         mapped_var_selection_method = self._map_variable_selection_method(var_selection_method)
 
-        # 获取目标变量配置（变量选择时使用）
-        target_variable = self.state.get('dfm_target_variable')
-        # 获取训练期权重（从UI状态，转换为0-1范围）
-        training_weight_pct = self.state.get('dfm_training_weight', 50)  # UI中是百分比
-        training_weight = training_weight_pct / 100.0  # 转换为0-1
-
         # 5. 获取因子选择配置
         factor_selection_method, factor_params = self._get_factor_selection_params()
 
@@ -144,7 +138,7 @@ class TrainingConfigBuilder:
         # 7. 保存DataFrame到临时文件
         temp_data_path = self._save_dataframe_to_temp(input_df)
 
-        # 8. 构建TrainingConfig（支持目标变量）
+        # 8. 构建TrainingConfig（经典DFM无监督模型）
         config_kwargs = {
             # 核心配置
             'data_path': temp_data_path,
@@ -166,10 +160,6 @@ class TrainingConfigBuilder:
             'enable_variable_selection': enable_var_selection,
             'variable_selection_method': mapped_var_selection_method,
             'min_variables_after_selection': self._get_required('dfm_min_variables_after_selection') if enable_var_selection else 1,
-
-            # 目标变量配置
-            'target_variable': target_variable,
-            'training_weight': training_weight,
 
             # 因子数选择配置
             'factor_selection_method': factor_selection_method,

@@ -279,8 +279,43 @@ class TrainingResultExporter:
         if prepared_data is not None:
             metadata['prepared_data'] = prepared_data
             logger.info(f"保存完整观测数据: 形状={prepared_data.shape}")
+
+            # 计算并保存训练期均值（用于重构效果图还原原始尺度）
+            try:
+                train_start_dt = pd.to_datetime(config.training_start)
+                train_end_dt = pd.to_datetime(config.train_end)
+                train_mask = (prepared_data.index >= train_start_dt) & (prepared_data.index <= train_end_dt)
+                train_data = prepared_data[train_mask]
+
+                if len(train_data) > 0:
+                    # 获取模型使用的变量列表
+                    if (hasattr(result, 'model_result') and
+                        result.model_result is not None and
+                        hasattr(result.model_result, 'variable_names') and
+                        result.model_result.variable_names is not None):
+                        var_names = list(result.model_result.variable_names)
+                    else:
+                        var_names = list(result.selected_variables)
+
+                    # 筛选出在 prepared_data 中存在的变量
+                    available_vars = [v for v in var_names if v in train_data.columns]
+                    training_means = train_data[available_vars].mean().values
+
+                    metadata['training_means'] = training_means
+                    metadata['training_variable_names'] = available_vars
+                    logger.info(f"保存训练期均值: {len(available_vars)} 个变量")
+                else:
+                    metadata['training_means'] = None
+                    metadata['training_variable_names'] = None
+                    logger.warning("训练期数据为空，无法计算训练期均值")
+            except Exception as e:
+                logger.warning(f"计算训练期均值失败: {e}")
+                metadata['training_means'] = None
+                metadata['training_variable_names'] = None
         else:
             metadata['prepared_data'] = None
+            metadata['training_means'] = None
+            metadata['training_variable_names'] = None
 
         logger.info(f"元数据构建完成,包含 {len(metadata)} 个字段")
         return metadata

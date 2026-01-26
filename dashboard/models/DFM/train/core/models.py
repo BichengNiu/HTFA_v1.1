@@ -3,7 +3,6 @@
 统一数据模型定义
 
 整合所有train模块使用的数据类，确保类型一致性和可维护性
-支持目标变量概念：变量选择基于目标变量的重构RMSE
 """
 
 import numpy as np
@@ -18,12 +17,12 @@ from typing import List, Dict, Tuple, Optional
 class EvaluationMetrics:
     """评估指标
 
-    基于目标变量重构RMSE的评估指标，用于变量选择和模型评估。
+    包含平均RMSE用于变量选择和模型评估。
     """
-    # 目标变量RMSE指标
-    target_rmse: float = np.inf           # 目标变量训练期RMSE
-    target_rmse_validation: float = np.inf  # 目标变量验证期RMSE
-    weighted_target_rmse: float = np.inf  # 加权目标变量RMSE
+    # 平均RMSE指标
+    average_rmse: float = np.inf              # 训练期平均RMSE
+    average_rmse_validation: float = np.inf   # 验证期平均RMSE
+    weighted_average_rmse: float = np.inf     # 加权平均RMSE
 
     # 收敛信息
     converged: bool = False
@@ -32,9 +31,9 @@ class EvaluationMetrics:
     def to_dict(self) -> Dict[str, float]:
         """转换为字典"""
         return {
-            'target_rmse': self.target_rmse,
-            'target_rmse_validation': self.target_rmse_validation,
-            'weighted_target_rmse': self.weighted_target_rmse,
+            'average_rmse': self.average_rmse,
+            'average_rmse_validation': self.average_rmse_validation,
+            'weighted_average_rmse': self.weighted_average_rmse,
             'converged': self.converged,
             'iterations': self.iterations
         }

@@ -63,16 +63,16 @@ def format_training_summary(result: TrainingResult) -> str:
     Returns:
         str: 格式化的摘要字符串
     """
-    # 获取目标变量RMSE（优先使用加权RMSE）
-    weighted_rmse = getattr(result.metrics, 'weighted_target_rmse', np.inf)
-    target_rmse = getattr(result.metrics, 'target_rmse', np.inf)
-    rmse_value = weighted_rmse if np.isfinite(weighted_rmse) else target_rmse
+    # 获取平均RMSE（优先使用加权平均RMSE）
+    weighted_avg_rmse = getattr(result.metrics, 'weighted_average_rmse', np.inf)
+    avg_rmse = getattr(result.metrics, 'average_rmse', np.inf)
+    rmse_value = weighted_avg_rmse if np.isfinite(weighted_avg_rmse) else avg_rmse
 
     lines = [
         "========== 最终模型 ==========",
         f"最终变量数: {len(result.selected_variables)}",
         f"因子数: {result.k_factors}",
-        f"目标变量RMSE: {rmse_value:.4f}",
+        f"平均RMSE: {rmse_value:.4f}",
         f"模型收敛: {'是' if result.metrics.converged else '否'}",
         f"迭代次数: {result.metrics.iterations}",
         f"训练时间: {result.training_time:.2f}秒",
@@ -127,21 +127,6 @@ def generate_progress_bar(current: int, total: int, width: int = 20) -> str:
     return f"[{bar}]"
 
 
-def format_win_rate(value: float) -> str:
-    """
-    格式化胜率显示
-
-    Args:
-        value: 胜率值（0-100的百分比）
-
-    Returns:
-        str: 格式化的胜率字符串，如 "75.5%" 或 "N/A"
-    """
-    if np.isfinite(value):
-        return f"{value:.1f}%"
-    return "N/A"
-
-
 def format_rmse_change(old_rmse: float, new_rmse: float) -> str:
     """
     格式化RMSE变化
@@ -161,31 +146,10 @@ def format_rmse_change(old_rmse: float, new_rmse: float) -> str:
     return f"上升{abs(pct):.1f}%"
 
 
-def format_win_rate_change(old_win_rate: float, new_win_rate: float) -> str:
-    """
-    格式化胜率变化
-
-    Args:
-        old_win_rate: 原胜率值
-        new_win_rate: 新胜率值
-
-    Returns:
-        str: 格式化的变化字符串，如 "提升5.0%" 或 "下降3.0%" 或空字符串
-    """
-    if not np.isfinite(old_win_rate) or not np.isfinite(new_win_rate):
-        return ""
-    delta = new_win_rate - old_win_rate
-    if delta >= 0:
-        return f"提升{delta:.1f}%"
-    return f"下降{abs(delta):.1f}%"
-
-
 __all__ = [
     'format_training_config',
     'format_training_summary',
     'print_training_summary',
     'generate_progress_bar',
-    'format_win_rate',
     'format_rmse_change',
-    'format_win_rate_change',
 ]

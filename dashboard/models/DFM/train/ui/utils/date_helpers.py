@@ -89,40 +89,6 @@ def get_frequency_label(freq_code: str) -> str:
     return FREQUENCY_LABELS[freq_code]
 
 
-def get_target_frequency(
-    target_variable: str,
-    var_frequency_map: Dict[str, str],
-    default_freq: str = 'W'
-) -> str:
-    """
-    获取目标变量的频率代码
-
-    Args:
-        target_variable: 目标变量名
-        var_frequency_map: 变量到频率的映射
-        default_freq: 默认频率代码
-
-    Returns:
-        频率代码
-
-    Raises:
-        ValueError: 当频率映射为空或目标变量未找到时
-    """
-    import unicodedata
-
-    if not var_frequency_map:
-        return default_freq
-
-    # 标准化目标变量名进行查找
-    normalized_target = unicodedata.normalize('NFKC', str(target_variable)).strip().lower()
-
-    # 直接查找
-    if normalized_target in var_frequency_map:
-        return var_frequency_map[normalized_target]
-
-    return default_freq
-
-
 def calculate_train_end_date(
     algorithm: str,
     validation_start: date,

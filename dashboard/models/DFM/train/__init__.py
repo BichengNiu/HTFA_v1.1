@@ -32,7 +32,7 @@ from dashboard.models.DFM.train.core.prediction import generate_factor_forecast
 
 # 评估指标
 from dashboard.models.DFM.train.evaluation.metrics import (
-    evaluate_dfm_model
+    calculate_average_reconstruction_rmse,
 )
 
 # 变量选择

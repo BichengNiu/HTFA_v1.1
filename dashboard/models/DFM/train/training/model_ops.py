@@ -4,8 +4,6 @@ DFM模型操作模块
 
 合并训练和评估功能，提供统一的模型操作接口
 支持经典DFM（EM算法）和深度学习DFM（DDFM自编码器）
-
-支持目标变量概念：变量选择基于目标变量的重构RMSE
 """
 
 import pandas as pd
@@ -15,8 +13,7 @@ from dashboard.models.DFM.train.utils.logger import get_logger
 from dashboard.models.DFM.train.core.models import DFMModelResult, EvaluationMetrics
 from dashboard.models.DFM.train.core.factor_model import DFMModel
 from dashboard.models.DFM.train.evaluation.metrics import (
-    calculate_target_reconstruction_rmse,
-    calculate_weighted_rmse
+    calculate_average_reconstruction_rmse
 )
 
 logger = get_logger(__name__)
@@ -35,7 +32,7 @@ def train_dfm_model(
     progress_callback: Optional[Callable[[str], None]] = None
 ) -> DFMModelResult:
     """
-    训练经典DFM模型（无目标变量预测）
+    训练经典DFM模型
 
     完成以下流程：
     1. 创建并配置DFM模型
@@ -114,7 +111,7 @@ def train_ddfm_model(
     progress_callback: Optional[Callable[[str], None]] = None
 ) -> DFMModelResult:
     """
-    DDFM训练函数（深度学习算法，无目标变量预测）
+    DDFM训练函数（深度学习算法）
 
     使用神经网络自编码器提取因子，通过MCMC迭代训练
 
@@ -231,7 +228,6 @@ def evaluate_model_fit(
     observation_data: pd.DataFrame,
     training_start: str,
     train_end: str,
-    target_variable: Optional[str] = None,
     validation_start: Optional[str] = None,
     validation_end: Optional[str] = None,
     training_weight: float = 0.5
@@ -239,29 +235,20 @@ def evaluate_model_fit(
     """
     评估DFM模型拟合质量
 
-    基于目标变量重构RMSE的评估，支持训练期和验证期加权。
+    计算平均RMSE用于模型评估。
 
     Args:
         model_result: DFM模型结果
         observation_data: 观测数据
         training_start: 训练期开始日期
         train_end: 训练期结束日期
-        target_variable: 目标变量名称（可选，不指定则使用第一个变量）
         validation_start: 验证期开始日期（可选）
         validation_end: 验证期结束日期（可选）
         training_weight: 训练期权重 (0.0-1.0)
 
     Returns:
-        EvaluationMetrics: 包含目标变量RMSE的评估指标对象
+        EvaluationMetrics: 包含平均RMSE的评估指标对象
     """
-    # 确定目标变量索引
-    if target_variable and target_variable in observation_data.columns:
-        target_idx = observation_data.columns.get_loc(target_variable)
-    else:
-        target_idx = 0  # 默认使用第一个变量
-        if target_variable:
-            logger.warning(f"目标变量'{target_variable}'不在数据中，使用第一个变量")
-
     # 获取训练期数据
     train_start_dt = pd.to_datetime(training_start)
     train_end_dt = pd.to_datetime(train_end)
@@ -272,8 +259,8 @@ def evaluate_model_fit(
 
     n_time = len(train_data)
 
-    # 计算目标变量训练期RMSE
-    target_rmse = np.inf
+    # 初始化RMSE值
+    average_rmse = np.inf
 
     if model_result.H is not None and model_result.factors_smooth is not None:
         try:
@@ -296,19 +283,19 @@ def evaluate_model_fit(
             obs_centered = obs_centered[:min_time, :]
             reconstructed = reconstructed[:min_time, :]
 
-            # 计算目标变量训练期RMSE
-            target_rmse = calculate_target_reconstruction_rmse(
-                obs_centered, reconstructed, target_idx
+            # 计算平均RMSE
+            average_rmse = calculate_average_reconstruction_rmse(
+                obs_centered, reconstructed
             )
 
             # 存储重构数据
             model_result.reconstructed_data = reconstructed
 
         except Exception as e:
-            logger.warning(f"训练期目标变量RMSE计算失败: {e}")
+            logger.warning(f"训练期RMSE计算失败: {e}")
 
-    # 计算验证期目标变量RMSE
-    target_rmse_validation = np.inf
+    # 计算验证期RMSE
+    average_rmse_validation = np.inf
     if validation_start and validation_end:
         try:
             val_start_dt = pd.to_datetime(validation_start)
@@ -344,26 +331,53 @@ def evaluate_model_fit(
                     val_obs_centered = val_obs_centered[:min_val_time, :]
                     val_reconstructed = val_reconstructed[:min_val_time, :]
 
-                    # 计算目标变量验证期RMSE
-                    target_rmse_validation = calculate_target_reconstruction_rmse(
-                        val_obs_centered, val_reconstructed, target_idx
+                    # 计算验证期平均RMSE
+                    average_rmse_validation = calculate_average_reconstruction_rmse(
+                        val_obs_centered, val_reconstructed
                     )
 
         except Exception as e:
-            logger.warning(f"验证期目标变量RMSE计算失败: {e}")
+            logger.warning(f"验证期RMSE计算失败: {e}")
 
     # 计算加权RMSE
-    weighted_target_rmse = calculate_weighted_rmse(
-        target_rmse, target_rmse_validation, training_weight
+    weighted_average_rmse = _calculate_weighted_rmse(
+        average_rmse, average_rmse_validation, training_weight
     )
 
     return EvaluationMetrics(
-        target_rmse=target_rmse,
-        target_rmse_validation=target_rmse_validation,
-        weighted_target_rmse=weighted_target_rmse,
+        average_rmse=average_rmse,
+        average_rmse_validation=average_rmse_validation,
+        weighted_average_rmse=weighted_average_rmse,
         converged=model_result.converged,
         iterations=model_result.iterations
     )
+
+
+def _calculate_weighted_rmse(
+    train_rmse: float,
+    val_rmse: float,
+    training_weight: float
+) -> float:
+    """
+    计算加权RMSE
+
+    Args:
+        train_rmse: 训练期RMSE
+        val_rmse: 验证期RMSE
+        training_weight: 训练期权重 (0.0-1.0)
+
+    Returns:
+        float: 加权RMSE
+    """
+    # 处理无效值
+    if not np.isfinite(train_rmse) and not np.isfinite(val_rmse):
+        return np.inf
+    if not np.isfinite(train_rmse):
+        return val_rmse
+    if not np.isfinite(val_rmse):
+        return train_rmse
+
+    return training_weight * train_rmse + (1.0 - training_weight) * val_rmse
 
 
 __all__ = ['train_dfm_model', 'train_ddfm_model', 'evaluate_model_fit']

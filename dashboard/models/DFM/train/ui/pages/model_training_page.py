@@ -253,91 +253,24 @@ def render_dfm_model_training_page(st_instance):
     # 深度学习模式标志
     is_deep_learning_mode = (current_algorithm == 'deep_learning')
 
-    # 第一行：选择算法 + 目标值 + 变量筛选方法 + 因子选择策略（后两者仅经典算法显示）
-    if is_deep_learning_mode:
-        col_algo, col_align = st_instance.columns(2)
-    else:
-        col_algo, col_align, col_var_method, col_factor_strategy = st_instance.columns(4)
+    # 选择算法（经典DFM无目标变量概念）
+    algorithm_value = st_instance.selectbox(
+        "选择算法",
+        options=list(UIConfig.ALGORITHM_OPTIONS.keys()),
+        format_func=lambda x: UIConfig.ALGORITHM_OPTIONS[x],
+        index=UIConfig.get_safe_option_index(
+            UIConfig.ALGORITHM_OPTIONS, current_algorithm, UIConfig.DEFAULT_ALGORITHM
+        ),
+        key='dfm_algorithm_selector',
+        help="经典DFM使用EM算法，深度学习DFM使用神经网络自编码器"
+    )
+    _state.set('dfm_algorithm', algorithm_value)
+    current_algorithm = algorithm_value
 
-    with col_algo:
-        algorithm_value = st_instance.selectbox(
-            "选择算法",
-            options=list(UIConfig.ALGORITHM_OPTIONS.keys()),
-            format_func=lambda x: UIConfig.ALGORITHM_OPTIONS[x],
-            index=UIConfig.get_safe_option_index(
-                UIConfig.ALGORITHM_OPTIONS, current_algorithm, UIConfig.DEFAULT_ALGORITHM
-            ),
-            key='dfm_algorithm_selector',
-            help="经典DFM使用EM算法，深度学习DFM使用神经网络自编码器"
-        )
-        _state.set('dfm_algorithm', algorithm_value)
-        current_algorithm = algorithm_value
-
-        # 检测算法变化，触发rerun以更新UI布局
-        if algorithm_value != _state.get('_prev_dfm_algorithm'):
-            _state.set('_prev_dfm_algorithm', algorithm_value)
-            st_instance.rerun()
-
-    with col_align:
-        current_alignment = _state.get('dfm_target_alignment_mode', UIConfig.DEFAULT_TARGET_ALIGNMENT)
-        if current_alignment not in UIConfig.TARGET_ALIGNMENT_OPTIONS:
-            raise ValueError(f"无效的目标对齐方式: {current_alignment}，有效值: {list(UIConfig.TARGET_ALIGNMENT_OPTIONS.keys())}")
-
-        alignment_value = st_instance.selectbox(
-            "目标值",
-            options=list(UIConfig.TARGET_ALIGNMENT_OPTIONS.keys()),
-            format_func=lambda x: UIConfig.TARGET_ALIGNMENT_OPTIONS[x],
-            index=UIConfig.get_safe_option_index(
-                UIConfig.TARGET_ALIGNMENT_OPTIONS, current_alignment, UIConfig.DEFAULT_TARGET_ALIGNMENT
-            ),
-            key='dfm_target_alignment_mode_input',
-            help="nowcast预测值与目标变量实际值的配对方式"
-        )
-        _state.set('dfm_target_alignment_mode', alignment_value)
-
-    if not is_deep_learning_mode:
-        with col_var_method:
-            current_var_method = _state.get('dfm_variable_selection_method', UIConfig.DEFAULT_VAR_SELECTION)
-            if current_var_method not in UIConfig.VARIABLE_SELECTION_METHODS:
-                raise ValueError(f"无效的变量筛选方法: {current_var_method}，有效值: {list(UIConfig.VARIABLE_SELECTION_METHODS.keys())}")
-
-            var_method_value = st_instance.selectbox(
-                "变量筛选方法",
-                options=list(UIConfig.VARIABLE_SELECTION_METHODS.keys()),
-                format_func=lambda x: UIConfig.VARIABLE_SELECTION_METHODS[x],
-                index=UIConfig.get_safe_option_index(
-                    UIConfig.VARIABLE_SELECTION_METHODS, current_var_method, UIConfig.DEFAULT_VAR_SELECTION
-                ),
-                key='dfm_variable_selection_method_input',
-                help="选择在已选变量基础上的筛选方法"
-            )
-            _state.set('dfm_variable_selection_method', var_method_value)
-
-            enable_var_selection = (var_method_value != 'none')
-            _state.set('dfm_enable_variable_selection', enable_var_selection)
-
-        with col_factor_strategy:
-            current_strategy = _state.get('dfm_factor_selection_strategy', UIConfig.DEFAULT_FACTOR_STRATEGY)
-            if current_strategy not in UIConfig.FACTOR_STRATEGIES:
-                raise ValueError(f"无效的因子选择策略: {current_strategy}，有效值: {list(UIConfig.FACTOR_STRATEGIES.keys())}")
-
-            strategy_value = st_instance.selectbox(
-                "因子选择策略",
-                options=list(UIConfig.FACTOR_STRATEGIES.keys()),
-                format_func=lambda x: UIConfig.FACTOR_STRATEGIES[x],
-                index=UIConfig.get_safe_option_index(
-                    UIConfig.FACTOR_STRATEGIES, current_strategy, UIConfig.DEFAULT_FACTOR_STRATEGY
-                ),
-                key='dfm_factor_selection_strategy',
-                help="选择确定因子数量的方法"
-            )
-            _state.set('dfm_factor_selection_strategy', strategy_value)
-    else:
-        # 深度学习模式：禁用变量选择
-        _state.set('dfm_variable_selection_method', 'none')
-        _state.set('dfm_enable_variable_selection', False)
-        enable_var_selection = False
-        strategy_value = 'fixed_number'
+    # 检测算法变化，触发rerun以更新UI布局
+    if algorithm_value != _state.get('_prev_dfm_algorithm'):
+        _state.set('_prev_dfm_algorithm', algorithm_value)
+        st_instance.rerun()
 
     # ===== 训练周期设置 =====
 
@@ -420,7 +353,62 @@ def render_dfm_model_training_page(st_instance):
 
     # ===== 高级选项 (折叠) =====
     is_deep_learning = (algorithm_value == 'deep_learning')
+
+    # 初始化默认值（在高级选项外可用）
+    enable_var_selection = _state.get('dfm_enable_variable_selection', False)
+    strategy_value = _state.get('dfm_factor_selection_strategy', UIConfig.DEFAULT_FACTOR_STRATEGY)
+
     with st_instance.expander("高级选项", expanded=False):
+
+        # ===== 经典DFM变量筛选和因子策略（仅经典算法显示）=====
+        if not is_deep_learning:
+            st_instance.markdown("**变量筛选与因子策略**")
+            adv_col1, adv_col2 = st_instance.columns(2)
+
+            with adv_col1:
+                current_var_method = _state.get('dfm_variable_selection_method', UIConfig.DEFAULT_VAR_SELECTION)
+                if current_var_method not in UIConfig.VARIABLE_SELECTION_METHODS:
+                    current_var_method = UIConfig.DEFAULT_VAR_SELECTION
+
+                var_method_value = st_instance.selectbox(
+                    "变量筛选方法",
+                    options=list(UIConfig.VARIABLE_SELECTION_METHODS.keys()),
+                    format_func=lambda x: UIConfig.VARIABLE_SELECTION_METHODS[x],
+                    index=UIConfig.get_safe_option_index(
+                        UIConfig.VARIABLE_SELECTION_METHODS, current_var_method, UIConfig.DEFAULT_VAR_SELECTION
+                    ),
+                    key='dfm_variable_selection_method_input',
+                    help="选择在已选变量基础上的筛选方法"
+                )
+                _state.set('dfm_variable_selection_method', var_method_value)
+
+                enable_var_selection = (var_method_value != 'none')
+                _state.set('dfm_enable_variable_selection', enable_var_selection)
+
+            with adv_col2:
+                current_strategy = _state.get('dfm_factor_selection_strategy', UIConfig.DEFAULT_FACTOR_STRATEGY)
+                if current_strategy not in UIConfig.FACTOR_STRATEGIES:
+                    current_strategy = UIConfig.DEFAULT_FACTOR_STRATEGY
+
+                strategy_value = st_instance.selectbox(
+                    "因子选择策略",
+                    options=list(UIConfig.FACTOR_STRATEGIES.keys()),
+                    format_func=lambda x: UIConfig.FACTOR_STRATEGIES[x],
+                    index=UIConfig.get_safe_option_index(
+                        UIConfig.FACTOR_STRATEGIES, current_strategy, UIConfig.DEFAULT_FACTOR_STRATEGY
+                    ),
+                    key='dfm_factor_selection_strategy',
+                    help="选择确定因子数量的方法"
+                )
+                _state.set('dfm_factor_selection_strategy', strategy_value)
+
+            st_instance.divider()
+        else:
+            # 深度学习模式：设置默认值
+            _state.set('dfm_variable_selection_method', 'none')
+            _state.set('dfm_enable_variable_selection', False)
+            enable_var_selection = False
+            strategy_value = 'fixed_number'
 
         # ===== DDFM专用参数（仅深度学习算法显示）=====
         if is_deep_learning:
@@ -661,38 +649,6 @@ def render_dfm_model_training_page(st_instance):
                     )
                     _state.set('dfm_min_variables_after_selection', min_vars_value)
 
-        # 胜率阈值配置（筛选启用时显示）- 简化版
-        if enable_var_selection:
-            st_instance.divider()
-
-            # 两列布局：训练期权重 + 胜率阈值
-            weight_col1, weight_col2 = st_instance.columns(2)
-
-            with weight_col1:
-                current_weight = _state.get('dfm_training_weight', UIConfig.DEFAULT_TRAINING_WEIGHT)
-                training_weight_value = st_instance.slider(
-                    "训练期权重 (%)",
-                    min_value=UIConfig.TRAINING_WEIGHT_MIN,
-                    max_value=UIConfig.TRAINING_WEIGHT_MAX,
-                    value=current_weight,
-                    step=UIConfig.TRAINING_WEIGHT_STEP,
-                    key='dfm_training_weight_input',
-                    help="0%=仅验证期, 100%=仅训练期"
-                )
-                _state.set('dfm_training_weight', training_weight_value)
-
-            with weight_col2:
-                current_win_rate_tolerance = _state.get('dfm_win_rate_tolerance', UIConfig.DEFAULT_WIN_RATE_TOLERANCE)
-                win_rate_tolerance_value = st_instance.slider(
-                    "胜率阈值 (%)",
-                    min_value=UIConfig.WIN_RATE_TOLERANCE_MIN,
-                    max_value=UIConfig.WIN_RATE_TOLERANCE_MAX,
-                    value=float(current_win_rate_tolerance),
-                    step=UIConfig.WIN_RATE_TOLERANCE_STEP,
-                    key='dfm_win_rate_tolerance_input',
-                    help="胜率差异≤此值时视为相同胜率，选RMSE更小的模型"
-                )
-                _state.set('dfm_win_rate_tolerance', win_rate_tolerance_value)
 
     # ===== 变量选择 =====
     st_instance.markdown("--- ")
@@ -855,9 +811,6 @@ def render_dfm_model_training_page(st_instance):
                             value=should_check_select_all,
                             key=f"dfm_select_all_{industry_name}"
                         )
-
-                    if excluded_count > 0:
-                        st_instance.caption(f"排除目标变量: {excluded_count}个")
 
                     # 同步checkbox与multiselect: 仅在checkbox状态变化时更新
                     if select_all_checked and st.session_state[multiselect_key] != indicators_for_this_industry:
@@ -1027,15 +980,15 @@ def render_dfm_model_training_page(st_instance):
                     export_dir=None
                 )
 
-                # 处理训练结果并保存（支持目标变量RMSE）
+                # 处理训练结果并保存（平均RMSE）
                 result_summary = {
                     'algorithm': algorithm_value,  # 保存算法类型
                     'selected_variables': result.selected_variables,
                     'k_factors': result.k_factors,
                     'metrics': {
-                        'target_rmse': result.metrics.target_rmse if result.metrics else None,
-                        'target_rmse_validation': result.metrics.target_rmse_validation if result.metrics else None,
-                        'weighted_target_rmse': result.metrics.weighted_target_rmse if result.metrics else None,
+                        'average_rmse': result.metrics.average_rmse if result.metrics else None,
+                        'average_rmse_validation': result.metrics.average_rmse_validation if result.metrics else None,
+                        'weighted_average_rmse': result.metrics.weighted_average_rmse if result.metrics else None,
                     },
                     'training_time': result.training_time
                 }
@@ -1059,16 +1012,16 @@ def render_dfm_model_training_page(st_instance):
                 ]
 
                 if metrics_obj:
-                    # 显示目标变量RMSE
-                    target_rmse = metrics_obj.target_rmse
-                    if target_rmse is not None and not (np.isnan(target_rmse) or np.isinf(target_rmse)):
-                        new_log_entries.append(f"[METRICS] 目标变量训练期RMSE: {target_rmse:.4f}")
-                    target_rmse_val = metrics_obj.target_rmse_validation
-                    if target_rmse_val is not None and not (np.isnan(target_rmse_val) or np.isinf(target_rmse_val)):
-                        new_log_entries.append(f"[METRICS] 目标变量验证期RMSE: {target_rmse_val:.4f}")
-                    weighted_rmse = metrics_obj.weighted_target_rmse
-                    if weighted_rmse is not None and not (np.isnan(weighted_rmse) or np.isinf(weighted_rmse)):
-                        new_log_entries.append(f"[METRICS] 加权目标变量RMSE: {weighted_rmse:.4f}")
+                    # 显示平均RMSE（用于变量选择）
+                    avg_rmse = metrics_obj.average_rmse
+                    if avg_rmse is not None and not (np.isnan(avg_rmse) or np.isinf(avg_rmse)):
+                        new_log_entries.append(f"[METRICS] 训练期平均RMSE: {avg_rmse:.4f}")
+                    avg_rmse_val = metrics_obj.average_rmse_validation
+                    if avg_rmse_val is not None and not (np.isnan(avg_rmse_val) or np.isinf(avg_rmse_val)):
+                        new_log_entries.append(f"[METRICS] 验证期平均RMSE: {avg_rmse_val:.4f}")
+                    weighted_avg_rmse = metrics_obj.weighted_average_rmse
+                    if weighted_avg_rmse is not None and not (np.isnan(weighted_avg_rmse) or np.isinf(weighted_avg_rmse)):
+                        new_log_entries.append(f"[METRICS] 加权平均RMSE: {weighted_avg_rmse:.4f}")
 
                 training_log = _state.get('dfm_training_log', [])
                 _state.set('dfm_training_log', training_log + new_log_entries)

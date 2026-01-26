@@ -101,7 +101,6 @@ class FileUploaderComponent:
             'dfm_selected_indicators',
             'dfm_selected_industries',
             'dfm_selected_indicators_per_industry',
-            'dfm_target_variable',
             'dfm_default_variables_map',
             'dfm_industry_map_filtered',
         ]
@@ -274,7 +273,6 @@ class FileUploaderComponent:
 
             # 解析默认变量配置
             dfm_default_vars = {}
-            target_map = {}
 
             if '预测变量' in industry_map_df.columns:
                 dfm_default_vars = {
@@ -283,17 +281,6 @@ class FileUploaderComponent:
                     if pd.notna(k) and pd.notna(v) and str(v).strip() == '是'
                 }
                 print(f"[模型训练] 预测变量: {len(dfm_default_vars)}个")
-
-            if '目标变量' in industry_map_df.columns:
-                target_map = {
-                    normalize_variable_name(k): str(v).strip()
-                    for k, v in zip(industry_map_df['指标名称'], industry_map_df['目标变量'])
-                    if pd.notna(k) and pd.notna(v) and str(v).strip() == '是'
-                }
-                print(f"[模型训练] Excel中标记的目标变量: {len(target_map)}个（仅作为默认值参考，实际目标变量在UI中选择）")
-            else:
-                # 目标变量列是可选的，目标变量在UI中选择
-                print("[模型训练] Excel中无'目标变量'列，目标变量将在UI中选择")
 
             # 解析频率映射（必需）
             if '频率' not in industry_map_df.columns:
@@ -367,7 +354,6 @@ class FileUploaderComponent:
             self.state.set('dfm_prepared_data_df', input_df)
             self.state.set('dfm_industry_map_obj', var_industry_map)
             self.state.set('dfm_default_map', dfm_default_vars)
-            self.state.set('dfm_target_map', target_map)
             self.state.set('dfm_frequency_map_obj', var_frequency_map)
             self.state.set('dfm_unit_map_obj', var_unit_map)
             self.state.set('cached_excel_file_id', current_file_id)
