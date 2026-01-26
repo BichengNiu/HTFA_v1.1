@@ -27,7 +27,6 @@ class TrainingInfo:
     training_end: str = 'N/A'
     validation_start: str = 'N/A'
     validation_end: str = 'N/A'
-    target_variable: str = ''
     estimation_method: str = 'N/A'
     n_industries: Any = 'N/A'
     n_variables: Any = 'N/A'
@@ -70,7 +69,6 @@ class DFMMetadataAccessor:
             training_end=self._get_date_str('train_end_date'),
             validation_start=self._get_date_str('validation_start_date'),
             validation_end=self._get_date_str('validation_end_date'),
-            target_variable=self._metadata.get('target_variable', ''),
             estimation_method=self._metadata.get('estimation_method', 'N/A'),
             n_industries=n_industries,
             n_variables=n_vars,

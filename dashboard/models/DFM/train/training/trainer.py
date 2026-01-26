@@ -3,7 +3,7 @@
 DFM训练器 - 简化版（真正的轻量级协调器）
 
 仅负责协调训练流程，直接调用底层函数，避免不必要的包装
-支持目标变量概念：变量选择基于目标变量的加权RMSE
+经典DFM：所有变量平等参与因子提取，无目标变量概念
 """
 
 import time
@@ -44,7 +44,7 @@ class DFMTrainer:
     """
     DFM主训练器（轻量级协调器）
 
-    支持目标变量概念：变量选择基于目标变量的加权RMSE
+    经典DFM：所有变量平等参与因子提取，无目标变量概念
 
     两阶段训练流程:
     1. 阶段1: 变量选择(可选)
@@ -182,8 +182,7 @@ class DFMTrainer:
                         selector = BackwardSelector(
                             evaluator_func=evaluator,
                             min_variables=self.config.min_variables_after_selection,
-                            parallel_config=self.config.get_parallel_config(),
-                            target_variable=self.config.target_variable
+                            parallel_config=self.config.get_parallel_config()
                         )
                     elif self.config.variable_selection_method == 'stepwise':
                         # Stepwise选择器暂时禁用（需要重构以支持经典DFM）
@@ -216,10 +215,8 @@ class DFMTrainer:
                             'pca_threshold': self.config.pca_threshold,
                             'kaiser_threshold': self.config.kaiser_threshold,
                             'tolerance': self.config.tolerance,
-                            'target_variable': self.config.target_variable,
                             'validation_start': self.config.validation_start,
-                            'validation_end': self.config.validation_end,
-                            'training_weight': self.config.training_weight
+                            'validation_end': self.config.validation_end
                         },
                         training_start_date=self.config.training_start,
                         train_end_date=self.config.train_end,
@@ -265,7 +262,7 @@ class DFMTrainer:
 
             # ========== 公共部分：评估和结果构建 ==========
 
-            # 步骤5: 模型评估（基于目标变量RMSE）
+            # 步骤5: 模型评估（基于平均RMSE）
             observation_data = data[selected_vars]
 
             metrics = evaluate_model_fit(
@@ -273,10 +270,8 @@ class DFMTrainer:
                 observation_data=observation_data,
                 training_start=self.config.training_start,
                 train_end=self.config.train_end,
-                target_variable=self.config.target_variable,
                 validation_start=self.config.validation_start,
-                validation_end=self.config.validation_end,
-                training_weight=self.config.training_weight
+                validation_end=self.config.validation_end
             )
 
             # 保存变量名到模型结果

@@ -113,8 +113,6 @@ class TrainingInfoPanel:
             st.text(f"开始: {info.validation_start}")
             st.text(f"结束: {info.validation_end}")
 
-        if info.target_variable:
-            st.markdown(f"**目标变量**: {info.target_variable}")
         st.markdown(f"**估计方法**: {info.estimation_method}")
 
         st.markdown("---")

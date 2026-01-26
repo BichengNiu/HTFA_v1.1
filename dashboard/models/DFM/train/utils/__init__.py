@@ -29,7 +29,7 @@ from dashboard.models.DFM.train.utils.file_cache import get_file_hash, load_cach
 from dashboard.models.DFM.train.utils.state_manager import StateManager
 
 # 行业过滤工具
-from dashboard.models.DFM.train.utils.industry_filter import filter_industries_by_target, get_non_target_indicators
+from dashboard.models.DFM.train.utils.industry_filter import filter_industries_with_indicators
 
 __all__ = [
     # 日志
@@ -54,6 +54,5 @@ __all__ = [
     'StateManager',
 
     # 行业过滤
-    'filter_industries_by_target',
-    'get_non_target_indicators',
+    'filter_industries_with_indicators',
 ]

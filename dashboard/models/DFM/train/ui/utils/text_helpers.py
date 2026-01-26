@@ -80,34 +80,6 @@ def build_normalized_mapping(
     return result
 
 
-def filter_exclude_targets(
-    all_indicators: List[str],
-    exclude_list: List[str]
-) -> List[str]:
-    """
-    从指标列表中排除目标变量
-
-    Args:
-        all_indicators: 所有指标列表
-        exclude_list: 要排除的变量列表
-
-    Returns:
-        排除后的指标列表
-
-    Examples:
-        >>> filter_exclude_targets(
-        ...     ['GDP', '工业增加值', 'CPI'],
-        ...     ['工业增加值']
-        ... )
-        ['GDP', 'CPI']
-    """
-    if not exclude_list:
-        return all_indicators
-
-    exclude_set = set(exclude_list)
-    return [ind for ind in all_indicators if ind not in exclude_set]
-
-
 def filter_exclude_zonghe(
     indicators: List[str],
     var_industry_map: Dict[str, str]
@@ -136,53 +108,3 @@ def filter_exclude_zonghe(
         ind for ind in indicators
         if var_industry_map.get(normalize_variable_name(ind), None) != '综合'
     ]
-
-
-def build_exclude_targets_list(
-    current_target_var: str,
-    first_stage_targets: List[str] = None
-) -> List[str]:
-    """
-    构建排除目标变量列表
-
-    Args:
-        current_target_var: 当前目标变量
-        first_stage_targets: 其他需要排除的目标变量列表
-
-    Returns:
-        完整的排除目标列表
-
-    Examples:
-        >>> build_exclude_targets_list('GDP', ['工业增加值', 'CPI'])
-        ['GDP', '工业增加值', 'CPI']
-        >>> build_exclude_targets_list(None, ['工业增加值'])
-        ['工业增加值']
-    """
-    exclude_targets = []
-    if current_target_var:
-        exclude_targets.append(current_target_var)
-    if first_stage_targets:
-        exclude_targets.extend(first_stage_targets)
-    return exclude_targets
-
-
-def get_valid_indicators_for_industry(
-    all_indicators: List[str],
-    exclude_targets: List[str],
-    var_industry_map: Dict[str, str],
-) -> List[str]:
-    """
-    获取行业的有效预测指标（排除目标变量）
-
-    Args:
-        all_indicators: 该行业的所有指标
-        exclude_targets: 要排除的目标变量列表
-        var_industry_map: 变量名(标准化) -> 行业名的映射
-
-    Returns:
-        有效的预测指标列表
-    """
-    # 排除目标变量
-    indicators = filter_exclude_targets(all_indicators, exclude_targets)
-
-    return indicators

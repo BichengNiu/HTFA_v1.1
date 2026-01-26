@@ -2,7 +2,7 @@
 """
 DFM变量选择组件
 
-提供目标变量选择、行业分组、预测指标选择等功能
+提供行业分组、预测指标选择等功能
 """
 
 import streamlit as st
@@ -39,7 +39,6 @@ class VariableSelectionComponent(DFMComponent):
             List[str]: 状态键列表
         """
         return [
-            'dfm_target_variable',
             'dfm_selected_industries',
             'dfm_industry_checkbox_states',
             'dfm_selected_indicators_per_industry',
@@ -109,11 +108,6 @@ class VariableSelectionComponent(DFMComponent):
             变量选择结果字典或None
         """
         try:
-            available_target_vars = self._get_available_target_variables(training_data)
-            selected_target_var = self._render_target_variable_selection(
-                st_obj, available_target_vars
-            )
-
             industry_to_vars = self._get_industry_mapping_from_state()
             all_industries = list(industry_to_vars.keys()) if industry_to_vars else []
 
@@ -139,11 +133,9 @@ class VariableSelectionComponent(DFMComponent):
 
             selected_industries = sorted(list(actual_industries_set))
 
-            self._render_selection_summary(st_obj, selected_target_var,
-                                                selected_industries, selected_indicators)
+            self._render_selection_summary(st_obj, selected_industries, selected_indicators)
 
             return {
-                'target_variable': selected_target_var,
                 'selected_industries': selected_industries,
                 'selected_indicators': selected_indicators,
                 'industry_to_vars': industry_to_vars
@@ -220,25 +212,6 @@ class VariableSelectionComponent(DFMComponent):
             logger.error(f"按行业分组变量失败: {e}")
             raise ValueError(f"按行业分组变量失败: {e}") from e
 
-    def _initialize_target_variable(self, available_vars: List[str]) -> str:
-        """
-        初始化目标变量
-
-        Args:
-            available_vars: 可用变量列表
-
-        Returns:
-            初始化的目标变量
-        """
-        current_target = self._get_state('dfm_target_variable')
-
-        if current_target is None or current_target not in available_vars:
-            default_target = available_vars[0] if available_vars else None
-            self._set_state('dfm_target_variable', default_target)
-            return default_target
-
-        return current_target
-
     def _initialize_industry_selection(self, industries: List[str]) -> None:
         """
         初始化行业选择状态
@@ -251,34 +224,6 @@ class VariableSelectionComponent(DFMComponent):
         if not current_states and industries:
             default_states = {industry: True for industry in industries}
             self._set_state('dfm_industry_checkbox_states', default_states)
-
-    def _get_available_target_variables(self, training_data: pd.DataFrame) -> List[str]:
-        """获取可用的目标变量"""
-        available_target_vars = []
-
-        if training_data is not None:
-            available_target_vars = [
-                col for col in training_data.columns
-                if 'date' not in col.lower() and 'time' not in col.lower()
-            ]
-
-            default_target = '规模以上工业增加值:当月同比'
-
-            if default_target and default_target in training_data.columns and default_target not in available_target_vars:
-                available_target_vars.insert(0, default_target)
-
-            if not available_target_vars and default_target and default_target in training_data.columns:
-                available_target_vars = [default_target]
-
-            if not available_target_vars:
-                if default_target:
-                    available_target_vars = [default_target]
-        else:
-            default_target = '规模以上工业增加值:当月同比'
-            if default_target:
-                available_target_vars = [default_target]
-
-        return available_target_vars
 
     def _get_industry_mapping_from_state(self) -> Dict[str, List[str]]:
         """从状态管理器获取行业映射"""
@@ -302,32 +247,6 @@ class VariableSelectionComponent(DFMComponent):
         except Exception as e:
             logger.error(f"获取行业映射失败: {e}")
             return {}
-
-    def _render_target_variable_selection(self, st_obj, available_target_vars: List[str]) -> str:
-        """渲染目标变量选择"""
-        if available_target_vars:
-            if self._get_state('dfm_target_variable') is None:
-                self._set_state('dfm_target_variable', available_target_vars[0])
-
-            current_target_var = self._get_state('dfm_target_variable')
-
-            if current_target_var not in available_target_vars:
-                current_target_var = available_target_vars[0]
-                self._set_state('dfm_target_variable', current_target_var)
-
-            selected_target_var = st_obj.selectbox(
-                "**选择目标变量**",
-                options=available_target_vars,
-                index=available_target_vars.index(current_target_var),
-                key="new_ss_dfm_target_variable",
-                help="选择您希望模型预测的目标序列。"
-            )
-            self._set_state('dfm_target_variable', selected_target_var)
-            return selected_target_var
-        else:
-            st_obj.error("[ERROR] 无法找到任何可用的目标变量")
-            self._set_state('dfm_target_variable', None)
-            return None
 
     def _render_industry_selection(self, st_obj, unique_industries: List[str],
                                         industry_to_vars: Dict[str, List[str]]) -> List[str]:
@@ -356,19 +275,7 @@ class VariableSelectionComponent(DFMComponent):
             col_idx = 0
             current_checkbox_states = self._get_state('dfm_industry_checkbox_states', {})
 
-            current_target_var = self._get_state('dfm_target_variable', None)
-            filtered_industries = []
-
             for industry_name in unique_industries:
-                industry_indicators = industry_to_vars.get(industry_name, [])
-                if current_target_var and current_target_var in industry_indicators:
-                    non_target_indicators = [ind for ind in industry_indicators if ind != current_target_var]
-                    if non_target_indicators:
-                        filtered_industries.append(industry_name)
-                else:
-                    filtered_industries.append(industry_name)
-
-            for industry_name in filtered_industries:
                 with industry_cols[col_idx % num_cols_industry]:
                     current_value = current_checkbox_states.get(industry_name, True)
 
@@ -389,14 +296,14 @@ class VariableSelectionComponent(DFMComponent):
                                 help="点击取消所有已选中的行业",
                                 width='stretch'):
                     old_states = self._get_state('dfm_industry_checkbox_states', {})
-                    new_states = {industry: False for industry in filtered_industries}
+                    new_states = {industry: False for industry in unique_industries}
 
                     self._set_state('dfm_industry_checkbox_states', new_states)
 
                     logger.info(f"取消全行业按钮点击 - 旧状态: {sum(old_states.values())} 个行业已选")
                     logger.info(f"取消全行业按钮点击 - 新状态: 0 个行业已选")
-                    logger.info(f"行业复选框状态已更新: {len(filtered_industries)} 个行业全部设为 False")
-                    logger.info(f"过滤后的行业列表: {filtered_industries}")
+                    logger.info(f"行业复选框状态已更新: {len(unique_industries)} 个行业全部设为 False")
+                    logger.info(f"行业列表: {unique_industries}")
                     logger.info(f"industry_to_vars内容: {list(industry_to_vars.keys())}")
 
                     st_obj.rerun()
@@ -407,13 +314,13 @@ class VariableSelectionComponent(DFMComponent):
                                 help="点击选择所有行业",
                                 width='stretch'):
                     old_states = self._get_state('dfm_industry_checkbox_states', {})
-                    new_states = {industry: True for industry in filtered_industries}
+                    new_states = {industry: True for industry in unique_industries}
 
                     self._set_state('dfm_industry_checkbox_states', new_states)
 
                     logger.info(f"选择全行业按钮点击 - 旧状态: {sum(old_states.values())} 个行业已选")
-                    logger.info(f"选择全行业按钮点击 - 新状态: {len(filtered_industries)} 个行业已选")
-                    logger.info(f"行业复选框状态已更新: {len(filtered_industries)} 个行业全部设为 True")
+                    logger.info(f"选择全行业按钮点击 - 新状态: {len(unique_industries)} 个行业已选")
+                    logger.info(f"行业复选框状态已更新: {len(unique_industries)} 个行业全部设为 True")
 
                     st_obj.rerun()
 
@@ -423,38 +330,23 @@ class VariableSelectionComponent(DFMComponent):
                                 help="重置为默认状态（全选）",
                                 width='stretch'):
                     old_states = self._get_state('dfm_industry_checkbox_states', {})
-                    reset_states = {industry: True for industry in filtered_industries}
+                    reset_states = {industry: True for industry in unique_industries}
 
                     self._set_state('dfm_industry_checkbox_states', reset_states)
 
                     logger.info(f"重置行业按钮点击 - 旧状态: {sum(old_states.values())} 个行业已选")
-                    logger.info(f"重置行业按钮点击 - 新状态: {len(filtered_industries)} 个行业已选")
-                    logger.info(f"行业复选框状态已重置: {len(filtered_industries)} 个行业全部设为 True")
+                    logger.info(f"重置行业按钮点击 - 新状态: {len(unique_industries)} 个行业已选")
+                    logger.info(f"行业复选框状态已重置: {len(unique_industries)} 个行业全部设为 True")
 
                     st_obj.rerun()
 
-            selected_count = sum(1 for industry, checked in current_checkbox_states.items() if checked and industry in filtered_industries)
-            st_obj.info(f"[DATA] 当前状态：已选择 {selected_count} 个行业（共 {len(filtered_industries)} 个可选）")
-
-            if len(filtered_industries) < len(unique_industries):
-                excluded_count = len(unique_industries) - len(filtered_industries)
-                st_obj.text(f"已自动排除 {excluded_count} 个仅包含目标变量的行业")
+            selected_count = sum(1 for industry, checked in current_checkbox_states.items() if checked and industry in unique_industries)
+            st_obj.info(f"[DATA] 当前状态：已选择 {selected_count} 个行业（共 {len(unique_industries)} 个可选）")
 
         current_checkbox_states = self._get_state('dfm_industry_checkbox_states', {})
 
-        current_target_var = self._get_state('dfm_target_variable', None)
-        filtered_industries_for_state = []
-        for industry_name in unique_industries:
-            industry_indicators = industry_to_vars.get(industry_name, [])
-            if current_target_var and current_target_var in industry_indicators:
-                non_target_indicators = [ind for ind in industry_indicators if ind != current_target_var]
-                if non_target_indicators:
-                    filtered_industries_for_state.append(industry_name)
-            else:
-                filtered_industries_for_state.append(industry_name)
-
-        if not current_checkbox_states and filtered_industries_for_state:
-            current_checkbox_states = {industry: True for industry in filtered_industries_for_state}
+        if not current_checkbox_states and unique_industries:
+            current_checkbox_states = {industry: True for industry in unique_industries}
             self._set_state('dfm_industry_checkbox_states', current_checkbox_states)
 
         selected_industries = [
@@ -486,16 +378,7 @@ class VariableSelectionComponent(DFMComponent):
             col_idx = 0
 
             for industry_name in current_selected_industries:
-                all_indicators_for_industry = industry_to_vars.get(industry_name, [])
-
-                current_target_var = self._get_state('dfm_target_variable', None)
-                if current_target_var:
-                    indicators_for_this_industry = [
-                        indicator for indicator in all_indicators_for_industry
-                        if indicator != current_target_var
-                    ]
-                else:
-                    indicators_for_this_industry = all_indicators_for_industry
+                indicators_for_this_industry = industry_to_vars.get(industry_name, [])
 
                 if not indicators_for_this_industry:
                     current_selection = self._get_state('dfm_selected_indicators_per_industry', {})
@@ -506,10 +389,6 @@ class VariableSelectionComponent(DFMComponent):
 
                 with indicator_cols[col_idx % num_cols_indicator]:
                     st_obj.markdown(f"**{industry_name}**")
-
-                    excluded_count = len(all_indicators_for_industry) - len(indicators_for_this_industry)
-                    if excluded_count > 0:
-                        st_obj.caption(f"排除目标变量: {excluded_count}个")
 
                     current_selection = self._get_state('dfm_selected_indicators_per_industry', {})
                     default_selection_for_industry = current_selection.get(industry_name, None)
@@ -564,13 +443,11 @@ class VariableSelectionComponent(DFMComponent):
         self._set_state('dfm_selected_indicators', final_indicators)
         return final_indicators
 
-    def _render_selection_summary(self, st_obj, selected_target_var: str,
+    def _render_selection_summary(self, st_obj,
                                        selected_industries: List[str], selected_indicators: List[str]):
         """渲染选择摘要"""
         st_obj.markdown("---")
-        current_target_var = self._get_state('dfm_target_variable', None)
         current_selected_indicators = self._get_state('dfm_selected_indicators', [])
-        st_obj.text(f" - 目标变量: {current_target_var if current_target_var else '未选择'}")
         st_obj.text(f" - 选定行业数: {len(selected_industries)}")
         st_obj.text(f" - 选定预测指标总数: {len(current_selected_indicators)}")
 

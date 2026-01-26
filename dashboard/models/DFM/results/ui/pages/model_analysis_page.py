@@ -262,24 +262,14 @@ def _add_period_annotation(fig, start_str: str, end_str: str, label: str,
 
 def _render_nowcast_chart(st, accessor: DFMMetadataAccessor, is_ddfm: bool) -> None:
     """
-    渲染Nowcast图表入口函数
-
-    根据是否有目标变量，分发到不同的渲染函数：
-    - 有目标变量（监督模型）：显示 Nowcast vs 目标变量
-    - 无目标变量（无监督模型）：显示变量的原始值 vs 重构值对比
+    渲染变量重构效果图（经典DFM无监督模型）
 
     Args:
         st: Streamlit模块
         accessor: 元数据访问器
         is_ddfm: 是否为DDFM模型
     """
-    training_info = accessor.training_info
-    target_variable = training_info.target_variable
-
-    if target_variable:
-        _render_supervised_nowcast_chart(st, accessor, is_ddfm)
-    else:
-        _render_unsupervised_reconstruction_chart(st, accessor, is_ddfm)
+    _render_unsupervised_reconstruction_chart(st, accessor, is_ddfm)
 
 
 def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor, is_ddfm: bool) -> None:
@@ -295,6 +285,8 @@ def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor,
     prepared_data = accessor.get('prepared_data')
     factor_loadings_df = accessor.factor_loadings_df
     factor_series = accessor.factor_series
+    training_means = accessor.get('training_means')
+    training_variable_names = accessor.get('training_variable_names')
 
     if prepared_data is None or factor_loadings_df is None or factor_series is None:
         st.warning("缺少重构所需数据（prepared_data/factor_loadings_df/factor_series）")
@@ -315,145 +307,116 @@ def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor,
         key="reconstruction_var_select"
     )
 
-    # 计算重构值
+    # 计算重构值（去均值尺度）
     H = factor_loadings_df.loc[available_vars].values  # (n_vars, k_factors)
     factors = factor_series.values  # (T, k_factors)
     reconstructed_all = factors @ H.T  # (T, n_vars)
 
     var_idx = available_vars.index(selected_var)
-    reconstructed_series = reconstructed_all[:, var_idx]
+    reconstructed_centered = reconstructed_all[:, var_idx]
 
-    # 获取原始值（去均值后）
-    original_data = prepared_data[selected_var].values
-    original_mean = np.nanmean(original_data)
-    original_centered = original_data - original_mean
-
-    # 对齐时间索引
+    # 获取 factor_series 的索引
     time_index = factor_series.index
-    min_len = min(len(time_index), len(original_centered), len(reconstructed_series))
+    n_time = len(factor_series)
 
+    # 检查 factor_series 是否有有效的日期索引
+    has_valid_date_index = isinstance(time_index, pd.DatetimeIndex)
+
+    # 如果不是 DatetimeIndex，检查是否是整数索引（RangeIndex 或 Int64Index）
+    if not has_valid_date_index:
+        if isinstance(time_index, pd.RangeIndex) or (hasattr(time_index, 'dtype') and np.issubdtype(time_index.dtype, np.integer)):
+            # 整数索引，需要从 prepared_data 获取日期
+            logger.warning("factor_series 是整数索引，从 prepared_data 获取日期索引")
+            if len(prepared_data) >= n_time:
+                time_index = prepared_data.index[:n_time]
+                has_valid_date_index = True
+            else:
+                st.error("因子序列缺少日期索引，无法绘制重构对比图")
+                return
+        else:
+            # 尝试转换为日期索引
+            try:
+                time_index = pd.to_datetime(time_index)
+                has_valid_date_index = True
+            except (ValueError, TypeError):
+                st.error("因子序列索引无法转换为日期，无法绘制重构对比图")
+                return
+
+    # 确保 time_index 是 DatetimeIndex
+    if not isinstance(time_index, pd.DatetimeIndex):
+        time_index = pd.to_datetime(time_index)
+
+    # 使用位置索引对齐原始数据（更可靠，避免日期格式不匹配问题）
+    # 假设 prepared_data 和 factor_series 的时间顺序一致
+    if selected_var in prepared_data.columns:
+        original_series = prepared_data[selected_var].values
+        if len(original_series) >= n_time:
+            original_values = original_series[:n_time]
+        else:
+            # 如果 prepared_data 比 factor_series 短，用 NaN 填充
+            original_values = np.full(n_time, np.nan)
+            original_values[:len(original_series)] = original_series
+    else:
+        st.error(f"变量 {selected_var} 不在 prepared_data 中")
+        return
+
+    # 调试日志
+    logger.info(f"[重构图] 变量: {selected_var}")
+    logger.info(f"[重构图] time_index 类型: {type(time_index)}, 范围: {time_index.min()} ~ {time_index.max()}, 长度: {len(time_index)}")
+    logger.info(f"[重构图] prepared_data 索引范围: {prepared_data.index.min()} ~ {prepared_data.index.max()}, 长度: {len(prepared_data)}")
+    logger.info(f"[重构图] 对齐后原始值非空数量: {pd.notna(original_values).sum()} / {len(original_values)}")
+
+    # 获取该变量的训练期均值
+    if training_means is None or training_variable_names is None:
+        st.error("元数据中缺少训练期均值（training_means），请使用最新版本重新训练模型")
+        return
+
+    try:
+        mean_idx = list(training_variable_names).index(selected_var)
+        var_mean = training_means[mean_idx]
+    except (ValueError, IndexError):
+        st.error(f"变量 {selected_var} 的训练期均值未找到，请重新训练模型")
+        return
+
+    # 还原到原始尺度
+    reconstructed_original = reconstructed_centered + var_mean
+    original_values_original_scale = original_values  # 已经是原始尺度，无需转换
+
+    # 构建对比数据（原始尺度）
     comparison_df = pd.DataFrame({
-        '原始值': original_centered[:min_len],
-        '重构值': reconstructed_series[:min_len]
-    }, index=time_index[:min_len])
+        '原始值': original_values_original_scale,
+        '重构值': reconstructed_original
+    }, index=time_index)
 
     # 绘制图表
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=comparison_df.index, y=comparison_df['原始值'],
-        mode='lines', name='原始值（去均值）', line=dict(color='red')
+        mode='lines', name='原始值', line=dict(color='red')
     ))
     fig.add_trace(go.Scatter(
         x=comparison_df.index, y=comparison_df['重构值'],
         mode='lines', name='重构值', line=dict(color='blue')
     ))
 
-    fig.update_layout(
-        title=dict(text=f'{selected_var} 重构效果对比', x=0.5),
-        xaxis_title="", yaxis_title="值",
-        legend=dict(orientation="h", y=-0.2, x=0.5, xanchor="center"),
-        height=500
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-    # 下载按钮
-    csv_data = comparison_df.to_csv(index=True).encode('utf-8-sig')
-    st.download_button(
-        label="数据下载", data=csv_data,
-        file_name=f"{selected_var}_重构对比.csv", mime="text/csv",
-        key="download_reconstruction_comparison"
-    )
-
-
-def _render_supervised_nowcast_chart(st, accessor: DFMMetadataAccessor, is_ddfm: bool) -> None:
-    """
-    渲染监督模型的Nowcast vs 实际值图表
-
-    Args:
-        st: Streamlit模块
-        accessor: 元数据访问器
-        is_ddfm: 是否为DDFM模型
-    """
-    complete_aligned_table = accessor.complete_aligned_table
+    # 获取训练信息并添加时期标注
     training_info = accessor.training_info
-    target_variable_name_for_plot = training_info.target_variable
 
-    if complete_aligned_table is not None and isinstance(complete_aligned_table, pd.DataFrame) and not complete_aligned_table.empty:
-        logger.info("[SUCCESS] 使用pickle文件中的complete_aligned_table数据")
-        comparison_df = complete_aligned_table.copy()
-
-        nowcast_display_name = "Nowcast值"
-        target_display_name = target_variable_name_for_plot
-
-        if len(comparison_df.columns) >= 2:
-            comparison_df.columns = [nowcast_display_name, target_display_name]
-
-        logger.info(f"数据包含 {len(comparison_df)} 行数据")
-        logger.info(f"时间范围: {comparison_df.index.min()} 到 {comparison_df.index.max()}")
-    else:
-        logger.error("[ERROR] 未找到complete_aligned_table数据")
-        st.error("无法显示Nowcast对比图：元数据中缺少complete_aligned_table数据")
-        st.info("请使用最新版本的训练模块重新训练模型以生成完整数据")
-        return
-
-    # 确保索引是DatetimeIndex
-    if not isinstance(comparison_df.index, pd.DatetimeIndex):
-        comparison_df.index = pd.to_datetime(comparison_df.index)
-        comparison_df = comparison_df.sort_index()
-
-    # 绘制Nowcast vs 实际值图表
-    logger.info("开始绘制 Nowcast vs 实际值图表...")
-    fig = go.Figure()
-
-    # 添加Nowcast数据线
-    if nowcast_display_name in comparison_df.columns and comparison_df[nowcast_display_name].notna().any():
-        fig.add_trace(go.Scatter(
-            x=comparison_df.index,
-            y=comparison_df[nowcast_display_name],
-            mode='lines+markers',
-            name=nowcast_display_name,
-            line=dict(color='blue'),
-            marker=dict(size=5),
-            hovertemplate=
-            f'<b>日期</b>: %{{x|%Y/%m/%d}}<br>' +
-            f'<b>{nowcast_display_name}</b>: %{{y:.2f}}<extra></extra>'
-        ))
-
-    # 添加实际值数据点
-    if target_display_name in comparison_df.columns and comparison_df[target_display_name].notna().any():
-        actual_plot_data = comparison_df[target_display_name].dropna()
-        if not actual_plot_data.empty:
-            fig.add_trace(go.Scatter(
-                x=actual_plot_data.index,
-                y=actual_plot_data.values,
-                mode='markers',
-                name=target_display_name,
-                marker=dict(color='red', size=7),
-                hovertemplate=
-                f'<b>日期</b>: %{{x|%Y/%m/%d}}<br>' +
-                f'<b>{target_display_name}</b>: %{{y:.2f}}<extra></extra>'
-            ))
-
-    # 添加训练期文字标注
+    # 添加训练期标注（白色背景，即不添加背景）
     _add_period_annotation(fig, training_info.training_start, training_info.training_end, "训练期")
 
-    # 添加验证期黄色背景标记（DDFM模型跳过）
+    # 添加验证期标注（浅黄色背景）- DDFM模型跳过
     if not is_ddfm:
         _add_period_annotation(
             fig, training_info.validation_start, training_info.validation_end,
             "验证期", add_background=True, bg_color="yellow", bg_opacity=0.2
         )
 
-    # 添加观察期背景色标记
+    # 添加观察期标注（浅绿色背景）
     obs_start = accessor.observation_period_start
     obs_end = accessor.observation_period_end
-    logger.info(f"[DEBUG] 观察期: obs_start={obs_start}, obs_end={obs_end}, is_ddfm={is_ddfm}")
-
     if obs_start and obs_start != 'N/A':
         obs_start_dt = pd.to_datetime(obs_start)
-
-        # 确定观察期结束日期
         if obs_end and obs_end != 'N/A':
             data_end_str = obs_end
         elif not comparison_df.empty and comparison_df.index.max() > obs_start_dt:
@@ -467,41 +430,22 @@ def _render_supervised_nowcast_chart(st, accessor: DFMMetadataAccessor, is_ddfm:
                 add_background=True, bg_color="rgba(150, 230, 150, 0.4)", bg_opacity=0.4
             )
 
-    # 设置图表布局
     fig.update_layout(
-        title=dict(
-            text=f'{target_display_name}实时预测',
-            x=0.5,
-            xanchor='center',
-            yanchor='top'
-        ),
-        xaxis=dict(title="", type='date'),
-        yaxis_title="(%)",
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=-0.2,
-            xanchor="center",
-            x=0.5
-        ),
-        hovermode='x unified',
+        title=dict(text=f'{selected_var} 重构效果对比', x=0.5),
+        xaxis_title="", yaxis_title="值",
+        legend=dict(orientation="h", y=-0.2, x=0.5, xanchor="center"),
         height=500,
         margin=dict(t=100, b=100, l=50, r=50)
     )
 
-    st.plotly_chart(fig, width='stretch')
+    st.plotly_chart(fig, use_container_width=True)
 
-    # 提供数据下载
-    comparison_df_download = comparison_df.copy()
-    comparison_df_download.columns = ["实时预测", target_display_name]
-    csv_data = comparison_df_download.to_csv(index=True).encode('utf-8-sig')
+    # 下载按钮
+    csv_data = comparison_df.to_csv(index=True).encode('utf-8-sig')
     st.download_button(
-        label="数据下载",
-        data=csv_data,
-        file_name=f"{target_variable_name_for_plot}实时预测.csv",
-        mime="text/csv",
-        key="download_nowcast_comparison",
-        type="primary"
+        label="数据下载", data=csv_data,
+        file_name=f"{selected_var}_重构对比.csv", mime="text/csv",
+        key="download_reconstruction_comparison"
     )
 
 
