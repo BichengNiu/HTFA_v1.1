@@ -6,8 +6,8 @@ Metrics Panel Components
 import streamlit as st
 import pandas as pd
 import numpy as np
-from typing import Any, Optional, Callable
-from dashboard.models.DFM.results.ui.pages.domain import DFMMetadataAccessor, ModelMetrics
+from typing import Any, Optional
+from dashboard.models.DFM.results.ui.pages.domain import DFMMetadataAccessor
 
 
 class MetricsPanel:
@@ -39,27 +39,54 @@ class MetricsPanel:
             st.metric("最终因子数", display_k)
 
     @staticmethod
-    def render_period_metrics(
-        label: str,
-        metrics: ModelMetrics,
-        formatter: Optional[Callable] = None
-    ) -> None:
-        """
-        渲染某个时期的两个指标（MAE、RMSE）
+    def render_period_dates(accessor: DFMMetadataAccessor) -> None:
+        """渲染三个时期的开始日期"""
+        info = accessor.training_info
+        obs_start = accessor.observation_period_start
 
-        Args:
-            label: 时期标签（如"训练期"、"验证期"）
-            metrics: 指标数据
-            formatter: 可选的格式化函数
-        """
-        if formatter is None:
-            formatter = DFMMetadataAccessor.format_metric
-
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric(f"{label}MAE", formatter(metrics.mae))
+            st.metric("训练期", info.training_start)
         with col2:
-            st.metric(f"{label}RMSE", formatter(metrics.rmse))
+            st.metric("验证期", info.validation_start)
+        with col3:
+            st.metric("观察期", obs_start if obs_start != 'N/A' else 'N/A')
+
+    @staticmethod
+    def render_mae_row(accessor: DFMMetadataAccessor) -> None:
+        """渲染MAE指标行"""
+        formatter = DFMMetadataAccessor.format_metric
+        training = accessor.training_metrics
+        validation = accessor.validation_metrics
+        observation = accessor.observation_metrics
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("训练期MAE", formatter(training.mae))
+        with col2:
+            val = formatter(validation.mae) if accessor.has_valid_validation_metrics else 'N/A'
+            st.metric("验证期MAE", val)
+        with col3:
+            val = formatter(observation.mae) if accessor.has_observation_metrics else 'N/A'
+            st.metric("观察期MAE", val)
+
+    @staticmethod
+    def render_rmse_row(accessor: DFMMetadataAccessor) -> None:
+        """渲染RMSE指标行"""
+        formatter = DFMMetadataAccessor.format_metric
+        training = accessor.training_metrics
+        validation = accessor.validation_metrics
+        observation = accessor.observation_metrics
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("训练期RMSE", formatter(training.rmse))
+        with col2:
+            val = formatter(validation.rmse) if accessor.has_valid_validation_metrics else 'N/A'
+            st.metric("验证期RMSE", val)
+        with col3:
+            val = formatter(observation.rmse) if accessor.has_observation_metrics else 'N/A'
+            st.metric("观察期RMSE", val)
 
     @staticmethod
     def render_all_metrics(accessor: DFMMetadataAccessor) -> None:
@@ -69,19 +96,21 @@ class MetricsPanel:
         Args:
             accessor: 元数据访问器
         """
+        # 分割线和标题
+        st.markdown("---")
+        st.markdown("#### 结果摘要")
+
         # 第1行：基本信息
         MetricsPanel.render_basic_info(accessor)
 
-        # 第2行：训练期指标
-        MetricsPanel.render_period_metrics("训练期", accessor.training_metrics)
+        # 第2行：三个期的开始日期
+        MetricsPanel.render_period_dates(accessor)
 
-        # 第3行：验证期指标（DDFM模型时隐藏，因为验证期指标为inf）
-        if accessor.has_valid_validation_metrics:
-            MetricsPanel.render_period_metrics("验证期", accessor.validation_metrics)
+        # 第3行：MAE指标
+        MetricsPanel.render_mae_row(accessor)
 
-        # 第4行：观察期指标（条件显示）
-        if accessor.has_observation_metrics:
-            MetricsPanel.render_period_metrics("观察期", accessor.observation_metrics)
+        # 第4行：RMSE指标
+        MetricsPanel.render_rmse_row(accessor)
 
 
 class TrainingInfoPanel:
