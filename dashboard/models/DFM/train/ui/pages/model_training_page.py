@@ -252,13 +252,7 @@ def render_dfm_model_training_page(st_instance):
     # 深度学习模式标志
     is_deep_learning_mode = (current_algorithm == 'deep_learning')
 
-    # 提前获取变量筛选方法状态（用于决定目标变量是否显示）
-    current_var_method = _state.get('dfm_variable_selection_method', UIConfig.DEFAULT_VAR_SELECTION)
-    if current_var_method not in UIConfig.VARIABLE_SELECTION_METHODS:
-        current_var_method = UIConfig.DEFAULT_VAR_SELECTION
-    enable_var_selection_for_target = (current_var_method != 'none')
-
-    # 选择算法 + 目标变量 + EM最大迭代次数（3列布局）
+    # 选择算法 + 变量筛选方法 + 目标变量（3列布局）
     algo_col1, algo_col2, algo_col3 = st_instance.columns(3)
 
     with algo_col1:
@@ -275,10 +269,35 @@ def render_dfm_model_training_page(st_instance):
         _state.set('dfm_algorithm', algorithm_value)
         current_algorithm = algorithm_value
 
-    # 目标变量选择（仅经典DFM且启用变量筛选时显示）
+    # 变量筛选方法（仅经典DFM显示）
     with algo_col2:
-        if current_algorithm != 'deep_learning' and enable_var_selection_for_target:
+        if current_algorithm != 'deep_learning':
+            current_var_method = _state.get('dfm_variable_selection_method', UIConfig.DEFAULT_VAR_SELECTION)
+            if current_var_method not in UIConfig.VARIABLE_SELECTION_METHODS:
+                current_var_method = UIConfig.DEFAULT_VAR_SELECTION
+
+            var_method_value = st_instance.selectbox(
+                "变量筛选方法",
+                options=list(UIConfig.VARIABLE_SELECTION_METHODS.keys()),
+                format_func=lambda x: UIConfig.VARIABLE_SELECTION_METHODS[x],
+                index=UIConfig.get_safe_option_index(
+                    UIConfig.VARIABLE_SELECTION_METHODS, current_var_method, UIConfig.DEFAULT_VAR_SELECTION
+                ),
+                key='dfm_variable_selection_method_input',
+                help="选择在已选变量基础上的筛选方法"
+            )
+            _state.set('dfm_variable_selection_method', var_method_value)
+            enable_var_selection = (var_method_value != 'none')
+            _state.set('dfm_enable_variable_selection', enable_var_selection)
+
+    # 目标变量（仅经典DFM显示，非后向剔除时禁用）
+    with algo_col3:
+        if current_algorithm != 'deep_learning':
             selected_indicators = _state.get('dfm_selected_indicators', [])
+            # 判断是否启用（仅后向剔除时启用）
+            var_method = _state.get('dfm_variable_selection_method', UIConfig.DEFAULT_VAR_SELECTION)
+            is_disabled = (var_method != 'backward')
+
             if selected_indicators:
                 target_var_options = ['无'] + list(selected_indicators)
                 current_target = _state.get('dfm_target_variable')
@@ -288,30 +307,24 @@ def render_dfm_model_training_page(st_instance):
                     default_index = 0
 
                 target_var_value = st_instance.selectbox(
-                    "目标变量（受保护）",
+                    "目标变量",
                     options=target_var_options,
                     index=default_index,
                     key='dfm_target_variable_input',
+                    help=UIConfig.TARGET_VARIABLE_HELP,
+                    disabled=is_disabled
+                )
+                if not is_disabled:
+                    _state.set('dfm_target_variable', target_var_value if target_var_value != '无' else None)
+            else:
+                st_instance.selectbox(
+                    "目标变量",
+                    options=['请先选择指标'],
+                    key='dfm_target_variable_input',
+                    disabled=True,
                     help=UIConfig.TARGET_VARIABLE_HELP
                 )
-                _state.set('dfm_target_variable', target_var_value if target_var_value != '无' else None)
-            else:
-                st_instance.info("请先选择指标")
                 _state.set('dfm_target_variable', None)
-
-    # EM算法最大迭代次数（仅经典DFM显示）
-    with algo_col3:
-        if current_algorithm != 'deep_learning':
-            max_iterations_value = st_instance.number_input(
-                "EM算法最大迭代次数",
-                min_value=UIConfig.EM_MAX_ITERATIONS_MIN,
-                max_value=UIConfig.EM_MAX_ITERATIONS_MAX,
-                value=_state.get('dfm_max_iterations', UIConfig.EM_MAX_ITERATIONS_DEFAULT),
-                step=UIConfig.EM_MAX_ITERATIONS_STEP,
-                key='dfm_max_iterations_input',
-                help="EM算法的最大迭代次数，影响训练时间和收敛质量"
-            )
-            _state.set('dfm_max_iterations', max_iterations_value)
 
     # 检测算法变化，触发rerun以更新UI布局
     if algorithm_value != _state.get('_prev_dfm_algorithm'):
@@ -406,52 +419,9 @@ def render_dfm_model_training_page(st_instance):
 
     with st_instance.expander("高级选项", expanded=False):
 
-        # ===== 经典DFM变量筛选和因子策略（仅经典算法显示）=====
+        # ===== 经典DFM因子策略（仅经典算法显示）=====
         if not is_deep_learning:
-            st_instance.markdown("**变量筛选与因子策略**")
-
-            # 获取变量筛选方法
-            current_var_method = _state.get('dfm_variable_selection_method', UIConfig.DEFAULT_VAR_SELECTION)
-            if current_var_method not in UIConfig.VARIABLE_SELECTION_METHODS:
-                current_var_method = UIConfig.DEFAULT_VAR_SELECTION
-
-            # 2列布局：变量筛选方法 + 因子选择策略
-            adv_col1, adv_col2 = st_instance.columns(2)
-
-            with adv_col1:
-                var_method_value = st_instance.selectbox(
-                    "变量筛选方法",
-                    options=list(UIConfig.VARIABLE_SELECTION_METHODS.keys()),
-                    format_func=lambda x: UIConfig.VARIABLE_SELECTION_METHODS[x],
-                    index=UIConfig.get_safe_option_index(
-                        UIConfig.VARIABLE_SELECTION_METHODS, current_var_method, UIConfig.DEFAULT_VAR_SELECTION
-                    ),
-                    key='dfm_variable_selection_method_input',
-                    help="选择在已选变量基础上的筛选方法"
-                )
-                _state.set('dfm_variable_selection_method', var_method_value)
-
-                enable_var_selection = (var_method_value != 'none')
-                _state.set('dfm_enable_variable_selection', enable_var_selection)
-
-            with adv_col2:
-                current_strategy = _state.get('dfm_factor_selection_strategy', UIConfig.DEFAULT_FACTOR_STRATEGY)
-                if current_strategy not in UIConfig.FACTOR_STRATEGIES:
-                    current_strategy = UIConfig.DEFAULT_FACTOR_STRATEGY
-
-                strategy_value = st_instance.selectbox(
-                    "因子选择策略",
-                    options=list(UIConfig.FACTOR_STRATEGIES.keys()),
-                    format_func=lambda x: UIConfig.FACTOR_STRATEGIES[x],
-                    index=UIConfig.get_safe_option_index(
-                        UIConfig.FACTOR_STRATEGIES, current_strategy, UIConfig.DEFAULT_FACTOR_STRATEGY
-                    ),
-                    key='dfm_factor_selection_strategy',
-                    help="选择确定因子数量的方法"
-                )
-                _state.set('dfm_factor_selection_strategy', strategy_value)
-
-            st_instance.divider()
+            pass  # 因子策略UI已移至下方三列布局
         else:
             # 深度学习模式：设置默认值
             _state.set('dfm_variable_selection_method', 'none')
@@ -612,12 +582,31 @@ def render_dfm_model_training_page(st_instance):
 
         # ===== 经典DFM因子参数（仅经典算法显示）=====
         if not is_deep_learning:
-            # 因子参数（根据策略条件显示）- 两列布局
-            # 两列布局：左列策略参数，右列因子自回归阶数
-            factor_col1, factor_col2 = st_instance.columns(2)
+            st_instance.markdown("**因子策略**")
 
-            # 左列：根据策略条件显示参数
+            # 三列布局：因子选择策略 | 策略参数 | 因子自回归阶数
+            factor_col1, factor_col2, factor_col3 = st_instance.columns(3)
+
+            # 第一列：因子选择策略
             with factor_col1:
+                current_strategy = _state.get('dfm_factor_selection_strategy', UIConfig.DEFAULT_FACTOR_STRATEGY)
+                if current_strategy not in UIConfig.FACTOR_STRATEGIES:
+                    current_strategy = UIConfig.DEFAULT_FACTOR_STRATEGY
+
+                strategy_value = st_instance.selectbox(
+                    "因子选择策略",
+                    options=list(UIConfig.FACTOR_STRATEGIES.keys()),
+                    format_func=lambda x: UIConfig.FACTOR_STRATEGIES[x],
+                    index=UIConfig.get_safe_option_index(
+                        UIConfig.FACTOR_STRATEGIES, current_strategy, UIConfig.DEFAULT_FACTOR_STRATEGY
+                    ),
+                    key='dfm_factor_selection_strategy',
+                    help="选择确定因子数量的方法"
+                )
+                _state.set('dfm_factor_selection_strategy', strategy_value)
+
+            # 第二列：根据策略条件显示参数
+            with factor_col2:
                 if strategy_value == 'fixed_number':
                     fixed_factors_value = st_instance.number_input(
                         "因子数",
@@ -654,8 +643,8 @@ def render_dfm_model_training_page(st_instance):
                     )
                     _state.set('dfm_kaiser_threshold', kaiser_threshold_value)
 
-            # 右列：因子自回归阶数
-            with factor_col2:
+            # 第三列：因子自回归阶数
+            with factor_col3:
                 ar_order_value = st_instance.number_input(
                     "因子自回归阶数",
                     min_value=UIConfig.FACTOR_AR_ORDER_MIN,
@@ -926,18 +915,78 @@ def render_dfm_model_training_page(st_instance):
     if not training_ready:
         st_instance.warning("[WARNING] 训练条件未满足，请检查上述设置")
 
-    # 开始训练按钮
-    if training_ready:
-        train_btn_clicked = st_instance.button("开始训练",
-                            key="dfm_start_training",
-                            help="开始DFM模型训练",
-                            type="primary")
-    else:
-        train_btn_clicked = st_instance.button("开始训练",
-                         disabled=True,
-                         key="dfm_start_training_disabled",
-                         help="请先满足所有训练条件",
-                         type="primary")
+    # 开始训练按钮和下载按钮（并排，CSS强制紧凑布局）
+    st_instance.markdown("""
+    <style>
+    .stMainBlockContainer [data-testid="stHorizontalBlock"]:has([data-testid="stBaseButton-primary"]) {
+        gap: 1rem !important;
+        flex-wrap: nowrap !important;
+    }
+    .stMainBlockContainer [data-testid="stHorizontalBlock"]:has([data-testid="stBaseButton-primary"]) > [data-testid="stColumn"] {
+        width: fit-content !important;
+        flex: 0 0 auto !important;
+        min-width: 0 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    btn_col1, btn_col2 = st_instance.columns(2)
+
+    with btn_col1:
+        if training_ready:
+            train_btn_clicked = st_instance.button("开始训练",
+                                key="dfm_start_training",
+                                help="开始DFM模型训练",
+                                type="primary")
+        else:
+            train_btn_clicked = st_instance.button("开始训练",
+                             disabled=True,
+                             key="dfm_start_training_disabled",
+                             help="请先满足所有训练条件",
+                             type="primary")
+
+    with btn_col2:
+        # 文件下载按钮（仅训练完成后显示）
+        training_status_for_download = _state.get('dfm_training_status') or '等待开始'
+        training_results_for_download = _state.get('dfm_model_results_paths')
+
+        if training_status_for_download == '训练完成' and training_results_for_download:
+            if isinstance(training_results_for_download, dict) and training_results_for_download:
+                target_files = ['final_model_joblib', 'metadata', 'training_summary']
+                available_files = []
+
+                for file_key in target_files:
+                    file_path = training_results_for_download.get(file_key)
+                    if file_path and os.path.exists(file_path):
+                        file_name = os.path.basename(file_path)
+                        available_files.append((file_key, file_path, file_name))
+
+                if available_files:
+                    # 创建ZIP压缩包
+                    import zipfile
+                    import io
+                    from datetime import datetime
+
+                    zip_buffer = io.BytesIO()
+                    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                        for file_key, file_path, file_name in available_files:
+                            zip_file.write(file_path, file_name)
+
+                    zip_buffer.seek(0)
+                    zip_data = zip_buffer.getvalue()
+
+                    # 生成压缩包文件名（包含时间戳）
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    zip_filename = f"dfm_model_{timestamp}.zip"
+
+                    st_instance.download_button(
+                        label="文件下载",
+                        data=zip_data,
+                        file_name=zip_filename,
+                        mime="application/zip",
+                        key="dfm_download_zip",
+                        type="primary"
+                    )
 
     # 训练逻辑
     if training_ready and train_btn_clicked:
@@ -1051,6 +1100,7 @@ def render_dfm_model_training_page(st_instance):
                 _state.set('dfm_training_log', training_log + new_log_entries)
 
                 st_instance.success("[SUCCESS] 训练完成！")
+                st.rerun()  # 强制重新渲染页面，使下载按钮立即显示
 
             except Exception as e:
                 import traceback
@@ -1060,96 +1110,5 @@ def render_dfm_model_training_page(st_instance):
                 _state.set('dfm_training_error', error_msg)
                 st_instance.error(f"[ERROR] {error_msg}")
 
-    st_instance.markdown("---")
-
-    # 训练日志
-    st_instance.markdown("**训练日志**")
-
-    training_log = _state.get('dfm_training_log', [])
-    current_training_status = _state.get('dfm_training_status', '等待开始')
-
-    if current_training_status == '正在训练...':
-        if training_log:
-            log_text = "\n".join(training_log[-20:])
-            st_instance.text_area(
-                "训练日志",
-                value=log_text,
-                height=300,
-                key="dfm_training_log_display",
-                help="显示最近20条训练日志",
-                label_visibility="hidden"
-            )
-            st_instance.info("[LOADING] 训练正在进行中，日志实时更新...")
-        else:
-            st_instance.info("[LOADING] 训练正在启动，请稍候...")
-    elif training_log:
-        log_text = "\n".join(training_log[-20:])
-        st_instance.text_area(
-            "训练日志",
-            value=log_text,
-            height=300,
-            key="dfm_training_log_display",
-            help="显示最近20条训练日志",
-            label_visibility="hidden"
-        )
-    else:
-        st_instance.info("[NONE] 无日志")
-
-    # 文件下载按钮
-    training_status = _state.get('dfm_training_status') or '等待开始'
-    training_results = _state.get('dfm_model_results_paths')
-
-    debug_log(f"UI状态检查 - 当前训练状态: {training_status}", "DEBUG")
-    debug_log(f"UI状态检查 - 结果文件数量: {len(training_results) if training_results else 0}", "DEBUG")
-
-    if training_status == '训练完成':
-        if training_results:
-            if isinstance(training_results, dict) and training_results:
-                target_files = ['final_model_joblib', 'metadata', 'training_summary']
-                available_files = []
-
-                for file_key in target_files:
-                    file_path = training_results.get(file_key)
-                    if file_path and os.path.exists(file_path):
-                        file_name = os.path.basename(file_path)
-                        available_files.append((file_key, file_path, file_name))
-
-                if available_files:
-                    # 创建ZIP压缩包
-                    import zipfile
-                    import io
-                    from datetime import datetime
-
-                    zip_buffer = io.BytesIO()
-                    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                        for file_key, file_path, file_name in available_files:
-                            zip_file.write(file_path, file_name)
-
-                    zip_buffer.seek(0)
-                    zip_data = zip_buffer.getvalue()
-
-                    # 生成压缩包文件名（包含时间戳）
-                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    zip_filename = f"dfm_model_{timestamp}.zip"
-
-                    # 单一下载按钮
-                    st_instance.download_button(
-                        label="文件下载",
-                        data=zip_data,
-                        file_name=zip_filename,
-                        mime="application/zip",
-                        key="dfm_download_zip",
-                        type="primary"
-                    )
-                else:
-                    st_instance.warning("[WARNING] 未找到可用的结果文件")
-            else:
-                st_instance.warning("[WARNING] 训练完成但未找到结果文件")
-
-    elif training_status.startswith('训练失败'):
-        training_error = _state.get('dfm_training_error')
-        st_instance.error(f"[ERROR] {training_status}")
-        if training_error:
-            st_instance.error(f"错误详情: {training_error}")
 
 

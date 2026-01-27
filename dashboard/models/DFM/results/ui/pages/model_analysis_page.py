@@ -269,6 +269,8 @@ def _render_nowcast_chart(st, accessor: DFMMetadataAccessor, is_ddfm: bool) -> N
         accessor: 元数据访问器
         is_ddfm: 是否为DDFM模型
     """
+    st.markdown("---")
+    st.subheader("结果分析")
     _render_unsupervised_reconstruction_chart(st, accessor, is_ddfm)
 
 
