@@ -192,6 +192,12 @@ class TrainingResultExporter:
         oos_rmse, oos_mae = self._calculate_period_metrics(
             result, prepared_data, config.validation_start, config.validation_end
         )
+        # 计算观察期指标（如果配置了观察期）
+        obs_rmse, obs_mae = None, None
+        if config.observation_start and config.observation_end:
+            obs_rmse, obs_mae = self._calculate_period_metrics(
+                result, prepared_data, config.observation_start, config.observation_end
+            )
 
         metadata.update({
             # 训练期指标 (in-sample)
@@ -200,6 +206,9 @@ class TrainingResultExporter:
             # 验证期指标 (out-of-sample)
             'oos_rmse': oos_rmse,
             'oos_mae': oos_mae,
+            # 观察期指标 (observation period)
+            'obs_rmse': obs_rmse,
+            'obs_mae': obs_mae,
             # 收敛信息
             'converged': result.metrics.converged,
             'iterations': result.metrics.iterations,
