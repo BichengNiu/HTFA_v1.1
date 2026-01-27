@@ -403,7 +403,7 @@ class VariableTransformer:
             operations = config.get('operations', [])
 
             if not operations:
-                # 无任何操作，直接复制原始数据（确保变量被包含在输出中以进行平稳性检验）
+                # 无任何操作，直接复制原始数据（确保变量被包含在输出中）
                 if var_name in df.columns:
                     result_df[var_name] = df[var_name].copy()
                 continue

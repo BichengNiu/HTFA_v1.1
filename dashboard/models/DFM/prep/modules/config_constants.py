@@ -6,7 +6,6 @@
 
 # 数据质量阈值
 MIN_VALID_DATE_RATIO = 0.5       # 日期解析最低有效比例
-MIN_TARGET_VALID_RATIO = 0.5    # 目标变量最低有效比例
 MIN_PREDICTOR_VALID_RATIO = 0.3 # 预测变量最低有效比例
 
 # 频率优先级顺序（数字越小频率越高）
@@ -33,7 +32,6 @@ FREQ_DAYS_MAP = {
 # 导出的常量
 __all__ = [
     'MIN_VALID_DATE_RATIO',
-    'MIN_TARGET_VALID_RATIO',
     'MIN_PREDICTOR_VALID_RATIO',
     'FREQ_ORDER',
     'FREQ_DAYS_MAP'

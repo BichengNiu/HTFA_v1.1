@@ -989,6 +989,10 @@ def render_dfm_model_training_page(st_instance):
                 _state.set('dfm_training_status', '正在训练...')
                 _state.set('dfm_training_log', ['[TRAIN_REF] 开始训练...'])
 
+                # 清除 text_area 的缓存，确保新日志能正确显示
+                if 'dfm_training_log_display' in st.session_state:
+                    del st.session_state['dfm_training_log_display']
+
                 # 根据估计方法选择训练器并训练（同步执行）
                 # 执行训练（单阶段）
                 trainer = DFMTrainer(training_config)

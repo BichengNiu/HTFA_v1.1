@@ -190,13 +190,7 @@ def _render_date_detection(st_obj, uploaded_file):
         _set_state(PrepStateKeys.DATE_DETECTION_NEEDED, False)
 
         # 清理旧缓存
-        try:
-            all_keys = [k for k in st.session_state.keys() if k.startswith("data_prep.date_range_")]
-            old_keys = [k for k in all_keys if k != f"data_prep.{cache_key}"]
-            for old_key in old_keys:
-                del st.session_state[old_key]
-        except Exception as e:
-            logger.warning("清理旧缓存时出错: %s", e)
+        prep_state.clear_old_cache("date_range", cache_key)
     else:
         # 使用缓存的结果
         if cached_result and len(cached_result) == 4:
@@ -501,7 +495,6 @@ def _process_success_result(st_obj, result: dict, excel_file_like_object) -> boo
     transform_log = result['metadata']['transform_log']
     removed_variables_log = result['metadata']['removal_log']
     mapping_validation = result['metadata'].get('mapping_validation', {})
-    stationarity_check_results = result['metadata'].get('stationarity_check_results', {})
 
     logger.info("准备数据形状: %s", prepared_data.shape if prepared_data is not None else 'None')
     logger.info("移除日志长度: %d", len(removed_variables_log) if removed_variables_log else 0)
@@ -516,7 +509,6 @@ def _process_success_result(st_obj, result: dict, excel_file_like_object) -> boo
     _set_state(PrepStateKeys.INDUSTRY_MAP_OBJ, industry_map)
     _set_state(PrepStateKeys.REMOVED_VARS_LOG_OBJ, removed_variables_log)
     _set_state(PrepStateKeys.MAPPING_VALIDATION_RESULT, mapping_validation)
-    _set_state(PrepStateKeys.STATIONARITY_CHECK_RESULTS, stationarity_check_results)
 
     # 生成导出文件
     processed_outputs = {'excel_file': None}
@@ -540,21 +532,14 @@ def _process_success_result(st_obj, result: dict, excel_file_like_object) -> boo
     _set_state(PrepStateKeys.VAR_NATURE_MAP_OBJ, mappings.get('var_nature_map', {}))
     _set_state(PrepStateKeys.VAR_FREQUENCY_MAP_OBJ, mappings.get('var_frequency_map', {}))
 
-    # 平稳性过滤：清除不平稳变量的"一次估计"和"一阶段预测"标记
-    updated_mappings = ExportService.clear_non_stationary_markers(
-        mappings=mappings,
-        stationarity_check_results=stationarity_check_results
-    )
-
     # 生成Excel文件
     processed_outputs['excel_file'] = ExportService.generate_excel(
         prepared_data=prepared_data,
         industry_map=industry_map or {},
-        mappings=updated_mappings,
+        mappings=mappings,
         removed_vars_log=removed_variables_log,
         transform_details=_get_state(PrepStateKeys.VARIABLE_TRANSFORM_DETAILS),
-        replacement_history=_get_state(PrepStateKeys.VALUE_REPLACEMENT_HISTORY),
-        stationarity_check_results=stationarity_check_results
+        replacement_history=_get_state(PrepStateKeys.VALUE_REPLACEMENT_HISTORY)
     )
 
     logger.info("导出Excel文件: 数据形状 %s, 映射 %d 条记录",
@@ -801,67 +786,6 @@ def _render_transform_details_expander(st_obj, transform_details: dict):
             st.info("没有变量被转换")
 
 
-def _render_stationarity_test_expander(
-    st_obj,
-    all_variables_sorted: List[Dict],
-    non_stationary_count: int
-):
-    """
-    显示所有变量的平稳性检验结果（非平稳变量排在前面）
-
-    Args:
-        st_obj: Streamlit对象
-        all_variables_sorted: 所有变量的检验结果（已排序），每项格式：
-            {
-                'variable': str,
-                'frequency': str,
-                'processing': str,
-                'p_value': str,
-                'stationarity': str
-            }
-        non_stationary_count: 非平稳变量数量
-    """
-    if not all_variables_sorted:
-        return
-
-    total_count = len(all_variables_sorted)
-    stationary_count = total_count - non_stationary_count
-
-    # 标题：显示统计信息
-    title = f"平稳性检验结果 (共{total_count}个变量: {stationary_count}个平稳, {non_stationary_count}个非平稳/数据不足)"
-
-    with st_obj.expander(title, expanded=False):
-        if non_stationary_count == 0:
-            st.success("所有变量均通过平稳性检验")
-
-        # 构建DataFrame用于展示（显示所有变量）
-        display_df = pd.DataFrame(all_variables_sorted)
-        display_df = display_df.rename(columns={
-            'variable': '变量名',
-            'frequency': '频率',
-            'processing': '处理',
-            'p_value': 'P值',
-            'stationarity': '平稳性'
-        })
-
-        # 使用st.dataframe显示表格
-        st.dataframe(
-            display_df,
-            column_config={
-                '变量名': st.column_config.TextColumn('变量名', width='large'),
-                '频率': st.column_config.TextColumn('频率', width='small'),
-                '处理': st.column_config.TextColumn('处理', width='medium'),
-                'P值': st.column_config.TextColumn('P值', width='small'),
-                '平稳性': st.column_config.TextColumn('平稳性', width='small')
-            },
-            hide_index=True,
-            width='stretch'
-        )
-
-        # 添加说明信息
-        if non_stationary_count > 0:
-            st.caption(f"注：非平稳和数据不足的变量已排在前{non_stationary_count}行")
-
 
 # ============================================================================
 # 变量处理功能区
@@ -1019,7 +943,7 @@ def _render_variable_transform_section(st_obj):
 
 def _apply_variable_transforms(st_obj, config_df):
     """
-    应用变量转换和平稳性检验（调用后端服务，UI层只负责显示）
+    应用变量转换（调用后端服务，UI层只负责显示）
 
     Args:
         st_obj: Streamlit对象
@@ -1078,9 +1002,9 @@ def _apply_variable_transforms(st_obj, config_df):
         return
 
     try:
-        with st_obj.spinner("正在应用转换和检验平稳性..."):
+        with st_obj.spinner("正在应用转换..."):
             # 调用后端服务（纯业务逻辑，UI层只负责调用和显示）
-            result = UIBackendService.transform_and_check_stationarity(
+            result = UIBackendService.transform_variables(
                 base_data.copy(),
                 transform_config,
                 target_freq=target_freq,
@@ -1096,20 +1020,13 @@ def _apply_variable_transforms(st_obj, config_df):
         # 获取后端返回的结果
         transformed_df = result['data']
         transform_details = result['transform_details']
-        stationarity_results = result['stationarity_results']
-        all_variables_sorted = result['all_variables_sorted']
-        non_stationary_count = result['non_stationary_count']
 
         # 保存结果到状态
         _set_state(PrepStateKeys.PREPARED_DATA_DF, transformed_df)
         _set_state(PrepStateKeys.VARIABLE_TRANSFORM_DETAILS, transform_details)
-        _set_state('data_prep.ui_stationarity_results', stationarity_results)
 
         # 显示转换详情
         _render_transform_details_expander(st_obj, transform_details)
-
-        # 显示平稳性检验结果（所有变量，非平稳排在前面）
-        _render_stationarity_test_expander(st_obj, all_variables_sorted, non_stationary_count)
 
         # 重新生成导出文件
         _regenerate_export_file(st_obj, transformed_df)
@@ -1124,7 +1041,7 @@ def _apply_variable_transforms(st_obj, config_df):
                 st_obj.caption(f"... 还有 {error_count - 5} 个错误未显示")
             st_obj.info("其他变量已成功转换。请检查失败变量的数据或选择其他转换方式。")
         else:
-            st_obj.success("转换和检验完成！")
+            st_obj.success("转换完成！")
 
     except Exception as e:
         st_obj.error(f"后端服务调用失败: {e}")
@@ -1168,30 +1085,14 @@ def _regenerate_export_file(st_obj, transformed_df):
 
         mappings = result['mappings']
 
-        # 获取检验结果（优先使用UI层的结果，否则使用API层的结果）
-        ui_stationarity_results = _get_state('data_prep.ui_stationarity_results') or {}
-        api_stationarity_results = _get_state(PrepStateKeys.STATIONARITY_CHECK_RESULTS) or {}
-
-        # 优先使用UI层的检验结果（UI层在转换后立即检验），回退到API层的结果
-        stationarity_check_results = ui_stationarity_results if ui_stationarity_results else api_stationarity_results
-
-        logger.info(f"检验结果来源: {'UI层(转换后)' if ui_stationarity_results else 'API层(原始数据)'}, 共{len(stationarity_check_results)}个变量")
-
-        # 平稳性过滤：清除不平稳变量的"一次估计"和"一阶段预测"标记
-        updated_mappings = ExportService.clear_non_stationary_markers(
-            mappings=mappings,
-            stationarity_check_results=stationarity_check_results
-        )
-
         # 调用 ExportService 生成 Excel 文件
         excel_bytes = ExportService.generate_excel(
             prepared_data=transformed_df,
             industry_map=industry_map,
-            mappings=updated_mappings,
+            mappings=mappings,
             removed_vars_log=_get_state(PrepStateKeys.REMOVED_VARS_LOG_OBJ),
             transform_details=_get_state(PrepStateKeys.VARIABLE_TRANSFORM_DETAILS),
-            replacement_history=_get_state(PrepStateKeys.VALUE_REPLACEMENT_HISTORY),
-            stationarity_check_results=stationarity_check_results
+            replacement_history=_get_state(PrepStateKeys.VALUE_REPLACEMENT_HISTORY)
         )
 
         processed_outputs = _get_state(PrepStateKeys.PROCESSED_OUTPUTS) or {}

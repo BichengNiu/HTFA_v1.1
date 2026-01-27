@@ -17,97 +17,11 @@ class ExportService:
     """导出服务类"""
 
     @staticmethod
-    def _format_stationarity_result(
-        stat_result: Optional[Dict],
-        var_name: str = ""
-    ) -> tuple:
-        """
-        格式化平稳性检验结果（通用方法）
-
-        Args:
-            stat_result: 平稳性检验结果字典
-            var_name: 变量名（用于日志）
-
-        Returns:
-            tuple: (p_value_str, stationarity_str)
-        """
-        if stat_result is None:
-            if var_name:
-                logger.warning(f"变量 '{var_name}' 没有检验结果")
-            return '-', '未检验'
-
-        p_value = stat_result.get('p_value')
-        status = stat_result.get('status', '未检验')
-
-        p_value_str = f"{p_value:.3f}" if isinstance(p_value, (int, float)) else '-'
-
-        if status == '是':
-            stationarity_str = '平稳'
-        elif status == '数据不足':
-            stationarity_str = '数据不足'
-        elif status.startswith('计算失败'):
-            stationarity_str = status
-        else:
-            stationarity_str = '非平稳'
-
-        return p_value_str, stationarity_str
-
-    @staticmethod
-    def clear_non_stationary_markers(
-        mappings: Dict[str, Any],
-        stationarity_check_results: Dict[str, Dict]
-    ) -> Dict[str, Any]:
-        """
-        清除不平稳变量的"预测变量"标记
-
-        对于标记为"预测变量=是"但不平稳的变量，
-        将其标记替换为空值。
-
-        Args:
-            mappings: 映射字典（包含single_stage_map）
-            stationarity_check_results: 平稳性检验结果
-
-        Returns:
-            更新后的mappings字典（深拷贝）
-        """
-        import copy
-        updated_mappings = copy.deepcopy(mappings)
-
-        single_stage_map = updated_mappings.get('single_stage_map', {})
-
-        # 添加详细日志
-        logger.info(f"[平稳性过滤] 开始处理")
-        logger.info(f"[平稳性过滤] 预测变量标记数: {len(single_stage_map)}")
-        logger.info(f"[平稳性过滤] 平稳性检验结果数: {len(stationarity_check_results)}")
-
-        cleared_vars = []
-
-        # 检查所有标记为"是"的变量
-        for var in list(single_stage_map.keys()):
-            stat_result = stationarity_check_results.get(var)
-            if stat_result is None:
-                logger.warning(f"变量 '{var}' 没有平稳性检验结果，跳过")
-                continue
-            is_stationary = stat_result.get('is_stationary', False)
-
-            if not is_stationary:
-                # 清除标记
-                single_stage_map[var] = ''
-                cleared_vars.append(var)
-
-        logger.info(f"[平稳性过滤] 清除预测变量标记: {len(cleared_vars)}个")
-
-        updated_mappings['single_stage_map'] = single_stage_map
-
-        return updated_mappings
-
-    @staticmethod
     def build_processing_log(
         removed_vars_log: Optional[List[Dict]] = None,
         prepared_data: Optional[pd.DataFrame] = None,
         transform_details: Optional[Dict] = None,
-        replacement_history: Optional[List[Dict]] = None,
-        stationarity_check_results: Optional[Dict[str, Dict]] = None
+        replacement_history: Optional[List[Dict]] = None
     ) -> pd.DataFrame:
         """
         构建处理日志DataFrame
@@ -117,16 +31,14 @@ class ExportService:
             prepared_data: 处理后的数据
             transform_details: 变量转换详情
             replacement_history: 值替换历史记录
-            stationarity_check_results: 平稳性检验结果
 
         Returns:
-            DataFrame: [变量名, 状态, 处理详情, P值, 平稳性检验（0.05）]
+            DataFrame: [变量名, 状态, 处理详情]
         """
         log_data = []
         removed_vars_log = removed_vars_log or []
         transform_details = transform_details or {}
         replacement_history = replacement_history or []
-        stationarity_check_results = stationarity_check_results or {}
 
         # 添加被删除的变量
         for entry in removed_vars_log:
@@ -143,9 +55,7 @@ class ExportService:
             log_data.append({
                 '变量名': var_name_norm,
                 '状态': '删除',
-                '处理详情': detail_str,
-                'P值': '-',
-                '平稳性检验（0.05）': '-'
+                '处理详情': detail_str
             })
 
         # 添加值替换记录
@@ -153,17 +63,10 @@ class ExportService:
             var_name = h.get('variable', '')
             var_name_norm = normalize_text(var_name)
 
-            stat_result = stationarity_check_results.get(var_name_norm)
-            p_value_str, stationarity_str = ExportService._format_stationarity_result(
-                stat_result, var_name_norm if stat_result is None else ""
-            )
-
             log_data.append({
                 '变量名': var_name_norm,
                 '状态': '值替换',
-                '处理详情': f"规则: {h.get('rule', '')}, 替换为: {h.get('new_value', '')}, 影响{h.get('affected_count', 0)}行",
-                'P值': p_value_str,
-                '平稳性检验（0.05）': stationarity_str
+                '处理详情': f"规则: {h.get('rule', '')}, 替换为: {h.get('new_value', '')}, 影响{h.get('affected_count', 0)}行"
             })
 
         # 添加保留的变量
@@ -178,20 +81,13 @@ class ExportService:
                 else:
                     ops_str = '不处理'
 
-                stat_result = stationarity_check_results.get(col_norm)
-                p_value_str, stationarity_str = ExportService._format_stationarity_result(
-                    stat_result, col if stat_result is None else ""
-                )
-
                 log_data.append({
                     '变量名': col_norm,
                     '状态': '保留',
-                    '处理详情': ops_str,
-                    'P值': p_value_str,
-                    '平稳性检验（0.05）': stationarity_str
+                    '处理详情': ops_str
                 })
 
-        return pd.DataFrame(log_data, columns=['变量名', '状态', '处理详情', 'P值', '平稳性检验（0.05）'])
+        return pd.DataFrame(log_data, columns=['变量名', '状态', '处理详情'])
 
     @staticmethod
     def generate_excel(
@@ -200,8 +96,7 @@ class ExportService:
         mappings: Dict[str, Any],
         removed_vars_log: Optional[List[Dict]] = None,
         transform_details: Optional[Dict] = None,
-        replacement_history: Optional[List[Dict]] = None,
-        stationarity_check_results: Optional[Dict[str, Dict]] = None
+        replacement_history: Optional[List[Dict]] = None
     ) -> bytes:
         """
         生成导出Excel文件
@@ -213,24 +108,19 @@ class ExportService:
             removed_vars_log: 被删除变量日志
             transform_details: 变量转换详情
             replacement_history: 值替换历史记录
-            stationarity_check_results: 平稳性检验结果
 
         Returns:
             bytes: Excel文件字节内容
         """
         # 提取各类映射
         dfm_single_stage_map = mappings.get('single_stage_map', {})
-        dfm_first_stage_pred_map = mappings.get('first_stage_pred_map', {})
-        dfm_first_stage_target_map = mappings.get('first_stage_target_map', {})
-        dfm_second_stage_target_map = mappings.get('second_stage_target_map', {})
         var_frequency_map = mappings.get('var_frequency_map', {})
         var_unit_map = mappings.get('var_unit_map', {})
         var_nature_map = mappings.get('var_nature_map', {})
 
         # 构建处理日志
         df_processing_log = ExportService.build_processing_log(
-            removed_vars_log, prepared_data, transform_details, replacement_history,
-            stationarity_check_results
+            removed_vars_log, prepared_data, transform_details, replacement_history
         )
 
         # 创建处理日志查找字典
@@ -240,9 +130,7 @@ class ExportService:
                 var_name = row['变量名']
                 log_lookup[var_name] = {
                     '状态': row.get('状态', ''),
-                    '处理详情': row.get('处理详情', ''),
-                    'P值': row.get('P值', ''),
-                    '平稳性检验（0.05）': row.get('平稳性检验（0.05）', '')
+                    '处理详情': row.get('处理详情', '')
                 }
 
         # 创建统一映射数据
@@ -260,17 +148,13 @@ class ExportService:
                 '单位': var_unit_map.get(indicator, ''),
                 '性质': var_nature_map.get(indicator, ''),
                 '预测变量': dfm_single_stage_map.get(indicator, ''),
-                '目标变量': dfm_second_stage_target_map.get(indicator, ''),
-                '处理详情': log_info.get('处理详情', ''),
-                'P值': log_info.get('P值', ''),
-                '平稳性检验（0.05）': log_info.get('平稳性检验（0.05）', '')
+                '处理详情': log_info.get('处理详情', '')
             })
 
         df_unified_map = pd.DataFrame(
             unified_mapping_data,
             columns=['指标名称', '行业', '频率', '单位', '性质',
-                     '预测变量', '目标变量',
-                     '处理详情', 'P值', '平稳性检验（0.05）']
+                     '预测变量', '处理详情']
         )
 
         # 写入Excel
