@@ -120,16 +120,45 @@ class DFMModel:
         if progress_callback:
             progress_callback("[EM|10%] PCA初始化完成")
 
+        # 关键修复：只传递训练期数据给EM算法，避免信息渗漏
+        obs_centered_train = obs_centered.loc[Z_train.index]
         self.results_ = self._em_algorithm(
-            obs_centered,  # 使用中心化数据进行EM算法
+            obs_centered_train,  # 仅训练期数据，避免验证期/观察期信息渗漏
             initial_factors,
             initial_loadings,
             V,  # V矩阵用于R矩阵计算
             stds,
-            data.index,
-            Z_train.index,
+            Z_train.index,  # 训练期索引
             progress_callback
         )
+
+        # === 新增：对完整数据进行卡尔曼滤波 ===
+        # 参数估计仅使用训练期数据（避免信息泄漏）
+        # 因子估计覆盖完整时间范围（训练期 + 验证期 + 观察期）
+        n_time_train = len(Z_train)
+        n_time_full = len(data)
+
+        if n_time_full > n_time_train:
+            # 有验证期/观察期数据，需要对完整数据进行滤波
+            full_factors = self._filter_full_data(
+                obs_centered,           # 完整数据（已中心化）
+                self.results_,          # EM估计的参数
+                n_time_train,           # 训练期长度
+                progress_callback
+            )
+
+            # 更新结果中的因子为完整时间范围
+            self.results_.factors = full_factors
+            self.results_.factors_smooth = full_factors
+            self.results_.train_start_idx = 0
+            self.results_.train_end_idx = n_time_train
+
+            logger.info(f"[fit] 因子已扩展到完整时间范围: {n_time_full} 个时间点 (训练期: {n_time_train})")
+        else:
+            # 没有验证期/观察期，因子长度等于训练期长度
+            self.results_.train_start_idx = 0
+            self.results_.train_end_idx = n_time_train
+            logger.info(f"[fit] 仅训练期数据，因子长度: {n_time_train}")
 
         return self.results_
 
@@ -244,19 +273,17 @@ class DFMModel:
         initial_loadings: np.ndarray,
         V: np.ndarray,
         stds: np.ndarray,
-        index: pd.DatetimeIndex,
         train_index: pd.DatetimeIndex,
         progress_callback: Optional[Callable[[str], None]] = None
     ) -> DFMModelResult:
-        """EM算法估计DFM参数（匹配老代码）
+        """EM算法估计DFM参数
 
         Args:
-            obs_centered: 中心化观测数据（DataFrame）
+            obs_centered: 中心化观测数据（仅训练期，避免信息渗漏）
             initial_factors: 初始因子估计
             initial_loadings: 初始载荷矩阵
             V: SVD分解得到的V矩阵（用于R矩阵计算）
             stds: 标准差向量（用于计算R矩阵）
-            index: 完整数据时间索引
             train_index: 训练期时间索引
             progress_callback: 进度回调函数
 
@@ -315,10 +342,8 @@ class DFMModel:
             Q = np.cov(var_results.resid, rowvar=False)
             Q = np.diag(np.maximum(np.diag(Q), R_MATRIX_MIN_VARIANCE))
 
-        # 计算R矩阵（匹配老代码：psi_diag * obs_std^2）
-        # 只使用训练期数据计算R矩阵
-        obs_centered_for_R = obs_centered.loc[train_index] if len(train_index) < len(index) else obs_centered
-        R = self._compute_R_matrix(initial_factors.values, V, stds, obs_centered_for_R)
+        # 计算R矩阵（obs_centered已经是训练期数据，无需再切分）
+        R = self._compute_R_matrix(initial_factors.values, V, stds, obs_centered)
 
         # 调试：打印初始R矩阵
         logger.debug(f"[初始化] R矩阵对角线前5个: {np.diag(R)[:5]}")
@@ -514,3 +539,68 @@ class DFMModel:
         R_diag_current = np.maximum(R_diag_current, R_MATRIX_MIN_VARIANCE)  # 确保正定性
 
         return np.diag(R_diag_current)
+
+    def _filter_full_data(
+        self,
+        obs_centered_full: pd.DataFrame,
+        em_result: DFMModelResult,
+        train_length: int,
+        progress_callback: Optional[Callable[[str], None]] = None
+    ) -> np.ndarray:
+        """
+        使用EM估计的参数对完整数据进行卡尔曼滤波/平滑
+
+        Args:
+            obs_centered_full: 完整中心化数据 (n_time_full, n_obs)
+            em_result: EM估计结果（包含参数 A, Q, H, R）
+            train_length: 训练期长度（用于记录索引）
+            progress_callback: 进度回调函数
+
+        Returns:
+            完整时间范围的因子 (n_factors, n_time_full)
+        """
+        n_time_full = len(obs_centered_full)
+        n_obs = obs_centered_full.shape[1]
+        n_states = self.n_factors * self.max_lags
+
+        if progress_callback:
+            progress_callback(f"[EM|95%] 对完整数据({n_time_full}个时间点)进行卡尔曼滤波...")
+
+        # 构建观测矩阵H（扩展到状态空间维度）
+        H_full = np.zeros((n_obs, n_states))
+        H_full[:, :self.n_factors] = em_result.H
+
+        # 初始状态：使用零向量（标准做法）
+        x0 = np.zeros(n_states)
+        P0 = np.eye(n_states)
+
+        # 外部输入U（与EM算法保持一致）
+        np.random.seed(self.random_seed)
+        U = np.random.randn(n_time_full, n_states)
+
+        # B矩阵（与EM算法保持一致）
+        B = np.eye(n_states) * DEFAULT_B_SCALE
+
+        # 创建卡尔曼滤波器
+        kf = KalmanFilter(
+            A=em_result.A,
+            B=B,
+            H=H_full,
+            Q=em_result.Q,
+            R=em_result.R,
+            x0=x0,
+            P0=P0
+        )
+
+        # 滤波和平滑
+        Z = obs_centered_full.values  # (n_time_full, n_obs)
+        filter_result = kf.filter(Z, U)
+        smoother_result = kf.smooth(filter_result)
+
+        if progress_callback:
+            progress_callback(f"[EM|98%] 完整数据滤波完成")
+
+        logger.info(f"[完整数据滤波] 因子形状: ({self.n_factors}, {n_time_full}), 训练期长度: {train_length}")
+
+        # 提取因子 (n_factors, n_time_full)
+        return smoother_result.x_smoothed[:self.n_factors, :]

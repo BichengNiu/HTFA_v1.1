@@ -179,15 +179,25 @@ class TrainingConfigBuilder:
             'industry_map': var_industry_map,
         }
 
+        # 观察期配置（所有算法都需要）
+        config_kwargs['observation_start'] = observation_start_value.strftime('%Y-%m-%d')
+        # 经典DFM：观察期从observation_start到数据结束；DDFM：使用validation_end
+        if algorithm == 'deep_learning':
+            config_kwargs['observation_end'] = validation_end_value.strftime('%Y-%m-%d')
+        else:
+            # 经典DFM：观察期结束日期 = 数据最后日期
+            data_end_date = input_df.index.max()
+            if hasattr(data_end_date, 'strftime'):
+                config_kwargs['observation_end'] = data_end_date.strftime('%Y-%m-%d')
+            else:
+                config_kwargs['observation_end'] = str(data_end_date)
+
         # 添加DDFM专用参数
         if algorithm == 'deep_learning':
             config_kwargs.update(ddfm_params)
             # DDFM不支持变量选择
             config_kwargs['enable_variable_selection'] = False
             config_kwargs['variable_selection_method'] = 'none'
-            # DDFM观察期配置
-            config_kwargs['observation_start'] = observation_start_value.strftime('%Y-%m-%d')
-            config_kwargs['observation_end'] = validation_end_value.strftime('%Y-%m-%d')
 
         training_config = TrainingConfig(**config_kwargs)
 

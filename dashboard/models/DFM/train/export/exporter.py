@@ -171,6 +171,9 @@ class TrainingResultExporter:
             'train_end_date': config.train_end,
             'validation_start_date': config.validation_start,
             'validation_end_date': config.validation_end,
+            # 观察期日期
+            'observation_period_start': config.observation_start,
+            'observation_period_end': config.observation_end,
 
             # 训练统计
             'total_runtime_seconds': float(result.training_time),
@@ -228,12 +231,15 @@ class TrainingResultExporter:
                                 if not date_index.is_monotonic_increasing:
                                     date_index = date_index.sort_values()
 
-                                # 确保长度匹配
+                                # 确保长度匹配（严格校验）
                                 if len(date_index) != factors_transposed.shape[0]:
-                                    logger.warning(
-                                        f"日期索引长度({len(date_index)})与因子数据长度({factors_transposed.shape[0]})不匹配"
+                                    raise ValueError(
+                                        f"日期索引长度({len(date_index)})与因子数据长度({factors_transposed.shape[0]})不匹配。"
+                                        f"因子必须覆盖完整时间范围。"
                                     )
-                                    date_index = None
+                        except ValueError:
+                            # 长度不匹配是严重错误，必须重新抛出
+                            raise
                         except Exception as e:
                             logger.warning(f"获取因子序列日期索引失败: {e}")
 

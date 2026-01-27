@@ -132,7 +132,7 @@ class UIConfig:
     BATCH_NORM_HELP = "批量归一化可提高训练稳定性"
 
     # EM算法配置
-    EM_MAX_ITERATIONS_DEFAULT = 30  # 默认最大迭代次数
+    EM_MAX_ITERATIONS_DEFAULT = 100  # 默认最大迭代次数
     EM_MAX_ITERATIONS_MIN = 10
     EM_MAX_ITERATIONS_MAX = 100
     EM_MAX_ITERATIONS_STEP = 5

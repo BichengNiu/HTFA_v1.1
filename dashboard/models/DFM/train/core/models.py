@@ -77,6 +77,10 @@ class DFMModelResult:
     iterations: int = 0
     log_likelihood: float = -np.inf
 
+    # 训练期索引范围（用于区分训练期/验证期因子）
+    train_start_idx: Optional[int] = None
+    train_end_idx: Optional[int] = None
+
 
 # ==================== 卡尔曼滤波相关 ====================
 
