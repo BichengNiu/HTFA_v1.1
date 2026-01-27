@@ -9,7 +9,6 @@ from typing import Dict, Any, Optional, List
 import pandas as pd
 
 from dashboard.models.DFM.prep.modules.variable_transformer import VariableTransformer
-from dashboard.models.DFM.prep.utils.stationarity_checker import StationarityChecker
 from dashboard.models.DFM.utils.text_utils import normalize_text
 
 logger = logging.getLogger(__name__)
@@ -19,14 +18,14 @@ class UIBackendService:
     """UI后端服务 - 提供UI需要的所有业务逻辑"""
 
     @staticmethod
-    def transform_and_check_stationarity(
+    def transform_variables(
         data: pd.DataFrame,
         transform_config: List[Dict[str, Any]],
         target_freq: str = 'W-FRI',
         var_frequency_map: Optional[Dict[str, str]] = None
     ) -> Dict[str, Any]:
         """
-        执行变量转换并检验转换后数据的平稳性
+        执行变量转换
 
         这是UI层应该调用的唯一业务逻辑接口
 
@@ -46,13 +45,11 @@ class UIBackendService:
                 'message': str,
                 'data': pd.DataFrame,                          # 转换后的数据
                 'transform_details': Dict,                     # 转换详情
-                'stationarity_results': Dict[str, Dict],       # 平稳性检验结果
-                'problem_variables': List[Dict],               # 非平稳变量列表
                 'errors': List[str]                           # 转换过程中的错误
             }
         """
         try:
-            logger.info("UI后端: 开始变量转换和平稳性检验")
+            logger.info("UI后端: 开始变量转换")
             logger.info(f"  输入数据形状: {data.shape}")
             logger.info(f"  转换配置数量: {len(transform_config)}")
 
@@ -109,40 +106,11 @@ class UIBackendService:
 
             logger.info(f"转换完成: {len(transform_details)}个变量成功")
 
-            # 执行平稳性检验
-            logger.info("执行平稳性检验...")
-            stationarity_results = StationarityChecker.batch_check_variables(
-                transformed_data,
-                variables=transformed_data.columns.tolist(),
-                alpha=0.05
-            )
-
-            logger.info(f"平稳性检验完成: {len(stationarity_results)}个变量")
-
-            # 提取所有变量（非平稳排在前面）
-            all_variables_sorted = UIBackendService._extract_all_variables_sorted(
-                stationarity_results,
-                transformed_data,
-                transform_details,
-                var_frequency_map or {}
-            )
-
-            # 统计非平稳变量数量
-            non_stationary_count = sum(
-                1 for v in all_variables_sorted
-                if v['stationarity'] in ['非平稳', '数据不足']
-            )
-
-            logger.info(f"非平稳变量: {non_stationary_count}/{len(all_variables_sorted)}个")
-
             return {
                 'status': 'success',
-                'message': f'成功转换 {len(transform_details)} 个变量，检验 {len(stationarity_results)} 个变量',
+                'message': f'成功转换 {len(transform_details)} 个变量',
                 'data': transformed_data,
                 'transform_details': transform_details,
-                'stationarity_results': stationarity_results,
-                'all_variables_sorted': all_variables_sorted,
-                'non_stationary_count': non_stationary_count,
                 'errors': errors
             }
 
@@ -153,116 +121,8 @@ class UIBackendService:
                 'message': f'处理失败: {str(e)}',
                 'data': None,
                 'transform_details': {},
-                'stationarity_results': {},
-                'all_variables_sorted': [],
-                'non_stationary_count': 0,
                 'errors': [str(e)]
             }
-
-    @staticmethod
-    def _extract_problem_variables(
-        stationarity_results: Dict[str, Dict],
-        transformed_data: pd.DataFrame,
-        transform_details: Dict,
-        var_frequency_map: Dict[str, str]
-    ) -> List[Dict]:
-        """
-        提取非平稳和数据不足的变量
-
-        Returns:
-            List of dicts with keys: variable, frequency, processing, p_value, stationarity
-        """
-        problem_vars = []
-
-        for col, result in stationarity_results.items():
-            status = result.get('status', '')
-            p_value = result.get('p_value')
-
-            # 跳过平稳的变量
-            if status == '是':
-                continue
-
-            # 获取频率和处理操作
-            col_normalized = normalize_text(col)
-            freq = var_frequency_map.get(col_normalized, '-')
-            ops = transform_details.get(col, {}).get('operations', [])
-            ops_str = ' -> '.join(ops) if ops else '不处理'
-            p_str = f"{p_value:.4f}" if p_value is not None else '-'
-
-            # 转换平稳性状态显示
-            stationarity_display = '数据不足' if status == '数据不足' else '非平稳'
-
-            problem_vars.append({
-                'variable': col,
-                'frequency': freq,
-                'processing': ops_str,
-                'p_value': p_str,
-                'stationarity': stationarity_display
-            })
-
-        return problem_vars
-
-    @staticmethod
-    def _extract_all_variables_sorted(
-        stationarity_results: Dict[str, Dict],
-        transformed_data: pd.DataFrame,
-        transform_details: Dict,
-        var_frequency_map: Dict[str, str]
-    ) -> List[Dict]:
-        """
-        提取所有变量的检验结果，非平稳的排在前面
-
-        Args:
-            stationarity_results: 平稳性检验结果字典
-            transformed_data: 转换后的数据
-            transform_details: 转换详情
-            var_frequency_map: 变量频率映射
-
-        Returns:
-            List of dicts with keys: variable, frequency, processing, p_value, stationarity
-            排序规则：非平稳 > 数据不足 > 平稳
-        """
-        all_vars = []
-
-        for col, result in stationarity_results.items():
-            status = result.get('status', '')
-            p_value = result.get('p_value')
-
-            # 获取频率和处理操作
-            col_normalized = normalize_text(col)
-            freq = var_frequency_map.get(col_normalized, '-')
-            ops = transform_details.get(col, {}).get('operations', [])
-            ops_str = ' -> '.join(ops) if ops else '不处理'
-            p_str = f"{p_value:.4f}" if p_value is not None else '-'
-
-            # 转换平稳性状态显示
-            if status == '数据不足':
-                stationarity_display = '数据不足'
-                sort_priority = 1  # 中等优先级
-            elif status == '是':
-                stationarity_display = '平稳'
-                sort_priority = 2  # 最低优先级
-            else:
-                stationarity_display = '非平稳'
-                sort_priority = 0  # 最高优先级
-
-            all_vars.append({
-                'variable': col,
-                'frequency': freq,
-                'processing': ops_str,
-                'p_value': p_str,
-                'stationarity': stationarity_display,
-                '_sort_priority': sort_priority  # 内部排序字段
-            })
-
-        # 排序：非平稳(0) > 数据不足(1) > 平稳(2)
-        all_vars.sort(key=lambda x: x['_sort_priority'])
-
-        # 移除内部排序字段
-        for var in all_vars:
-            del var['_sort_priority']
-
-        return all_vars
 
 
 __all__ = ['UIBackendService']

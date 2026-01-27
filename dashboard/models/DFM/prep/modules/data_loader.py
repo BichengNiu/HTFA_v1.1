@@ -2,7 +2,6 @@
 数据加载模块
 
 负责从Excel文件中加载不同类型的数据：
-- 目标变量数据
 - 日度/周度预测变量数据
 - 月度预测变量数据
 """
@@ -16,7 +15,7 @@ from typing import Dict, List, Tuple, Optional, Set
 
 from dashboard.models.DFM.prep.modules.data_cleaner import DataCleaner
 from dashboard.models.DFM.prep.modules.config_constants import (
-    MIN_VALID_DATE_RATIO, MIN_TARGET_VALID_RATIO, MIN_PREDICTOR_VALID_RATIO
+    MIN_VALID_DATE_RATIO, MIN_PREDICTOR_VALID_RATIO
 )
 
 
@@ -92,20 +91,18 @@ class DataLoader:
         self,
         excel_file,
         sheet_name: str,
-        target_variable_name: str,
         industry_name: str = "Macro"
-    ) -> Tuple[Optional[pd.Series], Optional[pd.Series], Optional[pd.DataFrame], Set[str]]:
+    ) -> Tuple[Optional[pd.Series], Optional[pd.DataFrame], Set[str]]:
         """
         加载目标表格数据
 
         Args:
             excel_file: Excel文件对象
             sheet_name: 表格名称
-            target_variable_name: 目标变量名称
             industry_name: 行业名称
 
         Returns:
-            Tuple: (发布日期, 目标变量值, 预测变量DataFrame, 目标表格列名集合)
+            Tuple: (发布日期, 预测变量DataFrame, 目标表格列名集合)
         """
         logger.info("检测到目标 Sheet，行业: '%s'...", industry_name)
 
@@ -117,12 +114,10 @@ class DataLoader:
         if df_raw.shape[1] < 2:
             raise ValueError(f"目标 Sheet '{sheet_name}' 列数 < 2，数据格式不正确")
 
-        # 提取日期和目标变量
+        # 提取日期
         date_col_name = df_raw.columns[0]
-        actual_target_variable_name = df_raw.columns[1]
-        target_sheet_cols = {actual_target_variable_name}
+        target_sheet_cols = set()
 
-        logger.info("确认目标变量 (B列): '%s'", actual_target_variable_name)
         logger.info("解析发布日期 (A列: '%s')...", date_col_name)
 
         publication_dates = pd.to_datetime(df_raw[date_col_name], errors='coerce')
@@ -138,31 +133,21 @@ class DataLoader:
 
         publication_dates = publication_dates[valid_date_mask]
 
-        # 提取目标变量值
-        logger.info("提取目标变量原始值...")
-        target_values = pd.to_numeric(df_raw.loc[valid_date_mask, actual_target_variable_name], errors='coerce')
-        target_values.index = publication_dates
-
-        # 检查目标变量转换质量
-        target_valid_ratio = target_values.notna().sum() / len(target_values)
-        if target_valid_ratio < MIN_TARGET_VALID_RATIO:
-            raise ValueError(f"目标变量数值转换质量不合格：仅 {target_valid_ratio:.1%} 的值有效（要求≥{MIN_TARGET_VALID_RATIO:.0%}）")
-
-        # 提取月度预测变量 (C列及以后)
+        # 提取预测变量 (B列及以后)
         target_sheet_predictors = pd.DataFrame()
-        if df_raw.shape[1] > 2:
-            logger.info("提取目标 Sheet 的月度预测变量 (C列及以后)...")
+        if df_raw.shape[1] > 1:
+            logger.info("提取目标 Sheet 的预测变量 (B列及以后)...")
 
             # 移除Unnamed列
             df_raw = self.cleaner.remove_unnamed_columns(df_raw, "[目标Sheet预测变量] ")
 
             # 重新验证列数（移除Unnamed列后可能变化）
-            if df_raw.shape[1] <= 2:
-                logger.info("移除Unnamed列后，目标 Sheet 仅含 A, B 列。")
-                return publication_dates, target_values, target_sheet_predictors, target_sheet_cols
+            if df_raw.shape[1] <= 1:
+                logger.info("移除Unnamed列后，目标 Sheet 仅含 A 列。")
+                return publication_dates, target_sheet_predictors, target_sheet_cols
 
-            temp_monthly_predictors = {}
-            for col_idx in range(2, df_raw.shape[1]):
+            temp_predictors = {}
+            for col_idx in range(1, df_raw.shape[1]):
                 col_name = df_raw.columns[col_idx]
                 target_sheet_cols.add(col_name)
 
@@ -177,19 +162,19 @@ class DataLoader:
                         logger.warning("变量 '%s' 数值转换质量较低 (%.1f%%)", col_name, pred_valid_ratio * 100)
 
                 # 创建按发布日期索引的序列
-                temp_monthly_predictors[col_name] = pd.Series(
+                temp_predictors[col_name] = pd.Series(
                     predictor_values[valid_date_mask].values,
                     index=publication_dates
                 )
 
-            target_sheet_predictors = pd.DataFrame(temp_monthly_predictors).sort_index()
+            target_sheet_predictors = pd.DataFrame(temp_predictors).sort_index()
             target_sheet_predictors = target_sheet_predictors.dropna(axis=1, how='all')
 
-            logger.info("提取了 %d 个有效的月度预测变量 (按发布日期索引)。", target_sheet_predictors.shape[1])
+            logger.info("提取了 %d 个有效的预测变量 (按发布日期索引)。", target_sheet_predictors.shape[1])
         else:
-            logger.info("目标 Sheet 仅含 A, B 列。")
+            logger.info("目标 Sheet 仅含 A 列。")
 
-        return publication_dates, target_values, target_sheet_predictors, target_sheet_cols
+        return publication_dates, target_sheet_predictors, target_sheet_cols
 
     def load_daily_weekly_sheet(
         self,

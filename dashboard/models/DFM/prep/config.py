@@ -31,9 +31,8 @@ class PrepParallelConfig:
 
     控制各并行化点的行为：
     1. 频率级处理并行（6个频率独立处理）
-    2. ADF平稳性检验并行（逐列独立）
-    3. 缺失值检测并行（逐列独立）
-    4. Sheet读取并行（多工作表独立）
+    2. 缺失值检测并行（逐列独立）
+    3. Sheet读取并行（多工作表独立）
 
     Attributes:
         enable_parallel: 全局并行开关
@@ -41,8 +40,6 @@ class PrepParallelConfig:
         backend: 并行后端（loky/multiprocessing/threading）
         enable_frequency_parallel: 是否启用频率级并行
         min_frequencies_for_parallel: 启用频率并行的最小频率数
-        enable_adf_parallel: 是否启用ADF检验并行
-        min_columns_for_adf_parallel: 启用ADF并行的最小列数
         enable_missing_parallel: 是否启用缺失值检测并行
         min_columns_for_missing_parallel: 启用缺失值并行的最小列数
         enable_sheet_parallel: 是否启用Sheet读取并行
@@ -56,10 +53,6 @@ class PrepParallelConfig:
     # 频率级并行配置
     enable_frequency_parallel: bool = True
     min_frequencies_for_parallel: int = 3  # 至少3个频率才启用并行
-
-    # ADF检验并行配置
-    enable_adf_parallel: bool = True
-    min_columns_for_adf_parallel: int = 10  # 至少10列才启用ADF并行
 
     # 缺失值检测并行配置
     enable_missing_parallel: bool = True
@@ -115,19 +108,6 @@ class PrepParallelConfig:
             return False
         return n_freqs >= self.min_frequencies_for_parallel
 
-    def should_parallelize_adf(self, n_cols: int) -> bool:
-        """判断是否应对ADF检验启用并行
-
-        Args:
-            n_cols: 需要检验的列数
-
-        Returns:
-            bool: 是否启用并行
-        """
-        if not self.enable_parallel or not self.enable_adf_parallel:
-            return False
-        return n_cols >= self.min_columns_for_adf_parallel
-
     def should_parallelize_missing(self, n_cols: int) -> bool:
         """判断是否应对缺失值检测启用并行
 
@@ -166,8 +146,6 @@ class PrepParallelConfig:
             'backend': self.backend,
             'enable_frequency_parallel': self.enable_frequency_parallel,
             'min_frequencies_for_parallel': self.min_frequencies_for_parallel,
-            'enable_adf_parallel': self.enable_adf_parallel,
-            'min_columns_for_adf_parallel': self.min_columns_for_adf_parallel,
             'enable_missing_parallel': self.enable_missing_parallel,
             'min_columns_for_missing_parallel': self.min_columns_for_missing_parallel,
             'enable_sheet_parallel': self.enable_sheet_parallel,

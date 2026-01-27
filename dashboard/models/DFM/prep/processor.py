@@ -47,9 +47,9 @@ class DataPreparationProcessor:
     def __init__(
         self,
         excel_path: str,
-        target_variable_name: str,
-        var_industry_map: Dict[str, str],
-        var_frequency_map: Dict[str, str],
+        target_variable_name: str = None,
+        var_industry_map: Dict[str, str] = None,
+        var_frequency_map: Dict[str, str] = None,
         target_freq: str = 'W-FRI',
         data_start_date: Optional[str] = None,
         data_end_date: Optional[str] = None,
@@ -65,7 +65,7 @@ class DataPreparationProcessor:
 
         Args:
             excel_path: Excel文件路径
-            target_variable_name: 目标变量名称（可选，用于将其放在第一列）
+            target_variable_name: 目标变量名称（已弃用，保留参数兼容性）
             var_industry_map: 变量-行业映射字典（从指标字典加载）
             var_frequency_map: 变量-频率映射字典（从指标字典加载）
             target_freq: 目标频率，默认'W-FRI'
@@ -88,9 +88,8 @@ class DataPreparationProcessor:
                 raise ValueError(f"当前仅支持周五对齐 (W-FRI)，提供的频率 '{target_freq}' 无效")
 
         self.excel_path = excel_path
-        self.target_variable_name = target_variable_name
-        self.var_industry_map = var_industry_map
-        self.var_frequency_map = var_frequency_map
+        self.var_industry_map = var_industry_map or {}
+        self.var_frequency_map = var_frequency_map or {}
         self.target_freq = target_freq
         self.data_start_date = standardize_date(data_start_date)
         self.data_end_date = standardize_date(data_end_date)
@@ -114,7 +113,7 @@ class DataPreparationProcessor:
         self.removal_log = []
         self.transform_log = {}
 
-        logger.info(f"[Processor] 初始化完成: 目标变量={target_variable_name}, 频率对齐={'启用' if enable_freq_alignment else '禁用'}")
+        logger.info(f"[Processor] 初始化完成: 频率对齐={'启用' if enable_freq_alignment else '禁用'}")
         logger.info(f"[Processor] 零值处理={zero_handling}, 负值处理={negative_handling}, 发布日期校准={'启用' if enable_publication_calibration else '禁用'}")
         logger.info(f"[Processor] 并行配置: {self.parallel_config}")
 
@@ -513,14 +512,6 @@ class DataPreparationProcessor:
         self.removal_log.extend(self.data_cleaner.get_removed_variables_log())
         self.data_cleaner.clear_log()
 
-        # 确保目标变量在第一列（如果指定了目标变量）
-        if self.target_variable_name and self.target_variable_name in combined_df.columns:
-            cols = [self.target_variable_name] + [c for c in combined_df.columns if c != self.target_variable_name]
-            combined_df = combined_df[cols]
-            logger.info(f"  目标变量 '{self.target_variable_name}' 已移至第一列")
-        elif self.target_variable_name:
-            logger.warning(f"  目标变量 '{self.target_variable_name}' 未在数据中找到")
-
         # 检查并处理重复索引
         if combined_df.index.duplicated().any():
             logger.warning(f"  检测到重复索引，正在清理...")
@@ -596,7 +587,7 @@ class DataPreparationProcessor:
                 final_var_mapping[col_norm] = "Unknown"
                 logger.warning(f"  变量 '{col}' 未在指标字典中定义，标记为Unknown")
 
-        # 生成转换日志（平稳性检验已移至变量处理功能区）
+        # 生成转换日志
         transform_log = {
             'target_freq': self.target_freq,
             'data_start_date': self.data_start_date,

@@ -324,6 +324,76 @@ class TrainingResultExporter:
             metadata['training_means'] = None
             metadata['training_variable_names'] = None
 
+        # 计算并保存重构对比表（原始尺度）
+        if prepared_data is not None and result.model_result is not None:
+            try:
+                H = result.model_result.H  # (n_vars, k_factors)
+                factors = result.model_result.factors_smooth.T  # (n_time, k_factors)
+
+                # 关键修复：使用模型的变量名列表（与H矩阵行顺序一致）
+                if (hasattr(result.model_result, 'variable_names') and
+                    result.model_result.variable_names is not None):
+                    model_var_names = list(result.model_result.variable_names)
+                else:
+                    model_var_names = list(result.selected_variables)
+
+                # 筛选出在 prepared_data 中存在的变量，保持原始顺序
+                available_vars = [v for v in model_var_names if v in prepared_data.columns]
+                # 获取这些变量在模型变量列表中的索引（用于从H矩阵中提取对应行）
+                var_indices = [model_var_names.index(v) for v in available_vars]
+
+                if len(available_vars) > 0 and H is not None and factors is not None:
+                    # 只提取可用变量对应的H矩阵行
+                    H_subset = H[var_indices, :]  # (n_available_vars, k_factors)
+
+                    # 计算重构值（去均值尺度）
+                    reconstructed_centered = factors @ H_subset.T  # (n_time, n_available_vars)
+
+                    # 获取原始值
+                    original_data = prepared_data[available_vars]
+
+                    # 使用训练期均值还原（与training_means保持一致）
+                    training_means = metadata.get('training_means')
+                    training_var_names = metadata.get('training_variable_names')
+
+                    if training_means is not None and training_var_names is not None:
+                        # 为每个可用变量获取对应的训练期均值
+                        var_means = []
+                        for var in available_vars:
+                            if var in training_var_names:
+                                idx = list(training_var_names).index(var)
+                                var_means.append(training_means[idx])
+                            else:
+                                # 如果变量不在训练期均值中，使用全期均值
+                                var_means.append(original_data[var].mean())
+                        var_means = np.array(var_means)
+                    else:
+                        # 回退到全期均值
+                        var_means = original_data.mean().values
+
+                    # 还原到原始尺度
+                    reconstructed_original = reconstructed_centered + var_means
+
+                    # 构建重构对比表
+                    reconstruction_comparison = pd.DataFrame(
+                        index=prepared_data.index,
+                        columns=pd.MultiIndex.from_product([available_vars, ['原始值', '重构值']])
+                    )
+                    for i, var in enumerate(available_vars):
+                        reconstruction_comparison[(var, '原始值')] = original_data[var].values
+                        reconstruction_comparison[(var, '重构值')] = reconstructed_original[:, i]
+
+                    metadata['reconstruction_comparison'] = reconstruction_comparison
+                    logger.info(f"保存重构对比表: {len(available_vars)} 个变量")
+                else:
+                    metadata['reconstruction_comparison'] = None
+                    logger.warning("无法计算重构对比表：缺少必要数据")
+            except Exception as e:
+                logger.warning(f"计算重构对比表失败: {e}")
+                metadata['reconstruction_comparison'] = None
+        else:
+            metadata['reconstruction_comparison'] = None
+
         logger.info(f"元数据构建完成,包含 {len(metadata)} 个字段")
         return metadata
 

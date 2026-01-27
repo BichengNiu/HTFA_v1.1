@@ -12,7 +12,6 @@ DFM数据准备模块 - 简化API接口
 """
 
 import pandas as pd
-import numpy as np
 from typing import Dict, Any, Optional, Union, Tuple
 from pathlib import Path
 import logging
@@ -83,7 +82,6 @@ def load_mappings_once(
                 'var_industry_map': Dict[str, str],       # 变量-行业映射 ★核心★
                 'var_frequency_map': Dict[str, str],      # 变量-频率映射
                 'single_stage_map': Dict[str, str],       # 预测变量映射
-                'second_stage_target_map': Dict[str, str] # 目标变量映射
             }
         }
     """
@@ -155,14 +153,7 @@ def load_mappings_once(
             df, reference_column_name, '预测变量', value_filter='是'
         )
 
-        # 7. 目标变量映射
-        if '目标变量' not in df.columns:
-            raise ValueError("映射表缺少必需列: '目标变量'")
-        mappings['second_stage_target_map'] = _extract_mapping(
-            df, reference_column_name, '目标变量', value_filter='是'
-        )
-
-        # 8. 变量-发布日期滞后映射
+        # 7. 变量-发布日期滞后映射
         if '发布日期' not in df.columns:
             raise ValueError("映射表缺少必需列: '发布日期'")
         mappings['var_publication_lag_map'] = _extract_numeric_mapping(
@@ -178,7 +169,6 @@ def load_mappings_once(
         logger.info(f"    变量-性质: {len(mappings['var_nature_map'])}个")
         logger.info(f"    发布日期滞后: {len(mappings['var_publication_lag_map'])}个")
         logger.info(f"    预测变量: {len(mappings['single_stage_map'])}个")
-        logger.info(f"    目标变量: {len(mappings['second_stage_target_map'])}个")
 
         # 更新缓存（线程安全）
         if use_cache:
@@ -414,29 +404,6 @@ def prepare_dfm_data_simple(
 
         processed_data, variable_mapping, transform_log, removal_log = processor.execute()
 
-        # 步骤8: 执行平稳性检验
-        logger.info("\n" + "="*60)
-        logger.info("步骤8/8: 执行平稳性检验...")
-        logger.info("="*60)
-        from dashboard.models.DFM.prep.utils.stationarity_checker import StationarityChecker
-
-        stationarity_check_results = {}
-        try:
-            if processed_data.empty:
-                logger.warning("prepared_data为空，跳过平稳性检验")
-            elif len(processed_data.columns) == 0:
-                logger.warning("prepared_data没有列，跳过平稳性检验")
-            else:
-                stationarity_check_results = StationarityChecker.batch_check_variables(
-                    processed_data,
-                    variables=list(processed_data.columns),
-                    alpha=0.05
-                )
-                logger.info(f"平稳性检验完成: {len(stationarity_check_results)}个变量")
-        except (ValueError, np.linalg.LinAlgError) as e:
-            logger.error(f"平稳性检验执行失败: {e}")
-            raise RuntimeError(f"平稳性检验失败: {e}") from e
-
         # 构建元数据
         processing_time = (datetime.now() - start_time).total_seconds()
 
@@ -444,7 +411,6 @@ def prepare_dfm_data_simple(
             'variable_mapping': variable_mapping,
             'transform_log': transform_log,
             'removal_log': removal_log,
-            'stationarity_check_results': stationarity_check_results,
             'data_shape': processed_data.shape,
             'time_range': (
                 str(processed_data.index.min()) if not processed_data.empty else None,
@@ -501,7 +467,6 @@ def prepare_dfm_data_simple(
 
 def validate_preparation_parameters(
     target_sheet_name: str,
-    target_variable_name: str,
     data_start_date: str,
     data_end_date: str,
     target_freq: str
@@ -511,7 +476,6 @@ def validate_preparation_parameters(
 
     Args:
         target_sheet_name: 目标工作表名称
-        target_variable_name: 目标变量名称
         data_start_date: 起始日期
         data_end_date: 结束日期
         target_freq: 目标频率
@@ -530,9 +494,6 @@ def validate_preparation_parameters(
         # 验证必填参数
         if not target_sheet_name:
             errors.append("目标工作表名称不能为空")
-
-        if not target_variable_name:
-            errors.append("目标变量名称不能为空")
 
         # 验证日期格式
         if data_start_date:
