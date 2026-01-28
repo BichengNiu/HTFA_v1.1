@@ -93,6 +93,9 @@ def _render_raw_variable_stats_table(st_obj, uploaded_file):
             stats_df = _compute_raw_variable_stats(uploaded_file)
         _set_state(cache_key, stats_df)
 
+    # 同时保存到固定状态键，供导出服务使用
+    _set_state(PrepStateKeys.RAW_STATS_DF, stats_df)
+
     if stats_df.empty:
         return
 
@@ -532,6 +535,9 @@ def _process_success_result(st_obj, result: dict, excel_file_like_object) -> boo
     _set_state(PrepStateKeys.VAR_NATURE_MAP_OBJ, mappings.get('var_nature_map', {}))
     _set_state(PrepStateKeys.VAR_FREQUENCY_MAP_OBJ, mappings.get('var_frequency_map', {}))
 
+    # 获取原始变量统计数据（包含缺失率）
+    raw_stats_df = _get_state(PrepStateKeys.RAW_STATS_DF)
+
     # 生成Excel文件
     processed_outputs['excel_file'] = ExportService.generate_excel(
         prepared_data=prepared_data,
@@ -539,7 +545,8 @@ def _process_success_result(st_obj, result: dict, excel_file_like_object) -> boo
         mappings=mappings,
         removed_vars_log=removed_variables_log,
         transform_details=_get_state(PrepStateKeys.VARIABLE_TRANSFORM_DETAILS),
-        replacement_history=_get_state(PrepStateKeys.VALUE_REPLACEMENT_HISTORY)
+        replacement_history=_get_state(PrepStateKeys.VALUE_REPLACEMENT_HISTORY),
+        raw_stats_df=raw_stats_df
     )
 
     logger.info("导出Excel文件: 数据形状 %s, 映射 %d 条记录",
@@ -1085,6 +1092,9 @@ def _regenerate_export_file(st_obj, transformed_df):
 
         mappings = result['mappings']
 
+        # 获取原始变量统计数据（包含缺失率）
+        raw_stats_df = _get_state(PrepStateKeys.RAW_STATS_DF)
+
         # 调用 ExportService 生成 Excel 文件
         excel_bytes = ExportService.generate_excel(
             prepared_data=transformed_df,
@@ -1092,7 +1102,8 @@ def _regenerate_export_file(st_obj, transformed_df):
             mappings=mappings,
             removed_vars_log=_get_state(PrepStateKeys.REMOVED_VARS_LOG_OBJ),
             transform_details=_get_state(PrepStateKeys.VARIABLE_TRANSFORM_DETAILS),
-            replacement_history=_get_state(PrepStateKeys.VALUE_REPLACEMENT_HISTORY)
+            replacement_history=_get_state(PrepStateKeys.VALUE_REPLACEMENT_HISTORY),
+            raw_stats_df=raw_stats_df
         )
 
         processed_outputs = _get_state(PrepStateKeys.PROCESSED_OUTPUTS) or {}

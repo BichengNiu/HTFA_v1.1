@@ -160,6 +160,7 @@ class TrainingConfigBuilder:
             'enable_variable_selection': enable_var_selection,
             'variable_selection_method': mapped_var_selection_method,
             'target_variable': self.state.get('dfm_target_variable') if enable_var_selection else None,
+            'optimization_target': self.state.get('dfm_optimization_target', 'average') if enable_var_selection else 'average',
 
             # 因子数选择配置
             'factor_selection_method': factor_selection_method,

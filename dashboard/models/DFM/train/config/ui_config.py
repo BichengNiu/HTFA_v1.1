@@ -52,6 +52,14 @@ class UIConfig:
     # 目标变量配置 (2026-01新增)
     TARGET_VARIABLE_HELP = "选择一个目标变量，该变量在后向剔除过程中不会被移除"
 
+    # 优化目标配置 (2026-01新增)
+    OPTIMIZATION_TARGET_OPTIONS = {
+        'average': "平均RMSE (所有变量)",
+        'target': "目标变量RMSE"
+    }
+    DEFAULT_OPTIMIZATION_TARGET = 'average'
+    OPTIMIZATION_TARGET_HELP = "选择变量选择的优化目标：平均RMSE优化所有变量的整体拟合，目标变量RMSE专注优化目标变量的拟合"
+
     # 训练期权重配置 (2025-12新增)
     DEFAULT_TRAINING_WEIGHT = 50  # 默认50%训练期权重（百分比）
     TRAINING_WEIGHT_MIN = 0       # 0%=仅验证期

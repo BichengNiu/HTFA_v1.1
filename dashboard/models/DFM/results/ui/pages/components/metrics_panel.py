@@ -100,11 +100,11 @@ class MetricsPanel:
         st.markdown("---")
         st.markdown("#### 结果摘要")
 
-        # 第1行：基本信息
-        MetricsPanel.render_basic_info(accessor)
-
-        # 第2行：三个期的开始日期
+        # 第1行：三个期的开始日期
         MetricsPanel.render_period_dates(accessor)
+
+        # 第2行：基本信息
+        MetricsPanel.render_basic_info(accessor)
 
         # 第3行：MAE指标
         MetricsPanel.render_mae_row(accessor)

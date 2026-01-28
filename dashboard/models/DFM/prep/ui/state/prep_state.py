@@ -58,6 +58,7 @@ class PrepStateKeys:
     PROCESSED_OUTPUTS = "processed_outputs"
     MAPPING_VALIDATION_RESULT = "mapping_validation_result"
     VALUE_REPLACEMENT_HISTORY = "value_replacement_history"  # 值替换历史
+    RAW_STATS_DF = "raw_stats_df"  # 原始变量统计数据（包含缺失率）
 
     # ============================================================================
     # 变量转换配置

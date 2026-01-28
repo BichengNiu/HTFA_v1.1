@@ -35,6 +35,31 @@ def calculate_average_reconstruction_rmse(
     return float(np.mean(rmse_list))
 
 
+def calculate_single_variable_rmse(
+    observation_data: np.ndarray,
+    reconstructed_data: np.ndarray,
+    variable_index: int
+) -> float:
+    """
+    计算单个变量的重构RMSE
+
+    Args:
+        observation_data: 观测数据 (n_time, n_obs)
+        reconstructed_data: 重构数据 (n_time, n_obs)
+        variable_index: 目标变量的索引
+
+    Returns:
+        float: 单个变量的RMSE
+    """
+    if variable_index < 0 or variable_index >= observation_data.shape[1]:
+        logger.warning(f"变量索引 {variable_index} 超出范围，返回inf")
+        return np.inf
+
+    residuals = observation_data[:, variable_index] - reconstructed_data[:, variable_index]
+    rmse = np.sqrt(np.nanmean(residuals ** 2))
+    return float(rmse)
+
+
 def compare_model_scores(score_a: float, score_b: float) -> int:
     """
     比较两个模型得分（RMSE，越小越好）
@@ -65,5 +90,6 @@ def compare_model_scores(score_a: float, score_b: float) -> int:
 
 __all__ = [
     'calculate_average_reconstruction_rmse',
+    'calculate_single_variable_rmse',
     'compare_model_scores'
 ]

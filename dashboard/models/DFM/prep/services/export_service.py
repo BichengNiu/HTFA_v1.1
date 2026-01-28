@@ -96,7 +96,8 @@ class ExportService:
         mappings: Dict[str, Any],
         removed_vars_log: Optional[List[Dict]] = None,
         transform_details: Optional[Dict] = None,
-        replacement_history: Optional[List[Dict]] = None
+        replacement_history: Optional[List[Dict]] = None,
+        raw_stats_df: Optional[pd.DataFrame] = None
     ) -> bytes:
         """
         生成导出Excel文件
@@ -108,6 +109,7 @@ class ExportService:
             removed_vars_log: 被删除变量日志
             transform_details: 变量转换详情
             replacement_history: 值替换历史记录
+            raw_stats_df: 原始变量统计数据（包含缺失率）
 
         Returns:
             bytes: Excel文件字节内容
@@ -117,6 +119,13 @@ class ExportService:
         var_frequency_map = mappings.get('var_frequency_map', {})
         var_unit_map = mappings.get('var_unit_map', {})
         var_nature_map = mappings.get('var_nature_map', {})
+
+        # 构建缺失率映射
+        missing_ratio_map = {}
+        if raw_stats_df is not None and not raw_stats_df.empty:
+            for _, row in raw_stats_df.iterrows():
+                var_name = normalize_text(row['变量名'])
+                missing_ratio_map[var_name] = row.get('缺失值占比', '')
 
         # 构建处理日志
         df_processing_log = ExportService.build_processing_log(
@@ -147,13 +156,14 @@ class ExportService:
                 '频率': var_frequency_map.get(indicator, ''),
                 '单位': var_unit_map.get(indicator, ''),
                 '性质': var_nature_map.get(indicator, ''),
+                '缺失率': missing_ratio_map.get(indicator, ''),
                 '预测变量': dfm_single_stage_map.get(indicator, ''),
                 '处理详情': log_info.get('处理详情', '')
             })
 
         df_unified_map = pd.DataFrame(
             unified_mapping_data,
-            columns=['指标名称', '行业', '频率', '单位', '性质',
+            columns=['指标名称', '行业', '频率', '单位', '性质', '缺失率',
                      '预测变量', '处理详情']
         )
 

@@ -24,6 +24,11 @@ class EvaluationMetrics:
     average_rmse_validation: float = np.inf   # 验证期平均RMSE
     weighted_average_rmse: float = np.inf     # 加权平均RMSE
 
+    # 目标变量RMSE指标 (2026-01新增)
+    target_rmse: float = np.inf               # 目标变量训练期RMSE
+    target_rmse_validation: float = np.inf    # 目标变量验证期RMSE
+    weighted_target_rmse: float = np.inf      # 目标变量加权RMSE
+
     # 收敛信息
     converged: bool = False
     iterations: int = 0
@@ -34,6 +39,9 @@ class EvaluationMetrics:
             'average_rmse': self.average_rmse,
             'average_rmse_validation': self.average_rmse_validation,
             'weighted_average_rmse': self.weighted_average_rmse,
+            'target_rmse': self.target_rmse,
+            'target_rmse_validation': self.target_rmse_validation,
+            'weighted_target_rmse': self.weighted_target_rmse,
             'converged': self.converged,
             'iterations': self.iterations
         }

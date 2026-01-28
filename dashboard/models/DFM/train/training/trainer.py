@@ -227,7 +227,9 @@ class DFMTrainer:
                             'kaiser_threshold': self.config.kaiser_threshold,
                             'tolerance': self.config.tolerance,
                             'validation_start': self.config.validation_start,
-                            'validation_end': self.config.validation_end
+                            'validation_end': self.config.validation_end,
+                            'target_variable': self.config.target_variable,
+                            'optimization_target': self.config.optimization_target
                         },
                         training_start_date=self.config.training_start,
                         train_end_date=self.config.train_end,
