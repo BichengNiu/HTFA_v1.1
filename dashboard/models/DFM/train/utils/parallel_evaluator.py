@@ -2,13 +2,11 @@
 """
 并行变量评估器
 
-提供变量选择过程中的并行评估功能（无监督DFM版本）
+提供变量选择过程中的并行评估功能
 
-重构说明:
-- 适配经典无监督DFM算法
-- 移除目标变量概念，所有变量平等参与因子提取
-- 使用加权平均RMSE作为唯一评估指标
-- 仅支持后向选择（移除变量）
+支持两种优化目标:
+- 平均RMSE: 优化所有变量的整体拟合
+- 目标变量RMSE: 专注优化指定目标变量的拟合
 """
 
 import logging
@@ -50,6 +48,8 @@ def evaluate_single_variable_removal(
             - factor_selection_method: 因子选择方法
             - pca_threshold: PCA阈值
             - kaiser_threshold: Kaiser阈值
+            - target_variable: 目标变量（可选）
+            - optimization_target: 优化目标（可选，'average' 或 'target'）
 
     Returns:
         (变量名, 评估结果字典) 或 (变量名, None) 如果评估失败
@@ -92,7 +92,9 @@ def evaluate_single_variable_removal(
             training_weight=evaluator_config['training_weight'],
             factor_selection_method=evaluator_config['factor_selection_method'],
             pca_threshold=evaluator_config['pca_threshold'],
-            kaiser_threshold=evaluator_config['kaiser_threshold']
+            kaiser_threshold=evaluator_config['kaiser_threshold'],
+            target_variable=evaluator_config.get('target_variable'),
+            optimization_target=evaluator_config.get('optimization_target', 'average')
         )
 
         return (var, {
@@ -140,6 +142,10 @@ def evaluate_variable_removals(
 
     n_candidates = len(candidate_vars)
 
+    # 根据优化目标确定RMSE标签
+    optimization_target = evaluator_config.get('optimization_target', 'average')
+    rmse_label = "目标变量RMSE" if optimization_target == 'target' else "平均RMSE"
+
     if progress_callback:
         cores_desc = str(n_jobs) if n_jobs > 0 else 'all'
         progress_callback(
@@ -172,7 +178,7 @@ def evaluate_variable_removals(
 
         if progress_callback:
             progress_callback(
-                f"  [{idx}/{n_candidates}] '{var}' - 加权RMSE: {result['score']:.4f}"
+                f"  [{idx}/{n_candidates}] '{var}' - {rmse_label}: {result['score']:.4f}"
             )
 
         candidate_results.append(result)

@@ -252,8 +252,8 @@ def render_dfm_model_training_page(st_instance):
     # 深度学习模式标志
     is_deep_learning_mode = (current_algorithm == 'deep_learning')
 
-    # 选择算法 + 变量筛选方法 + 目标变量（3列布局）
-    algo_col1, algo_col2, algo_col3 = st_instance.columns(3)
+    # 选择算法 + 变量筛选方法 + 目标变量 + 优化目标（4列布局）
+    algo_col1, algo_col2, algo_col3, algo_col4 = st_instance.columns(4)
 
     with algo_col1:
         algorithm_value = st_instance.selectbox(
@@ -325,6 +325,31 @@ def render_dfm_model_training_page(st_instance):
                     help=UIConfig.TARGET_VARIABLE_HELP
                 )
                 _state.set('dfm_target_variable', None)
+
+    # 优化目标（仅当启用后向选择且选择了目标变量时显示）
+    with algo_col4:
+        if current_algorithm != 'deep_learning':
+            var_method = _state.get('dfm_variable_selection_method', UIConfig.DEFAULT_VAR_SELECTION)
+            current_target = _state.get('dfm_target_variable')
+            if var_method == 'backward' and current_target:
+                current_opt_target = _state.get('dfm_optimization_target', UIConfig.DEFAULT_OPTIMIZATION_TARGET)
+                if current_opt_target not in UIConfig.OPTIMIZATION_TARGET_OPTIONS:
+                    current_opt_target = UIConfig.DEFAULT_OPTIMIZATION_TARGET
+
+                opt_target_value = st_instance.selectbox(
+                    "优化目标",
+                    options=list(UIConfig.OPTIMIZATION_TARGET_OPTIONS.keys()),
+                    format_func=lambda x: UIConfig.OPTIMIZATION_TARGET_OPTIONS[x],
+                    index=UIConfig.get_safe_option_index(
+                        UIConfig.OPTIMIZATION_TARGET_OPTIONS, current_opt_target, UIConfig.DEFAULT_OPTIMIZATION_TARGET
+                    ),
+                    key='dfm_optimization_target_input',
+                    help=UIConfig.OPTIMIZATION_TARGET_HELP
+                )
+                _state.set('dfm_optimization_target', opt_target_value)
+            else:
+                # 未启用后向选择或未选择目标变量时，重置为默认值
+                _state.set('dfm_optimization_target', 'average')
 
     # 检测算法变化，触发rerun以更新UI布局
     if algorithm_value != _state.get('_prev_dfm_algorithm'):
