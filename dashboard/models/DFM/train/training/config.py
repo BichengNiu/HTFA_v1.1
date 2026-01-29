@@ -46,7 +46,9 @@ class TrainingConfig:
     enable_variable_selection: bool = False
     variable_selection_method: str = 'backward'
     target_variable: Optional[str] = None  # 目标变量（后向剔除时不会被移除）
-    optimization_target: str = 'average'  # 优化目标: 'average'(平均RMSE) 或 'target'(目标变量RMSE)
+
+    # DDFM有监督学习配置
+    ddfm_target_variable: Optional[str] = None  # DDFM目标变量名（None=无监督）
 
     # 因子数选择配置
     factor_selection_method: str = 'fixed'  # fixed, cumulative, kaiser
@@ -131,18 +133,6 @@ class TrainingConfig:
                 raise ValueError(
                     f"variable_selection_method必须是{valid_selection_methods}之一,"
                     f"当前值: {self.variable_selection_method}"
-                )
-            # 验证优化目标
-            valid_optimization_targets = ['average', 'target']
-            if self.optimization_target not in valid_optimization_targets:
-                raise ValueError(
-                    f"optimization_target必须是{valid_optimization_targets}之一,"
-                    f"当前值: {self.optimization_target}"
-                )
-            # 如果选择目标变量RMSE优化，必须指定目标变量
-            if self.optimization_target == 'target' and not self.target_variable:
-                raise ValueError(
-                    "当optimization_target='target'时，必须指定target_variable"
                 )
 
         # 验证并行配置

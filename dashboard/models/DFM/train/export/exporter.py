@@ -144,7 +144,7 @@ class TrainingResultExporter:
     # ========== 元数据构建方法 ==========
 
     def _build_metadata(self, result, config, timestamp: str, prepared_data: Optional[pd.DataFrame] = None) -> Dict[str, Any]:
-        """构建元数据字典（经典DFM版，无目标变量）"""
+        """构建元数据字典（支持目标变量RMSE）"""
         logger.debug("开始构建元数据")
 
         metadata = {
@@ -184,19 +184,22 @@ class TrainingResultExporter:
         if result.metrics is None:
             raise ValueError("训练结果缺少评估指标(metrics)，无法导出元数据")
 
+        # 获取目标变量（有目标变量时返回目标变量RMSE，否则返回平均RMSE）
+        target_variable = getattr(config, 'target_variable', None)
+
         # 计算训练期指标
         is_rmse, is_mae = self._calculate_period_metrics(
-            result, prepared_data, config.training_start, config.train_end
+            result, prepared_data, config.training_start, config.train_end, target_variable
         )
         # 计算验证期指标
         oos_rmse, oos_mae = self._calculate_period_metrics(
-            result, prepared_data, config.validation_start, config.validation_end
+            result, prepared_data, config.validation_start, config.validation_end, target_variable
         )
         # 计算观察期指标（如果配置了观察期）
         obs_rmse, obs_mae = None, None
         if config.observation_start and config.observation_end:
             obs_rmse, obs_mae = self._calculate_period_metrics(
-                result, prepared_data, config.observation_start, config.observation_end
+                result, prepared_data, config.observation_start, config.observation_end, target_variable
             )
 
         metadata.update({
@@ -209,6 +212,8 @@ class TrainingResultExporter:
             # 观察期指标 (observation period)
             'obs_rmse': obs_rmse,
             'obs_mae': obs_mae,
+            # 目标变量（记录RMSE是基于目标变量还是平均值）
+            'target_variable': target_variable,
             # 收敛信息
             'converged': result.metrics.converged,
             'iterations': result.metrics.iterations,
@@ -431,9 +436,18 @@ class TrainingResultExporter:
         result,
         prepared_data: Optional[pd.DataFrame],
         period_start: str,
-        period_end: str
+        period_end: str,
+        target_variable: Optional[str] = None
     ) -> Tuple[float, float]:
-        """计算指定时期的重构 RMSE 和 MAE"""
+        """计算指定时期的重构 RMSE 和 MAE
+
+        Args:
+            result: 训练结果
+            prepared_data: 预处理后的完整观测数据
+            period_start: 时期开始日期
+            period_end: 时期结束日期
+            target_variable: 目标变量名（有则返回目标变量RMSE，否则返回平均RMSE）
+        """
         if prepared_data is None or result.model_result is None:
             return np.inf, np.inf
         if result.model_result.H is None or result.model_result.factors_smooth is None:
@@ -480,8 +494,15 @@ class TrainingResultExporter:
             reconstructed = reconstructed[:min_time, :]
 
             residuals = obs_centered - reconstructed
-            rmse = float(np.sqrt(np.nanmean(residuals ** 2)))
-            mae = float(np.nanmean(np.abs(residuals)))
+            # 有目标变量时返回目标变量RMSE，否则返回平均RMSE
+            if target_variable and target_variable in available_vars:
+                target_idx = available_vars.index(target_variable)
+                target_residuals = residuals[:, target_idx]
+                rmse = float(np.sqrt(np.nanmean(target_residuals ** 2)))
+                mae = float(np.nanmean(np.abs(target_residuals)))
+            else:
+                rmse = float(np.sqrt(np.nanmean(residuals ** 2)))
+                mae = float(np.nanmean(np.abs(residuals)))
             return rmse, mae
 
         except Exception as e:

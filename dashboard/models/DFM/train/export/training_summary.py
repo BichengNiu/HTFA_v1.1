@@ -5,7 +5,7 @@
 生成用户可读的训练信息文本文件，包含：
 - 变量信息
 - 模型参数
-- 评估指标（平均RMSE）
+- 评估指标（有目标变量时显示目标变量RMSE，否则显示平均RMSE）
 - 训练统计
 
 经典DFM：所有变量平等参与因子提取，无目标变量概念
@@ -97,31 +97,61 @@ def generate_training_summary(
     lines.append(f"  验证期: {config.validation_start} 至 {config.validation_end}")
     lines.append("")
 
-    # 评估指标（平均RMSE）
+    # 评估指标
     lines.append("[模型拟合指标]")
     if result.metrics:
         metrics = result.metrics
 
-        # 训练期平均RMSE
-        avg_rmse = getattr(metrics, 'average_rmse', None)
-        if avg_rmse is not None and np.isfinite(avg_rmse):
-            lines.append(f"  训练期平均RMSE: {avg_rmse:.4f}")
-        else:
-            lines.append("  训练期平均RMSE: N/A")
+        # 判断是否有目标变量
+        target_variable = getattr(config, 'target_variable', None)
+        has_target = target_variable is not None
 
-        # 验证期平均RMSE
-        avg_rmse_val = getattr(metrics, 'average_rmse_validation', None)
-        if avg_rmse_val is not None and np.isfinite(avg_rmse_val):
-            lines.append(f"  验证期平均RMSE: {avg_rmse_val:.4f}")
-        else:
-            lines.append("  验证期平均RMSE: N/A")
+        if has_target:
+            # 有目标变量时显示目标变量RMSE
+            lines.append(f"  目标变量: {target_variable}")
 
-        # 加权平均RMSE
-        weighted_rmse = getattr(metrics, 'weighted_average_rmse', None)
-        if weighted_rmse is not None and np.isfinite(weighted_rmse):
-            lines.append(f"  加权平均RMSE: {weighted_rmse:.4f}")
+            # 训练期目标变量RMSE
+            target_rmse = getattr(metrics, 'target_rmse', None)
+            if target_rmse is not None and np.isfinite(target_rmse):
+                lines.append(f"  训练期目标变量RMSE: {target_rmse:.4f}")
+            else:
+                lines.append("  训练期目标变量RMSE: N/A")
+
+            # 验证期目标变量RMSE
+            target_rmse_val = getattr(metrics, 'target_rmse_validation', None)
+            if target_rmse_val is not None and np.isfinite(target_rmse_val):
+                lines.append(f"  验证期目标变量RMSE: {target_rmse_val:.4f}")
+            else:
+                lines.append("  验证期目标变量RMSE: N/A")
+
+            # 加权目标变量RMSE
+            weighted_target_rmse = getattr(metrics, 'weighted_target_rmse', None)
+            if weighted_target_rmse is not None and np.isfinite(weighted_target_rmse):
+                lines.append(f"  加权目标变量RMSE: {weighted_target_rmse:.4f}")
+            else:
+                lines.append("  加权目标变量RMSE: N/A")
         else:
-            lines.append("  加权平均RMSE: N/A")
+            # 无目标变量时显示平均RMSE
+            # 训练期平均RMSE
+            avg_rmse = getattr(metrics, 'average_rmse', None)
+            if avg_rmse is not None and np.isfinite(avg_rmse):
+                lines.append(f"  训练期平均RMSE: {avg_rmse:.4f}")
+            else:
+                lines.append("  训练期平均RMSE: N/A")
+
+            # 验证期平均RMSE
+            avg_rmse_val = getattr(metrics, 'average_rmse_validation', None)
+            if avg_rmse_val is not None and np.isfinite(avg_rmse_val):
+                lines.append(f"  验证期平均RMSE: {avg_rmse_val:.4f}")
+            else:
+                lines.append("  验证期平均RMSE: N/A")
+
+            # 加权平均RMSE
+            weighted_rmse = getattr(metrics, 'weighted_average_rmse', None)
+            if weighted_rmse is not None and np.isfinite(weighted_rmse):
+                lines.append(f"  加权平均RMSE: {weighted_rmse:.4f}")
+            else:
+                lines.append("  加权平均RMSE: N/A")
 
         # 收敛信息
         lines.append(f"  模型收敛: {'是' if metrics.converged else '否'}")

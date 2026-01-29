@@ -109,6 +109,7 @@ def train_ddfm_model(
     tolerance: float = 0.0005,
     display_interval: int = 10,
     seed: int = 3,
+    target_variable: Optional[str] = None,
     progress_callback: Optional[Callable[[str], None]] = None
 ) -> DFMModelResult:
     """
@@ -136,6 +137,7 @@ def train_ddfm_model(
         tolerance: MCMC收敛阈值
         display_interval: 显示间隔
         seed: 随机种子
+        target_variable: 目标变量名（有监督模式），None表示无监督模式
         progress_callback: 进度回调函数
 
     Returns:
@@ -199,6 +201,7 @@ def train_ddfm_model(
         tolerance=tolerance,
         display_interval=display_interval,
         seed=seed,
+        target_variable=target_variable,
         progress_callback=ddfm_progress_callback
     )
 

@@ -252,8 +252,13 @@ def render_dfm_model_training_page(st_instance):
     # 深度学习模式标志
     is_deep_learning_mode = (current_algorithm == 'deep_learning')
 
-    # 选择算法 + 变量筛选方法 + 目标变量 + 优化目标（4列布局）
-    algo_col1, algo_col2, algo_col3, algo_col4 = st_instance.columns(4)
+    # 根据算法类型动态调整布局
+    # DDFM：2列（选择算法、目标变量）
+    # 经典DFM：3列（选择算法、变量筛选方法、目标变量）
+    if is_deep_learning_mode:
+        algo_col1, algo_col_target = st_instance.columns(2)
+    else:
+        algo_col1, algo_col2, algo_col_target = st_instance.columns(3)
 
     with algo_col1:
         algorithm_value = st_instance.selectbox(
@@ -270,8 +275,8 @@ def render_dfm_model_training_page(st_instance):
         current_algorithm = algorithm_value
 
     # 变量筛选方法（仅经典DFM显示）
-    with algo_col2:
-        if current_algorithm != 'deep_learning':
+    if not is_deep_learning_mode:
+        with algo_col2:
             current_var_method = _state.get('dfm_variable_selection_method', UIConfig.DEFAULT_VAR_SELECTION)
             if current_var_method not in UIConfig.VARIABLE_SELECTION_METHODS:
                 current_var_method = UIConfig.DEFAULT_VAR_SELECTION
@@ -290,66 +295,49 @@ def render_dfm_model_training_page(st_instance):
             enable_var_selection = (var_method_value != 'none')
             _state.set('dfm_enable_variable_selection', enable_var_selection)
 
-    # 目标变量（仅经典DFM显示，非后向剔除时禁用）
-    with algo_col3:
-        if current_algorithm != 'deep_learning':
-            selected_indicators = _state.get('dfm_selected_indicators', [])
-            # 判断是否启用（仅后向剔除时启用）
+    # 目标变量（经典DFM和DDFM都显示）
+    with algo_col_target:
+        selected_indicators = _state.get('dfm_selected_indicators', [])
+
+        # 经典DFM：仅后向剔除时启用
+        # DDFM：始终启用
+        if is_deep_learning_mode:
+            is_disabled = False
+            state_key_target = 'dfm_ddfm_target_variable'
+            help_text = UIConfig.DDFM_TARGET_VARIABLE_HELP
+        else:
             var_method = _state.get('dfm_variable_selection_method', UIConfig.DEFAULT_VAR_SELECTION)
             is_disabled = (var_method != 'backward')
+            state_key_target = 'dfm_target_variable'
+            help_text = UIConfig.TARGET_VARIABLE_HELP
 
-            if selected_indicators:
-                target_var_options = ['无'] + list(selected_indicators)
-                current_target = _state.get('dfm_target_variable')
-                if current_target and current_target in selected_indicators:
-                    default_index = target_var_options.index(current_target)
-                else:
-                    default_index = 0
-
-                target_var_value = st_instance.selectbox(
-                    "目标变量",
-                    options=target_var_options,
-                    index=default_index,
-                    key='dfm_target_variable_input',
-                    help=UIConfig.TARGET_VARIABLE_HELP,
-                    disabled=is_disabled
-                )
-                if not is_disabled:
-                    _state.set('dfm_target_variable', target_var_value if target_var_value != '无' else None)
+        if selected_indicators:
+            target_var_options = ['无'] + list(selected_indicators)
+            current_target = _state.get(state_key_target)
+            if current_target and current_target in selected_indicators:
+                default_index = target_var_options.index(current_target)
             else:
-                st_instance.selectbox(
-                    "目标变量",
-                    options=['请先选择指标'],
-                    key='dfm_target_variable_input',
-                    disabled=True,
-                    help=UIConfig.TARGET_VARIABLE_HELP
-                )
-                _state.set('dfm_target_variable', None)
+                default_index = 0
 
-    # 优化目标（仅当启用后向选择且选择了目标变量时显示）
-    with algo_col4:
-        if current_algorithm != 'deep_learning':
-            var_method = _state.get('dfm_variable_selection_method', UIConfig.DEFAULT_VAR_SELECTION)
-            current_target = _state.get('dfm_target_variable')
-            if var_method == 'backward' and current_target:
-                current_opt_target = _state.get('dfm_optimization_target', UIConfig.DEFAULT_OPTIMIZATION_TARGET)
-                if current_opt_target not in UIConfig.OPTIMIZATION_TARGET_OPTIONS:
-                    current_opt_target = UIConfig.DEFAULT_OPTIMIZATION_TARGET
-
-                opt_target_value = st_instance.selectbox(
-                    "优化目标",
-                    options=list(UIConfig.OPTIMIZATION_TARGET_OPTIONS.keys()),
-                    format_func=lambda x: UIConfig.OPTIMIZATION_TARGET_OPTIONS[x],
-                    index=UIConfig.get_safe_option_index(
-                        UIConfig.OPTIMIZATION_TARGET_OPTIONS, current_opt_target, UIConfig.DEFAULT_OPTIMIZATION_TARGET
-                    ),
-                    key='dfm_optimization_target_input',
-                    help=UIConfig.OPTIMIZATION_TARGET_HELP
-                )
-                _state.set('dfm_optimization_target', opt_target_value)
-            else:
-                # 未启用后向选择或未选择目标变量时，重置为默认值
-                _state.set('dfm_optimization_target', 'average')
+            target_var_value = st_instance.selectbox(
+                "目标变量",
+                options=target_var_options,
+                index=default_index,
+                key='dfm_target_variable_input',
+                help=help_text,
+                disabled=is_disabled
+            )
+            if not is_disabled:
+                _state.set(state_key_target, target_var_value if target_var_value != '无' else None)
+        else:
+            st_instance.selectbox(
+                "目标变量",
+                options=['请先选择指标'],
+                key='dfm_target_variable_input',
+                disabled=True,
+                help=help_text
+            )
+            _state.set(state_key_target, None)
 
     # 检测算法变化，触发rerun以更新UI布局
     if algorithm_value != _state.get('_prev_dfm_algorithm'):
@@ -362,7 +350,16 @@ def render_dfm_model_training_page(st_instance):
     target_freq_code = 'W'
     freq_label = get_frequency_label(target_freq_code)
 
-    col_time1, col_time2, col_time3 = st_instance.columns(3)
+    # 判断是否为DDFM模式
+    is_ddfm_mode = (current_algorithm == 'deep_learning')
+
+    # 根据算法类型动态调整布局
+    # DDFM：2列（训练期开始、观察期开始）
+    # 经典DFM：3列（训练期开始、验证期开始、观察期开始）
+    if is_ddfm_mode:
+        col_time1, col_time2 = st_instance.columns(2)
+    else:
+        col_time1, col_time2, col_time3 = st_instance.columns(3)
 
     with col_time1:
         training_start_value = st_instance.date_input(
@@ -372,9 +369,6 @@ def render_dfm_model_training_page(st_instance):
             help="模型训练数据的起始日期，默认为数据开始日期"
         )
         _state.set('dfm_training_start_date', training_start_value)
-
-    # 判断是否为DDFM模式
-    is_ddfm_mode = (current_algorithm == 'deep_learning')
 
     with col_time2:
         if is_ddfm_mode:
@@ -388,6 +382,10 @@ def render_dfm_model_training_page(st_instance):
             _state.set('dfm_observation_start_date', observation_start_value)
             # DDFM内部用validation_start/end存储观察期范围
             _state.set('dfm_validation_start_date', observation_start_value)
+            # DDFM：观察期结束为数据最后日期（不显示UI）
+            if has_data and isinstance(data_df.index, pd.DatetimeIndex):
+                observation_end_value = data_df.index.max().date()
+                _state.set('dfm_validation_end_date', observation_end_value)
         else:
             # 经典DFM模式：显示验证期开始
             validation_start_value = st_instance.date_input(
@@ -398,21 +396,8 @@ def render_dfm_model_training_page(st_instance):
             )
             _state.set('dfm_validation_start_date', validation_start_value)
 
-    with col_time3:
-        if is_ddfm_mode:
-            # DDFM模式：显示观察期结束（数据最后日期，只读）
-            if not has_data or not isinstance(data_df.index, pd.DatetimeIndex):
-                raise ValueError("DDFM模式需要有效的数据，请先上传预处理后的数据文件")
-            observation_end_value = data_df.index.max().date()
-            st_instance.date_input(
-                "观察期结束",
-                value=observation_end_value,
-                key='dfm_observation_end_date_display',
-                disabled=True,
-                help="观察期结束日期（数据最后日期）"
-            )
-            _state.set('dfm_validation_end_date', observation_end_value)
-        else:
+    if not is_ddfm_mode:
+        with col_time3:
             # 经典DFM模式：显示观察期开始
             observation_start_value = st_instance.date_input(
                 "观察期开始",

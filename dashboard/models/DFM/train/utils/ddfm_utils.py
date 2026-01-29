@@ -33,6 +33,40 @@ def mse_missing(y_actual, y_predicted):
     return tf.reduce_mean(tf.square(y_actual_ - y_predicted_))
 
 
+def mse_target_variable(target_index: int):
+    """
+    创建只计算目标变量MSE的损失函数（有监督学习模式）
+
+    Args:
+        target_index: 目标变量在输出中的索引位置
+
+    Returns:
+        损失函数
+    """
+    import tensorflow as tf
+
+    def loss_fn(y_actual, y_predicted):
+        # 提取目标变量列
+        y_actual_target = y_actual[:, target_index]
+        y_predicted_target = y_predicted[:, target_index]
+
+        # 处理缺失值
+        mask = tf.where(tf.math.is_nan(y_actual_target),
+                        tf.zeros_like(y_actual_target),
+                        tf.ones_like(y_actual_target))
+        y_actual_clean = tf.where(tf.math.is_nan(y_actual_target),
+                                  tf.zeros_like(y_actual_target),
+                                  y_actual_target)
+        y_predicted_clean = tf.multiply(y_predicted_target, mask)
+
+        # 计算MSE
+        n_valid = tf.reduce_sum(mask)
+        mse = tf.reduce_sum(tf.square(y_actual_clean - y_predicted_clean)) / (n_valid + 1e-8)
+        return mse
+
+    return loss_fn
+
+
 def convergence_checker(y_prev: np.ndarray, y_now: np.ndarray, y_actual: np.ndarray) -> Tuple[float, float]:
     """
     检查收敛性

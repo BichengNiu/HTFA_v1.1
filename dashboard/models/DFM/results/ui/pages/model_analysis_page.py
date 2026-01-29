@@ -488,7 +488,7 @@ def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor,
     st.download_button(
         label="数据下载", data=csv_data,
         file_name=f"{selected_var}_重构对比.csv", mime="text/csv",
-        key="download_reconstruction_comparison"
+        key="download_reconstruction_comparison", type="primary"
     )
 
 

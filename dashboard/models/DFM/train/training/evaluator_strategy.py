@@ -3,13 +3,13 @@
 DFM评估策略 - 函数式接口
 
 提供简洁的函数式接口创建DFM评估器
-支持两种优化目标: 平均RMSE或目标变量RMSE
+有目标变量时使用目标变量RMSE，否则使用平均RMSE
 
 重构说明:
 - 将闭包函数改为模块级顶层函数,解决pickle序列化问题
 - 通过参数显式传递config数据,而非闭包捕获
 - 保持API兼容性
-- 根据optimization_target参数选择评估指标
+- 根据target_variable参数选择评估指标
 """
 
 import numpy as np
@@ -39,7 +39,6 @@ def _evaluate_variable_selection_model(
     pca_threshold: float = 0.9,
     kaiser_threshold: float = 1.0,
     target_variable: Optional[str] = None,
-    optimization_target: str = 'average',
     **kwargs
 ) -> float:
     """
@@ -60,11 +59,10 @@ def _evaluate_variable_selection_model(
         pca_threshold: PCA累积方差阈值（method='cumulative'时使用）
         kaiser_threshold: Kaiser特征值阈值（method='kaiser'时使用）
         target_variable: 目标变量名（可选，用于计算目标变量RMSE）
-        optimization_target: 优化目标 ('average' 或 'target')
         **kwargs: 兼容旧接口的额外参数
 
     Returns:
-        float: 加权RMSE（越小越好），根据optimization_target返回平均RMSE或目标变量RMSE
+        float: 加权RMSE（越小越好），有目标变量时返回目标变量RMSE，否则返回平均RMSE
 
     Note:
         当factor_selection_method!='fixed'时，会基于当前变量集动态计算最优k_factors。
@@ -122,8 +120,8 @@ def _evaluate_variable_selection_model(
             variable_names=variables
         )
 
-        # 根据优化目标返回对应的RMSE
-        if optimization_target == 'target' and target_variable:
+        # 根据是否有目标变量返回对应的RMSE
+        if target_variable:
             return metrics.weighted_target_rmse
         else:
             return metrics.weighted_average_rmse
@@ -140,7 +138,7 @@ def create_variable_selection_evaluator(config: 'TrainingConfig') -> Callable:
     创建变量筛选专用评估器（函数式接口）
 
     使用加权RMSE作为评估指标（越小越好），专门用于变量筛选阶段。
-    根据config.optimization_target决定使用平均RMSE还是目标变量RMSE。
+    有目标变量时使用目标变量RMSE，否则使用平均RMSE。
 
     重构后：返回一个lambda包装器，调用可序列化的顶层函数。
 
@@ -181,9 +179,8 @@ def create_variable_selection_evaluator(config: 'TrainingConfig') -> Callable:
         validation_end = params.get('validation_end', config.validation_end)
         training_weight = params.get('training_weight', 0.5)
 
-        # 获取目标变量和优化目标参数
+        # 获取目标变量参数
         target_variable = params.get('target_variable', config.target_variable)
-        optimization_target = params.get('optimization_target', config.optimization_target)
 
         # 调用可序列化的顶层函数
         return _evaluate_variable_selection_model(
@@ -200,8 +197,7 @@ def create_variable_selection_evaluator(config: 'TrainingConfig') -> Callable:
             factor_selection_method=params.get('factor_selection_method', config.factor_selection_method),
             pca_threshold=params.get('pca_threshold', config.pca_threshold),
             kaiser_threshold=params.get('kaiser_threshold', config.kaiser_threshold),
-            target_variable=target_variable,
-            optimization_target=optimization_target
+            target_variable=target_variable
         )
 
     return evaluate
