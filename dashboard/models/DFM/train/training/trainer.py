@@ -178,6 +178,7 @@ class DFMTrainer:
                     tolerance=self.config.mcmc_tolerance,
                     display_interval=self.config.display_interval,
                     seed=self.config.ddfm_seed,
+                    target_variable=self.config.ddfm_target_variable,
                     progress_callback=progress_callback
                 )
 
@@ -228,8 +229,7 @@ class DFMTrainer:
                             'tolerance': self.config.tolerance,
                             'validation_start': self.config.validation_start,
                             'validation_end': self.config.validation_end,
-                            'target_variable': self.config.target_variable,
-                            'optimization_target': self.config.optimization_target
+                            'target_variable': self.config.target_variable
                         },
                         training_start_date=self.config.training_start,
                         train_end_date=self.config.train_end,
@@ -274,7 +274,7 @@ class DFMTrainer:
 
             # ========== 公共部分：评估和结果构建 ==========
 
-            # 步骤5: 模型评估（基于平均RMSE）
+            # 步骤5: 模型评估（有目标变量时基于目标变量RMSE，否则基于平均RMSE）
             observation_data = data[selected_vars]
 
             # DDFM模式不计算验证期RMSE（因为没有验证期）
@@ -285,7 +285,9 @@ class DFMTrainer:
                     training_start=self.config.training_start,
                     train_end=self.config.train_end,
                     validation_start=None,
-                    validation_end=None
+                    validation_end=None,
+                    target_variable=self.config.target_variable,
+                    variable_names=selected_vars
                 )
             else:
                 metrics = evaluate_model_fit(
@@ -294,7 +296,9 @@ class DFMTrainer:
                     training_start=self.config.training_start,
                     train_end=self.config.train_end,
                     validation_start=self.config.validation_start,
-                    validation_end=self.config.validation_end
+                    validation_end=self.config.validation_end,
+                    target_variable=self.config.target_variable,
+                    variable_names=selected_vars
                 )
 
             # 保存变量名到模型结果

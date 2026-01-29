@@ -88,6 +88,7 @@ class DDFMModel:
         tolerance: float = 0.0005,
         display_interval: int = 10,
         seed: int = 3,
+        target_variable: Optional[str] = None,
         progress_callback: Optional[Callable[[str, float], None]] = None,
         optimize_cpu: bool = True,
         num_threads: Optional[int] = None
@@ -112,6 +113,7 @@ class DDFMModel:
             tolerance: MCMC收敛阈值
             display_interval: 显示间隔
             seed: 随机种子
+            target_variable: 目标变量名（有监督模式），None表示无监督模式
             progress_callback: 进度回调函数，签名(message: str, progress: float)
             optimize_cpu: 是否启用CPU多核优化
             num_threads: CPU线程数（None=自动检测）
@@ -164,6 +166,8 @@ class DDFMModel:
         self.tolerance = tolerance
         self.display_interval = display_interval
         self.seed = seed
+        self.target_variable = target_variable
+        self.target_variable_index = None  # 在fit中确定
 
         # 内部状态
         self.rng = np.random.RandomState(seed)
@@ -197,6 +201,21 @@ class DDFMModel:
         if self.progress_callback:
             self.progress_callback(message, progress)
         logger.info(message)
+
+    def _get_loss_function(self):
+        """
+        根据是否有目标变量返回损失函数
+
+        Returns:
+            损失函数（有监督模式返回mse_target_variable，无监督模式返回mse_missing）
+        """
+        if self.target_variable_index is not None:
+            # 有监督：优化目标变量RMSE
+            from dashboard.models.DFM.train.utils.ddfm_utils import mse_target_variable
+            return mse_target_variable(self.target_variable_index)
+        else:
+            # 无监督：优化平均RMSE
+            return mse_missing
 
     def _batch_inference(self, model, data: np.ndarray, output_shape: Tuple[int, ...]) -> np.ndarray:
         """
@@ -273,6 +292,17 @@ class DDFMModel:
         self.sigma_z[self.sigma_z == 0] = 1.0
 
         normalized_data = (train_data - self.mean_z) / self.sigma_z
+
+        # 确定目标变量索引（有监督学习模式）
+        if self.target_variable:
+            if self.target_variable in train_data.columns:
+                self.target_variable_index = train_data.columns.get_loc(self.target_variable)
+                self._report_progress(f"有监督模式：目标变量='{self.target_variable}' (索引={self.target_variable_index})", 0.03)
+            else:
+                raise ValueError(f"目标变量 '{self.target_variable}' 不在数据列中")
+        else:
+            self.target_variable_index = None
+            self._report_progress("无监督模式：优化所有变量的平均重构误差", 0.03)
 
         # 记录缺失值位置
         self.bool_miss = normalized_data.isnull()[self.lags_input:].values
@@ -428,7 +458,7 @@ class DDFMModel:
         else:
             self._build_inputs(self.data_mod)
             inpt_pre_train = self.data_tmp.dropna().values
-            self.autoencoder.compile(optimizer=self.optimizer, loss=mse_missing)
+            self.autoencoder.compile(optimizer=self.optimizer, loss=self._get_loss_function())
 
         oupt_pre_train = self.data_tmp.dropna()[self.data_mod.columns].values
 
@@ -442,7 +472,7 @@ class DDFMModel:
 
     def _train(self) -> None:
         """MCMC迭代训练"""
-        self.autoencoder.compile(optimizer=self.optimizer, loss=mse_missing)
+        self.autoencoder.compile(optimizer=self.optimizer, loss=self._get_loss_function())
         self._build_inputs(self.data_mod)
 
         # 缓存初始状态（优化：用于条件性预处理）

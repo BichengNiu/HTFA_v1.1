@@ -52,13 +52,8 @@ class UIConfig:
     # 目标变量配置 (2026-01新增)
     TARGET_VARIABLE_HELP = "选择一个目标变量，该变量在后向剔除过程中不会被移除"
 
-    # 优化目标配置 (2026-01新增)
-    OPTIMIZATION_TARGET_OPTIONS = {
-        'average': "平均RMSE (所有变量)",
-        'target': "目标变量RMSE"
-    }
-    DEFAULT_OPTIMIZATION_TARGET = 'average'
-    OPTIMIZATION_TARGET_HELP = "选择变量选择的优化目标：平均RMSE优化所有变量的整体拟合，目标变量RMSE专注优化目标变量的拟合"
+    # DDFM目标变量配置（有监督学习）
+    DDFM_TARGET_VARIABLE_HELP = "选择目标变量进入有监督模式，神经网络将专注优化该变量的重构精度。选'无'则为无监督模式，优化所有变量的平均重构误差。"
 
     # 训练期权重配置 (2025-12新增)
     DEFAULT_TRAINING_WEIGHT = 50  # 默认50%训练期权重（百分比）

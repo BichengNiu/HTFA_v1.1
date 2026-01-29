@@ -213,7 +213,7 @@ class FileUploaderComponent:
         # 检查缓存（频率映射和单位映射必须非空）
         if (cached_df is not None and cached_industry_map is not None
             and cached_frequency_map and cached_unit_map and current_file_id == cached_file_id):
-            print(f"[模型训练] 使用缓存的Excel数据: 数据={cached_df.shape}, 映射={len(cached_industry_map)}个变量, 频率={len(cached_frequency_map)}个变量, 单位={len(cached_unit_map)}个变量")
+            # 缓存命中，静默返回（避免Streamlit重渲染时重复打印日志）
 
             # 验证所有必需的缓存数据都存在
             if cached_default_map is None:
