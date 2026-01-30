@@ -357,6 +357,7 @@ def _render_summary_cards(st_module, result):
     # 行业分解
     industry_breakdown = summary['industry_breakdown']
     if industry_breakdown:
+        st.divider()
         st_module.markdown("##### 按行业分解")
         industry_df = _build_industry_df(industry_breakdown)
         st_module.dataframe(industry_df, width='stretch', hide_index=True)
@@ -365,8 +366,6 @@ def _render_summary_cards(st_module, result):
 def _render_download_section(st_module, result):
     """渲染下载区域"""
     import io
-
-    st_module.markdown("##### 数据导出")
 
     summary = result['summary']
     data_flow = result['data_flow']

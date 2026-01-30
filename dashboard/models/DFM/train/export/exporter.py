@@ -433,11 +433,11 @@ class TrainingResultExporter:
                     # 构建重构对比表
                     reconstruction_comparison = pd.DataFrame(
                         index=prepared_data.index,
-                        columns=pd.MultiIndex.from_product([available_vars, ['原始值', '重构值']])
+                        columns=pd.MultiIndex.from_product([available_vars, ['原始值', '估计值']])
                     )
                     for i, var in enumerate(available_vars):
                         reconstruction_comparison[(var, '原始值')] = original_data[var].values
-                        reconstruction_comparison[(var, '重构值')] = reconstructed_original[:, i]
+                        reconstruction_comparison[(var, '估计值')] = reconstructed_original[:, i]
 
                     metadata['reconstruction_comparison'] = reconstruction_comparison
                     logger.info(f"保存重构对比表: {len(available_vars)} 个变量")

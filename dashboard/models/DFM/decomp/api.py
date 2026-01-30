@@ -536,11 +536,10 @@ def _generate_analysis_results(
 
         # 生成摘要信息
         total_impact = sum(c.impact_value for c in contributions)
-        month_start, month_end = get_month_date_range(target_date)
         summary = {
             'target_date': target_date.strftime('%Y-%m-%d'),
-            'analysis_start': month_start.strftime('%Y-%m-%d'),
-            'analysis_end': month_end.strftime('%Y-%m-%d'),
+            'analysis_start': normalization_info['first_nowcast_date'],
+            'analysis_end': normalization_info['last_nowcast_date'],
             'total_impact': float(total_impact),
             'total_releases': len(contributions),
             'positive_impact_sum': float(pn_split['positive_impact']),
