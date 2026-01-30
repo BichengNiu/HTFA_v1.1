@@ -220,7 +220,53 @@ class TrainingResultExporter:
         })
 
         # 因子载荷DataFrame
-        metadata['factor_loadings_df'] = self._extract_factor_loadings(result, config)
+        factor_loadings_df = self._extract_factor_loadings(result, config)
+        metadata['factor_loadings_df'] = factor_loadings_df
+
+        # ========== 影响分解专用字段（仅当设置目标变量时） ==========
+        if target_variable:
+            # 1. 提取目标变量的因子载荷向量
+            if factor_loadings_df is None or factor_loadings_df.empty:
+                raise ValueError(f"无法提取因子载荷矩阵，影响分解功能不可用")
+            if target_variable not in factor_loadings_df.index:
+                raise ValueError(f"目标变量 '{target_variable}' 不在因子载荷矩阵中")
+            metadata['target_factor_loading'] = factor_loadings_df.loc[target_variable].values
+            logger.info(f"保存目标变量因子载荷: 形状={metadata['target_factor_loading'].shape}")
+
+            # 2. 计算目标变量的训练期均值和标准差
+            if prepared_data is None:
+                raise ValueError("prepared_data 为空，无法计算目标变量标准化参数")
+            if target_variable not in prepared_data.columns:
+                raise ValueError(f"目标变量 '{target_variable}' 不在 prepared_data 中")
+            train_start_dt = pd.to_datetime(config.training_start)
+            train_end_dt = pd.to_datetime(config.train_end)
+            train_mask = (prepared_data.index >= train_start_dt) & (prepared_data.index <= train_end_dt)
+            target_train_values = prepared_data.loc[train_mask, target_variable].dropna()
+            if len(target_train_values) == 0:
+                raise ValueError(f"目标变量 '{target_variable}' 在训练期内无有效数据")
+            metadata['target_mean_original'] = float(target_train_values.mean())
+            metadata['target_std_original'] = float(target_train_values.std())
+            logger.info(f"保存目标变量标准化参数: mean={metadata['target_mean_original']:.4f}, std={metadata['target_std_original']:.4f}")
+
+            # 3. 构建complete_aligned_table（包含Nowcast列）
+            if result.model_result is None:
+                raise ValueError("model_result 为空，无法构建 complete_aligned_table")
+            if not hasattr(result.model_result, 'variable_names') or result.model_result.variable_names is None:
+                raise ValueError("model_result.variable_names 为空，无法确定变量顺序")
+            H = result.model_result.H
+            factors = result.model_result.factors_smooth.T  # (n_time, n_factors)
+            model_var_names = list(result.model_result.variable_names)
+            if target_variable not in model_var_names:
+                raise ValueError(f"目标变量 '{target_variable}' 不在模型变量列表中")
+            target_idx = model_var_names.index(target_variable)
+            target_loading = H[target_idx, :]
+            nowcast_centered = factors @ target_loading
+            nowcast_original = nowcast_centered + metadata['target_mean_original']
+
+            complete_aligned_table = prepared_data.copy()
+            complete_aligned_table['Nowcast (Original Scale)'] = nowcast_original
+            metadata['complete_aligned_table'] = complete_aligned_table
+            logger.info(f"保存complete_aligned_table: 形状={complete_aligned_table.shape}")
 
         # 因子序列DataFrame
         if result.model_result and hasattr(result.model_result, 'factors'):
@@ -316,13 +362,9 @@ class TrainingResultExporter:
 
                 if len(train_data) > 0:
                     # 获取模型使用的变量列表
-                    if (hasattr(result, 'model_result') and
-                        result.model_result is not None and
-                        hasattr(result.model_result, 'variable_names') and
-                        result.model_result.variable_names is not None):
-                        var_names = list(result.model_result.variable_names)
-                    else:
-                        var_names = list(result.selected_variables)
+                    if not hasattr(result.model_result, 'variable_names') or result.model_result.variable_names is None:
+                        raise ValueError("model_result.variable_names 为空，无法计算训练期均值")
+                    var_names = list(result.model_result.variable_names)
 
                     # 筛选出在 prepared_data 中存在的变量
                     available_vars = [v for v in var_names if v in train_data.columns]
@@ -350,12 +392,10 @@ class TrainingResultExporter:
                 H = result.model_result.H  # (n_vars, k_factors)
                 factors = result.model_result.factors_smooth.T  # (n_time, k_factors)
 
-                # 关键修复：使用模型的变量名列表（与H矩阵行顺序一致）
-                if (hasattr(result.model_result, 'variable_names') and
-                    result.model_result.variable_names is not None):
-                    model_var_names = list(result.model_result.variable_names)
-                else:
-                    model_var_names = list(result.selected_variables)
+                # 使用模型的变量名列表（与H矩阵行顺序一致）
+                if not hasattr(result.model_result, 'variable_names') or result.model_result.variable_names is None:
+                    raise ValueError("model_result.variable_names 为空，无法构建重构对比表")
+                model_var_names = list(result.model_result.variable_names)
 
                 # 筛选出在 prepared_data 中存在的变量，保持原始顺序
                 available_vars = [v for v in model_var_names if v in prepared_data.columns]
@@ -376,20 +416,16 @@ class TrainingResultExporter:
                     training_means = metadata.get('training_means')
                     training_var_names = metadata.get('training_variable_names')
 
-                    if training_means is not None and training_var_names is not None:
-                        # 为每个可用变量获取对应的训练期均值
-                        var_means = []
-                        for var in available_vars:
-                            if var in training_var_names:
-                                idx = list(training_var_names).index(var)
-                                var_means.append(training_means[idx])
-                            else:
-                                # 如果变量不在训练期均值中，使用全期均值
-                                var_means.append(original_data[var].mean())
-                        var_means = np.array(var_means)
-                    else:
-                        # 回退到全期均值
-                        var_means = original_data.mean().values
+                    if training_means is None or training_var_names is None:
+                        raise ValueError("训练期均值数据为空，无法构建重构对比表")
+                    # 为每个可用变量获取对应的训练期均值
+                    var_means = []
+                    for var in available_vars:
+                        if var not in training_var_names:
+                            raise ValueError(f"变量 '{var}' 不在训练期均值列表中")
+                        idx = list(training_var_names).index(var)
+                        var_means.append(training_means[idx])
+                    var_means = np.array(var_means)
 
                     # 还原到原始尺度
                     reconstructed_original = reconstructed_centered + var_means
@@ -455,10 +491,9 @@ class TrainingResultExporter:
 
         try:
             # 获取模型使用的变量列表
-            if hasattr(result.model_result, 'variable_names') and result.model_result.variable_names is not None:
-                selected_vars = result.model_result.variable_names
-            else:
-                selected_vars = result.selected_variables
+            if not hasattr(result.model_result, 'variable_names') or result.model_result.variable_names is None:
+                raise ValueError("model_result.variable_names 为空，无法计算指标")
+            selected_vars = result.model_result.variable_names
 
             # 筛选出模型使用的变量
             available_vars = [v for v in selected_vars if v in prepared_data.columns]
@@ -547,20 +582,13 @@ class TrainingResultExporter:
             factor_names = [f'Factor_{i+1}' for i in range(k_factors)]
 
             # 使用model_result中保存的variable_names
-            if (hasattr(result, 'model_result') and
-                result.model_result is not None and
-                hasattr(result.model_result, 'variable_names') and
-                result.model_result.variable_names is not None):
-                var_names = result.model_result.variable_names
-            else:
-                var_names = result.selected_variables
+            if not hasattr(result.model_result, 'variable_names') or result.model_result.variable_names is None:
+                raise ValueError("model_result.variable_names 为空，无法提取因子载荷")
+            var_names = result.model_result.variable_names
 
             # 检查变量名列表长度与H的行数是否匹配
             if len(var_names) != H_trimmed.shape[0]:
-                logger.warning(
-                    f"变量名数量({len(var_names)})与H矩阵行数({H_trimmed.shape[0]})不匹配"
-                )
-                var_names = [f'Var_{i+1}' for i in range(H_trimmed.shape[0])]
+                raise ValueError(f"变量名数量({len(var_names)})与H矩阵行数({H_trimmed.shape[0]})不匹配")
 
             return pd.DataFrame(H_trimmed, columns=factor_names, index=var_names)
 
