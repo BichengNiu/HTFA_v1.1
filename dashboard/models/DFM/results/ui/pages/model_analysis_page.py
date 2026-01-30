@@ -262,7 +262,7 @@ def _add_period_annotation(fig, start_str: str, end_str: str, label: str,
 
 def _render_nowcast_chart(st, accessor: DFMMetadataAccessor, is_ddfm: bool) -> None:
     """
-    渲染变量重构效果图（经典DFM无监督模型）
+    渲染变量估计值与真实值对比图（经典DFM无监督模型）
 
     Args:
         st: Streamlit模块
@@ -276,34 +276,34 @@ def _render_nowcast_chart(st, accessor: DFMMetadataAccessor, is_ddfm: bool) -> N
 
 def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor, is_ddfm: bool) -> None:
     """
-    渲染无监督模型的变量重构效果图
+    渲染无监督模型的变量估计值与真实值对比图
 
     Args:
         st: Streamlit模块
         accessor: 元数据访问器
         is_ddfm: 是否为DDFM模型
     """
-    # 优先使用预计算的重构对比表
+    # 优先使用预计算的对比表
     reconstruction_comparison = accessor.get('reconstruction_comparison')
 
     if reconstruction_comparison is not None:
-        # 使用预计算的重构对比表
+        # 使用预计算的对比表
         available_vars = reconstruction_comparison.columns.get_level_values(0).unique().tolist()
 
         if not available_vars:
-            st.warning("重构对比表中没有可用变量")
+            st.warning("对比表中没有可用变量")
             return
 
         # 用户选择变量
         selected_var = st.selectbox(
-            "选择变量查看重构效果",
+            "选择变量",
             options=available_vars,
             key="reconstruction_var_select"
         )
 
         # 直接从预计算表中获取数据
         original_values = reconstruction_comparison[(selected_var, '原始值')].values
-        reconstructed_values = reconstruction_comparison[(selected_var, '重构值')].values
+        reconstructed_values = reconstruction_comparison[(selected_var, '估计值')].values
         time_index = reconstruction_comparison.index
 
         # 确保 time_index 是 DatetimeIndex
@@ -313,13 +313,13 @@ def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor,
         # 构建对比数据
         comparison_df = pd.DataFrame({
             '原始值': original_values,
-            '重构值': reconstructed_values
+            '估计值': reconstructed_values
         }, index=time_index)
 
-        logger.info(f"[重构图] 使用预计算重构对比表: 变量={selected_var}, 长度={len(comparison_df)}")
+        logger.info(f"[估计图] 使用预计算对比表: 变量={selected_var}, 长度={len(comparison_df)}")
     else:
         # 回退到动态计算（兼容旧模型）
-        logger.warning("[重构图] 未找到预计算重构对比表，使用动态计算")
+        logger.warning("[估计图] 未找到预计算对比表，使用动态计算")
 
         # 获取数据
         prepared_data = accessor.get('prepared_data')
@@ -329,7 +329,7 @@ def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor,
         training_variable_names = accessor.get('training_variable_names')
 
         if prepared_data is None or factor_loadings_df is None or factor_series is None:
-            st.warning("缺少重构所需数据（prepared_data/factor_loadings_df/factor_series）")
+            st.warning("缺少估计所需数据（prepared_data/factor_loadings_df/factor_series）")
             return
 
         # 获取可选变量列表（与模型使用的变量一致）
@@ -337,12 +337,12 @@ def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor,
         available_vars = [v for v in model_variables if v in prepared_data.columns]
 
         if not available_vars:
-            st.warning("没有可用于重构对比的变量")
+            st.warning("没有可用于估计值对比的变量")
             return
 
         # 用户选择变量
         selected_var = st.selectbox(
-            "选择变量查看重构效果",
+            "选择变量",
             options=available_vars,
             key="reconstruction_var_select"
         )
@@ -391,7 +391,7 @@ def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor,
             if len(prepared_data) == n_time:
                 # 长度相同，直接使用位置索引对齐
                 original_values = prepared_data[selected_var].values
-                logger.info(f"[重构图] 位置索引对齐成功: 长度={n_time}")
+                logger.info(f"[估计图] 位置索引对齐成功: 长度={n_time}")
             else:
                 # 长度不同（异常情况），记录警告并尝试日期对齐
                 logger.warning(f"数据长度不匹配: prepared_data={len(prepared_data)}, factor_series={n_time}")
@@ -404,10 +404,10 @@ def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor,
             return
 
         # 调试日志
-        logger.info(f"[重构图] 变量: {selected_var}")
-        logger.info(f"[重构图] time_index 类型: {type(time_index)}, 范围: {time_index.min()} ~ {time_index.max()}, 长度: {len(time_index)}")
-        logger.info(f"[重构图] prepared_data 索引范围: {prepared_data.index.min()} ~ {prepared_data.index.max()}, 长度: {len(prepared_data)}")
-        logger.info(f"[重构图] 对齐后原始值非空数量: {pd.notna(original_values).sum()} / {len(original_values)}")
+        logger.info(f"[估计图] 变量: {selected_var}")
+        logger.info(f"[估计图] time_index 类型: {type(time_index)}, 范围: {time_index.min()} ~ {time_index.max()}, 长度: {len(time_index)}")
+        logger.info(f"[估计图] prepared_data 索引范围: {prepared_data.index.min()} ~ {prepared_data.index.max()}, 长度: {len(prepared_data)}")
+        logger.info(f"[估计图] 对齐后原始值非空数量: {pd.notna(original_values).sum()} / {len(original_values)}")
 
         # 获取该变量的训练期均值
         if training_means is None or training_variable_names is None:
@@ -428,7 +428,7 @@ def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor,
         # 构建对比数据（原始尺度）
         comparison_df = pd.DataFrame({
             '原始值': original_values_original_scale,
-            '重构值': reconstructed_original
+            '估计值': reconstructed_original
         }, index=time_index)
 
     # 绘制图表（散点图）
@@ -438,8 +438,8 @@ def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor,
         mode='markers', name='原始值', marker=dict(color='red', size=8)
     ))
     fig.add_trace(go.Scatter(
-        x=comparison_df.index, y=comparison_df['重构值'],
-        mode='markers', name='重构值', marker=dict(color='blue', size=8)
+        x=comparison_df.index, y=comparison_df['估计值'],
+        mode='markers', name='估计值', marker=dict(color='blue', size=8)
     ))
 
     # 获取训练信息并添加时期标注
@@ -474,7 +474,7 @@ def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor,
             )
 
     fig.update_layout(
-        title=dict(text=f'{selected_var} 重构效果对比', x=0.5),
+        title=dict(text=f'{selected_var} 估计值与真实值对比', x=0.5),
         xaxis_title="", yaxis_title="值",
         legend=dict(orientation="h", y=-0.2, x=0.5, xanchor="center"),
         height=500,
@@ -483,11 +483,12 @@ def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor,
 
     st.plotly_chart(fig, use_container_width=True)
 
-    # 下载按钮
-    csv_data = comparison_df.to_csv(index=True).encode('utf-8-sig')
+    # 下载按钮（按时间由近到远排列）
+    download_df = comparison_df.sort_index(ascending=False)
+    csv_data = download_df.to_csv(index=True).encode('utf-8-sig')
     st.download_button(
         label="数据下载", data=csv_data,
-        file_name=f"{selected_var}_重构对比.csv", mime="text/csv",
+        file_name=f"{selected_var}_估计值对比.csv", mime="text/csv",
         key="download_reconstruction_comparison", type="primary"
     )
 
