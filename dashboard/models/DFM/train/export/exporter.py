@@ -389,7 +389,9 @@ class TrainingResultExporter:
         # 计算并保存重构对比表（原始尺度）
         if prepared_data is not None and result.model_result is not None:
             try:
-                H = result.model_result.H  # (n_vars, k_factors)
+                H_full = result.model_result.H
+                # 只取前 k_factors 列（DDFM 模型的 H 包含特质项）
+                H = H_full[:, :result.k_factors]  # (n_vars, k_factors)
                 factors = result.model_result.factors_smooth.T  # (n_time, k_factors)
 
                 # 使用模型的变量名列表（与H矩阵行顺序一致）
@@ -515,7 +517,9 @@ class TrainingResultExporter:
             full_index = filtered_data.index
             period_indices = [i for i, idx in enumerate(full_index) if start_dt <= idx <= end_dt]
 
-            H = result.model_result.H
+            H_full = result.model_result.H
+            # 只取前 k_factors 列（DDFM 模型的 H 包含特质项）
+            H = H_full[:, :result.k_factors]  # (n_vars, k_factors)
             factors = result.model_result.factors_smooth.T
             period_factors = factors[period_indices, :]
             reconstructed = period_factors @ H.T
