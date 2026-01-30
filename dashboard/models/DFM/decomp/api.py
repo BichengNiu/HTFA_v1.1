@@ -246,6 +246,8 @@ def _normalize_impacts_to_actual_change(
     normalization_info = {
         'first_nowcast': first_nowcast,
         'last_nowcast': last_nowcast,
+        'first_nowcast_date': month_nowcast.index[0].strftime('%Y-%m-%d'),
+        'last_nowcast_date': month_nowcast.index[-1].strftime('%Y-%m-%d'),
         'actual_change': actual_change,
         'raw_total_impact': raw_total_impact,
         'scale_factor': scale_factor
@@ -320,12 +322,11 @@ def _extract_real_data_releases(
     prepared_data = saved_nowcast_data.prepared_data
     variable_index_map = saved_nowcast_data.variable_index_map
 
-    # 获取可用变量列表（排除目标变量）
-    target_var = saved_nowcast_data.target_variable
-    available_variables = [var for var in variable_index_map.keys() if var != target_var]
+    # 获取可用变量列表（包含目标变量）
+    available_variables = list(variable_index_map.keys())
 
     if not available_variables:
-        raise ValidationError("没有可用的非目标变量")
+        raise ValidationError("没有可用的变量")
 
     # 计算目标月份的日期范围
     target_date = pd.to_datetime(target_month_str)
@@ -551,6 +552,8 @@ def _generate_analysis_results(
             # 归一化信息（必需字段）
             'first_nowcast': normalization_info['first_nowcast'],
             'last_nowcast': normalization_info['last_nowcast'],
+            'first_nowcast_date': normalization_info['first_nowcast_date'],
+            'last_nowcast_date': normalization_info['last_nowcast_date'],
             'actual_nowcast_change': normalization_info['actual_change'],
             'normalization_scale_factor': normalization_info['scale_factor'],
         }

@@ -287,7 +287,7 @@ def _render_summary_cards(st_module, result):
 
     with col2:
         st_module.metric(
-            label="首次预测",
+            label=f"首次预测({summary['first_nowcast_date']})",
             value=f"{summary['first_nowcast']:.4f}",
             help="目标月份的首次Nowcast预测值"
         )
@@ -319,7 +319,7 @@ def _render_summary_cards(st_module, result):
 
     with col6:
         st_module.metric(
-            label="最新预测",
+            label=f"末次预测({summary['last_nowcast_date']})",
             value=f"{summary['last_nowcast']:.4f}",
             help="目标月份的最新Nowcast预测值"
         )
