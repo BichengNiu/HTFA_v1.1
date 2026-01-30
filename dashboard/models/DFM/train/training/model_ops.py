@@ -283,7 +283,8 @@ def evaluate_model_fit(
 
     if model_result.H is not None and model_result.factors_smooth is not None:
         try:
-            H = model_result.H
+            n_factors = model_result.factors_smooth.shape[0]
+            H = model_result.H[:, :n_factors]  # 只取前 n_factors 列（DDFM 的 H 包含特质项）
             factors = model_result.factors_smooth.T  # (n_time, n_factors)
 
             # 确保维度匹配
@@ -332,7 +333,8 @@ def evaluate_model_fit(
             ]
 
             if len(val_data) > 0 and model_result.H is not None and model_result.factors_smooth is not None:
-                H = model_result.H
+                n_factors = model_result.factors_smooth.shape[0]
+                H = model_result.H[:, :n_factors]  # 只取前 n_factors 列（DDFM 的 H 包含特质项）
                 factors = model_result.factors_smooth.T  # (n_time, n_factors)
 
                 # 计算验证期对应的因子索引范围

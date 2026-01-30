@@ -82,7 +82,10 @@ def reconstruct_observations(
     if model_result.H is None:
         raise ValueError("模型结果缺少载荷矩阵H")
 
-    H = model_result.H  # (n_obs, n_factors)
+    H_full = model_result.H
+    # 从 factors_smooth 获取因子数（DDFM 模型的 H 包含特质项）
+    n_factors = model_result.factors_smooth.shape[0] if model_result.factors_smooth is not None else H_full.shape[1]
+    H = H_full[:, :n_factors]  # (n_obs, n_factors)
 
     if factor_values is None:
         if model_result.factors_smooth is None:
