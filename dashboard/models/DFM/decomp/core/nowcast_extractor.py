@@ -12,6 +12,7 @@ import logging
 from typing import Dict, Any, Optional
 
 from ..utils.exceptions import ComputationError, DataFormatError
+from ..utils.helpers import get_month_date_range
 from .model_loader import SavedNowcastData
 
 logger = logging.getLogger(__name__)
@@ -109,7 +110,7 @@ class NowcastExtractor:
 
     def compute_baseline_prediction(self, target_date: pd.Timestamp) -> float:
         """
-        计算基准预测值
+        计算基准预测值（当月第一个nowcast值）
 
         Args:
             target_date: 目标日期
@@ -122,10 +123,21 @@ class NowcastExtractor:
         """
         try:
             nowcast_series = self.extract_nowcast_series()
-            available_dates = nowcast_series.index[nowcast_series.index <= target_date]
-            if len(available_dates) == 0:
-                raise ComputationError(f"未找到 {target_date} 之前的基准预测")
-            baseline_value = float(nowcast_series.loc[available_dates[-1]])
+
+            # 获取目标月份的日期范围
+            month_start, month_end = get_month_date_range(target_date)
+
+            # 获取当月范围内的nowcast值
+            month_nowcast = nowcast_series[
+                (nowcast_series.index >= month_start) &
+                (nowcast_series.index <= month_end)
+            ]
+
+            if len(month_nowcast) == 0:
+                raise ComputationError(f"未找到 {target_date.strftime('%Y-%m')} 月份的nowcast数据")
+
+            # 返回当月第一个nowcast值（与api.py中first_nowcast一致）
+            baseline_value = float(month_nowcast.iloc[0])
             logger.info(f"基准预测值 ({target_date}): {baseline_value:.4f}")
             return baseline_value
         except ComputationError:
