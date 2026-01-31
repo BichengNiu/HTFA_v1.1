@@ -465,14 +465,53 @@ def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor,
             '估计值': reconstructed_original
         }, index=time_index)
 
+    # ===== 发布日期校准 =====
+    st.markdown("##### 发布日期校准")
+    col_offset, col_info = st.columns([1, 3])
+
+    with col_offset:
+        publication_offset = st.number_input(
+            "偏移天数",
+            min_value=-60,
+            max_value=60,
+            value=0,
+            step=1,
+            key=f"publication_offset_{selected_var}",
+            help="正值向后偏移，负值向前偏移。偏移后自动对齐到最近周五。"
+        )
+
+    with col_info:
+        if publication_offset != 0:
+            st.info(f"原始值时间将偏移 {publication_offset} 天并对齐到最近周五")
+
+    # 应用发布日期校准
+    if publication_offset != 0:
+        from dashboard.models.DFM.prep.utils.friday_utils import get_nearest_friday
+
+        calibrated_index = pd.DatetimeIndex([
+            get_nearest_friday(dt + pd.Timedelta(days=publication_offset))
+            for dt in comparison_df.index
+        ])
+
+        plot_original_index = calibrated_index
+        plot_original_values = comparison_df['原始值'].values
+        original_label = f'原始值 (偏移{publication_offset}天)'
+    else:
+        plot_original_index = comparison_df.index
+        plot_original_values = comparison_df['原始值'].values
+        original_label = '原始值'
+
+    plot_estimated_index = comparison_df.index
+    plot_estimated_values = comparison_df['估计值'].values
+
     # 绘制图表（散点图）
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=comparison_df.index, y=comparison_df['原始值'],
-        mode='markers', name='原始值', marker=dict(color='red', size=8)
+        x=plot_original_index, y=plot_original_values,
+        mode='markers', name=original_label, marker=dict(color='red', size=8)
     ))
     fig.add_trace(go.Scatter(
-        x=comparison_df.index, y=comparison_df['估计值'],
+        x=plot_estimated_index, y=plot_estimated_values,
         mode='markers', name='估计值', marker=dict(color='blue', size=8)
     ))
 
@@ -518,11 +557,24 @@ def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor,
     st.plotly_chart(fig, use_container_width=True)
 
     # 下载按钮（按时间由近到远排列）
-    download_df = comparison_df.sort_index(ascending=False)
-    csv_data = download_df.to_csv(index=True).encode('utf-8-sig')
+    if publication_offset != 0:
+        download_df = pd.DataFrame({
+            '原始值日期': plot_original_index,
+            '原始值': plot_original_values,
+            '估计值日期': plot_estimated_index,
+            '估计值': plot_estimated_values
+        })
+        download_df = download_df.sort_values('估计值日期', ascending=False)
+        file_suffix = f"_偏移{publication_offset}天"
+        csv_data = download_df.to_csv(index=False).encode('utf-8-sig')
+    else:
+        download_df = comparison_df.sort_index(ascending=False)
+        file_suffix = ""
+        csv_data = download_df.to_csv(index=True).encode('utf-8-sig')
+
     st.download_button(
         label="数据下载", data=csv_data,
-        file_name=f"{selected_var}_估计值对比.csv", mime="text/csv",
+        file_name=f"{selected_var}_估计值对比{file_suffix}.csv", mime="text/csv",
         key="download_reconstruction_comparison", type="primary"
     )
 
