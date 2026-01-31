@@ -283,10 +283,44 @@ def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor,
         accessor: 元数据访问器
         is_ddfm: 是否为DDFM模型
     """
-    # 优先使用预计算的对比表
-    reconstruction_comparison = accessor.get('reconstruction_comparison')
+    # DDFM模式：直接使用目标变量，不显示变量选择
+    if is_ddfm:
+        target_variable = accessor.get('target_variable')
+        if not target_variable:
+            st.warning("DDFM模型缺少目标变量信息")
+            return
 
-    if reconstruction_comparison is not None:
+        reconstruction_comparison = accessor.get('reconstruction_comparison')
+        if reconstruction_comparison is None:
+            st.warning("缺少重构对比数据")
+            return
+
+        available_vars = reconstruction_comparison.columns.get_level_values(0).unique().tolist()
+        if target_variable not in available_vars:
+            st.warning(f"目标变量 {target_variable} 不在可用变量列表中")
+            return
+
+        selected_var = target_variable  # 直接使用目标变量
+
+        # 获取数据
+        original_values = reconstruction_comparison[(selected_var, '原始值')].values
+        reconstructed_values = reconstruction_comparison[(selected_var, '估计值')].values
+        time_index = reconstruction_comparison.index
+
+        if not isinstance(time_index, pd.DatetimeIndex):
+            time_index = pd.to_datetime(time_index)
+
+        comparison_df = pd.DataFrame({
+            '原始值': original_values,
+            '估计值': reconstructed_values
+        }, index=time_index)
+
+        logger.info(f"[估计图] DDFM模式使用目标变量: {selected_var}")
+    # 经典DFM：保持原有变量选择逻辑
+    elif accessor.get('reconstruction_comparison') is not None:
+        # 优先使用预计算的对比表
+        reconstruction_comparison = accessor.get('reconstruction_comparison')
+
         # 使用预计算的对比表
         available_vars = reconstruction_comparison.columns.get_level_values(0).unique().tolist()
 
@@ -474,7 +508,7 @@ def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor,
             )
 
     fig.update_layout(
-        title=dict(text=f'{selected_var} 估计值与真实值对比', x=0.5),
+        title=dict(text=f'{selected_var} 估计值与真实值对比', x=0.5, xanchor='center'),
         xaxis_title="", yaxis_title="值",
         legend=dict(orientation="h", y=-0.2, x=0.5, xanchor="center"),
         height=500,

@@ -191,10 +191,14 @@ class TrainingResultExporter:
         is_rmse, is_mae = self._calculate_period_metrics(
             result, prepared_data, config.training_start, config.train_end, target_variable
         )
-        # 计算验证期指标
-        oos_rmse, oos_mae = self._calculate_period_metrics(
-            result, prepared_data, config.validation_start, config.validation_end, target_variable
-        )
+        # 计算验证期指标（仅经典DFM，DDFM没有验证期）
+        is_ddfm = (config.algorithm == 'deep_learning')
+        if is_ddfm:
+            oos_rmse, oos_mae = None, None
+        else:
+            oos_rmse, oos_mae = self._calculate_period_metrics(
+                result, prepared_data, config.validation_start, config.validation_end, target_variable
+            )
         # 计算观察期指标（如果配置了观察期）
         obs_rmse, obs_mae = None, None
         if config.observation_start and config.observation_end:
