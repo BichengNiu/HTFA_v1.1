@@ -169,8 +169,9 @@ class TrainingResultExporter:
             # 日期
             'training_start_date': config.training_start,
             'train_end_date': config.train_end,
-            'validation_start_date': config.validation_start,
-            'validation_end_date': config.validation_end,
+            # 验证期日期（DDFM 没有验证期，设为 None）
+            'validation_start_date': None if config.algorithm == 'deep_learning' else config.validation_start,
+            'validation_end_date': None if config.algorithm == 'deep_learning' else config.validation_end,
             # 观察期日期
             'observation_period_start': config.observation_start,
             'observation_period_end': config.observation_end,
@@ -185,7 +186,12 @@ class TrainingResultExporter:
             raise ValueError("训练结果缺少评估指标(metrics)，无法导出元数据")
 
         # 获取目标变量（有目标变量时返回目标变量RMSE，否则返回平均RMSE）
-        target_variable = getattr(config, 'target_variable', None)
+        # DDFM 使用 ddfm_target_variable，经典 DFM 使用 target_variable
+        is_ddfm = (config.algorithm == 'deep_learning')
+        if is_ddfm:
+            target_variable = getattr(config, 'ddfm_target_variable', None)
+        else:
+            target_variable = getattr(config, 'target_variable', None)
 
         # 计算训练期指标
         is_rmse, is_mae = self._calculate_period_metrics(
@@ -263,7 +269,7 @@ class TrainingResultExporter:
             if target_variable not in model_var_names:
                 raise ValueError(f"目标变量 '{target_variable}' 不在模型变量列表中")
             target_idx = model_var_names.index(target_variable)
-            target_loading = H[target_idx, :]
+            target_loading = H[target_idx, :result.k_factors]
             nowcast_centered = factors @ target_loading
             nowcast_original = nowcast_centered + metadata['target_mean_original']
 
@@ -463,7 +469,7 @@ class TrainingResultExporter:
         """验证元数据包含所有必需字段"""
         required_fields = [
             'timestamp', 'selected_variables',
-            'model_params', 'train_end_date', 'validation_end_date',
+            'model_params', 'train_end_date',
         ]
 
         missing_fields = [f for f in required_fields if f not in metadata]
