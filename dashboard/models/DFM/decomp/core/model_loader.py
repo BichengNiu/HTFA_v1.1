@@ -426,13 +426,14 @@ class ModelLoader:
         if 'training_start_date' not in self._metadata:
             raise DataFormatError("元数据中缺少training_start_date字段")
 
-        if 'validation_end_date' not in self._metadata:
-            raise DataFormatError("元数据中缺少validation_end_date字段")
-
         start_date = self._metadata['training_start_date']
-        end_date = self._metadata['validation_end_date']
 
-        if not start_date or not end_date:
+        # 结束日期优先使用 observation_period_end（DDFM），其次 validation_end_date（经典DFM）
+        end_date = self._metadata.get('observation_period_end') or self._metadata.get('validation_end_date')
+        if not end_date:
+            raise DataFormatError("元数据中缺少observation_period_end或validation_end_date字段")
+
+        if not start_date:
             raise DataFormatError("数据时间范围为空")
 
         return start_date, end_date
@@ -453,7 +454,7 @@ class ModelLoader:
         # 从元数据中获取性能指标
         performance_keys = ['is_rmse', 'oos_rmse', 'is_hit_rate', 'oos_hit_rate']
         for key in performance_keys:
-            if key in self._metadata:
+            if key in self._metadata and self._metadata[key] is not None:
                 convergence_info[key] = float(self._metadata[key])
 
         logger.info(f"提取收敛信息: {len(convergence_info)} 项")

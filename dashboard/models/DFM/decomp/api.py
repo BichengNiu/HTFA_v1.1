@@ -91,17 +91,14 @@ def execute_news_analysis(
 
         # 阶段2.5: 创建先验预测器
         logger.info("阶段2.5: 创建先验预测器")
-        # 筛选训练期时间索引（与factor_states_predicted对齐）
-        training_start = pd.to_datetime(metadata.get('training_start_date'))
-        training_end = pd.to_datetime(metadata.get('train_end_date'))
-        full_index = saved_nowcast_data.prepared_data.index
-        training_time_index = full_index[(full_index >= training_start) & (full_index <= training_end)]
+        # 使用完整时间索引（与factor_states_predicted对齐）
+        time_index = saved_nowcast_data.prepared_data.index
 
         prior_predictor = ObservationPriorPredictor(
             factor_states_predicted=saved_nowcast_data.factor_states_predicted,
             factor_loadings=saved_nowcast_data.factor_loadings,
             variable_index_map=saved_nowcast_data.variable_index_map,
-            time_index=training_time_index
+            time_index=time_index
         )
         logger.debug("先验预测器创建成功")
 

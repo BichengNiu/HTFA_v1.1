@@ -116,13 +116,11 @@ def render_file_upload_section(st_instance):
     _cleanup_invalid_file_states()
 
     st_instance.markdown("### 模型文件上传")
-    st_instance.caption("注意: 请仅上传来自可信来源的模型文件。模型文件包含序列化的Python对象。")
 
     # 创建两列布局
     col_model, col_metadata = st_instance.columns(2)
 
     with col_model:
-        st_instance.markdown("**DFM 模型文件 (.joblib)**")
         uploaded_model_file = st_instance.file_uploader(
             "选择模型文件",
             type=['joblib'],
@@ -138,7 +136,6 @@ def render_file_upload_section(st_instance):
                 st_instance.info(f"当前文件: {existing_model_file.name}")
 
     with col_metadata:
-        st_instance.markdown("**元数据文件 (.pkl)**")
         uploaded_metadata_file = st_instance.file_uploader(
             "选择元数据文件",
             type=['pkl'],
@@ -466,8 +463,7 @@ def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor,
         }, index=time_index)
 
     # ===== 发布日期校准 =====
-    st.markdown("##### 发布日期校准")
-    col_offset, col_info = st.columns([1, 3])
+    col_offset, col_spacer = st.columns([1, 3])
 
     with col_offset:
         publication_offset = st.number_input(
@@ -479,10 +475,8 @@ def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor,
             key=f"publication_offset_{selected_var}",
             help="正值向后偏移，负值向前偏移。偏移后自动对齐到最近周五。"
         )
-
-    with col_info:
         if publication_offset != 0:
-            st.info(f"原始值时间将偏移 {publication_offset} 天并对齐到最近周五")
+            st.caption(f"原始值时间将偏移 {publication_offset} 天并对齐到最近周五")
 
     # 应用发布日期校准
     if publication_offset != 0:
@@ -558,15 +552,13 @@ def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor,
 
     # 下载按钮（按时间由近到远排列）
     if publication_offset != 0:
-        download_df = pd.DataFrame({
-            '原始值日期': plot_original_index,
-            '原始值': plot_original_values,
-            '估计值日期': plot_estimated_index,
-            '估计值': plot_estimated_values
-        })
-        download_df = download_df.sort_values('估计值日期', ascending=False)
+        original_series = pd.Series(plot_original_values, index=plot_original_index, name='原始值')
+        estimated_series = pd.Series(plot_estimated_values, index=plot_estimated_index, name='估计值')
+        download_df = pd.concat([original_series, estimated_series], axis=1)
+        download_df.index.name = '日期'
+        download_df = download_df.sort_index(ascending=False)
         file_suffix = f"_偏移{publication_offset}天"
-        csv_data = download_df.to_csv(index=False).encode('utf-8-sig')
+        csv_data = download_df.to_csv(index=True).encode('utf-8-sig')
     else:
         download_df = comparison_df.sort_index(ascending=False)
         file_suffix = ""
