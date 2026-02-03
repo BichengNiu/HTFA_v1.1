@@ -189,6 +189,15 @@ class PrepStateManager:
         for key in param_keys:
             self.set(key, None)
 
+        # 同时清除 Streamlit widget state，确保日期选择器使用新检测的值
+        widget_keys = [
+            "ss_dfm_data_start",
+            "ss_dfm_data_end",
+        ]
+        for key in widget_keys:
+            if key in st.session_state:
+                del st.session_state[key]
+
     def clear_transform_config(self) -> None:
         """清空变量转换配置"""
         transform_keys = [

@@ -462,37 +462,46 @@ def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor,
             '估计值': reconstructed_original
         }, index=time_index)
 
-    # ===== 发布日期校准 =====
-    col_offset, col_spacer = st.columns([1, 3])
+    # ===== 根据训练配置自动对齐 =====
+    rmse_alignment = accessor.get('rmse_alignment', 'current')
 
-    with col_offset:
-        publication_offset = st.number_input(
-            "偏移天数",
-            min_value=-60,
-            max_value=60,
-            value=0,
-            step=1,
-            key=f"publication_offset_{selected_var}",
-            help="正值向后偏移，负值向前偏移。偏移后自动对齐到最近周五。"
-        )
-        if publication_offset != 0:
-            st.caption(f"原始值时间将偏移 {publication_offset} 天并对齐到最近周五")
+    if rmse_alignment == 'next':
+        # 下月对齐：本月估计值 vs 下月真实值
+        # 对于月度变量，需要按月移动，而不是按周移动
+        # 将下月的真实值移动到上月最后一周的位置
 
-    # 应用发布日期校准
-    if publication_offset != 0:
-        from dashboard.models.DFM.prep.utils.friday_utils import get_nearest_friday
+        shifted_values = pd.Series(index=comparison_df.index, dtype=float)
 
-        calibrated_index = pd.DatetimeIndex([
-            get_nearest_friday(dt + pd.Timedelta(days=publication_offset))
-            for dt in comparison_df.index
-        ])
+        # 按月分组
+        df_with_month = comparison_df.copy()
+        df_with_month['year_month'] = df_with_month.index.to_period('M')
 
-        plot_original_index = calibrated_index
-        plot_original_values = comparison_df['原始值'].values
-        original_label = f'原始值 (偏移{publication_offset}天)'
-    else:
+        months = df_with_month['year_month'].unique()
+        months = sorted(months)  # 确保按时间顺序
+
+        for i in range(1, len(months)):
+            current_month = months[i]
+            prev_month = months[i - 1]
+
+            # 获取当前月的真实值
+            current_month_data = df_with_month[df_with_month['year_month'] == current_month]
+            obs_value = current_month_data['原始值'].dropna()
+
+            if len(obs_value) > 0:
+                # 找到上个月最后一周的索引
+                prev_month_data = df_with_month[df_with_month['year_month'] == prev_month]
+                if len(prev_month_data) > 0:
+                    last_week_of_prev_month = prev_month_data.index[-1]
+                    shifted_values.loc[last_week_of_prev_month] = obs_value.iloc[0]
+
+        plot_original_values = shifted_values.values
         plot_original_index = comparison_df.index
+        original_label = '原始值 (下月)'
+        st.caption("下月对齐模式：本月估计值 vs 下月真实值")
+    else:
+        # 当月对齐（默认）
         plot_original_values = comparison_df['原始值'].values
+        plot_original_index = comparison_df.index
         original_label = '原始值'
 
     plot_estimated_index = comparison_df.index
@@ -551,13 +560,13 @@ def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor,
     st.plotly_chart(fig, use_container_width=True)
 
     # 下载按钮（按时间由近到远排列）
-    if publication_offset != 0:
-        original_series = pd.Series(plot_original_values, index=plot_original_index, name='原始值')
+    if rmse_alignment == 'next':
+        original_series = pd.Series(plot_original_values, index=plot_original_index, name='原始值(下月)')
         estimated_series = pd.Series(plot_estimated_values, index=plot_estimated_index, name='估计值')
         download_df = pd.concat([original_series, estimated_series], axis=1)
         download_df.index.name = '日期'
         download_df = download_df.sort_index(ascending=False)
-        file_suffix = f"_偏移{publication_offset}天"
+        file_suffix = "_下月对齐"
         csv_data = download_df.to_csv(index=True).encode('utf-8-sig')
     else:
         download_df = comparison_df.sort_index(ascending=False)

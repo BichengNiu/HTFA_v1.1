@@ -410,15 +410,24 @@ def render_dfm_model_training_page(st_instance):
             validation_end_value = get_previous_period_date(observation_start_value, target_freq_code, periods=1)
             _state.set('dfm_validation_end_date', validation_end_value)
 
-    # 显示算法模式说明（占据整行）
-    if current_algorithm == 'deep_learning':
-        st_instance.caption(
-            f"DDFM模式: 使用从训练期开始到观察期上一{freq_label}的全部数据进行训练"
+    # ===== RMSE计算方式选择 =====
+    rmse_col1, rmse_col2 = st_instance.columns([1, 2])
+    with rmse_col1:
+        current_rmse_alignment = _state.get('dfm_rmse_alignment', UIConfig.DEFAULT_RMSE_ALIGNMENT)
+        if current_rmse_alignment not in UIConfig.RMSE_ALIGNMENT_OPTIONS:
+            current_rmse_alignment = UIConfig.DEFAULT_RMSE_ALIGNMENT
+
+        rmse_alignment_value = st_instance.selectbox(
+            "RMSE计算方式",
+            options=list(UIConfig.RMSE_ALIGNMENT_OPTIONS.keys()),
+            format_func=lambda x: UIConfig.RMSE_ALIGNMENT_OPTIONS[x],
+            index=UIConfig.get_safe_option_index(
+                UIConfig.RMSE_ALIGNMENT_OPTIONS, current_rmse_alignment, UIConfig.DEFAULT_RMSE_ALIGNMENT
+            ),
+            key='dfm_rmse_alignment_input',
+            help=UIConfig.RMSE_ALIGNMENT_HELP
         )
-    else:
-        st_instance.caption(
-            "经典DFM模式: 模型在训练期数据上拟合参数，在验证期数据上评估性能"
-        )
+        _state.set('dfm_rmse_alignment', rmse_alignment_value)
 
     # ===== 高级选项 (折叠) =====
     is_deep_learning = (algorithm_value == 'deep_learning')

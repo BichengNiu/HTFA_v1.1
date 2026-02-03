@@ -8,13 +8,14 @@ DFM模型操作模块
 
 import pandas as pd
 import numpy as np
-from typing import Optional, Callable, Tuple, List
+from typing import Optional, Callable, Tuple, List, Dict
 from dashboard.models.DFM.train.utils.logger import get_logger
 from dashboard.models.DFM.train.core.models import DFMModelResult, EvaluationMetrics
 from dashboard.models.DFM.train.core.factor_model import DFMModel
 from dashboard.models.DFM.train.evaluation.metrics import (
     calculate_average_reconstruction_rmse,
-    calculate_single_variable_rmse
+    calculate_single_variable_rmse,
+    calculate_mixed_frequency_rmse
 )
 
 logger = get_logger(__name__)
@@ -236,7 +237,9 @@ def evaluate_model_fit(
     validation_end: Optional[str] = None,
     training_weight: float = 0.5,
     target_variable: Optional[str] = None,
-    variable_names: Optional[List[str]] = None
+    variable_names: Optional[List[str]] = None,
+    rmse_alignment: str = 'current',
+    var_frequency_map: Optional[Dict[str, str]] = None
 ) -> EvaluationMetrics:
     """
     评估DFM模型拟合质量
@@ -253,6 +256,7 @@ def evaluate_model_fit(
         training_weight: 训练期权重 (0.0-1.0)
         target_variable: 目标变量名（可选，用于计算目标变量RMSE）
         variable_names: 变量名列表（可选，用于定位目标变量索引）
+        rmse_alignment: RMSE计算对齐方式 ('current'=当月对齐, 'next'=下月对齐)
 
     Returns:
         EvaluationMetrics: 包含平均RMSE和目标变量RMSE的评估指标对象
@@ -303,15 +307,44 @@ def evaluate_model_fit(
             obs_centered = obs_centered[:min_time, :]
             reconstructed = reconstructed[:min_time, :]
 
-            # 计算平均RMSE
-            average_rmse = calculate_average_reconstruction_rmse(
-                obs_centered, reconstructed
-            )
+            # 计算平均RMSE（使用混频感知的计算方式）
+            if var_frequency_map:
+                # 混频数据：不预先偏移，由混频函数内部处理对齐
+                var_names = variable_names if variable_names else list(observation_data.columns)
+                average_rmse, _ = calculate_mixed_frequency_rmse(
+                    obs_centered, reconstructed,
+                    train_data.index[:min_time],
+                    var_names,
+                    var_frequency_map,
+                    rmse_alignment=rmse_alignment
+                )
+                # 混频数据使用原始数据计算目标变量RMSE
+                obs_aligned = obs_centered
+                recon_aligned = reconstructed
+            else:
+                # 纯周度数据：根据对齐方式调整数据
+                if rmse_alignment == 'next':
+                    # 下月对齐：预测值[t] vs 实际值[t+1]
+                    if min_time > 1:
+                        obs_aligned = obs_centered[1:, :]
+                        recon_aligned = reconstructed[:-1, :]
+                    else:
+                        logger.warning("数据期数不足，无法进行下月对齐RMSE计算")
+                        obs_aligned = obs_centered
+                        recon_aligned = reconstructed
+                else:
+                    # 当月对齐（默认）
+                    obs_aligned = obs_centered
+                    recon_aligned = reconstructed
+                # 回退到原有计算方式
+                average_rmse = calculate_average_reconstruction_rmse(
+                    obs_aligned, recon_aligned
+                )
 
             # 计算目标变量RMSE
             if target_var_index is not None:
                 target_rmse = calculate_single_variable_rmse(
-                    obs_centered, reconstructed, target_var_index
+                    obs_aligned, recon_aligned, target_var_index
                 )
 
             # 存储重构数据
@@ -359,15 +392,44 @@ def evaluate_model_fit(
                     val_obs_centered = val_obs_centered[:min_val_time, :]
                     val_reconstructed = val_reconstructed[:min_val_time, :]
 
-                    # 计算验证期平均RMSE
-                    average_rmse_validation = calculate_average_reconstruction_rmse(
-                        val_obs_centered, val_reconstructed
-                    )
+                    # 计算验证期平均RMSE（使用混频感知的计算方式）
+                    if var_frequency_map:
+                        # 混频数据：不预先偏移，由混频函数内部处理对齐
+                        var_names = variable_names if variable_names else list(observation_data.columns)
+                        average_rmse_validation, _ = calculate_mixed_frequency_rmse(
+                            val_obs_centered, val_reconstructed,
+                            val_data.index[:min_val_time],
+                            var_names,
+                            var_frequency_map,
+                            rmse_alignment=rmse_alignment
+                        )
+                        # 混频数据使用原始数据计算目标变量RMSE
+                        val_obs_aligned = val_obs_centered
+                        val_recon_aligned = val_reconstructed
+                    else:
+                        # 纯周度数据：根据对齐方式调整数据
+                        if rmse_alignment == 'next':
+                            # 下月对齐：预测值[t] vs 实际值[t+1]
+                            if min_val_time > 1:
+                                val_obs_aligned = val_obs_centered[1:, :]
+                                val_recon_aligned = val_reconstructed[:-1, :]
+                            else:
+                                logger.warning("验证期数据期数不足，无法进行下月对齐RMSE计算")
+                                val_obs_aligned = val_obs_centered
+                                val_recon_aligned = val_reconstructed
+                        else:
+                            # 当月对齐（默认）
+                            val_obs_aligned = val_obs_centered
+                            val_recon_aligned = val_reconstructed
+                        # 回退到原有计算方式
+                        average_rmse_validation = calculate_average_reconstruction_rmse(
+                            val_obs_aligned, val_recon_aligned
+                        )
 
                     # 计算验证期目标变量RMSE
                     if target_var_index is not None:
                         target_rmse_validation = calculate_single_variable_rmse(
-                            val_obs_centered, val_reconstructed, target_var_index
+                            val_obs_aligned, val_recon_aligned, target_var_index
                         )
 
         except Exception as e:

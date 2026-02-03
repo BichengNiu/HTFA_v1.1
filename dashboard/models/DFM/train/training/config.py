@@ -95,6 +95,12 @@ class TrainingConfig:
     # 行业映射（用于R²分析）
     industry_map: Optional[Dict[str, str]] = None
 
+    # 变量频率映射（用于混频RMSE计算）
+    var_frequency_map: Optional[Dict[str, str]] = None
+
+    # RMSE计算对齐方式
+    rmse_alignment: str = 'current'  # 'current'=当月对齐, 'next'=下月对齐
+
     def __post_init__(self):
         """后初始化验证"""
         # 设置默认输出目录
@@ -151,6 +157,14 @@ class TrainingConfig:
             raise ValueError(
                 f"algorithm必须是{valid_algorithms}之一，"
                 f"当前值: {self.algorithm}"
+            )
+
+        # 验证RMSE对齐方式
+        valid_rmse_alignments = ['current', 'next']
+        if self.rmse_alignment not in valid_rmse_alignments:
+            raise ValueError(
+                f"rmse_alignment必须是{valid_rmse_alignments}之一，"
+                f"当前值: {self.rmse_alignment}"
             )
 
         # 验证DDFM专用参数（仅当algorithm='deep_learning'时）
