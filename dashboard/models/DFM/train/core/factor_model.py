@@ -140,16 +140,17 @@ class DFMModel:
 
         if n_time_full > n_time_train:
             # 有验证期/观察期数据，需要对完整数据进行滤波
-            full_factors = self._filter_full_data(
+            full_factors, full_factor_states_predicted = self._filter_full_data(
                 obs_centered,           # 完整数据（已中心化）
                 self.results_,          # EM估计的参数
                 n_time_train,           # 训练期长度
                 progress_callback
             )
 
-            # 更新结果中的因子为完整时间范围
+            # 更新结果中的因子和先验状态为完整时间范围
             self.results_.factors = full_factors
             self.results_.factors_smooth = full_factors
+            self.results_.factor_states_predicted = full_factor_states_predicted
             self.results_.train_start_idx = 0
             self.results_.train_end_idx = n_time_train
 
@@ -546,7 +547,7 @@ class DFMModel:
         em_result: DFMModelResult,
         train_length: int,
         progress_callback: Optional[Callable[[str], None]] = None
-    ) -> np.ndarray:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         使用EM估计的参数对完整数据进行卡尔曼滤波/平滑
 
@@ -557,7 +558,9 @@ class DFMModel:
             progress_callback: 进度回调函数
 
         Returns:
-            完整时间范围的因子 (n_factors, n_time_full)
+            Tuple: (完整时间范围的因子, 完整时间范围的先验因子状态)
+                   - factors: (n_factors, n_time_full)
+                   - factor_states_predicted: (n_time_full, n_factors)
         """
         n_time_full = len(obs_centered_full)
         n_obs = obs_centered_full.shape[1]
@@ -602,5 +605,10 @@ class DFMModel:
 
         logger.info(f"[完整数据滤波] 因子形状: ({self.n_factors}, {n_time_full}), 训练期长度: {train_length}")
 
+        # 提取先验因子状态 (n_time_full, n_factors)
+        factor_states_predicted = filter_result.x_predicted[:, :self.n_factors].copy()
+
         # 提取因子 (n_factors, n_time_full)
-        return smoother_result.x_smoothed[:self.n_factors, :]
+        factors = smoother_result.x_smoothed[:self.n_factors, :]
+
+        return factors, factor_states_predicted
