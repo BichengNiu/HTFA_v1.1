@@ -169,6 +169,7 @@ class TrainingResultExporter:
             # 日期
             'training_start_date': config.training_start,
             'train_end_date': config.train_end,
+            'rmse_alignment': getattr(config, 'rmse_alignment', 'current'),  # 'current' 或 'next'
             # 验证期日期（DDFM 没有验证期，设为 None）
             'validation_start_date': None if config.algorithm == 'deep_learning' else config.validation_start,
             'validation_end_date': None if config.algorithm == 'deep_learning' else config.validation_end,

@@ -146,6 +146,14 @@ class UIConfig:
     FACTOR_AR_ORDER_MIN = 0
     FACTOR_AR_ORDER_MAX = 5
 
+    # RMSE对齐方式配置
+    RMSE_ALIGNMENT_OPTIONS = {
+        'current': '当月对齐 (默认)',
+        'next': '下月对齐 (数据滞后发布)'
+    }
+    DEFAULT_RMSE_ALIGNMENT = 'current'
+    RMSE_ALIGNMENT_HELP = "当月对齐：预测值与当月实际值对比；下月对齐：预测值与下月实际值对比（适用于数据滞后发布场景）"
+
     # UI布局配置
     NUM_COLS_INDUSTRY = 3
     MAX_ITERATIONS_STEP = 10

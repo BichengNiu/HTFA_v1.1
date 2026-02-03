@@ -177,6 +177,12 @@ class TrainingConfigBuilder:
 
             # 行业映射（用于分析）
             'industry_map': var_industry_map,
+
+            # RMSE计算对齐方式
+            'rmse_alignment': self.state.get('dfm_rmse_alignment', 'current'),
+
+            # 变量频率映射（用于混频RMSE计算）
+            'var_frequency_map': var_frequency_map,
         }
 
         # 观察期配置（所有算法都需要）

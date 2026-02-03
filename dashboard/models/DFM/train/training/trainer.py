@@ -287,7 +287,9 @@ class DFMTrainer:
                     validation_start=None,
                     validation_end=None,
                     target_variable=self.config.target_variable,
-                    variable_names=selected_vars
+                    variable_names=selected_vars,
+                    rmse_alignment=self.config.rmse_alignment,
+                    var_frequency_map=self.config.var_frequency_map
                 )
             else:
                 metrics = evaluate_model_fit(
@@ -298,7 +300,9 @@ class DFMTrainer:
                     validation_start=self.config.validation_start,
                     validation_end=self.config.validation_end,
                     target_variable=self.config.target_variable,
-                    variable_names=selected_vars
+                    variable_names=selected_vars,
+                    rmse_alignment=self.config.rmse_alignment,
+                    var_frequency_map=self.config.var_frequency_map
                 )
 
             # 保存变量名到模型结果
