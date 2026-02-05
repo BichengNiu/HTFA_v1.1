@@ -274,7 +274,7 @@ class DFMTrainer:
 
             # ========== 公共部分：评估和结果构建 ==========
 
-            # 步骤5: 模型评估（有目标变量时基于目标变量RMSE，否则基于平均RMSE）
+            # 步骤5: 模型评估（基于目标变量RMSE）
             observation_data = data[selected_vars]
 
             # DDFM模式不计算验证期RMSE（因为没有验证期）

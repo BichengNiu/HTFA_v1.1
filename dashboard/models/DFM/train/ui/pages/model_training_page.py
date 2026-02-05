@@ -277,6 +277,10 @@ def render_dfm_model_training_page(st_instance):
     # 目标变量（经典DFM和DDFM都显示）
     with algo_col2:
         selected_indicators = _state.get('dfm_selected_indicators', [])
+        # 修复：首次进入页面时，从已准备的数据中初始化指标列表
+        if not selected_indicators and data_df is not None and len(data_df.columns) > 0:
+            selected_indicators = list(data_df.columns)
+            _state.set('dfm_selected_indicators', selected_indicators)
 
         # 经典DFM：目标变量始终启用（用于后向剔除保护）
         # DDFM：始终启用
@@ -1052,15 +1056,15 @@ def render_dfm_model_training_page(st_instance):
                     export_dir=None
                 )
 
-                # 处理训练结果并保存（平均RMSE）
+                # 处理训练结果并保存
                 result_summary = {
                     'algorithm': algorithm_value,  # 保存算法类型
                     'selected_variables': result.selected_variables,
                     'k_factors': result.k_factors,
                     'metrics': {
-                        'average_rmse': result.metrics.average_rmse if result.metrics else None,
-                        'average_rmse_validation': result.metrics.average_rmse_validation if result.metrics else None,
-                        'weighted_average_rmse': result.metrics.weighted_average_rmse if result.metrics else None,
+                        'target_rmse': result.metrics.target_rmse if result.metrics else None,
+                        'target_rmse_validation': result.metrics.target_rmse_validation if result.metrics else None,
+                        'weighted_target_rmse': result.metrics.weighted_target_rmse if result.metrics else None,
                     },
                     'training_time': result.training_time
                 }
@@ -1084,18 +1088,18 @@ def render_dfm_model_training_page(st_instance):
                 ]
 
                 if metrics_obj:
-                    # 显示平均RMSE（用于变量选择）
-                    avg_rmse = metrics_obj.average_rmse
-                    if avg_rmse is not None and not (np.isnan(avg_rmse) or np.isinf(avg_rmse)):
-                        new_log_entries.append(f"[METRICS] 训练期平均RMSE: {avg_rmse:.4f}")
+                    # 显示目标变量RMSE（监督学习模式）
+                    target_rmse = metrics_obj.target_rmse
+                    if target_rmse is not None and not (np.isnan(target_rmse) or np.isinf(target_rmse)):
+                        new_log_entries.append(f"[METRICS] 训练期目标变量RMSE: {target_rmse:.4f}")
                     # 仅经典DFM显示验证期RMSE（DDFM没有验证期）
                     if algorithm_value != 'deep_learning':
-                        avg_rmse_val = metrics_obj.average_rmse_validation
-                        if avg_rmse_val is not None and not (np.isnan(avg_rmse_val) or np.isinf(avg_rmse_val)):
-                            new_log_entries.append(f"[METRICS] 验证期平均RMSE: {avg_rmse_val:.4f}")
-                    weighted_avg_rmse = metrics_obj.weighted_average_rmse
-                    if weighted_avg_rmse is not None and not (np.isnan(weighted_avg_rmse) or np.isinf(weighted_avg_rmse)):
-                        new_log_entries.append(f"[METRICS] 加权平均RMSE: {weighted_avg_rmse:.4f}")
+                        target_rmse_val = metrics_obj.target_rmse_validation
+                        if target_rmse_val is not None and not (np.isnan(target_rmse_val) or np.isinf(target_rmse_val)):
+                            new_log_entries.append(f"[METRICS] 验证期目标变量RMSE: {target_rmse_val:.4f}")
+                    weighted_target_rmse = metrics_obj.weighted_target_rmse
+                    if weighted_target_rmse is not None and not (np.isnan(weighted_target_rmse) or np.isinf(weighted_target_rmse)):
+                        new_log_entries.append(f"[METRICS] 加权目标变量RMSE: {weighted_target_rmse:.4f}")
 
                 training_log = _state.get('dfm_training_log', [])
                 _state.set('dfm_training_log', training_log + new_log_entries)

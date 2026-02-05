@@ -2,8 +2,7 @@
 """
 后向逐步变量选择器
 
-实现后向逐步变量剔除算法，以加权RMSE作为优化目标（越小越好）。
-经典DFM：所有变量平等参与因子提取，无目标变量概念。
+实现后向逐步变量剔除算法，以目标变量RMSE作为优化目标（越小越好）。
 """
 import numpy as np
 import pandas as pd
@@ -24,12 +23,15 @@ class BackwardSelector:
     算法流程:
     1. 从全部变量开始
     2. 逐个尝试剔除每个变量
-    3. 评估剔除后的模型拟合质量（加权RMSE）
+    3. 评估剔除后的模型拟合质量（目标变量RMSE）
     4. 选择性能提升最大的变量剔除
     5. 重复直到无法提升
 
-    优化目标: 最小化加权RMSE
+    优化目标: 最小化目标变量RMSE
     """
+
+    # RMSE标签常量
+    RMSE_LABEL = "目标变量RMSE"
 
     def __init__(
         self,
@@ -40,7 +42,7 @@ class BackwardSelector:
     ):
         """
         Args:
-            evaluator_func: 评估函数,签名为 (variables, **kwargs) -> float (加权RMSE，越小越好)
+            evaluator_func: 评估函数,签名为 (variables, **kwargs) -> float (目标变量RMSE，越小越好)
             min_variables: 最少保留的变量数
             parallel_config: 并行配置（必填）
             target_variable: 目标变量（受保护，不会被移除）
@@ -53,13 +55,6 @@ class BackwardSelector:
         self.min_variables = min_variables
         self.parallel_config = parallel_config
         self.target_variable = target_variable
-        self.optimization_target = 'average'  # 默认值，在 select() 中更新
-
-    def _get_rmse_label(self) -> str:
-        """根据优化目标返回RMSE标签"""
-        if self.optimization_target == 'target':
-            return "目标变量RMSE"
-        return "平均RMSE"
 
     def select(
         self,
@@ -92,9 +87,6 @@ class BackwardSelector:
         for key in required_param_keys:
             if key not in params:
                 raise ValueError(f"params缺少必需参数: {key}")
-
-        # 更新优化目标（用于日志显示）
-        self.optimization_target = params.get('optimization_target', 'average')
 
         # 保存评估参数供辅助方法使用
         self._eval_params = {
@@ -188,7 +180,7 @@ class BackwardSelector:
                 score = np.inf
 
             logger.info(
-                f"初始基准得分 - {self._get_rmse_label()}: {score:.4f}, "
+                f"初始基准得分 - {self.RMSE_LABEL}: {score:.4f}, "
                 f"变量数: {len(current_variables)}"
             )
 
@@ -196,7 +188,7 @@ class BackwardSelector:
             baseline_msg = (
                 f"========== 变量选择开始 ==========\n"
                 f"初始变量数: {len(current_variables)}\n"
-                f"基线{self._get_rmse_label()}: {score:.4f}"
+                f"基线{self.RMSE_LABEL}: {score:.4f}"
             )
             print(baseline_msg)
             if progress_callback:
@@ -278,8 +270,7 @@ class BackwardSelector:
             'factor_selection_method': self._eval_params['params']['factor_selection_method'],
             'pca_threshold': self._eval_params['params']['pca_threshold'],
             'kaiser_threshold': self._eval_params['params']['kaiser_threshold'],
-            'target_variable': self._eval_params['params'].get('target_variable'),
-            'optimization_target': self._eval_params['params'].get('optimization_target', 'average')
+            'target_variable': self._eval_params['params'].get('target_variable')
         }
 
         # 并行评估
@@ -343,7 +334,7 @@ class BackwardSelector:
                 total_evals += 1
 
                 # 打印评估结果
-                msg = f"    {self._get_rmse_label()}: {score:.4f}"
+                msg = f"    {self.RMSE_LABEL}: {score:.4f}"
                 logger.info(msg)
                 if progress_callback:
                     progress_callback(msg)
@@ -384,7 +375,7 @@ class BackwardSelector:
 
         for res in candidate_results:
             is_best = " <- 最佳" if res['var'] == best_var else ""
-            msg = f"    '{res['var']}': {self._get_rmse_label()}={res['score']:.4f}{is_best}"
+            msg = f"    '{res['var']}': {self.RMSE_LABEL}={res['score']:.4f}{is_best}"
             logger.info(msg)
             if progress_callback:
                 progress_callback(msg)
@@ -421,12 +412,12 @@ class BackwardSelector:
 
         logger.info(
             f"\n第{iteration}轮决策: 移除'{removed_var}', 剩余{len(current_variables)}个变量\n"
-            f"  {self._get_rmse_label()}: {old_score:.4f} -> {new_score:.4f} ({improve_str})"
+            f"  {self.RMSE_LABEL}: {old_score:.4f} -> {new_score:.4f} ({improve_str})"
         )
 
         removal_msg = (
             f"第{iteration}轮: 移除'{removed_var}', 剩余{len(current_variables)}个变量\n"
-            f"  {self._get_rmse_label()}: {old_score:.4f} -> {new_score:.4f} ({improve_str})"
+            f"  {self.RMSE_LABEL}: {old_score:.4f} -> {new_score:.4f} ({improve_str})"
         )
         print(removal_msg)
         if progress_callback:
@@ -445,7 +436,7 @@ class BackwardSelector:
         """构建选择结果对象"""
         logger.info(
             f"变量选择完成: 从{n_initial_vars}个变量剔除到{len(final_variables)}个, "
-            f"最终{self._get_rmse_label()}={final_score:.4f}"
+            f"最终{self.RMSE_LABEL}={final_score:.4f}"
         )
 
         # 输出最终汇总
@@ -460,7 +451,7 @@ class BackwardSelector:
                 f"\n========== 变量选择完成 ==========\n"
                 f"总轮次: {len(history)}\n"
                 f"移除变量: {', '.join(removed_vars)}\n"
-                f"{self._get_rmse_label()}总改善: {baseline_score:.4f} -> {final_score:.4f} ({improve_str})\n"
+                f"{self.RMSE_LABEL}总改善: {baseline_score:.4f} -> {final_score:.4f} ({improve_str})\n"
                 f"最终变量数: {len(final_variables)}个"
             )
             print(final_msg)

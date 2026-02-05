@@ -235,7 +235,7 @@ class TestEvaluateModelFitIntegration:
         )
 
         # 验证返回的指标有效
-        assert np.isfinite(metrics.average_rmse), "average_rmse 应该是有限值"
+        assert np.isfinite(metrics.target_rmse), "target_rmse 应该是有限值"
         assert metrics.converged == True
         assert metrics.iterations == 10
 
@@ -264,8 +264,8 @@ class TestEvaluateModelFitIntegration:
         # 两种对齐方式的RMSE应该不同
         # 注意：由于数据特性，可能相同，但通常应该不同
         # 这里只验证两者都是有效值
-        assert np.isfinite(metrics_current.average_rmse)
-        assert np.isfinite(metrics_next.average_rmse)
+        assert np.isfinite(metrics_current.target_rmse)
+        assert np.isfinite(metrics_next.target_rmse)
 
 
 if __name__ == '__main__':
