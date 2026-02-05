@@ -124,7 +124,7 @@ class TrainingConfigBuilder:
 
         # 4. 获取变量选择配置
         var_selection_method = self._get_required('dfm_variable_selection_method')
-        enable_var_selection = (var_selection_method != 'none')
+        enable_var_selection = True  # 固定使用后向选择法
         mapped_var_selection_method = self._map_variable_selection_method(var_selection_method)
 
         # 5. 获取因子选择配置
@@ -203,7 +203,6 @@ class TrainingConfigBuilder:
             config_kwargs.update(ddfm_params)
             # DDFM不支持变量选择
             config_kwargs['enable_variable_selection'] = False
-            config_kwargs['variable_selection_method'] = 'none'
 
         training_config = TrainingConfig(**config_kwargs)
 
@@ -274,7 +273,6 @@ class TrainingConfigBuilder:
             ValueError: 无效的变量选择方法
         """
         var_selection_method_map = {
-            'none': 'none',
             'backward': 'backward'
         }
         if var_selection_method not in var_selection_method_map:

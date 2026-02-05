@@ -23,7 +23,7 @@ class UIConfig:
         'cumulative_variance': "累积方差贡献",
         'kaiser': "Kaiser准则 (特征值>1)"
     }
-    DEFAULT_FACTOR_STRATEGY = 'fixed_number'
+    DEFAULT_FACTOR_STRATEGY = 'kaiser'
 
     # 因子数配置
     DEFAULT_K_FACTORS = 4
@@ -44,16 +44,15 @@ class UIConfig:
 
     # 变量选择方法
     VARIABLE_SELECTION_METHODS = {
-        'none': "无筛选 (使用全部已选变量)",
         'backward': "后向选择法 (逐步移除不重要变量)"
     }
-    DEFAULT_VAR_SELECTION = 'none'
+    DEFAULT_VAR_SELECTION = 'backward'
 
     # 目标变量配置 (2026-01新增)
-    TARGET_VARIABLE_HELP = "选择一个目标变量，该变量在后向剔除过程中不会被移除"
+    TARGET_VARIABLE_HELP = "选择目标变量（必选），将以该变量为最小化RMSE的目标"
 
     # DDFM目标变量配置（有监督学习）
-    DDFM_TARGET_VARIABLE_HELP = "选择目标变量进入有监督模式，神经网络将专注优化该变量的重构精度。选'无'则为无监督模式，优化所有变量的平均重构误差。"
+    DDFM_TARGET_VARIABLE_HELP = "选择目标变量（必选），神经网络将专注优化该变量的重构精度"
 
     # 训练期权重配置 (2025-12新增)
     DEFAULT_TRAINING_WEIGHT = 50  # 默认50%训练期权重（百分比）
@@ -148,11 +147,11 @@ class UIConfig:
 
     # RMSE对齐方式配置
     RMSE_ALIGNMENT_OPTIONS = {
-        'current': '当月对齐 (默认)',
-        'next': '下月对齐 (数据滞后发布)'
+        'current': '当月值 (默认)',
+        'next': '下月值'
     }
     DEFAULT_RMSE_ALIGNMENT = 'current'
-    RMSE_ALIGNMENT_HELP = "当月对齐：预测值与当月实际值对比；下月对齐：预测值与下月实际值对比（适用于数据滞后发布场景）"
+    RMSE_ALIGNMENT_HELP = "当月值：预测值与当月实际值对比；下月值：预测值与下月实际值对比（适用于数据滞后发布场景）"
 
     # UI布局配置
     NUM_COLS_INDUSTRY = 3
