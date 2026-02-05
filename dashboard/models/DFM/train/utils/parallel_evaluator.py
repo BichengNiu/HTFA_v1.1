@@ -2,11 +2,7 @@
 """
 并行变量评估器
 
-提供变量选择过程中的并行评估功能
-
-支持两种优化目标:
-- 平均RMSE: 优化所有变量的整体拟合
-- 目标变量RMSE: 专注优化指定目标变量的拟合
+提供变量选择过程中的并行评估功能，使用目标变量RMSE作为优化指标
 """
 
 import logging
@@ -30,7 +26,7 @@ def evaluate_single_variable_removal(
     evaluator_config: Dict[str, Any]
 ) -> Tuple[str, Optional[Dict[str, Any]]]:
     """
-    评估移除单个变量后的模型性能（无监督DFM版本）
+    评估移除单个变量后的模型性能
 
     Args:
         var: 待移除的变量名
@@ -48,12 +44,11 @@ def evaluate_single_variable_removal(
             - factor_selection_method: 因子选择方法
             - pca_threshold: PCA阈值
             - kaiser_threshold: Kaiser阈值
-            - target_variable: 目标变量（可选）
-            - optimization_target: 优化目标（可选，'average' 或 'target'）
+            - target_variable: 目标变量
 
     Returns:
         (变量名, 评估结果字典) 或 (变量名, None) 如果评估失败
-        结果字典包含: var, score (加权RMSE)
+        结果字典包含: var, score (目标变量RMSE)
     """
     try:
         temp_variables = _build_temp_variables(var, current_variables)
@@ -78,7 +73,7 @@ def evaluate_single_variable_removal(
             if key not in evaluator_config:
                 raise ValueError(f"evaluator_config缺少必需参数: {key}")
 
-        # 调用无监督DFM评估函数
+        # 调用DFM评估函数
         score = _evaluate_variable_selection_model(
             variables=temp_variables,
             full_data=full_data,
@@ -93,13 +88,12 @@ def evaluate_single_variable_removal(
             factor_selection_method=evaluator_config['factor_selection_method'],
             pca_threshold=evaluator_config['pca_threshold'],
             kaiser_threshold=evaluator_config['kaiser_threshold'],
-            target_variable=evaluator_config.get('target_variable'),
-            optimization_target=evaluator_config.get('optimization_target', 'average')
+            target_variable=evaluator_config.get('target_variable')
         )
 
         return (var, {
             'var': var,
-            'score': score  # 加权RMSE，越小越好
+            'score': score  # 目标变量RMSE，越小越好
         })
 
     except Exception as e:
@@ -119,7 +113,7 @@ def evaluate_variable_removals(
     progress_callback: Optional[Callable[[str], None]] = None
 ) -> List[Dict[str, Any]]:
     """
-    评估所有候选变量的移除效果（无监督DFM版本）
+    评估所有候选变量的移除效果
 
     Args:
         current_variables: 当前变量列表
@@ -142,9 +136,8 @@ def evaluate_variable_removals(
 
     n_candidates = len(candidate_vars)
 
-    # 根据优化目标确定RMSE标签
-    optimization_target = evaluator_config.get('optimization_target', 'average')
-    rmse_label = "目标变量RMSE" if optimization_target == 'target' else "平均RMSE"
+    # RMSE标签
+    rmse_label = "目标变量RMSE"
 
     if progress_callback:
         cores_desc = str(n_jobs) if n_jobs > 0 else 'all'

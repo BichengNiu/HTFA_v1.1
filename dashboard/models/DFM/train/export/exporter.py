@@ -186,7 +186,7 @@ class TrainingResultExporter:
         if result.metrics is None:
             raise ValueError("训练结果缺少评估指标(metrics)，无法导出元数据")
 
-        # 获取目标变量（有目标变量时返回目标变量RMSE，否则返回平均RMSE）
+        # 获取目标变量（返回目标变量RMSE）
         # DDFM 使用 ddfm_target_variable，经典 DFM 使用 target_variable
         is_ddfm = (config.algorithm == 'deep_learning')
         if is_ddfm:
@@ -495,7 +495,7 @@ class TrainingResultExporter:
             prepared_data: 预处理后的完整观测数据
             period_start: 时期开始日期
             period_end: 时期结束日期
-            target_variable: 目标变量名（有则返回目标变量RMSE，否则返回平均RMSE）
+            target_variable: 目标变量名（返回目标变量RMSE）
         """
         if prepared_data is None or result.model_result is None:
             return np.inf, np.inf
@@ -544,7 +544,7 @@ class TrainingResultExporter:
             reconstructed = reconstructed[:min_time, :]
 
             residuals = obs_centered - reconstructed
-            # 有目标变量时返回目标变量RMSE，否则返回平均RMSE
+            # 返回目标变量RMSE
             if target_variable and target_variable in available_vars:
                 target_idx = available_vars.index(target_variable)
                 target_residuals = residuals[:, target_idx]

@@ -2,14 +2,12 @@
 """
 DFM评估策略 - 函数式接口
 
-提供简洁的函数式接口创建DFM评估器
-有目标变量时使用目标变量RMSE，否则使用平均RMSE
+提供简洁的函数式接口创建DFM评估器，使用目标变量RMSE作为评估指标
 
 重构说明:
 - 将闭包函数改为模块级顶层函数,解决pickle序列化问题
 - 通过参数显式传递config数据,而非闭包捕获
 - 保持API兼容性
-- 根据target_variable参数选择评估指标
 """
 
 import numpy as np
@@ -58,11 +56,11 @@ def _evaluate_variable_selection_model(
         factor_selection_method: 因子选择方法 ('fixed', 'cumulative', 'kaiser')
         pca_threshold: PCA累积方差阈值（method='cumulative'时使用）
         kaiser_threshold: Kaiser特征值阈值（method='kaiser'时使用）
-        target_variable: 目标变量名（可选，用于计算目标变量RMSE）
+        target_variable: 目标变量名（用于计算目标变量RMSE）
         **kwargs: 兼容旧接口的额外参数
 
     Returns:
-        float: 加权RMSE（越小越好），有目标变量时返回目标变量RMSE，否则返回平均RMSE
+        float: 加权目标变量RMSE（越小越好）
 
     Note:
         当factor_selection_method!='fixed'时，会基于当前变量集动态计算最优k_factors。
@@ -120,11 +118,8 @@ def _evaluate_variable_selection_model(
             variable_names=variables
         )
 
-        # 根据是否有目标变量返回对应的RMSE
-        if target_variable:
-            return metrics.weighted_target_rmse
-        else:
-            return metrics.weighted_average_rmse
+        # 返回目标变量RMSE
+        return metrics.weighted_target_rmse
 
     except Exception as e:
         logger.exception(f"[VarSelectionEvaluator] 评估失败: {e}")
@@ -137,8 +132,7 @@ def create_variable_selection_evaluator(config: 'TrainingConfig') -> Callable:
     """
     创建变量筛选专用评估器（函数式接口）
 
-    使用加权RMSE作为评估指标（越小越好），专门用于变量筛选阶段。
-    有目标变量时使用目标变量RMSE，否则使用平均RMSE。
+    使用加权目标变量RMSE作为评估指标（越小越好），专门用于变量筛选阶段。
 
     重构后：返回一个lambda包装器，调用可序列化的顶层函数。
 

@@ -63,16 +63,14 @@ def format_training_summary(result: TrainingResult) -> str:
     Returns:
         str: 格式化的摘要字符串
     """
-    # 获取平均RMSE（优先使用加权平均RMSE）
-    weighted_avg_rmse = getattr(result.metrics, 'weighted_average_rmse', np.inf)
-    avg_rmse = getattr(result.metrics, 'average_rmse', np.inf)
-    rmse_value = weighted_avg_rmse if np.isfinite(weighted_avg_rmse) else avg_rmse
+    # 获取目标变量RMSE
+    rmse_value = getattr(result.metrics, 'weighted_target_rmse', np.inf)
 
     lines = [
         "========== 最终模型 ==========",
         f"最终变量数: {len(result.selected_variables)}",
         f"因子数: {result.k_factors}",
-        f"平均RMSE: {rmse_value:.4f}",
+        f"目标变量RMSE: {rmse_value:.4f}",
         f"模型收敛: {'是' if result.metrics.converged else '否'}",
         f"迭代次数: {result.metrics.iterations}",
         f"训练时间: {result.training_time:.2f}秒",
