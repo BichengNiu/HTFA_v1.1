@@ -253,12 +253,8 @@ def render_dfm_model_training_page(st_instance):
     is_deep_learning_mode = (current_algorithm == 'deep_learning')
 
     # 根据算法类型动态调整布局
-    # DDFM：2列（选择算法、目标变量）
-    # 经典DFM：3列（选择算法、变量筛选方法、目标变量）
-    if is_deep_learning_mode:
-        algo_col1, algo_col_target = st_instance.columns(2)
-    else:
-        algo_col1, algo_col2, algo_col_target = st_instance.columns(3)
+    # 统一使用3列布局：选择算法 | 目标变量 | RMSE计算方式
+    algo_col1, algo_col2, algo_col3 = st_instance.columns(3)
 
     with algo_col1:
         algorithm_value = st_instance.selectbox(
@@ -274,45 +270,27 @@ def render_dfm_model_training_page(st_instance):
         _state.set('dfm_algorithm', algorithm_value)
         current_algorithm = algorithm_value
 
-    # 变量筛选方法（仅经典DFM显示）
-    if not is_deep_learning_mode:
-        with algo_col2:
-            current_var_method = _state.get('dfm_variable_selection_method', UIConfig.DEFAULT_VAR_SELECTION)
-            if current_var_method not in UIConfig.VARIABLE_SELECTION_METHODS:
-                current_var_method = UIConfig.DEFAULT_VAR_SELECTION
-
-            var_method_value = st_instance.selectbox(
-                "变量筛选方法",
-                options=list(UIConfig.VARIABLE_SELECTION_METHODS.keys()),
-                format_func=lambda x: UIConfig.VARIABLE_SELECTION_METHODS[x],
-                index=UIConfig.get_safe_option_index(
-                    UIConfig.VARIABLE_SELECTION_METHODS, current_var_method, UIConfig.DEFAULT_VAR_SELECTION
-                ),
-                key='dfm_variable_selection_method_input',
-                help="选择在已选变量基础上的筛选方法"
-            )
-            _state.set('dfm_variable_selection_method', var_method_value)
-            enable_var_selection = (var_method_value != 'none')
-            _state.set('dfm_enable_variable_selection', enable_var_selection)
+    # 变量筛选方法：固定使用后向选择法（不显示UI）
+    _state.set('dfm_variable_selection_method', 'backward')
+    _state.set('dfm_enable_variable_selection', True)
 
     # 目标变量（经典DFM和DDFM都显示）
-    with algo_col_target:
+    with algo_col2:
         selected_indicators = _state.get('dfm_selected_indicators', [])
 
-        # 经典DFM：仅后向剔除时启用
+        # 经典DFM：目标变量始终启用（用于后向剔除保护）
         # DDFM：始终启用
         if is_deep_learning_mode:
             is_disabled = False
             state_key_target = 'dfm_ddfm_target_variable'
             help_text = UIConfig.DDFM_TARGET_VARIABLE_HELP
         else:
-            var_method = _state.get('dfm_variable_selection_method', UIConfig.DEFAULT_VAR_SELECTION)
-            is_disabled = (var_method != 'backward')
+            is_disabled = False
             state_key_target = 'dfm_target_variable'
             help_text = UIConfig.TARGET_VARIABLE_HELP
 
         if selected_indicators:
-            target_var_options = ['无'] + list(selected_indicators)
+            target_var_options = list(selected_indicators)
             current_target = _state.get(state_key_target)
             if current_target and current_target in selected_indicators:
                 default_index = target_var_options.index(current_target)
@@ -328,7 +306,7 @@ def render_dfm_model_training_page(st_instance):
                 disabled=is_disabled
             )
             if not is_disabled:
-                _state.set(state_key_target, target_var_value if target_var_value != '无' else None)
+                _state.set(state_key_target, target_var_value)
         else:
             st_instance.selectbox(
                 "目标变量",
@@ -343,6 +321,24 @@ def render_dfm_model_training_page(st_instance):
     if algorithm_value != _state.get('_prev_dfm_algorithm'):
         _state.set('_prev_dfm_algorithm', algorithm_value)
         st_instance.rerun()
+
+    # 误差计算方式（第一排第三列）
+    with algo_col3:
+        current_rmse_alignment = _state.get('dfm_rmse_alignment', UIConfig.DEFAULT_RMSE_ALIGNMENT)
+        if current_rmse_alignment not in UIConfig.RMSE_ALIGNMENT_OPTIONS:
+            current_rmse_alignment = UIConfig.DEFAULT_RMSE_ALIGNMENT
+
+        rmse_alignment_value = st_instance.selectbox(
+            "误差计算方式",
+            options=list(UIConfig.RMSE_ALIGNMENT_OPTIONS.keys()),
+            format_func=lambda x: UIConfig.RMSE_ALIGNMENT_OPTIONS[x],
+            index=UIConfig.get_safe_option_index(
+                UIConfig.RMSE_ALIGNMENT_OPTIONS, current_rmse_alignment, UIConfig.DEFAULT_RMSE_ALIGNMENT
+            ),
+            key='dfm_rmse_alignment_input',
+            help=UIConfig.RMSE_ALIGNMENT_HELP
+        )
+        _state.set('dfm_rmse_alignment', rmse_alignment_value)
 
     # ===== 训练周期设置 =====
 
@@ -410,25 +406,6 @@ def render_dfm_model_training_page(st_instance):
             validation_end_value = get_previous_period_date(observation_start_value, target_freq_code, periods=1)
             _state.set('dfm_validation_end_date', validation_end_value)
 
-    # ===== RMSE计算方式选择 =====
-    rmse_col1, rmse_col2 = st_instance.columns([1, 2])
-    with rmse_col1:
-        current_rmse_alignment = _state.get('dfm_rmse_alignment', UIConfig.DEFAULT_RMSE_ALIGNMENT)
-        if current_rmse_alignment not in UIConfig.RMSE_ALIGNMENT_OPTIONS:
-            current_rmse_alignment = UIConfig.DEFAULT_RMSE_ALIGNMENT
-
-        rmse_alignment_value = st_instance.selectbox(
-            "RMSE计算方式",
-            options=list(UIConfig.RMSE_ALIGNMENT_OPTIONS.keys()),
-            format_func=lambda x: UIConfig.RMSE_ALIGNMENT_OPTIONS[x],
-            index=UIConfig.get_safe_option_index(
-                UIConfig.RMSE_ALIGNMENT_OPTIONS, current_rmse_alignment, UIConfig.DEFAULT_RMSE_ALIGNMENT
-            ),
-            key='dfm_rmse_alignment_input',
-            help=UIConfig.RMSE_ALIGNMENT_HELP
-        )
-        _state.set('dfm_rmse_alignment', rmse_alignment_value)
-
     # ===== 高级选项 (折叠) =====
     is_deep_learning = (algorithm_value == 'deep_learning')
 
@@ -442,9 +419,7 @@ def render_dfm_model_training_page(st_instance):
         if not is_deep_learning:
             pass  # 因子策略UI已移至下方三列布局
         else:
-            # 深度学习模式：设置默认值
-            _state.set('dfm_variable_selection_method', 'none')
-            _state.set('dfm_enable_variable_selection', False)
+            # 深度学习模式：设置默认值（DDFM不支持变量选择）
             enable_var_selection = False
             strategy_value = 'fixed_number'
 
@@ -924,11 +899,18 @@ def render_dfm_model_training_page(st_instance):
         st_instance.warning("[WARNING] 请设置完整的日期范围")
         date_validation_passed = False
 
-    # 检查训练准备状态（经典DFM：无目标变量要求）
+    # 检查训练准备状态（必须选择目标变量）
+    current_algorithm = _state.get('dfm_algorithm', UIConfig.DEFAULT_ALGORITHM)
+    if current_algorithm == 'deep_learning':
+        target_var = _state.get('dfm_ddfm_target_variable')
+    else:
+        target_var = _state.get('dfm_target_variable')
+
     training_ready = (
         len(current_selected_indicators) > 0 and
         date_validation_passed and
-        input_df is not None
+        input_df is not None and
+        target_var is not None  # 必须选择目标变量
     )
 
     if not training_ready:

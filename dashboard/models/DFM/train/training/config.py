@@ -134,7 +134,7 @@ class TrainingConfig:
 
         # 验证变量选择方法
         if self.enable_variable_selection:
-            valid_selection_methods = ['backward', 'none']
+            valid_selection_methods = ['backward']
             if self.variable_selection_method not in valid_selection_methods:
                 raise ValueError(
                     f"variable_selection_method必须是{valid_selection_methods}之一,"
