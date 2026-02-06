@@ -282,16 +282,9 @@ def render_dfm_model_training_page(st_instance):
             selected_indicators = list(data_df.columns)
             _state.set('dfm_selected_indicators', selected_indicators)
 
-        # 经典DFM：目标变量始终启用（用于后向剔除保护）
-        # DDFM：始终启用
-        if is_deep_learning_mode:
-            is_disabled = False
-            state_key_target = 'dfm_ddfm_target_variable'
-            help_text = UIConfig.DDFM_TARGET_VARIABLE_HELP
-        else:
-            is_disabled = False
-            state_key_target = 'dfm_target_variable'
-            help_text = UIConfig.TARGET_VARIABLE_HELP
+        # 目标变量配置（用于后向剔除保护和RMSE计算）
+        state_key_target = 'dfm_target_variable'
+        help_text = UIConfig.TARGET_VARIABLE_HELP
 
         if selected_indicators:
             target_var_options = list(selected_indicators)
@@ -306,11 +299,9 @@ def render_dfm_model_training_page(st_instance):
                 options=target_var_options,
                 index=default_index,
                 key='dfm_target_variable_input',
-                help=help_text,
-                disabled=is_disabled
+                help=help_text
             )
-            if not is_disabled:
-                _state.set(state_key_target, target_var_value)
+            _state.set(state_key_target, target_var_value)
         else:
             st_instance.selectbox(
                 "目标变量",
@@ -535,18 +526,6 @@ def render_dfm_model_training_page(st_instance):
                     help="神经网络激活函数"
                 )
                 _state.set('dfm_ddfm_activation', activation_value)
-
-            with ddfm_col8:
-                lags_input_value = st_instance.number_input(
-                    "输入滞后期数",
-                    min_value=UIConfig.LAGS_INPUT_MIN,
-                    max_value=UIConfig.LAGS_INPUT_MAX,
-                    value=_state.get('dfm_ddfm_lags_input', UIConfig.LAGS_INPUT_DEFAULT),
-                    step=1,
-                    key='dfm_ddfm_lags_input_input',
-                    help=UIConfig.LAGS_INPUT_HELP
-                )
-                _state.set('dfm_ddfm_lags_input', lags_input_value)
 
             # 第五行：每次MCMC的epoch数 + MCMC收敛阈值
             ddfm_col9, ddfm_col10 = st_instance.columns(2)
@@ -904,11 +883,7 @@ def render_dfm_model_training_page(st_instance):
         date_validation_passed = False
 
     # 检查训练准备状态（必须选择目标变量）
-    current_algorithm = _state.get('dfm_algorithm', UIConfig.DEFAULT_ALGORITHM)
-    if current_algorithm == 'deep_learning':
-        target_var = _state.get('dfm_ddfm_target_variable')
-    else:
-        target_var = _state.get('dfm_target_variable')
+    target_var = _state.get('dfm_target_variable')
 
     training_ready = (
         len(current_selected_indicators) > 0 and

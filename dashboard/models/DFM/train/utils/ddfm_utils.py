@@ -33,40 +33,6 @@ def mse_missing(y_actual, y_predicted):
     return tf.reduce_mean(tf.square(y_actual_ - y_predicted_))
 
 
-def mse_target_variable(target_index: int):
-    """
-    创建只计算目标变量MSE的损失函数（有监督学习模式）
-
-    Args:
-        target_index: 目标变量在输出中的索引位置
-
-    Returns:
-        损失函数
-    """
-    import tensorflow as tf
-
-    def loss_fn(y_actual, y_predicted):
-        # 提取目标变量列
-        y_actual_target = y_actual[:, target_index]
-        y_predicted_target = y_predicted[:, target_index]
-
-        # 处理缺失值
-        mask = tf.where(tf.math.is_nan(y_actual_target),
-                        tf.zeros_like(y_actual_target),
-                        tf.ones_like(y_actual_target))
-        y_actual_clean = tf.where(tf.math.is_nan(y_actual_target),
-                                  tf.zeros_like(y_actual_target),
-                                  y_actual_target)
-        y_predicted_clean = tf.multiply(y_predicted_target, mask)
-
-        # 计算MSE
-        n_valid = tf.reduce_sum(mask)
-        mse = tf.reduce_sum(tf.square(y_actual_clean - y_predicted_clean)) / (n_valid + 1e-8)
-        return mse
-
-    return loss_fn
-
-
 def convergence_checker(y_prev: np.ndarray, y_now: np.ndarray, y_actual: np.ndarray) -> Tuple[float, float]:
     """
     检查收敛性
@@ -106,8 +72,7 @@ def convergence_checker(y_prev: np.ndarray, y_now: np.ndarray, y_actual: np.ndar
     return delta, loss
 
 
-def convert_decoder_to_numpy(decoder, has_bias: bool, factor_order: int,
-                             structure_decoder: tuple = None) -> Tuple[np.ndarray, np.ndarray]:
+def convert_decoder_to_numpy(decoder, has_bias: bool, factor_order: int) -> Tuple[np.ndarray, np.ndarray]:
     """
     将Keras解码器转换为numpy矩阵
 
@@ -115,34 +80,30 @@ def convert_decoder_to_numpy(decoder, has_bias: bool, factor_order: int,
         decoder: Keras解码器模型
         has_bias: 是否有偏置项
         factor_order: 因子自回归阶数
-        structure_decoder: 解码器结构，None表示单层
 
     Returns:
         (偏置, 观测矩阵H)
     """
-    if structure_decoder is None:
-        if has_bias:
-            ws, bs = decoder.get_layer(index=-1).get_weights()
-        else:
-            ws = decoder.get_layer(index=-1).get_weights()[0]
-            bs = np.zeros(ws.shape[1])
-
-        # 构建观测方程矩阵
-        if factor_order == 2:
-            emission = np.hstack((
-                ws.T,  # 权重项
-                np.zeros((ws.shape[1], ws.shape[0])),  # 滞后因子的零矩阵
-                np.identity(ws.shape[1])  # 特质项
-            ))
-        elif factor_order == 1:
-            emission = np.hstack((
-                ws.T,  # 权重项
-                np.identity(ws.shape[1])  # 特质项
-            ))
-        else:
-            raise NotImplementedError(_FACTOR_ORDER_ERROR)
+    if has_bias:
+        ws, bs = decoder.get_layer(index=-1).get_weights()
     else:
-        raise NotImplementedError("非线性解码器尚未实现")
+        ws = decoder.get_layer(index=-1).get_weights()[0]
+        bs = np.zeros(ws.shape[1])
+
+    # 构建观测方程矩阵
+    if factor_order == 2:
+        emission = np.hstack((
+            ws.T,  # 权重项
+            np.zeros((ws.shape[1], ws.shape[0])),  # 滞后因子的零矩阵
+            np.identity(ws.shape[1])  # 特质项
+        ))
+    elif factor_order == 1:
+        emission = np.hstack((
+            ws.T,  # 权重项
+            np.identity(ws.shape[1])  # 特质项
+        ))
+    else:
+        raise NotImplementedError(_FACTOR_ORDER_ERROR)
 
     return bs, emission
 

@@ -100,21 +100,6 @@ class DataStandardizer:
         self.fit(train_data)
         return self.transform(train_data, fill_nan, fill_value)
 
-    def inverse_transform(self, data: np.ndarray) -> np.ndarray:
-        """
-        反标准化数据
-
-        Args:
-            data: 标准化后的数据
-
-        Returns:
-            原始尺度的数据
-        """
-        if not self._fitted:
-            raise RuntimeError("DataStandardizer未拟合，请先调用fit()")
-
-        return data * self.stds_ + self.means_
-
     def center(self, data: pd.DataFrame) -> pd.DataFrame:
         """
         中心化数据（仅减去均值）
@@ -129,11 +114,6 @@ class DataStandardizer:
             raise RuntimeError("DataStandardizer未拟合，请先调用fit()")
 
         return data - self.means_
-
-    @property
-    def is_fitted(self) -> bool:
-        """是否已拟合"""
-        return self._fitted
 
 
 def standardize_data(
