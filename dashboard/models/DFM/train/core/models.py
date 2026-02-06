@@ -11,6 +11,39 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Optional
 
 
+# ==================== 评估配置相关 ====================
+
+@dataclass
+class EvaluationConfig:
+    """评估配置参数封装
+
+    用于封装变量选择评估函数的参数，减少函数参数数量，提高可维护性。
+    """
+    # 数据参数
+    full_data: pd.DataFrame = None
+    variables: List[str] = field(default_factory=list)
+
+    # 因子参数
+    k_factors: int = 1
+    factor_selection_method: str = 'fixed'
+    pca_threshold: float = 0.9
+    kaiser_threshold: float = 1.0
+
+    # 训练期参数
+    training_start: str = ''
+    train_end: str = ''
+    max_iterations: int = 30
+    tolerance: float = 1e-6
+
+    # 验证期参数
+    validation_start: str = ''
+    validation_end: str = ''
+    training_weight: float = 0.5
+
+    # 目标变量
+    target_variable: Optional[str] = None
+
+
 # ==================== 评估指标相关 ====================
 
 @dataclass
@@ -194,6 +227,9 @@ class TrainingResult:
 # ==================== 导出所有模型 ====================
 
 __all__ = [
+    # 评估配置
+    'EvaluationConfig',
+
     # 评估指标
     'EvaluationMetrics',
 

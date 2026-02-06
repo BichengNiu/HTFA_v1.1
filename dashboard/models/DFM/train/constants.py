@@ -39,3 +39,8 @@ R_MATRIX_MIN_VARIANCE = 1e-6
 # 新息协方差矩阵正则化因子（用于S_t矩阵）
 # 较大的值是因为S_t通常有更大的数值范围
 INNOVATION_COVARIANCE_JITTER = 1e-4
+
+# ==================== DDFM模型常量 ====================
+
+# DDFM批量推理的内存保护阈值
+DDFM_MAX_BATCH_SIZE = 5000

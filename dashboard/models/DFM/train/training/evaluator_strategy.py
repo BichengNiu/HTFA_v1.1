@@ -8,6 +8,7 @@ DFM评估策略 - 函数式接口
 - 将闭包函数改为模块级顶层函数,解决pickle序列化问题
 - 通过参数显式传递config数据,而非闭包捕获
 - 保持API兼容性
+- 使用EvaluationConfig封装参数，减少函数参数数量
 """
 
 import numpy as np
@@ -16,48 +17,19 @@ from typing import List, Callable, Dict, Optional
 from dashboard.models.DFM.train.utils.logger import get_logger
 from dashboard.models.DFM.train.training.model_ops import train_dfm_model, evaluate_model_fit
 from dashboard.models.DFM.train.core.pca_utils import compute_optimal_k_factors
+from dashboard.models.DFM.train.core.models import EvaluationConfig
 
 logger = get_logger(__name__)
 
 
 # ========== 可序列化的顶层评估函数 ==========
 
-def _evaluate_variable_selection_model(
-    variables: List[str],
-    full_data: pd.DataFrame,
-    k_factors: int,
-    training_start: str,
-    train_end: str,
-    max_iterations: int,
-    tolerance: float,
-    validation_start: str,
-    validation_end: str,
-    training_weight: float = 0.5,
-    factor_selection_method: str = 'fixed',
-    pca_threshold: float = 0.9,
-    kaiser_threshold: float = 1.0,
-    target_variable: Optional[str] = None,
-    **kwargs
-) -> float:
+def _evaluate_variable_selection_model(config: EvaluationConfig) -> float:
     """
     顶层变量选择评估函数（可序列化，支持动态因子数）
 
     Args:
-        variables: 变量列表
-        full_data: 完整数据DataFrame
-        k_factors: 因子数（fixed模式使用，或作为动态模式的fallback）
-        training_start: 训练开始日期
-        train_end: 训练结束日期
-        max_iterations: 最大迭代次数
-        tolerance: 容差
-        validation_start: 验证期开始日期
-        validation_end: 验证期结束日期
-        training_weight: 训练期权重 (0.0-1.0)
-        factor_selection_method: 因子选择方法 ('fixed', 'cumulative', 'kaiser')
-        pca_threshold: PCA累积方差阈值（method='cumulative'时使用）
-        kaiser_threshold: Kaiser特征值阈值（method='kaiser'时使用）
-        target_variable: 目标变量名（用于计算目标变量RMSE）
-        **kwargs: 兼容旧接口的额外参数
+        config: EvaluationConfig 评估配置对象，包含所有必需参数
 
     Returns:
         float: 加权目标变量RMSE（越小越好）
@@ -67,41 +39,41 @@ def _evaluate_variable_selection_model(
         这确保了变量选择过程中每次评估都使用最优的因子数。
     """
     try:
-        if len(variables) == 0:
+        if len(config.variables) == 0:
             logger.warning("[VarSelectionEvaluator] 变量为空，返回最差得分")
             return np.inf
 
         # 动态计算因子数
-        if factor_selection_method != 'fixed':
+        if config.factor_selection_method != 'fixed':
             k_factors_effective = compute_optimal_k_factors(
-                data=full_data,
-                variables=variables,
-                method=factor_selection_method,
-                fixed_k=k_factors,
-                pca_threshold=pca_threshold,
-                kaiser_threshold=kaiser_threshold,
-                train_end=train_end
+                data=config.full_data,
+                variables=config.variables,
+                method=config.factor_selection_method,
+                fixed_k=config.k_factors,
+                pca_threshold=config.pca_threshold,
+                kaiser_threshold=config.kaiser_threshold,
+                train_end=config.train_end
             )
         else:
-            k_factors_effective = k_factors
+            k_factors_effective = config.k_factors
 
         # 检查因子数约束
-        if k_factors_effective >= len(variables):
-            k_factors_effective = max(1, len(variables) - 1)
+        if k_factors_effective >= len(config.variables):
+            k_factors_effective = max(1, len(config.variables) - 1)
             logger.debug(f"[VarSelectionEvaluator] 调整因子数为 {k_factors_effective}")
 
         # 准备数据
-        observation_data = full_data[variables]
+        observation_data = config.full_data[config.variables]
 
         # 训练模型
         model_result = train_dfm_model(
             observation_data=observation_data,
             k_factors=k_factors_effective,
-            training_start=training_start,
-            train_end=train_end,
-            max_iter=max_iterations,
+            training_start=config.training_start,
+            train_end=config.train_end,
+            max_iter=config.max_iterations,
             max_lags=1,
-            tolerance=tolerance,
+            tolerance=config.tolerance,
             progress_callback=None
         )
 
@@ -109,13 +81,13 @@ def _evaluate_variable_selection_model(
         metrics = evaluate_model_fit(
             model_result=model_result,
             observation_data=observation_data,
-            training_start=training_start,
-            train_end=train_end,
-            validation_start=validation_start,
-            validation_end=validation_end,
-            training_weight=training_weight,
-            target_variable=target_variable,
-            variable_names=variables
+            training_start=config.training_start,
+            train_end=config.train_end,
+            validation_start=config.validation_start,
+            validation_end=config.validation_end,
+            training_weight=config.training_weight,
+            target_variable=config.target_variable,
+            variable_names=config.variables
         )
 
         # 返回目标变量RMSE
@@ -165,34 +137,26 @@ def create_variable_selection_evaluator(config: 'TrainingConfig') -> Callable:
         if 'k_factors' not in params:
             raise ValueError("params必须包含k_factors")
 
-        k_factors = params['k_factors']
-        max_iterations = kwargs.get('max_iter', config.max_iterations)
-
-        # 获取验证期参数
-        validation_start = params.get('validation_start', config.validation_start)
-        validation_end = params.get('validation_end', config.validation_end)
-        training_weight = params.get('training_weight', 0.5)
-
-        # 获取目标变量参数
-        target_variable = params.get('target_variable', config.target_variable)
-
-        # 调用可序列化的顶层函数
-        return _evaluate_variable_selection_model(
-            variables=variables,
+        # 构建 EvaluationConfig
+        eval_config = EvaluationConfig(
             full_data=full_data,
-            k_factors=k_factors,
-            training_start=config.training_start,
-            train_end=config.train_end,
-            max_iterations=max_iterations,
-            tolerance=config.tolerance,
-            validation_start=validation_start,
-            validation_end=validation_end,
-            training_weight=training_weight,
+            variables=variables,
+            k_factors=params['k_factors'],
             factor_selection_method=params.get('factor_selection_method', config.factor_selection_method),
             pca_threshold=params.get('pca_threshold', config.pca_threshold),
             kaiser_threshold=params.get('kaiser_threshold', config.kaiser_threshold),
-            target_variable=target_variable
+            training_start=config.training_start,
+            train_end=config.train_end,
+            max_iterations=kwargs.get('max_iter', config.max_iterations),
+            tolerance=config.tolerance,
+            validation_start=params.get('validation_start', config.validation_start),
+            validation_end=params.get('validation_end', config.validation_end),
+            training_weight=params.get('training_weight', 0.5),
+            target_variable=params.get('target_variable', config.target_variable)
         )
+
+        # 调用可序列化的顶层函数
+        return _evaluate_variable_selection_model(eval_config)
 
     return evaluate
 
@@ -200,4 +164,5 @@ def create_variable_selection_evaluator(config: 'TrainingConfig') -> Callable:
 __all__ = [
     'create_variable_selection_evaluator',
     '_evaluate_variable_selection_model',
+    'EvaluationConfig',
 ]
