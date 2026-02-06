@@ -7,15 +7,11 @@
 
 import numpy as np
 import pandas as pd
-from typing import Tuple, Optional, Union
+from typing import Tuple, Optional
 import statsmodels.api as sm
-from sklearn.linear_model import LinearRegression
 from dashboard.models.DFM.train.utils.logger import get_logger
 from dashboard.models.DFM.train.constants import (
     MIN_EIGENVALUE_EPSILON,
-    R_MATRIX_MIN_VARIANCE,
-    DEFAULT_AR1_COEFFICIENT,
-    DEFAULT_Q_VARIANCE,
     DEFAULT_B_SCALE,
     ZERO_STD_REPLACEMENT
 )
@@ -25,25 +21,23 @@ logger = get_logger(__name__)
 
 
 def estimate_loadings(
-    observables: Union[pd.DataFrame, pd.Series],
+    observables: pd.DataFrame,
     factors: pd.DataFrame,
     train_end: Optional[str] = None,
     use_train_only: bool = False
 ) -> np.ndarray:
-    """统一的因子载荷估计（支持DataFrame和Series）
+    """因子载荷估计
 
     使用OLS回归估计观测变量对因子的载荷
 
     Args:
-        observables: 观测变量（DataFrame或Series）
+        observables: 观测变量 DataFrame
         factors: 共同因子 (n_time, n_factors)
         train_end: 训练集结束日期（避免信息泄漏）
         use_train_only: 是否仅使用训练期数据
 
     Returns:
-        np.ndarray: 载荷矩阵或向量
-            - DataFrame输入: (n_obs, n_factors)
-            - Series输入: (n_factors,)
+        np.ndarray: 载荷矩阵 (n_obs, n_factors)
     """
     # 处理训练期截取
     factors_data = factors.copy()
@@ -64,28 +58,6 @@ def estimate_loadings(
 
     n_factors = factors_data.shape[1]
 
-    # 情况1：单个变量（Series）
-    if isinstance(obs_data, pd.Series):
-        valid_idx = ~(obs_data.isna() | factors_data.isna().any(axis=1))
-
-        if valid_idx.sum() < n_factors:
-            raise ValueError(
-                f"有效样本数({valid_idx.sum()}) < 因子数({n_factors})"
-            )
-
-        y_valid = obs_data[valid_idx].values
-        X_valid = factors_data[valid_idx].values
-
-        # 使用sklearn LinearRegression（更快）
-        reg = LinearRegression(fit_intercept=False)
-        reg.fit(X_valid, y_valid)
-
-        r2 = reg.score(X_valid, y_valid)
-        logger.debug(f"单变量载荷估计完成, R² = {r2:.4f}")
-
-        return reg.coef_
-
-    # 情况2：多个变量（DataFrame）
     # 检查全NaN变量
     all_nan_cols = obs_data.columns[obs_data.isna().all()]
     if len(all_nan_cols) > 0:
@@ -272,19 +244,16 @@ def estimate_covariance_matrices(
     return B, Q, R
 
 
-def _ensure_positive_definite(matrix: np.ndarray, epsilon: float = R_MATRIX_MIN_VARIANCE) -> np.ndarray:
-    """确保矩阵正定（完全匹配老代码_calculate_shock_matrix的实现）
+def _ensure_positive_definite(matrix: np.ndarray, epsilon: float = MIN_EIGENVALUE_EPSILON) -> np.ndarray:
+    """确保矩阵正定
 
     Args:
         matrix: 输入矩阵
-        epsilon: 最小特征值（默认为R_MATRIX_MIN_VARIANCE）
+        epsilon: 最小特征值
 
     Returns:
         np.ndarray: 正定矩阵
     """
-    # 不对称化，完全匹配老代码行为
-    # 老代码line 115-121没有对称化步骤
-
     eigenvalues, eigenvectors = np.linalg.eigh(matrix)
     eigenvalues = np.maximum(eigenvalues, epsilon)
 

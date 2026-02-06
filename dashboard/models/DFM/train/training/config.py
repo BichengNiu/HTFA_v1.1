@@ -47,9 +47,6 @@ class TrainingConfig:
     variable_selection_method: str = 'backward'
     target_variable: Optional[str] = None  # 目标变量（后向剔除时不会被移除）
 
-    # DDFM有监督学习配置
-    ddfm_target_variable: Optional[str] = None  # DDFM目标变量名（None=无监督）
-
     # 因子数选择配置
     factor_selection_method: str = 'fixed'  # fixed, cumulative, kaiser
     pca_threshold: float = 0.9  # cumulative方法的阈值
@@ -70,14 +67,12 @@ class TrainingConfig:
     # ========== DDFM专用参数（仅当algorithm='deep_learning'时生效）==========
     # 自编码器结构
     encoder_structure: Tuple[int, ...] = (16, 4)  # 编码器层结构，最后一个数为因子数
-    decoder_structure: Optional[Tuple[int, ...]] = None  # 解码器层结构(None=对称单层线性)
     use_bias: bool = True  # 解码器最后一层是否使用偏置
     batch_norm: bool = True  # 是否使用批量归一化
     activation: str = 'relu'  # 激活函数: 'relu', 'tanh', 'sigmoid'
 
     # 因子动态
     factor_order: int = 2  # 因子AR阶数(1或2)
-    lags_input: int = 0  # 输入滞后期数
 
     # 训练参数
     learning_rate: float = 0.005  # 学习率
@@ -202,11 +197,6 @@ class TrainingConfig:
             if self.learning_rate <= 0 or self.learning_rate > 1:
                 raise ValueError(
                     f"learning_rate必须在(0, 1]范围内，当前值: {self.learning_rate}"
-                )
-            # 验证输入滞后期
-            if self.lags_input < 0:
-                raise ValueError(
-                    f"lags_input必须>=0，当前值: {self.lags_input}"
                 )
             # 验证批量大小
             if self.batch_size <= 0:

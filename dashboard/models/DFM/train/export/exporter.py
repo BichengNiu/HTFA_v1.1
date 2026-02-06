@@ -187,12 +187,7 @@ class TrainingResultExporter:
             raise ValueError("训练结果缺少评估指标(metrics)，无法导出元数据")
 
         # 获取目标变量（返回目标变量RMSE）
-        # DDFM 使用 ddfm_target_variable，经典 DFM 使用 target_variable
-        is_ddfm = (config.algorithm == 'deep_learning')
-        if is_ddfm:
-            target_variable = getattr(config, 'ddfm_target_variable', None)
-        else:
-            target_variable = getattr(config, 'target_variable', None)
+        target_variable = getattr(config, 'target_variable', None)
 
         # 计算训练期指标
         is_rmse, is_mae = self._calculate_period_metrics(

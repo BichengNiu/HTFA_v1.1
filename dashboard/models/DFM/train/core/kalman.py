@@ -10,6 +10,7 @@ import pandas as pd
 from typing import Tuple, Optional
 from dashboard.models.DFM.train.utils.logger import get_logger
 from dashboard.models.DFM.train.core.models import KalmanFilterResult, KalmanSmootherResult
+from dashboard.models.DFM.train.core.validation import validate_matrices
 from dashboard.models.DFM.train.constants import R_MATRIX_MIN_VARIANCE, INNOVATION_COVARIANCE_JITTER
 
 
@@ -75,14 +76,7 @@ class KalmanFilter:
             'A': self.A, 'B': self.B, 'H': self.H,
             'Q': self.Q, 'R': self.R, 'x0': self.x0, 'P0': self.P0
         }
-        for name, mat in matrices_to_check.items():
-            if not np.all(np.isfinite(mat)):
-                nan_count = np.sum(np.isnan(mat))
-                inf_count = np.sum(np.isinf(mat))
-                raise ValueError(
-                    f"Kalman滤波器初始化失败：矩阵{name}包含{nan_count}个NaN和{inf_count}个Inf。"
-                    f"形状: {mat.shape}"
-                )
+        validate_matrices(matrices_to_check, allow_nan=False, allow_inf=False)
 
         n_time = Z.shape[0]
 

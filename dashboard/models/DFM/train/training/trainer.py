@@ -163,10 +163,8 @@ class DFMTrainer:
                     encoder_structure=self.config.encoder_structure,
                     training_start=self.config.training_start,
                     train_end=self.config.train_end,
-                    decoder_structure=self.config.decoder_structure,
                     use_bias=self.config.use_bias,
                     factor_order=self.config.factor_order,
-                    lags_input=self.config.lags_input,
                     batch_norm=self.config.batch_norm,
                     activation=self.config.activation,
                     learning_rate=self.config.learning_rate,
@@ -178,7 +176,6 @@ class DFMTrainer:
                     tolerance=self.config.mcmc_tolerance,
                     display_interval=self.config.display_interval,
                     seed=self.config.ddfm_seed,
-                    target_variable=self.config.ddfm_target_variable,
                     progress_callback=progress_callback
                 )
 

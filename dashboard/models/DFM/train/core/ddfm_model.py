@@ -72,10 +72,8 @@ class DDFMModel:
     def __init__(
         self,
         encoder_structure: Tuple[int, ...] = (16, 4),
-        decoder_structure: Optional[Tuple[int, ...]] = None,
         use_bias: bool = True,
         factor_order: int = 2,
-        lags_input: int = 0,
         batch_norm: bool = True,
         activation: str = 'relu',
         learning_rate: float = 0.005,
@@ -87,7 +85,6 @@ class DDFMModel:
         tolerance: float = 0.0005,
         display_interval: int = 10,
         seed: int = 3,
-        target_variable: Optional[str] = None,
         progress_callback: Optional[Callable[[str, float], None]] = None,
         optimize_cpu: bool = True,
         num_threads: Optional[int] = None
@@ -97,10 +94,8 @@ class DDFMModel:
 
         Args:
             encoder_structure: 编码器层结构，最后一个数为因子数
-            decoder_structure: 解码器层结构(None=对称单层线性)
             use_bias: 解码器最后一层是否使用偏置
             factor_order: 因子AR阶数(1或2)
-            lags_input: 输入滞后期数
             batch_norm: 是否使用批量归一化
             activation: 激活函数
             learning_rate: 学习率
@@ -112,7 +107,6 @@ class DDFMModel:
             tolerance: MCMC收敛阈值
             display_interval: 显示间隔
             seed: 随机种子
-            target_variable: 目标变量名（有监督模式），None表示无监督模式
             progress_callback: 进度回调函数，签名(message: str, progress: float)
             optimize_cpu: 是否启用CPU多核优化
             num_threads: CPU线程数（None=自动检测）
@@ -150,10 +144,8 @@ class DDFMModel:
 
         self.n_factors = encoder_structure[-1]  # 因子数由编码器最后一层决定
         self.encoder_structure = encoder_structure
-        self.decoder_structure = decoder_structure
         self.use_bias = use_bias
         self.factor_order = factor_order
-        self.lags_input = lags_input
         self.batch_norm = batch_norm
         self.activation = activation
         self.learning_rate = learning_rate
@@ -165,8 +157,6 @@ class DDFMModel:
         self.tolerance = tolerance
         self.display_interval = display_interval
         self.seed = seed
-        self.target_variable = target_variable
-        self.target_variable_index = None  # 在fit中确定
 
         # 内部状态
         self.rng = np.random.RandomState(seed)
@@ -200,21 +190,6 @@ class DDFMModel:
         if self.progress_callback:
             self.progress_callback(message, progress)
         logger.info(message)
-
-    def _get_loss_function(self):
-        """
-        根据是否有目标变量返回损失函数
-
-        Returns:
-            损失函数（有监督模式返回mse_target_variable，无监督模式返回mse_missing）
-        """
-        if self.target_variable_index is not None:
-            # 有监督：优化目标变量RMSE
-            from dashboard.models.DFM.train.utils.ddfm_utils import mse_target_variable
-            return mse_target_variable(self.target_variable_index)
-        else:
-            # 无监督：优化平均RMSE
-            return mse_missing
 
     def _batch_inference(self, model, data: np.ndarray, output_shape: Tuple[int, ...]) -> np.ndarray:
         """
@@ -288,25 +263,14 @@ class DDFMModel:
         _, _, self.mean_z, self.sigma_z = standardize_data(train_data, train_data)
         normalized_data = (train_data - self.mean_z) / self.sigma_z
 
-        # 确定目标变量索引（有监督学习模式）
-        if self.target_variable:
-            if self.target_variable in train_data.columns:
-                self.target_variable_index = train_data.columns.get_loc(self.target_variable)
-                self._report_progress(f"有监督模式：目标变量='{self.target_variable}' (索引={self.target_variable_index})", 0.03)
-            else:
-                raise ValueError(f"目标变量 '{self.target_variable}' 不在数据列中")
-        else:
-            self.target_variable_index = None
-            self._report_progress("无监督模式：优化所有变量的平均重构误差", 0.03)
-
         # 记录缺失值位置
-        self.bool_miss = normalized_data.isnull()[self.lags_input:].values
+        self.bool_miss = normalized_data.isnull().values
         self.bool_no_miss = ~self.bool_miss
 
         # 创建数据副本
         self.data_mod_only_miss = normalized_data.copy()
         self.data_mod = normalized_data.copy()
-        self.z_actual = normalized_data[self.lags_input:].values
+        self.z_actual = normalized_data.values
 
         # 构建模型（_build_inputs会设置self.data_tmp）
         self._build_inputs(normalized_data)
@@ -337,15 +301,8 @@ class DDFMModel:
         return self.results_
 
     def _build_inputs(self, data: pd.DataFrame, interpolate: bool = True) -> None:
-        """构建输入数据（包含滞后变量）"""
-        new_dict = {}
-        for col_name in data.columns:
-            new_dict[col_name] = data[col_name]
-            for lag in range(self.lags_input):
-                new_dict[f'{col_name}_lag{lag + 1}'] = data[col_name].shift(lag + 1)
-
-        self.data_tmp = pd.DataFrame(new_dict, index=data.index)
-        self.data_tmp = self.data_tmp[self.lags_input:]
+        """构建输入数据"""
+        self.data_tmp = data.copy()
 
         if interpolate and self.data_tmp.isna().sum().sum() > 0:
             # 使用线性插值替代spline，避免极端外推值
@@ -364,7 +321,7 @@ class DDFMModel:
         layers = self.keras.layers
 
         # 编码器
-        input_dim = int((self.lags_input + 1) * n_variables)
+        input_dim = n_variables
         inputs_ = self.keras.Input(shape=(input_dim,))
 
         if len(self.encoder_structure) > 1:
@@ -392,35 +349,14 @@ class DDFMModel:
 
         self.encoder = self.keras.Model(inputs_, encoded)
 
-        # 解码器
+        # 解码器（线性单层）
         latent_inputs = self.keras.Input(shape=(self.encoder_structure[-1],))
-        if self.decoder_structure:
-            decoded = layers.Dense(
-                self.decoder_structure[0],
-                activation=self.activation,
-                kernel_initializer=self.initializer,
-                bias_initializer='zeros'
-            )(latent_inputs)
-            for j in self.decoder_structure[1:]:
-                decoded = layers.Dense(
-                    j,
-                    activation=self.activation,
-                    kernel_initializer=self.initializer,
-                    bias_initializer='zeros'
-                )(decoded)
-            output_ = layers.Dense(
-                n_variables,
-                bias_initializer='zeros',
-                kernel_initializer=self.initializer,
-                use_bias=self.use_bias
-            )(decoded)
-        else:
-            output_ = layers.Dense(
-                n_variables,
-                bias_initializer='zeros',
-                kernel_initializer=self.initializer,
-                use_bias=self.use_bias
-            )(latent_inputs)
+        output_ = layers.Dense(
+            n_variables,
+            bias_initializer='zeros',
+            kernel_initializer=self.initializer,
+            use_bias=self.use_bias
+        )(latent_inputs)
 
         self.decoder = self.keras.Model(latent_inputs, output_)
 
@@ -453,7 +389,7 @@ class DDFMModel:
         else:
             self._build_inputs(self.data_mod)
             inpt_pre_train = self.data_tmp.dropna().values
-            self.autoencoder.compile(optimizer=self.optimizer, loss=self._get_loss_function())
+            self.autoencoder.compile(optimizer=self.optimizer, loss=mse_missing)
 
         oupt_pre_train = self.data_tmp.dropna()[self.data_mod.columns].values
 
@@ -467,17 +403,14 @@ class DDFMModel:
 
     def _train(self) -> None:
         """MCMC迭代训练"""
-        self.autoencoder.compile(optimizer=self.optimizer, loss=self._get_loss_function())
+        self.autoencoder.compile(optimizer=self.optimizer, loss=mse_missing)
         self._build_inputs(self.data_mod)
 
-        # 缓存初始状态（优化：用于条件性预处理）
-        has_lags = self.lags_input > 0
-
         prediction_iter = self.autoencoder.predict(self.data_tmp.values, verbose=0)
-        # Fix: Use .loc with iloc to avoid chained indexing (which creates a copy)
+        # Fix: Use direct indexing to avoid chained indexing
         miss_indices = np.where(self.bool_miss)
         data_values = self.data_mod_only_miss.values
-        data_values[self.lags_input + miss_indices[0], miss_indices[1]] = prediction_iter[self.bool_miss]
+        data_values[miss_indices[0], miss_indices[1]] = prediction_iter[self.bool_miss]
 
         self.eps = self.data_tmp[self.data_mod.columns].values - prediction_iter
 
@@ -490,18 +423,14 @@ class DDFMModel:
             phi, mu_eps, std_eps = get_idio(self.eps, self.bool_no_miss)
 
             # 减去条件AR特质项均值
-            self.data_mod.values[self.lags_input + 1:] = (
-                self.data_mod_only_miss.values[self.lags_input + 1:] -
+            self.data_mod.values[1:] = (
+                self.data_mod_only_miss.values[1:] -
                 self.eps[:-1, :] @ phi
             )
-            self.data_mod.values[:self.lags_input + 1] = self.data_mod_only_miss.values[:self.lags_input + 1]
+            self.data_mod.values[:1] = self.data_mod_only_miss.values[:1]
 
-            # 条件性预处理优化：仅在有滞后变量时才需要完整重建
-            if has_lags:
-                self._build_inputs(self.data_mod)  # 保留原逻辑，确保正确性
-            else:
-                # 无滞后：直接更新data_tmp的值，避免完整_build_inputs重建
-                self.data_tmp.values[:] = self.data_mod.values[self.lags_input:]
+            # 直接更新data_tmp的值
+            self.data_tmp.values[:] = self.data_mod.values
 
             # 验证协方差矩阵正定性（检查NaN和非正值）
             nan_mask = np.isnan(std_eps)
@@ -587,31 +516,15 @@ class DDFMModel:
             # 更新缺失值 - Fix: Use direct indexing to avoid chained indexing
             miss_indices = np.where(self.bool_miss)
             data_values = self.data_mod_only_miss.values
-            data_values[self.lags_input + miss_indices[0], miss_indices[1]] = prediction_iter[self.bool_miss]
-            self.eps = self.data_mod_only_miss.values[self.lags_input:] - prediction_iter
+            data_values[miss_indices[0], miss_indices[1]] = prediction_iter[self.bool_miss]
+            self.eps = self.data_mod_only_miss.values - prediction_iter
             iter_count += 1
 
         if not_converged:
             self._report_progress(f"未在{self.max_iter}次迭代内收敛，继续处理...", 0.90)
 
-        # 获取最后一层神经元
-        if self.decoder_structure is None:
-            self.last_neurons = self.factors
-        else:
-            # 创建组合模型：encoder -> decoder倒数第二层
-            decoder_for_last = self.keras.Model(
-                self.decoder.input,
-                self.decoder.get_layer(self.decoder.layers[-2].name).output
-            )
-            combined_model = self.keras.Model(
-                self.encoder.input,
-                decoder_for_last(self.encoder(self.encoder.input))
-            )
-            # 使用统一的批量推理方法
-            batch_shape = x_sim_den.shape
-            output_dim = decoder_for_last.output_shape[-1]
-            output_shape = (batch_shape[0], batch_shape[1], output_dim)
-            self.last_neurons = self._batch_inference(combined_model, x_sim_den, output_shape)
+        # 保存最后一层神经元（线性解码器，直接使用因子）
+        self.last_neurons = self.factors
 
     def _build_state_space(self) -> None:
         """从自编码器构建状态空间模型"""
@@ -621,8 +534,7 @@ class DDFMModel:
 
         # 从解码器获取观测方程参数
         bs, H = convert_decoder_to_numpy(
-            self.decoder, self.use_bias, self.factor_order,
-            structure_decoder=self.decoder_structure
+            self.decoder, self.use_bias, self.factor_order
         )
 
         # 修正均值（加入偏置项）

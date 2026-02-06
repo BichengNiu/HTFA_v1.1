@@ -354,14 +354,12 @@ class TrainingConfigBuilder:
         return {
             # 自编码器结构
             'encoder_structure': encoder_structure,
-            'decoder_structure': None,  # 使用默认对称结构
             'use_bias': True,
             'batch_norm': True,  # 默认使用批量归一化
             'activation': self._get_required('dfm_ddfm_activation'),
 
             # 因子动态
             'factor_order': self._get_required('dfm_ddfm_factor_order'),
-            'lags_input': self._get_required('dfm_ddfm_lags_input'),
 
             # 训练参数
             'learning_rate': self._get_required('dfm_ddfm_learning_rate'),
@@ -373,9 +371,6 @@ class TrainingConfigBuilder:
             'mcmc_tolerance': self._get_required('dfm_ddfm_tolerance'),
             'display_interval': 10,
             'ddfm_seed': 3,
-
-            # DDFM有监督学习配置
-            'ddfm_target_variable': self.state.get('dfm_ddfm_target_variable'),
         }
 
     def _parse_encoder_structure(self, structure_str: str) -> tuple:
