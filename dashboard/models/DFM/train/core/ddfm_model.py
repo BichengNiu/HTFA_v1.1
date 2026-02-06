@@ -20,6 +20,8 @@ from dashboard.models.DFM.train.utils.ddfm_utils import (
     get_idio
 )
 from dashboard.models.DFM.train.utils.logger import get_logger
+from dashboard.models.DFM.train.utils.preprocessing import standardize_data
+from dashboard.models.DFM.train.constants import DDFM_MAX_BATCH_SIZE
 
 logger = get_logger(__name__)
 
@@ -66,9 +68,6 @@ class DDFMModel:
     使用神经网络自编码器提取非线性因子，然后构建线性状态空间模型进行滤波和预测。
     训练采用MCMC迭代方法。
     """
-
-    # 类常量：批量推理的内存保护阈值
-    MAX_BATCH_SIZE = 5000
 
     def __init__(
         self,
@@ -232,7 +231,7 @@ class DDFMModel:
         batch_shape = data.shape
         batch_size_total = batch_shape[0] * batch_shape[1]
 
-        if batch_size_total <= self.MAX_BATCH_SIZE:
+        if batch_size_total <= DDFM_MAX_BATCH_SIZE:
             # 小批量：直接处理
             x_batch = np.ascontiguousarray(data.reshape(-1, batch_shape[-1]))
             result_batch = model(x_batch, training=False).numpy()
@@ -240,7 +239,7 @@ class DDFMModel:
         else:
             # 大批量：分块处理避免OOM
             result_list = []
-            chunk_size = max(1, self.MAX_BATCH_SIZE // batch_shape[1])
+            chunk_size = max(1, DDFM_MAX_BATCH_SIZE // batch_shape[1])
             for chunk_start in range(0, batch_shape[0], chunk_size):
                 chunk_end = min(chunk_start + chunk_size, batch_shape[0])
                 chunk = data[chunk_start:chunk_end]
@@ -285,12 +284,8 @@ class DDFMModel:
 
         self._report_progress("数据标准化处理中...", 0.02)
 
-        # 数据标准化
-        self.mean_z = train_data.mean().values
-        self.sigma_z = train_data.std().values
-        # 避免除零
-        self.sigma_z[self.sigma_z == 0] = 1.0
-
+        # 数据标准化（使用共享函数）
+        _, _, self.mean_z, self.sigma_z = standardize_data(train_data, train_data)
         normalized_data = (train_data - self.mean_z) / self.sigma_z
 
         # 确定目标变量索引（有监督学习模式）

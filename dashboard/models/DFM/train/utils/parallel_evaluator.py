@@ -10,6 +10,8 @@ from typing import List, Tuple, Dict, Callable, Optional, Any
 
 import pandas as pd
 
+from dashboard.models.DFM.train.core.models import EvaluationConfig
+
 logger = logging.getLogger(__name__)
 
 
@@ -73,11 +75,14 @@ def evaluate_single_variable_removal(
             if key not in evaluator_config:
                 raise ValueError(f"evaluator_config缺少必需参数: {key}")
 
-        # 调用DFM评估函数
-        score = _evaluate_variable_selection_model(
-            variables=temp_variables,
+        # 构建 EvaluationConfig 并调用评估函数
+        eval_config = EvaluationConfig(
             full_data=full_data,
+            variables=temp_variables,
             k_factors=k_factors,
+            factor_selection_method=evaluator_config['factor_selection_method'],
+            pca_threshold=evaluator_config['pca_threshold'],
+            kaiser_threshold=evaluator_config['kaiser_threshold'],
             training_start=evaluator_config['training_start'],
             train_end=evaluator_config['train_end'],
             max_iterations=evaluator_config['max_iterations'],
@@ -85,11 +90,10 @@ def evaluate_single_variable_removal(
             validation_start=evaluator_config['validation_start'],
             validation_end=evaluator_config['validation_end'],
             training_weight=evaluator_config['training_weight'],
-            factor_selection_method=evaluator_config['factor_selection_method'],
-            pca_threshold=evaluator_config['pca_threshold'],
-            kaiser_threshold=evaluator_config['kaiser_threshold'],
             target_variable=evaluator_config.get('target_variable')
         )
+
+        score = _evaluate_variable_selection_model(eval_config)
 
         return (var, {
             'var': var,

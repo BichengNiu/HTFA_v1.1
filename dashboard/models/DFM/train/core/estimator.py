@@ -59,10 +59,7 @@ def estimate_loadings(
                 f"{factors_data.index.max().strftime('%Y-%m-%d')}"
             )
         factors_data = factors_data.loc[:train_end]
-        if isinstance(obs_data, pd.Series):
-            obs_data = obs_data.loc[:train_end]
-        else:
-            obs_data = obs_data.loc[:train_end]
+        obs_data = obs_data.loc[:train_end]
         logger.debug(f"使用训练期数据估计载荷: {len(factors_data)}个样本")
 
     n_factors = factors_data.shape[1]

@@ -18,6 +18,7 @@ from dashboard.models.DFM.train.core.estimator import (
 )
 from dashboard.models.DFM.train.core.models import DFMModelResult
 from dashboard.models.DFM.train.utils.logger import get_logger
+from dashboard.models.DFM.train.utils.preprocessing import standardize_data
 from dashboard.models.DFM.train.constants import (
     ZERO_STD_REPLACEMENT,
     DEFAULT_AR1_COEFFICIENT,
@@ -168,7 +169,7 @@ class DFMModel:
         train_data: pd.DataFrame,
         full_data: pd.DataFrame = None
     ) -> Tuple[pd.DataFrame, np.ndarray, np.ndarray, np.ndarray]:
-        """数据预处理：中心化和标准化（匹配老代码实现）
+        """数据预处理：中心化和标准化（使用共享函数）
 
         Args:
             train_data: 训练期数据（用于计算均值和标准差）
@@ -177,24 +178,8 @@ class DFMModel:
         Returns:
             Tuple: (中心化数据DataFrame, 标准化数据ndarray, 均值, 标准差)
         """
-        if full_data is None:
-            full_data = train_data
-
-        # 使用训练期数据计算均值和标准差
-        means = train_data.mean(skipna=True).values
-        stds = train_data.std(skipna=True).values
-
-        # 处理零标准差
-        stds = np.where(stds > 0, stds, ZERO_STD_REPLACEMENT)
-
-        # 中心化数据（匹配老代码obs_centered）
-        obs_centered = full_data - means
-
-        # 标准化数据并填充NaN为0（匹配老代码的z）
-        Z_standardized = (obs_centered / stds).fillna(0).values
-
+        obs_centered, Z_standardized, means, stds = standardize_data(train_data, full_data)
         logger.debug(f"数据预处理完成: centered={obs_centered.shape}, standardized={Z_standardized.shape}")
-
         return obs_centered, Z_standardized, means, stds
 
     def _initialize_factors_pca(
@@ -383,19 +368,9 @@ class DFMModel:
             # 注意：B矩阵在循环外初始化，并在M步后更新（匹配老代码）
 
             if iteration == 0:
-                logger.debug(f"[EM第0次] Kalman滤波前, 当前因子标准差: {factors_current.std().values}")
-                logger.debug(f"[EM第0次] obs_centered.shape = {obs_centered.shape}, dtype = {obs_centered.values.dtype}")
-                logger.debug(f"[EM第0次] obs_centered[:3, :3] =\n{obs_centered.values[:3, :3]}")
-                logger.debug(f"[EM第0次] Lambda.shape = {Lambda.shape}, dtype = {Lambda.dtype}")
-                logger.debug(f"[EM第0次] Lambda[:3, :] =\n{Lambda[:3, :]}")
-                logger.debug(f"[EM第0次] B.shape = {B.shape}, dtype = {B.dtype}")
-                logger.debug(f"[EM第0次] B =\n{B}")
-                logger.debug(f"[EM第0次] A.dtype = {A.dtype}, Q.dtype = {Q.dtype}, R.dtype = {R.dtype}")
-                logger.debug(f"[EM第0次] A =\n{A}")
-                logger.debug(f"[EM第0次] Q_diag = {np.diag(Q)}")
-                logger.debug(f"[EM第0次] R_diag[:5] = {np.diag(R)[:5]}")
-                logger.debug(f"[EM第0次] x0 = {x0}, dtype = {x0.dtype}")
-                logger.debug(f"[EM第0次] P0_diag = {np.diag(P0)}, dtype = {P0.dtype}")
+                logger.debug(f"[EM初始化] 因子std={factors_current.std().values}, "
+                            f"Lambda范围=[{Lambda.min():.2f}, {Lambda.max():.2f}], "
+                            f"A={A.flatten()[:4]}, Q_diag={np.diag(Q)}, R_diag[:3]={np.diag(R)[:3]}")
 
             kf = KalmanFilter(A, B, H, Q, R, x0, P0)
             filter_result = kf.filter(Z, U)  # Z:(n_time, n_obs), U:(n_time, n_states) - 匹配train_model
@@ -403,7 +378,7 @@ class DFMModel:
 
             if iteration == 0:
                 factors_after_kf = smoother_result.x_smoothed[:self.n_factors, :].T
-                logger.debug(f"[EM第0次] Kalman滤波后, 因子标准差: {np.std(factors_after_kf, axis=0)}")
+                logger.debug(f"[EM初始化] Kalman滤波后因子std={np.std(factors_after_kf, axis=0)}")
 
             loglik_current = filter_result.loglikelihood
 
@@ -432,14 +407,12 @@ class DFMModel:
             )
 
             if iteration == 0:
-                logger.debug(f"[EM第0次] estimate_loadings返回的Lambda_new[:3, :] =\n{Lambda_new[:3, :]}")
-                logger.debug(f"[EM第0次] Lambda_new中NaN数量: {np.isnan(Lambda_new).sum()}")
+                logger.debug(f"[EM初始化] Lambda_new NaN数量={np.isnan(Lambda_new).sum()}")
 
             # 处理Lambda中的NaN：使用上一次迭代的值
             nan_rows = np.isnan(Lambda_new).any(axis=1)
             if np.any(nan_rows):
-                if iteration == 0:
-                    logger.debug(f"[EM第0次] 发现{nan_rows.sum()}行包含NaN，用初始Lambda替换")
+                logger.debug(f"[EM迭代{iteration}] 发现{nan_rows.sum()}行NaN，用上次Lambda替换")
                 Lambda_new[nan_rows, :] = Lambda[nan_rows, :]
 
             # 最终检查：如果仍有NaN（第一次迭代且初始化失败），抛出错误
@@ -463,14 +436,10 @@ class DFMModel:
                 n_shocks=self.n_factors  # 传入n_shocks以计算B矩阵
             )
 
-            # 调试信息：打印第1、2、30次迭代的Q和R
-            if iteration == 0 or iteration == 1 or iteration == 29:
-                logger.debug(f"[EM第{iteration+1}次迭代] Q矩阵对角线: {np.diag(Q)}")
-                logger.debug(f"[EM第{iteration+1}次迭代] R矩阵对角线前5个: {np.diag(R)[:5]}")
-                logger.debug(f"[EM第{iteration+1}次迭代] Lambda[:3, :] =\n{Lambda[:3, :]}")
-                logger.debug(f"[EM第{iteration+1}次迭代] A =\n{A}")
-                logger.debug(f"[EM第{iteration+1}次迭代] 因子标准差: {factors_df.std().values}")
-                logger.debug(f"[EM第{iteration+1}次迭代] 因子前3行:\n{factors_df.values[:3, :]}")
+            # 调试信息：仅在关键迭代输出简洁摘要
+            if iteration in (0, 1, self.max_iter - 1):
+                logger.debug(f"[EM迭代{iteration+1}] Q_diag={np.diag(Q)}, R_diag[:3]={np.diag(R)[:3]}, "
+                            f"因子std={factors_df.std().values}")
 
             # 更新下一次迭代的初始状态（匹配老代码）
             x0 = smoother_result.x_smoothed[:, 0].copy()  # 第一个时间点的平滑状态
@@ -481,9 +450,7 @@ class DFMModel:
         # 提取平滑因子（n_factors × n_time格式）
         factors_smoothed_final = smoother_result.x_smoothed[:self.n_factors, :]  # (n_factors, n_time)
 
-        # 添加调试信息
-        logger.debug(f"[EM结束] 最终因子标准差: {factors_smoothed_final.std(axis=1)}")
-        logger.debug(f"[EM结束] 最终载荷范围: [{Lambda.min():.2f}, {Lambda.max():.2f}]")
+        logger.debug(f"[EM结束] 因子std={factors_smoothed_final.std(axis=1)}, Lambda范围=[{Lambda.min():.2f}, {Lambda.max():.2f}]")
 
         # 提取先验因子状态（用于新闻分解的expected_value计算）
         # x_predicted形状: (n_time, n_states)，n_states = n_factors * max_lags
