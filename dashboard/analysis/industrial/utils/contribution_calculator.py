@@ -366,6 +366,147 @@ def calculate_all_contributions(
     return result
 
 
+def _convert_profit_to_yoy(df_industry_profit: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series, pd.Index]:
+    """将利润累计值转换为累计同比，并计算总体增速
+
+    Returns:
+        (profit_yoy_df, total_growth, jan_feb_mask)
+    """
+    from dashboard.analysis.industrial.utils import convert_cumulative_to_yoy
+
+    df_industry_profit = df_industry_profit.sort_index()
+
+    profit_yoy_df = pd.DataFrame(index=df_industry_profit.index)
+    for col in df_industry_profit.columns:
+        if '利润总额' in str(col) and '累计值' in str(col):
+            profit_yoy_df[col] = convert_cumulative_to_yoy(df_industry_profit[col])
+
+    jan_feb_mask = profit_yoy_df.index.month.isin([1, 2])
+    profit_yoy_df = profit_yoy_df[~jan_feb_mask]
+
+    total_profit_cumulative = df_industry_profit.sum(axis=1)
+    total_growth = convert_cumulative_to_yoy(total_profit_cumulative)
+    total_growth = total_growth[~jan_feb_mask]
+
+    if profit_yoy_df.empty:
+        raise ValueError("转换累计同比后数据为空")
+
+    return profit_yoy_df, total_growth, jan_feb_mask
+
+
+def _build_profit_to_iva_mapping(profit_yoy_df: pd.DataFrame, df_weights: pd.DataFrame) -> Dict[str, str]:
+    """建立利润列名到工业增加值列名的映射"""
+
+    def normalize_industry_name(name: str) -> str:
+        normalized = name.replace('、', '').replace('，', '').replace('。', '')
+        normalized = normalized.replace('及', '').replace('和', '').replace('的', '')
+        return normalized.replace(' ', '').replace('　', '')
+
+    profit_to_iva_mapping = {}
+
+    for profit_col in profit_yoy_df.columns:
+        if '利润总额' not in str(profit_col):
+            continue
+        parts = str(profit_col).split(':')
+        if len(parts) < 3:
+            continue
+
+        industry_name = parts[2]
+        industry_name_normalized = normalize_industry_name(industry_name)
+        matched = False
+
+        for _, row in df_weights.iterrows():
+            indicator_name = row['指标名称']
+            if pd.notna(indicator_name) and industry_name in str(indicator_name):
+                profit_to_iva_mapping[profit_col] = indicator_name
+                matched = True
+                break
+
+        if not matched:
+            for _, row in df_weights.iterrows():
+                indicator_name = row['指标名称']
+                if pd.notna(indicator_name):
+                    if industry_name_normalized in normalize_industry_name(str(indicator_name)):
+                        profit_to_iva_mapping[profit_col] = indicator_name
+                        matched = True
+                        break
+
+        if not matched:
+            debug_log(f"警告：未找到匹配的权重数据 - {industry_name}", "WARNING")
+
+    debug_log(f"列名映射完成，成功映射 {len(profit_to_iva_mapping)}/{len(profit_yoy_df.columns)} 个行业", "INFO")
+    return profit_to_iva_mapping
+
+
+def _calculate_profit_individual_contributions(
+    profit_yoy_df: pd.DataFrame,
+    profit_cumulative_df: pd.DataFrame
+) -> pd.DataFrame:
+    """计算单个行业的利润拉动率"""
+    individual_contribution_df = pd.DataFrame(index=profit_yoy_df.index)
+    total_profit_by_month = profit_cumulative_df.sum(axis=1)
+
+    for current_date in profit_yoy_df.index:
+        base_date = current_date - pd.DateOffset(months=12)
+
+        # 检查当前日期和基期日期是否都在索引中
+        if (current_date not in profit_cumulative_df.index or
+            base_date not in profit_cumulative_df.index or
+            base_date not in total_profit_by_month.index):
+            debug_log(f"跳过日期 {current_date}：基期 {base_date} 数据不存在", "DEBUG")
+            continue
+
+        total_profit_base = total_profit_by_month.loc[base_date]
+
+        # 避免除以零
+        if total_profit_base == 0 or pd.isna(total_profit_base):
+            debug_log(f"跳过日期 {current_date}：基期总利润为零或缺失", "DEBUG")
+            continue
+
+        for profit_col in profit_yoy_df.columns:
+            if profit_col not in profit_cumulative_df.columns:
+                continue
+
+            try:
+                profit_current = profit_cumulative_df.loc[current_date, profit_col]
+                profit_base = profit_cumulative_df.loc[base_date, profit_col]
+
+                # 检查数据有效性
+                if pd.isna(profit_current) or pd.isna(profit_base):
+                    continue
+
+                contribution = (profit_current - profit_base) / total_profit_base * 100
+                individual_contribution_df.loc[current_date, profit_col] = contribution
+            except Exception as e:
+                debug_log(f"计算 {profit_col} 在 {current_date} 的拉动率时出错: {e}", "WARNING")
+                continue
+
+    return individual_contribution_df
+
+
+def _calculate_profit_stream_contributions(
+    individual_contribution_df: pd.DataFrame,
+    stream_groups: Dict[str, List[str]],
+    profit_to_iva_mapping: Dict[str, str],
+    time_index: pd.DatetimeIndex
+) -> pd.DataFrame:
+    """按上中下游分组汇总利润拉动率"""
+    stream_contribution_df = pd.DataFrame(index=time_index)
+
+    for stream_name, iva_indicators in stream_groups.items():
+        profit_cols_in_group = [
+            profit_col for profit_col, iva_col in profit_to_iva_mapping.items()
+            if iva_col in iva_indicators and profit_col in individual_contribution_df.columns
+        ]
+
+        if profit_cols_in_group:
+            group_contribution = individual_contribution_df[profit_cols_in_group].sum(axis=1)
+            stream_contribution_df[f"上中下游_{stream_name}"] = group_contribution
+            debug_log(f"分组 {stream_name} 拉动率计算完成，包含 {len(profit_cols_in_group)} 个行业", "DEBUG")
+
+    return stream_contribution_df
+
+
 def calculate_profit_contributions(
     df_industry_profit: pd.DataFrame,
     df_weights: pd.DataFrame
@@ -373,201 +514,54 @@ def calculate_profit_contributions(
     """
     计算工业企业利润分行业拉动率（按上中下游分组）
 
-    核心算法：
-    1. 将40个行业的利润累计值转换为累计同比增长率
-    2. 按上中下游分组汇总利润总额，计算各分组当期权重
-    3. 使用前一年同期权重（基期权重）× 当期累计同比 = 拉动率
-    4. 从40个行业加总计算总体增速，验证拉动率总和
-
     Args:
         df_industry_profit: 分行业利润数据（40个行业的利润总额累计值）
-            - 索引：时间（DatetimeIndex）
-            - 列：规模以上工业企业:利润总额:行业名称:累计值
         df_weights: 权重数据（包含上中下游标签）
-            - 列：指标名称, 上中下游, 权重_2012, 权重_2018, 权重_2020
 
     Returns:
         {
             'stream_groups': 上中下游分组拉动率DataFrame,
             'individual': 单个行业拉动率DataFrame,
-            'total_growth': 总体增速Series（从40个行业加总计算）,
+            'total_growth': 总体增速Series,
             'validation': 验证结果字典
         }
     """
     from .weighted_calculation import build_weights_mapping, categorize_indicators
-    from dashboard.analysis.industrial.utils import convert_cumulative_to_yoy
 
     debug_log("开始计算工业企业利润拉动率", "INFO")
 
-    # 步骤1: 确保数据按时间升序排列
-    df_industry_profit = df_industry_profit.sort_index()
+    # 步骤1-2: 转换累计同比 + 计算总体增速
+    profit_yoy_df, total_growth, jan_feb_mask = _convert_profit_to_yoy(df_industry_profit)
 
     debug_log(f"输入数据形状: {df_industry_profit.shape}", "INFO")
-    debug_log(f"日期范围: {df_industry_profit.index.min()} 到 {df_industry_profit.index.max()}", "INFO")
-
-    # 步骤2: 将累计值转换为累计同比增长率
-    profit_yoy_df = pd.DataFrame(index=df_industry_profit.index)
-
-    for col in df_industry_profit.columns:
-        if '利润总额' in str(col) and '累计值' in str(col):
-            yoy_series = convert_cumulative_to_yoy(df_industry_profit[col])
-            profit_yoy_df[col] = yoy_series
-
-    # 过滤掉1月和2月的数据
-    jan_feb_mask = profit_yoy_df.index.month.isin([1, 2])
-    profit_yoy_df = profit_yoy_df[~jan_feb_mask]
-
     debug_log(f"累计同比数据形状（已过滤1-2月）: {profit_yoy_df.shape}", "INFO")
 
-    if profit_yoy_df.empty:
-        raise ValueError("转换累计同比后数据为空")
+    # 步骤3: 建立列名映射
+    profit_to_iva_mapping = _build_profit_to_iva_mapping(profit_yoy_df, df_weights)
 
-    # 步骤2: 从40个行业利润累计值加总，计算总体增速
-    # 加总40个行业的累计值
-    total_profit_cumulative = df_industry_profit.sum(axis=1)
-
-    # 转换为累计同比增长率
-    total_growth = convert_cumulative_to_yoy(total_profit_cumulative)
-
-    # 过滤1-2月
-    total_growth = total_growth[~jan_feb_mask]
-
-    debug_log(f"总体增速计算完成，数据点数: {len(total_growth)}", "INFO")
-
-    # 步骤3: 建立列名映射（利润列名 -> 工业增加值列名）
-    # 示例：规模以上工业企业:利润总额:汽车制造业:累计值
-    #   -> 中国:工业增加值:规模以上工业企业:汽车制造业:当月同比
-    profit_to_iva_mapping = {}
-
-    def normalize_industry_name(name: str) -> str:
-        """标准化行业名称，用于模糊匹配"""
-        # 移除常见的分隔符和助词
-        normalized = name.replace('、', '').replace('，', '').replace('。', '')
-        normalized = normalized.replace('及', '').replace('和', '').replace('的', '')
-        normalized = normalized.replace(' ', '').replace('　', '')
-        return normalized
-
-    for profit_col in profit_yoy_df.columns:
-        if '利润总额' in str(profit_col):
-            # 提取行业名称
-            parts = str(profit_col).split(':')
-            if len(parts) >= 3:
-                industry_name = parts[2]
-                industry_name_normalized = normalize_industry_name(industry_name)
-
-                # 在权重数据中查找匹配的指标名称
-                # 先尝试精确匹配
-                matched = False
-                for _, row in df_weights.iterrows():
-                    indicator_name = row['指标名称']
-                    if pd.notna(indicator_name) and industry_name in str(indicator_name):
-                        profit_to_iva_mapping[profit_col] = indicator_name
-                        matched = True
-                        break
-
-                # 如果精确匹配失败，尝试模糊匹配
-                if not matched:
-                    for _, row in df_weights.iterrows():
-                        indicator_name = row['指标名称']
-                        if pd.notna(indicator_name):
-                            indicator_normalized = normalize_industry_name(str(indicator_name))
-                            if industry_name_normalized in indicator_normalized:
-                                profit_to_iva_mapping[profit_col] = indicator_name
-                                debug_log(
-                                    f"模糊匹配: {industry_name} -> {indicator_name}",
-                                    "DEBUG"
-                                )
-                                matched = True
-                                break
-
-                if not matched:
-                    debug_log(f"警告：未找到匹配的权重数据 - {industry_name}", "WARNING")
-
-    debug_log(f"列名映射完成，成功映射 {len(profit_to_iva_mapping)}/{len(profit_yoy_df.columns)} 个行业", "INFO")
-
-    # 步骤4: 构建权重映射（基于工业增加值列名）
+    # 步骤4: 构建权重映射并分组
     iva_columns = list(profit_to_iva_mapping.values())
     weights_mapping = build_weights_mapping(df_weights, iva_columns)
-
-    # 步骤5: 按上中下游分组
     _, stream_groups, _ = categorize_indicators(weights_mapping)
 
     debug_log(f"上中下游分组: {list(stream_groups.keys())}", "INFO")
 
-    # 步骤6: 计算各分组和单个行业的拉动率
-    # 这里需要使用利润数据本身来计算动态权重，而不是工业增加值权重
-
-    # 先计算利润原始值（用于计算权重）
-    profit_cumulative_df = df_industry_profit.copy()
-    # 过滤1-2月
-    profit_cumulative_df = profit_cumulative_df[~jan_feb_mask]
-
-    # 计算各行业的拉动率
-    # 公式: 拉动率 = (当期利润 - 去年同期利润) / 去年同期总利润 × 100
-    individual_contribution_df = pd.DataFrame(index=profit_yoy_df.index)
-
-    # 计算总利润（注意：这里使用过滤后的profit_cumulative_df）
-    total_profit_by_month = profit_cumulative_df.sum(axis=1)
-
-    # 为每个日期计算拉动率
-    for current_date in profit_yoy_df.index:
-        # 计算去年同期日期
-        base_date = current_date - pd.DateOffset(months=12)
-
-        # 检查去年同期数据是否存在
-        if base_date not in profit_cumulative_df.index or base_date not in total_profit_by_month.index:
-            # 如果去年同期数据不存在，跳过
-            continue
-
-        # 获取去年同期的总利润
-        total_profit_base = total_profit_by_month.loc[base_date]
-
-        # 计算每个行业的拉动率
-        for profit_col in profit_yoy_df.columns:
-            if profit_col not in profit_cumulative_df.columns:
-                continue
-
-            # 当期利润
-            profit_current = profit_cumulative_df.loc[current_date, profit_col]
-
-            # 去年同期利润
-            profit_base = profit_cumulative_df.loc[base_date, profit_col]
-
-            # 拉动率 = (当期利润 - 去年同期利润) / 去年同期总利润 × 100
-            contribution = (profit_current - profit_base) / total_profit_base * 100
-
-            individual_contribution_df.loc[current_date, profit_col] = contribution
+    # 步骤5: 计算单个行业拉动率
+    profit_cumulative_df = df_industry_profit[~jan_feb_mask]
+    individual_contribution_df = _calculate_profit_individual_contributions(
+        profit_yoy_df, profit_cumulative_df
+    )
 
     debug_log(f"单个行业拉动率计算完成，共 {len(individual_contribution_df.columns)} 个行业", "DEBUG")
 
-    # 步骤7: 按上中下游分组汇总拉动率
-    # 保留详细分类（中游机械、中游材料、上游采掘、上游公用、下游消费）
-    stream_contribution_df = pd.DataFrame(index=profit_yoy_df.index)
-
-    for stream_name, iva_indicators in stream_groups.items():
-        # 将工业增加值列名映射回利润列名
-        profit_cols_in_group = [
-            profit_col for profit_col, iva_col in profit_to_iva_mapping.items()
-            if iva_col in iva_indicators and profit_col in individual_contribution_df.columns
-        ]
-
-        if profit_cols_in_group:
-            # 分组拉动率 = 组内各行业拉动率之和
-            group_contribution = individual_contribution_df[profit_cols_in_group].sum(axis=1)
-            column_name = f"上中下游_{stream_name}"
-            stream_contribution_df[column_name] = group_contribution
-
-            debug_log(
-                f"分组 {stream_name} 拉动率计算完成，包含 {len(profit_cols_in_group)} 个行业",
-                "DEBUG"
-            )
-
-    debug_log(
-        f"上中下游分组拉动率计算完成: {list(stream_contribution_df.columns)}",
-        "INFO"
+    # 步骤6: 按上中下游分组汇总
+    stream_contribution_df = _calculate_profit_stream_contributions(
+        individual_contribution_df, stream_groups, profit_to_iva_mapping, profit_yoy_df.index
     )
 
-    # 步骤8: 验证拉动率总和
+    debug_log(f"上中下游分组拉动率计算完成: {list(stream_contribution_df.columns)}", "INFO")
+
+    # 步骤7: 验证
     validation_passed, contribution_sum, difference = validate_contributions(
         individual_contribution_df, total_growth
     )

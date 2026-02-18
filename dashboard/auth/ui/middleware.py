@@ -132,7 +132,7 @@ class AuthMiddleware:
             是否有权限
         """
         try:
-            return self.permission_manager.has_module_access(user, module_name)
+            return self.permission_manager.check_module_access(user, module_name)
         except Exception as e:
             self.logger.error(f"检查权限失败: {e}")
             return False

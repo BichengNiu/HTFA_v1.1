@@ -24,6 +24,38 @@ class StateNamespace:
     CORE = "core"
 
 
+# === 通用命名空间状态管理器 ===
+
+class NamespacedStateManager:
+    """通用命名空间状态管理器，消除重复的状态封装"""
+
+    def __init__(self, namespace: str):
+        self.namespace = namespace
+
+    def get(self, key: str, default: Any = None) -> Any:
+        full_key = f"{self.namespace}.{key}"
+        return st.session_state.get(full_key, default)
+
+    def set(self, key: str, value: Any) -> None:
+        full_key = f"{self.namespace}.{key}"
+        st.session_state[full_key] = value
+
+    def delete(self, key: str) -> None:
+        full_key = f"{self.namespace}.{key}"
+        if full_key in st.session_state:
+            del st.session_state[full_key]
+
+    def has(self, key: str) -> bool:
+        full_key = f"{self.namespace}.{key}"
+        return full_key in st.session_state
+
+    def clear_namespace(self) -> None:
+        prefix = f'{self.namespace}.'
+        keys_to_delete = [k for k in st.session_state.keys() if k.startswith(prefix)]
+        for k in keys_to_delete:
+            del st.session_state[k]
+
+
 # === 基础状态管理接口 ===
 
 def get_state(namespace: str, key: str, default: Any = None) -> Any:

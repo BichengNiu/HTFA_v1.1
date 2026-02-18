@@ -27,6 +27,9 @@ warnings.filterwarnings('ignore', message='.*use_container_width.*')
 
 # Dashboard状态管理使用st.session_state
 
+# 临时启用调试模式用于 E2E 测试
+os.environ['HTFA_DEBUG_MODE'] = 'true'
+
 # 在任何其他导入之前立即抑制 Streamlit 警告
 def _suppress_streamlit_warnings():
     """在模块导入前抑制 Streamlit 警告"""

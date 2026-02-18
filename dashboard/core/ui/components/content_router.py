@@ -7,7 +7,6 @@
 import streamlit as st
 import logging
 from typing import Dict, Any, Optional
-from dashboard.core.ui.utils.tab_detector import TabStateDetector
 from dashboard.explore.ui.univariate_page import render_univariate_analysis_page
 from dashboard.explore.ui.bivariate_page import render_bivariate_analysis_page
 from dashboard.explore.ui.pages import DataExplorationWelcomePage
@@ -62,7 +61,7 @@ def check_user_permission(module_name: str) -> tuple[bool, Optional[str]]:
             return False, f"管理员账户无法访问「{module_name}」模块，仅可访问用户管理"
 
         # 普通用户：使用PermissionManager检查模块访问权限
-        if permission_manager.has_module_access(current_user, module_name):
+        if permission_manager.check_module_access(current_user, module_name):
             logger.debug(f"权限检查通过：用户可以访问模块 {module_name}")
             return True, None
         else:
@@ -354,7 +353,7 @@ def render_model_analysis_content(sub_module: Optional[str]) -> Dict[str, Any]:
 
                 visible_tabs = []
                 for tab_name, permission_code, render_func in all_tabs:
-                    if auth_middleware.permission_manager.has_granular_access(
+                    if auth_middleware.permission_manager.check_granular_access(
                         current_user, "模型分析", "DFM 模型", tab_name
                     ):
                         visible_tabs.append((tab_name, permission_code, render_func))

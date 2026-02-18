@@ -134,7 +134,7 @@ class FileUploaderComponent:
         all_keys = variable_selection_keys + training_state_keys + date_keys
         cleared_count = 0
         for key in all_keys:
-            if self.state.exists(key):
+            if self.state.has(key):
                 self.state.delete(key)
                 cleared_count += 1
 
