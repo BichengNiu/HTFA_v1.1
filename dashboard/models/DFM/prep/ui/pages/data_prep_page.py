@@ -33,6 +33,15 @@ def _set_state(key: str, value):
     prep_state.set(key, value)
 
 
+def _make_cache_key(prefix: str, uploaded_file) -> str:
+    """生成基于文件名和大小的缓存键"""
+    try:
+        file_bytes = uploaded_file.getvalue()
+        return f"{prefix}_{uploaded_file.name}_{len(file_bytes)}"
+    except Exception:
+        return f"{prefix}_none"
+
+
 # ============================================================================
 # 核心功能函数（调用后端API）
 # ============================================================================
@@ -79,11 +88,7 @@ def _render_raw_variable_stats_table(st_obj, uploaded_file):
         return
 
     # 使用缓存
-    try:
-        file_bytes = uploaded_file.getvalue()
-        cache_key = f"var_stats_{uploaded_file.name}_{len(file_bytes)}"
-    except:
-        cache_key = "var_stats_none"
+    cache_key = _make_cache_key("var_stats", uploaded_file)
 
     cached_stats = _get_state(cache_key)
     if cached_stats is not None:
@@ -168,11 +173,7 @@ def _render_date_detection(st_obj, uploaded_file):
         return None, None, date(1900, 1, 1), date(2050, 12, 31)
 
     # 使用文件名和大小作为缓存键
-    try:
-        file_bytes = uploaded_file.getvalue()
-        cache_key = f"date_range_{uploaded_file.name}_{len(file_bytes)}"
-    except:
-        cache_key = "date_range_none"
+    cache_key = _make_cache_key("date_range", uploaded_file)
 
     # 检查缓存是否有效
     cached_result = _get_state(cache_key)

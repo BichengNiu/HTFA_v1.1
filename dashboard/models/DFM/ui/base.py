@@ -53,6 +53,20 @@ class DFMComponent(UIComponent):
         pass
 
 
+def create_dfm_state_helpers(namespace: str):
+    """创建带命名空间的DFM状态辅助函数"""
+    import streamlit as st
+
+    def get_state(key, default=None):
+        return st.session_state.get(f'{namespace}.{key}', default)
+
+    def set_state(key, value):
+        st.session_state[f'{namespace}.{key}'] = value
+
+    return get_state, set_state
+
+
 __all__ = [
-    'DFMComponent'
+    'DFMComponent',
+    'create_dfm_state_helpers',
 ]

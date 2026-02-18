@@ -9,7 +9,6 @@ DFM影响分解API接口
 import os
 import tempfile
 import pandas as pd
-import numpy as np
 import logging
 from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime
@@ -27,6 +26,71 @@ from .utils.constants import NORMALIZATION_ZERO_THRESHOLD
 from .utils.helpers import get_month_date_range
 
 logger = logging.getLogger(__name__)
+
+# 贡献分解CSV说明文档头部
+_CSV_HEADER_DOCS = """# 贡献分解CSV说明文档
+#
+# 列名含义与计算方法:
+#
+# 1. rank - 排名
+#    说明: 按total_impact的绝对值从大到小排序
+#    计算: 根据|total_impact|降序排列后的序号
+#
+# 2. variable_name - 变量名称
+#    说明: 经济指标的名称
+#    示例: 规模以上工业增加值, CPI, 社会消费品零售总额
+#
+# 3. total_impact - 总影响值
+#    说明: 该变量在分析期内所有数据发布对目标变量预测值的累计影响
+#    计算: sum(各次发布的impact_value)
+#    公式: Δy_total = Σ([λ_y' × K_t[:, i] × v_i,t] × σ_y)
+#    单位: 与目标变量相同（通常为百分点），已反标准化到原始尺度
+#
+# 4. avg_impact - 平均影响值
+#    说明: 该变量每次数据发布的平均影响
+#    计算: total_impact / release_count
+#    用途: 衡量单次数据发布的平均贡献强度
+#
+# 5. contribution_pct - 贡献百分比
+#    说明: 该变量对预测变动的相对贡献度
+#    计算: sum(|该变量各次影响值|) / sum(|所有变量所有影响值|) × 100
+#    范围: 0-100%, 所有变量的贡献百分比之和为100%
+#    解释: 该值越大，说明该变量对预测变动的解释力越强
+#
+# 6. release_count - 发布次数
+#    说明: 该变量在分析期内的数据发布次数
+#    计算: 统计该变量有非缺失观测值的时间点数量
+#
+# 7. positive_count - 正向影响次数
+#    说明: 该变量的数据发布中，使预测值上升的次数
+#    计算: 统计impact_value > 0的发布次数
+#
+# 8. negative_count - 负向影响次数
+#    说明: 该变量的数据发布中，使预测值下降的次数
+#    计算: 统计impact_value < 0的发布次数
+#
+# 核心公式详解:
+# 影响值 = [λ_y' × K_t[:, i] × v_i,t] × σ_y
+# 三步计算过程:
+#   1. Δf_t = K_t[:, i] × v_i,t      (因子状态增量)
+#   2. Δy_标准化 = λ_y' × Δf_t       (标准化尺度影响)
+#   3. Δy_原始 = Δy_标准化 × σ_y      (反标准化到原始尺度)
+# 其中:
+#   - λ_y: 目标变量的因子载荷向量 (n_factors,)
+#   - K_t: 第t期卡尔曼增益矩阵 (n_factors, n_variables)
+#   - v_i,t: 变量i在第t期的新息（观测值 - 先验预测）
+#   - σ_y: 目标变量的标准差（用于反标准化）
+#   - Δy: 变量i的数据更新对目标变量的影响（原始尺度，标量）
+#
+# 使用示例:
+# 如果GDP增长率预测从5.0%变为5.2%，某变量的total_impact=+0.15，contribution_pct=75%
+# 说明: 该变量使预测值提升了0.15个百分点，解释了总变动（0.2个百分点）的75%
+#
+# 生成时间: {timestamp}
+#
+# ========== 数据开始 ==========
+#
+"""
 
 
 def execute_news_analysis(
@@ -463,68 +527,7 @@ def _generate_analysis_results(
         # 创建带说明的CSV
         with open(contributions_csv_path, 'w', encoding='utf-8-sig', newline='') as f:
             # 写入说明头部
-            f.write('# 贡献分解CSV说明文档\n')
-            f.write('# \n')
-            f.write('# 列名含义与计算方法:\n')
-            f.write('# \n')
-            f.write('# 1. rank - 排名\n')
-            f.write('#    说明: 按total_impact的绝对值从大到小排序\n')
-            f.write('#    计算: 根据|total_impact|降序排列后的序号\n')
-            f.write('# \n')
-            f.write('# 2. variable_name - 变量名称\n')
-            f.write('#    说明: 经济指标的名称\n')
-            f.write('#    示例: 规模以上工业增加值, CPI, 社会消费品零售总额\n')
-            f.write('# \n')
-            f.write('# 3. total_impact - 总影响值\n')
-            f.write('#    说明: 该变量在分析期内所有数据发布对目标变量预测值的累计影响\n')
-            f.write('#    计算: sum(各次发布的impact_value)\n')
-            f.write('#    公式: Δy_total = Σ([λ_y\' × K_t[:, i] × v_i,t] × σ_y)\n')
-            f.write('#    单位: 与目标变量相同（通常为百分点），已反标准化到原始尺度\n')
-            f.write('# \n')
-            f.write('# 4. avg_impact - 平均影响值\n')
-            f.write('#    说明: 该变量每次数据发布的平均影响\n')
-            f.write('#    计算: total_impact / release_count\n')
-            f.write('#    用途: 衡量单次数据发布的平均贡献强度\n')
-            f.write('# \n')
-            f.write('# 5. contribution_pct - 贡献百分比\n')
-            f.write('#    说明: 该变量对预测变动的相对贡献度\n')
-            f.write('#    计算: sum(|该变量各次影响值|) / sum(|所有变量所有影响值|) × 100\n')
-            f.write('#    范围: 0-100%, 所有变量的贡献百分比之和为100%\n')
-            f.write('#    解释: 该值越大，说明该变量对预测变动的解释力越强\n')
-            f.write('# \n')
-            f.write('# 6. release_count - 发布次数\n')
-            f.write('#    说明: 该变量在分析期内的数据发布次数\n')
-            f.write('#    计算: 统计该变量有非缺失观测值的时间点数量\n')
-            f.write('# \n')
-            f.write('# 7. positive_count - 正向影响次数\n')
-            f.write('#    说明: 该变量的数据发布中，使预测值上升的次数\n')
-            f.write('#    计算: 统计impact_value > 0的发布次数\n')
-            f.write('# \n')
-            f.write('# 8. negative_count - 负向影响次数\n')
-            f.write('#    说明: 该变量的数据发布中，使预测值下降的次数\n')
-            f.write('#    计算: 统计impact_value < 0的发布次数\n')
-            f.write('# \n')
-            f.write('# 核心公式详解:\n')
-            f.write('# 影响值 = [λ_y\' × K_t[:, i] × v_i,t] × σ_y\n')
-            f.write('# 三步计算过程:\n')
-            f.write('#   1. Δf_t = K_t[:, i] × v_i,t      (因子状态增量)\n')
-            f.write('#   2. Δy_标准化 = λ_y\' × Δf_t       (标准化尺度影响)\n')
-            f.write('#   3. Δy_原始 = Δy_标准化 × σ_y      (反标准化到原始尺度)\n')
-            f.write('# 其中:\n')
-            f.write('#   - λ_y: 目标变量的因子载荷向量 (n_factors,)\n')
-            f.write('#   - K_t: 第t期卡尔曼增益矩阵 (n_factors, n_variables)\n')
-            f.write('#   - v_i,t: 变量i在第t期的新息（观测值 - 先验预测）\n')
-            f.write('#   - σ_y: 目标变量的标准差（用于反标准化）\n')
-            f.write('#   - Δy: 变量i的数据更新对目标变量的影响（原始尺度，标量）\n')
-            f.write('# \n')
-            f.write('# 使用示例:\n')
-            f.write('# 如果GDP增长率预测从5.0%变为5.2%，某变量的total_impact=+0.15，contribution_pct=75%\n')
-            f.write('# 说明: 该变量使预测值提升了0.15个百分点，解释了总变动（0.2个百分点）的75%\n')
-            f.write('# \n')
-            f.write('# 生成时间: {}\n'.format(datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
-            f.write('# \n')
-            f.write('# ========== 数据开始 ==========\n')
-            f.write('# \n')
+            f.write(_CSV_HEADER_DOCS.format(timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
 
             # 写入实际数据
             contributions_df.to_csv(f, index=False)
