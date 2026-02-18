@@ -82,6 +82,43 @@ class VariableTransformer:
         """
         return self.DEFAULT_RECOMMENDATIONS.get(nature, ('none', 'none'))
 
+    def _preprocess_values(self, series: pd.Series, method: str, mask: pd.Series, label: str, adjust_value) -> pd.Series:
+        """
+        通用值预处理
+
+        Args:
+            series: 输入序列
+            method: 处理方法 ('none', 'missing', 'adjust')
+            mask: 需要处理的值的布尔掩码
+            label: 日志标签（如 '0值'、'负值'）
+            adjust_value: adjust 模式下的替换值或替换函数
+
+        Returns:
+            处理后的序列
+        """
+        if method == 'none':
+            return series.copy()
+
+        var_name = series.name if series.name else "未命名"
+        result = series.copy()
+        count = mask.sum()
+
+        if count == 0:
+            return result
+
+        if method == 'missing':
+            result[mask] = np.nan
+            self.logger.info(f"变量 '{var_name}' 将 {count} 个{label}设为缺失值")
+        elif method == 'adjust':
+            if callable(adjust_value):
+                replacement = adjust_value(result[mask])
+            else:
+                replacement = adjust_value
+            result[mask] = replacement
+            self.logger.info(f"变量 '{var_name}' 将 {count} 个{label}调正为{replacement if not callable(adjust_value) else '计算值'}")
+
+        return result
+
     def preprocess_zeros(self, series: pd.Series, method: str) -> pd.Series:
         """
         0值预处理
@@ -93,25 +130,7 @@ class VariableTransformer:
         Returns:
             处理后的序列
         """
-        if method == 'none':
-            return series.copy()
-
-        var_name = series.name if series.name else "未命名"
-        result = series.copy()
-        zero_mask = result == 0
-        zero_count = zero_mask.sum()
-
-        if zero_count == 0:
-            return result
-
-        if method == 'missing':
-            result[zero_mask] = np.nan
-            self.logger.info(f"变量 '{var_name}' 将 {zero_count} 个0值设为缺失值")
-        elif method == 'adjust':
-            result[zero_mask] = 1
-            self.logger.info(f"变量 '{var_name}' 将 {zero_count} 个0值调正为1")
-
-        return result
+        return self._preprocess_values(series, method, series == 0, '0值', 1)
 
     def preprocess_negatives(self, series: pd.Series, method: str) -> pd.Series:
         """
@@ -124,28 +143,11 @@ class VariableTransformer:
         Returns:
             处理后的序列
         """
-        if method == 'none':
-            return series.copy()
-
-        var_name = series.name if series.name else "未命名"
-        result = series.copy()
-        negative_mask = result < 0
-        negative_count = negative_mask.sum()
-
-        if negative_count == 0:
-            return result
-
-        if method == 'missing':
-            result[negative_mask] = np.nan
-            self.logger.info(f"变量 '{var_name}' 将 {negative_count} 个负值设为缺失值")
-        elif method == 'adjust':
-            # 将负值调正：加上最小值的绝对值再加1
-            min_val = result[negative_mask].min()
-            adjustment = abs(min_val) + 1
-            result[negative_mask] = result[negative_mask] + adjustment
-            self.logger.info(f"变量 '{var_name}' 将 {negative_count} 个负值调正（+{adjustment:.4f}）")
-
-        return result
+        negative_mask = series < 0
+        def _adjust_negatives(vals):
+            min_val = vals.min()
+            return vals + abs(min_val) + 1
+        return self._preprocess_values(series, method, negative_mask, '负值', _adjust_negatives)
 
     def apply_log(self, series: pd.Series) -> pd.Series:
         """

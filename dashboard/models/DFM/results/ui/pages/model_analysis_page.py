@@ -15,8 +15,6 @@ import joblib
 import pickle
 from datetime import datetime
 from typing import Optional, Dict, Any
-from openpyxl import Workbook
-from openpyxl.utils.dataframe import dataframe_to_rows
 
 
 def is_valid_file_object(file_obj) -> bool:
@@ -37,16 +35,8 @@ def is_valid_file_object(file_obj) -> bool:
             getattr(file_obj, 'name', '未知文件') != '未知文件')
 
 
-def get_dfm_state(key, default=None):
-    """获取DFM状态值（完全解耦，仅从model_analysis命名空间读取）"""
-    full_key = f'model_analysis.{key}'
-    return st.session_state.get(full_key, default)
-
-
-def set_dfm_state(key, value):
-    """设置DFM状态值"""
-    full_key = f'model_analysis.{key}'
-    st.session_state[full_key] = value
+from dashboard.models.DFM.ui.base import create_dfm_state_helpers
+get_dfm_state, set_dfm_state = create_dfm_state_helpers('model_analysis')
 
 # Import backend functions
 from dashboard.models.DFM.results.dfm_backend import (

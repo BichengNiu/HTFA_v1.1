@@ -15,16 +15,8 @@ from typing import Dict, Any
 from dashboard.models.DFM.decomp import execute_news_analysis
 
 
-def get_dfm_state(key, default=None):
-    """获取DFM状态值"""
-    full_key = f'news_analysis.{key}'
-    return st.session_state.get(full_key, default)
-
-
-def set_dfm_state(key, value):
-    """设置DFM状态值"""
-    full_key = f'news_analysis.{key}'
-    st.session_state[full_key] = value
+from dashboard.models.DFM.ui.base import create_dfm_state_helpers
+get_dfm_state, set_dfm_state = create_dfm_state_helpers('news_analysis')
 
 
 def render_dfm_news_analysis_page(st_module: Any) -> Dict[str, Any]:

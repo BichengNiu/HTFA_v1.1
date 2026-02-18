@@ -93,35 +93,3 @@ class DataFormatError(DecompError):
         return " | ".join(parts)
 
 
-class VisualizationError(DecompError):
-    """可视化生成异常"""
-
-    def __init__(self, message: str, plot_type: Optional[str] = None, data_size: Optional[int] = None):
-        super().__init__(message)
-        self.plot_type = plot_type
-        self.data_size = data_size
-
-    def __str__(self) -> str:
-        parts = [self.message]
-        if self.plot_type:
-            parts.append(f"图表类型: {self.plot_type}")
-        if self.data_size:
-            parts.append(f"数据大小: {self.data_size}")
-        return " | ".join(parts)
-
-
-class ConfigurationError(DecompError):
-    """配置错误异常"""
-
-    def __init__(self, message: str, config_key: Optional[str] = None, config_value: Optional[Any] = None):
-        super().__init__(message)
-        self.config_key = config_key
-        self.config_value = config_value
-
-    def __str__(self) -> str:
-        parts = [self.message]
-        if self.config_key:
-            parts.append(f"配置项: {self.config_key}")
-        if self.config_value is not None:
-            parts.append(f"配置值: {self.config_value}")
-        return " | ".join(parts)
