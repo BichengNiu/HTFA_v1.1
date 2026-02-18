@@ -38,12 +38,6 @@ class ReplacementRule:
     # 替换目标
     replace_with: Union[float, Literal['nan']] = 'nan'
 
-    # 规则元数据（用于保存/复用）
-    rule_name: Optional[str] = None  # 规则名称
-    rule_description: Optional[str] = None  # 规则描述
-    created_at: Optional[str] = None  # 创建时间
-    last_used: Optional[str] = None  # 最后使用时间
-
     def to_dict(self) -> dict:
         """转换为可序列化的字典"""
         d = asdict(self)
@@ -202,16 +196,6 @@ class ValueReplacer:
             self.data.loc[mask, rule.variable] = rule.replace_with
 
         return result
-
-    def undo(self, result: ReplacementResult) -> None:
-        """
-        撤销替换操作
-
-        Args:
-            result: 之前apply返回的ReplacementResult对象
-        """
-        for idx, orig_val in zip(result.affected_indices, result.original_values):
-            self.data.loc[idx, result.variable] = orig_val
 
     def _format_rule_description(self, rule: ReplacementRule) -> str:
         """

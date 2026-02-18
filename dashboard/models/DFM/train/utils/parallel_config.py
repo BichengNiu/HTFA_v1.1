@@ -6,11 +6,8 @@
 """
 
 import os
-from typing import Optional, Callable
 from dataclasses import dataclass
 import logging
-import threading
-import queue
 
 logger = logging.getLogger(__name__)
 
@@ -110,109 +107,7 @@ def get_cpu_count() -> int:
     return count
 
 
-def create_default_parallel_config(
-    enabled: bool = False,
-    n_jobs: int = -1,
-    min_variables: int = 5
-) -> ParallelConfig:
-    """
-    创建默认的并行配置
-
-    Args:
-        enabled: 是否启用并行
-        n_jobs: 并行任务数（-1=所有核心）
-        min_variables: 启用并行的最小变量数
-
-    Returns:
-        ParallelConfig对象
-    """
-    return ParallelConfig(
-        enabled=enabled,
-        n_jobs=n_jobs,
-        backend='loky',  # 默认使用loky（更稳定）
-        verbose=0,
-        min_variables_for_parallel=min_variables
-    )
-
-
-class ThreadSafeProgressCollector:
-    """
-    线程安全的进度消息收集器
-
-    用于在并行环境中收集进度消息，并通过单一回调函数输出
-    """
-
-    def __init__(self, progress_callback: Optional[Callable[[str], None]] = None):
-        """
-        初始化收集器
-
-        Args:
-            progress_callback: 进度回调函数
-        """
-        self.progress_callback = progress_callback
-        self.message_queue = queue.Queue()
-        self.lock = threading.Lock()
-        self._stop_flag = False
-        self._consumer_thread = None
-
-        # 如果提供了回调，启动消费者线程
-        if progress_callback:
-            self._start_consumer()
-
-    def _start_consumer(self):
-        """启动消费者线程"""
-        def consumer():
-            while not self._stop_flag:
-                try:
-                    msg = self.message_queue.get(timeout=0.1)
-                    if msg is not None and self.progress_callback:
-                        self.progress_callback(msg)
-                except queue.Empty:
-                    continue
-
-        self._consumer_thread = threading.Thread(target=consumer, daemon=True)
-        self._consumer_thread.start()
-
-    def collect(self, message: str):
-        """
-        收集一条进度消息
-
-        Args:
-            message: 进度消息
-        """
-        if self.progress_callback:
-            self.message_queue.put(message)
-
-    def flush(self):
-        """刷新所有待处理的消息"""
-        while not self.message_queue.empty():
-            try:
-                msg = self.message_queue.get_nowait()
-                if msg is not None and self.progress_callback:
-                    self.progress_callback(msg)
-            except queue.Empty:
-                break
-
-    def stop(self):
-        """停止收集器"""
-        self._stop_flag = True
-        self.flush()
-        if self._consumer_thread:
-            self._consumer_thread.join(timeout=1.0)
-
-    def __enter__(self):
-        """上下文管理器入口"""
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """上下文管理器出口"""
-        self.stop()
-        return False
-
-
 __all__ = [
     'ParallelConfig',
     'get_cpu_count',
-    'create_default_parallel_config',
-    'ThreadSafeProgressCollector'
 ]

@@ -175,7 +175,8 @@ def clean_dataframe(
     remove_unnamed: bool = True,
     remove_all_nan_cols: bool = True,
     remove_all_nan_rows: bool = True,
-    log_prefix: str = ""
+    log_prefix: str = "",
+    cleaner: DataCleaner = None
 ) -> Tuple[pd.DataFrame, List[Dict]]:
     """
     一站式数据清理函数
@@ -188,11 +189,12 @@ def clean_dataframe(
         remove_all_nan_cols: 是否移除全NaN列
         remove_all_nan_rows: 是否移除全NaN行
         log_prefix: 日志前缀
+        cleaner: 可选的DataCleaner实例，传入可复用已有实例
 
     Returns:
         Tuple[pd.DataFrame, List[Dict]]: (清理后的DataFrame, 移除变量日志)
     """
-    cleaner = DataCleaner()
+    cleaner = cleaner or DataCleaner()
     result_df = df.copy()
     
     if remove_zeros:

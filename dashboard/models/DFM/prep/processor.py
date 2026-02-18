@@ -547,7 +547,8 @@ class DataPreparationProcessor:
             remove_zeros=False,
             remove_all_nan_cols=True,
             remove_all_nan_rows=False,
-            log_prefix="[最终清理] "
+            log_prefix="[最终清理] ",
+            cleaner=self.data_cleaner
         )
         self.removal_log.extend(clean_log)
 
