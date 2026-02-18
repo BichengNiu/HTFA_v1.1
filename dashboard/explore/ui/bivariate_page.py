@@ -38,7 +38,7 @@ def render_bivariate_analysis_page():
 
         visible_tabs = []
         for tab_name, permission_code in all_tabs_info:
-            if auth_middleware.permission_manager.has_granular_access(
+            if auth_middleware.permission_manager.check_granular_access(
                 current_user, "数据探索", "时序关系", tab_name
             ):
                 visible_tabs.append((tab_name, permission_code))

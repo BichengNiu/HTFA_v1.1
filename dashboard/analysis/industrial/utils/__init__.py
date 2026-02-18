@@ -56,7 +56,9 @@ from dashboard.analysis.industrial.utils.chart_creator_unified import (
     create_mixed_chart,
     clean_variable_name,
     get_date_range_from_data,
-    create_line_trace
+    create_line_trace,
+    TimeSeriesChartConfig,
+    MixedChartConfig
 )
 from dashboard.analysis.industrial.utils.fragment_components import (
     render_time_range_selector,

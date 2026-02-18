@@ -179,7 +179,7 @@ def render_industrial_analysis(st_obj):
 
         visible_tabs = []
         for tab_name, permission_code, render_func in all_tabs:
-            if auth_middleware.permission_manager.has_granular_access(
+            if auth_middleware.permission_manager.check_granular_access(
                 current_user, "监测分析", "工业", tab_name
             ):
                 visible_tabs.append((tab_name, permission_code, render_func))

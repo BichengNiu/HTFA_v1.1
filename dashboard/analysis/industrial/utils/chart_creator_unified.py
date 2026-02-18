@@ -9,6 +9,7 @@ Unified Chart Creator Utility
 import pandas as pd
 import plotly.graph_objects as go
 from typing import List, Optional, Dict, Callable
+from dataclasses import dataclass, field
 import logging
 
 from dashboard.analysis.industrial.utils.time_filter import filter_data_by_time_range
@@ -23,6 +24,35 @@ from dashboard.analysis.industrial.utils.chart_config import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TimeSeriesChartConfig:
+    """时间序列图表配置"""
+    title: str = ""
+    time_range: str = "全部"
+    custom_start_date: Optional[str] = None
+    custom_end_date: Optional[str] = None
+    var_name_mapping: Optional[Dict[str, str]] = None
+    y_axis_title: str = ""
+    height: int = 500
+    bottom_margin: int = 180
+    sort_variables: bool = False
+    sort_key_func: Optional[Callable] = None
+
+
+@dataclass
+class MixedChartConfig:
+    """混合图表配置"""
+    title: str = ""
+    time_range: str = "全部"
+    custom_start_date: Optional[str] = None
+    custom_end_date: Optional[str] = None
+    var_name_mapping: Optional[Dict[str, str]] = None
+    y_axis_title: str = ""
+    height: int = 600
+    bottom_margin: int = 120
+    barmode: str = 'relative'
 
 
 def clean_variable_name(var: str) -> str:
@@ -141,32 +171,37 @@ def create_time_series_chart(
     height: int = 500,
     bottom_margin: int = 180,
     sort_variables: bool = False,
-    sort_key_func: Optional[Callable] = None
+    sort_key_func: Optional[Callable] = None,
+    config: Optional[TimeSeriesChartConfig] = None
 ) -> go.Figure:
     """
     创建统一的时间序列图表
 
-    这个函数统一了以下重复代码：
-    - macro_operations.py: create_single_axis_chart (173行)
-    - macro_operations.py: create_overall_industrial_chart (207行)
+    支持两种调用方式：
+    1. 传统参数方式（向后兼容）
+    2. config 对象方式（推荐）
 
     Args:
         df: 数据DataFrame，索引为时间
         variables: 要绘制的变量列表
-        title: 图表标题（默认为空）
-        time_range: 时间范围 ("1年", "3年", "5年", "全部", "自定义")
-        custom_start_date: 自定义开始日期 (YYYY-MM)
-        custom_end_date: 自定义结束日期 (YYYY-MM)
-        var_name_mapping: 变量名映射字典 {原始名: 显示名}
-        y_axis_title: Y轴标题
-        height: 图表高度
-        bottom_margin: 底部边距（用于图例）
-        sort_variables: 是否对变量排序
-        sort_key_func: 自定义排序函数
+        config: TimeSeriesChartConfig 配置对象（优先级高于单独参数）
+        其余参数见 TimeSeriesChartConfig
 
     Returns:
         Plotly Figure对象
     """
+    # 如果传入 config，用 config 的值覆盖默认参数
+    if config is not None:
+        title = config.title
+        time_range = config.time_range
+        custom_start_date = config.custom_start_date
+        custom_end_date = config.custom_end_date
+        var_name_mapping = config.var_name_mapping
+        y_axis_title = config.y_axis_title
+        height = config.height
+        bottom_margin = config.bottom_margin
+        sort_variables = config.sort_variables
+        sort_key_func = config.sort_key_func
     # 检查输入
     if df.empty or not variables:
         logger.warning("数据为空或变量列表为空")
@@ -274,30 +309,36 @@ def create_mixed_chart(
     y_axis_title: str = "",
     height: int = 600,
     bottom_margin: int = 120,
-    barmode: str = 'relative'
+    barmode: str = 'relative',
+    config: Optional[MixedChartConfig] = None
 ) -> go.Figure:
     """
     创建混合图表（线图 + 条形图）
 
-    用于企业经营分析中的混合图表
+    支持两种调用方式：
+    1. 传统参数方式（向后兼容）
+    2. config 对象方式（推荐）
 
     Args:
         df: 数据DataFrame
         line_variables: 线图变量列表
         bar_variables: 条形图变量列表
-        title: 图表标题
-        time_range: 时间范围
-        custom_start_date: 自定义开始日期
-        custom_end_date: 自定义结束日期
-        var_name_mapping: 变量名映射
-        y_axis_title: Y轴标题
-        height: 图表高度
-        bottom_margin: 底部边距
-        barmode: 条形图模式 ('relative', 'stack', 'group')
+        config: MixedChartConfig 配置对象（优先级高于单独参数）
+        其余参数见 MixedChartConfig
 
     Returns:
         Plotly Figure对象
     """
+    if config is not None:
+        title = config.title
+        time_range = config.time_range
+        custom_start_date = config.custom_start_date
+        custom_end_date = config.custom_end_date
+        var_name_mapping = config.var_name_mapping
+        y_axis_title = config.y_axis_title
+        height = config.height
+        bottom_margin = config.bottom_margin
+        barmode = config.barmode
     # 检查输入
     if df.empty:
         return go.Figure()

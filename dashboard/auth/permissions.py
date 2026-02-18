@@ -91,13 +91,13 @@ class PermissionManager:
         self.db = AuthDatabase(db_path)
         self.logger = logging.getLogger(__name__)
     
-    def has_permission(self, user: User, permission: str) -> bool:
+    def check_raw_permission(self, user: User, permission: str) -> bool:
         """
-        检查用户是否具有指定权限
+        检查用户是否具有指定的原始权限码
 
         Args:
             user: 用户对象
-            permission: 权限名称
+            permission: 权限码
 
         Returns:
             是否具有权限
@@ -106,10 +106,10 @@ class PermissionManager:
             return False
 
         return permission in user.permissions
-    
-    def has_module_access(self, user: User, module_name: str) -> bool:
+
+    def check_module_access(self, user: User, module_name: str) -> bool:
         """
-        检查用户是否可以访问指定模块
+        检查用户是否可以访问指定模块（模块级检查）
 
         Args:
             user: 用户对象
@@ -123,8 +123,8 @@ class PermissionManager:
         if not required_permissions:
             return True
 
-        return any(self.has_permission(user, p) for p in required_permissions)
-    
+        return any(self.check_raw_permission(user, p) for p in required_permissions)
+
     def get_accessible_modules(self, user: User) -> List[str]:
         """
         获取用户可访问的模块列表
@@ -135,7 +135,7 @@ class PermissionManager:
         Returns:
             可访问的模块名称列表
         """
-        return [m for m in PERMISSION_MODULE_MAP.keys() if self.has_module_access(user, m)]
+        return [m for m in PERMISSION_MODULE_MAP.keys() if self.check_module_access(user, m)]
 
     def is_admin(self, user: User) -> bool:
         """
@@ -147,7 +147,7 @@ class PermissionManager:
         Returns:
             是否为管理员
         """
-        return self.has_permission(user, "user_management")
+        return self.check_raw_permission(user, "user_management")
 
     def filter_accessible_modules(self, user: User, modules: Dict) -> Dict:
         """
@@ -163,13 +163,13 @@ class PermissionManager:
         return {
             main_module: sub_modules
             for main_module, sub_modules in modules.items()
-            if self.has_module_access(user, main_module)
+            if self.check_module_access(user, main_module)
         }
 
-    def has_granular_access(self, user: User, main_module: str,
+    def check_granular_access(self, user: User, main_module: str,
                            sub_module: str = None, tab: str = None) -> bool:
         """
-        检查用户是否具有细粒度访问权限（无自动继承）
+        检查用户是否具有细粒度访问权限（三级：主模块/子模块/Tab）
 
         Args:
             user: 用户对象
@@ -236,7 +236,7 @@ class PermissionManager:
 
         accessible = []
         for sub_name in main_config["sub_modules"].keys():
-            if self.has_granular_access(user, main_module, sub_name):
+            if self.check_granular_access(user, main_module, sub_name):
                 accessible.append(sub_name)
 
         return accessible
@@ -266,7 +266,7 @@ class PermissionManager:
 
         accessible = []
         for tab_name in sub_config["tabs"].keys():
-            if self.has_granular_access(user, main_module, sub_module, tab_name):
+            if self.check_granular_access(user, main_module, sub_module, tab_name):
                 accessible.append(tab_name)
 
         return accessible

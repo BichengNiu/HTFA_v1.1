@@ -16,6 +16,68 @@ from dashboard.explore.core.series_utils import get_lagged_slices
 logger = logging.getLogger(__name__)
 
 
+def _prepare_correlation_inputs(series1, series2):
+    """准备相关性计算的输入数组
+
+    Returns:
+        tuple: (arr1, arr2) numpy数组，如果输入无效返回 (None, None)
+    """
+    if not isinstance(series1, pd.Series):
+        series1 = pd.Series(series1)
+    if not isinstance(series2, pd.Series):
+        series2 = pd.Series(series2)
+
+    try:
+        arr1 = series1.astype(float).values
+        arr2 = series2.astype(float).values
+    except Exception as e:
+        logger.error(f"序列转换失败: {e}")
+        return None, None
+
+    if len(arr1) == 0 or len(arr2) == 0:
+        return None, None
+
+    if np.all(np.isnan(arr1)) or np.all(np.isnan(arr2)):
+        return None, None
+
+    return arr1, arr2
+
+
+def _empty_correlogram(max_lags):
+    """返回空的相关图 DataFrame"""
+    return pd.DataFrame({
+        'Lag': range(-max_lags, max_lags + 1),
+        'Correlation': [np.nan] * (2 * max_lags + 1)
+    })
+
+
+def _correlation_loop(arr1, arr2, max_lags, corr_func):
+    """通用相关性循环
+
+    Args:
+        arr1, arr2: numpy 数组
+        max_lags: 最大滞后阶数
+        corr_func: 接受 (slice1, slice2) 返回 float 的相关系数计算函数
+
+    Returns:
+        DataFrame: 包含 'Lag' 和 'Correlation' 两列
+    """
+    lags = []
+    correlations = []
+
+    for lag in range(-max_lags, max_lags + 1):
+        lags.append(lag)
+        slice1, slice2 = get_lagged_slices(arr1, arr2, lag)
+
+        if slice1 is None or slice2 is None:
+            correlations.append(np.nan)
+            continue
+
+        correlations.append(corr_func(slice1, slice2))
+
+    return pd.DataFrame({'Lag': lags, 'Correlation': correlations})
+
+
 def calculate_time_lagged_correlation(
     series1: pd.Series,
     series2: pd.Series,
@@ -55,66 +117,17 @@ def _calculate_time_lagged_correlation_pandas(
     series2: pd.Series,
     max_lags: int
 ) -> pd.DataFrame:
-    """
-    计算两个时间序列之间的时差相关性（标准Pandas版本）
+    """计算时差相关性（标准Pandas版本）"""
+    arr1, arr2 = _prepare_correlation_inputs(series1, series2)
+    if arr1 is None:
+        return _empty_correlogram(max_lags)
 
-    重构说明：使用统一的get_lagged_slices函数，消除代码重复
+    def _pandas_corr(slice1, slice2):
+        s1 = pd.Series(slice1)
+        s2 = pd.Series(slice2)
+        return _calculate_correlation(s1, s2)
 
-    Args:
-        series1: 第一个时间序列
-        series2: 第二个时间序列
-        max_lags: 最大滞后/超前阶数
-
-    Returns:
-        DataFrame: 包含'Lag'和'Correlation'两列
-    """
-    # 确保输入为Series
-    if not isinstance(series1, pd.Series):
-        series1 = pd.Series(series1)
-    if not isinstance(series2, pd.Series):
-        series2 = pd.Series(series2)
-
-    # 转换为浮点数并处理空值
-    series1 = series1.astype(float)
-    series2 = series2.astype(float)
-
-    # 空数据检查
-    if series1.empty or series2.empty or series1.isnull().all() or series2.isnull().all():
-        lags_range = range(-max_lags, max_lags + 1)
-        correlations_val = [np.nan] * len(lags_range)
-        return pd.DataFrame({'Lag': lags_range, 'Correlation': correlations_val})
-
-    # 转换为numpy数组以使用统一的切片函数
-    arr1 = series1.values
-    arr2 = series2.values
-
-    if len(arr1) == 0 or len(arr2) == 0:
-        lags_range = range(-max_lags, max_lags + 1)
-        correlations_val = [np.nan] * len(lags_range)
-        return pd.DataFrame({'Lag': lags_range, 'Correlation': correlations_val})
-
-    lags = []
-    correlations = []
-
-    for lag in range(-max_lags, max_lags + 1):
-        lags.append(lag)
-
-        # 使用统一的切片函数（消除重复代码）
-        slice1, slice2 = get_lagged_slices(arr1, arr2, lag)
-
-        if slice1 is None or slice2 is None:
-            correlations.append(np.nan)
-            continue
-
-        # 转换回Series进行相关性计算
-        s1_slice = pd.Series(slice1)
-        s2_slice = pd.Series(slice2)
-
-        # 计算相关系数
-        corr_val = _calculate_correlation(s1_slice, s2_slice)
-        correlations.append(corr_val)
-
-    return pd.DataFrame({'Lag': lags, 'Correlation': correlations})
+    return _correlation_loop(arr1, arr2, max_lags, _pandas_corr)
 
 
 def _calculate_correlation(s1: pd.Series, s2: pd.Series) -> float:
@@ -208,88 +221,29 @@ def _calculate_time_lagged_correlation_numpy(
     series2: pd.Series,
     max_lags: int
 ) -> pd.DataFrame:
-    """
-    计算两个时间序列之间的时差相关性（numpy优化版本）
+    """计算时差相关性（numpy优化版本，性能提升50-70%）"""
+    arr1, arr2 = _prepare_correlation_inputs(series1, series2)
+    if arr1 is None:
+        return _empty_correlogram(max_lags)
 
-    性能优化要点：
-    - 预先转换为numpy数组（避免重复转换）
-    - 使用numpy切片（零拷贝view）
-    - 批量计算（减少函数调用开销）
-
-    预期性能提升：50-70%
-
-    Args:
-        series1: 第一个时间序列
-        series2: 第二个时间序列
-        max_lags: 最大滞后/超前阶数
-
-    Returns:
-        DataFrame: 包含'Lag'和'Correlation'两列
-    """
-    # 1. 预处理和验证
-    if not isinstance(series1, pd.Series):
-        series1 = pd.Series(series1)
-    if not isinstance(series2, pd.Series):
-        series2 = pd.Series(series2)
-
-    # 转换为numpy数组
-    try:
-        s1_arr = series1.astype(float).values
-        s2_arr = series2.astype(float).values
-    except Exception as e:
-        logger.error(f"序列转换失败: {e}")
-        return pd.DataFrame({
-            'Lag': range(-max_lags, max_lags + 1),
-            'Correlation': [np.nan] * (2 * max_lags + 1)
-        })
-
-    # 空数据检查
-    if len(s1_arr) == 0 or len(s2_arr) == 0:
-        return pd.DataFrame({
-            'Lag': range(-max_lags, max_lags + 1),
-            'Correlation': [np.nan] * (2 * max_lags + 1)
-        })
-
-    # 2. 批量计算相关系数（使用统一的切片函数）
-    lags = []
-    correlations = []
-
-    for lag in range(-max_lags, max_lags + 1):
-        lags.append(lag)
-
-        # 使用统一的切片函数（零拷贝view）
-        s1_view, s2_view = get_lagged_slices(s1_arr, s2_arr, lag)
-
-        if s1_view is None or s2_view is None:
-            correlations.append(np.nan)
-            continue
-
-        # 检查最小样本数
+    def _numpy_corr(s1_view, s2_view):
         if len(s1_view) < MIN_SAMPLES_CORRELATION or len(s2_view) < MIN_SAMPLES_CORRELATION:
-            correlations.append(np.nan)
-            continue
+            return np.nan
 
-        # 移除NaN
         valid_mask = ~(np.isnan(s1_view) | np.isnan(s2_view))
         if np.sum(valid_mask) < MIN_SAMPLES_CORRELATION:
-            correlations.append(np.nan)
-            continue
+            return np.nan
 
         s1_valid = s1_view[valid_mask]
         s2_valid = s2_view[valid_mask]
 
-        # 检查方差
         if len(np.unique(s1_valid)) < 2 or len(np.unique(s2_valid)) < 2:
-            correlations.append(np.nan)
-            continue
+            return np.nan
 
-        # 使用numpy计算相关系数（比pandas.corr快）
         try:
-            corr_matrix = np.corrcoef(s1_valid, s2_valid)
-            correlation = corr_matrix[0, 1]
-            correlations.append(correlation)
+            return np.corrcoef(s1_valid, s2_valid)[0, 1]
         except Exception as e:
-            logger.debug(f"相关系数计算失败 (lag={lag}): {e}")
-            correlations.append(np.nan)
+            logger.debug(f"相关系数计算失败: {e}")
+            return np.nan
 
-    return pd.DataFrame({'Lag': lags, 'Correlation': correlations})
+    return _correlation_loop(arr1, arr2, max_lags, _numpy_corr)

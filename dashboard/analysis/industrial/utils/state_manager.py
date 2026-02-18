@@ -5,8 +5,11 @@ Unified State Management Module
 提供工业分析模块的集中状态管理，消除重复的状态封装函数
 """
 
-import streamlit as st
-from typing import Any, Optional
+from dashboard.core.ui.utils.state_helpers import NamespacedStateManager
+
+
+# 模块级单例
+_instance = NamespacedStateManager("industrial.analysis")
 
 
 class IndustrialStateManager:
@@ -15,59 +18,22 @@ class IndustrialStateManager:
 
     使用点分命名空间管理状态，避免键冲突
     命名空间: industrial.analysis
+
+    所有方法为 classmethod，委托给 NamespacedStateManager 单例
     """
 
-    NAMESPACE = "industrial.analysis"
+    @classmethod
+    def get(cls, key, default=None):
+        return _instance.get(key, default)
 
     @classmethod
-    def get(cls, key: str, default: Any = None) -> Any:
-        """
-        获取状态值
-
-        Args:
-            key: 状态键
-            default: 默认值
-
-        Returns:
-            状态值，如果不存在则返回默认值
-        """
-        full_key = f"{cls.NAMESPACE}.{key}"
-        return st.session_state.get(full_key, default)
+    def set(cls, key, value):
+        _instance.set(key, value)
 
     @classmethod
-    def set(cls, key: str, value: Any) -> None:
-        """
-        设置状态值
-
-        Args:
-            key: 状态键
-            value: 状态值
-        """
-        full_key = f"{cls.NAMESPACE}.{key}"
-        st.session_state[full_key] = value
+    def delete(cls, key):
+        _instance.delete(key)
 
     @classmethod
-    def delete(cls, key: str) -> None:
-        """
-        删除状态值
-
-        Args:
-            key: 状态键
-        """
-        full_key = f"{cls.NAMESPACE}.{key}"
-        if full_key in st.session_state:
-            del st.session_state[full_key]
-
-    @classmethod
-    def has(cls, key: str) -> bool:
-        """
-        检查状态键是否存在
-
-        Args:
-            key: 状态键
-
-        Returns:
-            是否存在
-        """
-        full_key = f"{cls.NAMESPACE}.{key}"
-        return full_key in st.session_state
+    def has(cls, key):
+        return _instance.has(key)

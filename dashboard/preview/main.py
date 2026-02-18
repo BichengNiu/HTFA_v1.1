@@ -63,8 +63,8 @@ def _render_data_status_panel(st_module):
     st_module.markdown("---")
     st_module.markdown("**数据状态：**")
 
-    from dashboard.preview.frequency_utils import get_all_frequency_names
-    from dashboard.preview.config import UNIFIED_FREQUENCY_CONFIGS
+    from dashboard.preview.shared.frequency_utils import get_all_frequency_names
+    from dashboard.preview.modules.industrial.config import UNIFIED_FREQUENCY_CONFIGS
 
     # 优化：一次循环完成所有操作
     max_industries = 0
@@ -179,7 +179,7 @@ def _process_industry_classifications(source_map, indicator_map, all_freq_dfs, e
     freq_columns = _build_freq_column_sets(all_freq_dfs)
 
     # 第2步：初始化结果容器
-    from dashboard.preview.frequency_utils import create_empty_frequency_dict
+    from dashboard.preview.shared.frequency_utils import create_empty_frequency_dict
     freq_industries = create_empty_frequency_dict(default_value=set(), use_english=True)
     clean_map = {}
 
@@ -282,8 +282,8 @@ def render_data_tabs(st_module, logger):
     Returns:
         None
     """
-    from dashboard.preview.config import UNIFIED_FREQUENCY_CONFIGS
-    from dashboard.preview.frequency_utils import get_all_frequency_names
+    from dashboard.preview.modules.industrial.config import UNIFIED_FREQUENCY_CONFIGS
+    from dashboard.preview.shared.frequency_utils import get_all_frequency_names
 
     # 一次性获取所有预览数据（使用缓存）
     loaded_file = get_preview_state('data_loaded_files')
