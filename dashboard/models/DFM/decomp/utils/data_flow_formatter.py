@@ -11,7 +11,7 @@ import pandas as pd
 from typing import Dict, List, Any, Optional, TYPE_CHECKING
 from collections import defaultdict
 
-from .helpers import normalize_variable_name
+from dashboard.models.DFM.utils.text_utils import normalize_variable_name
 from .constants import DEFAULT_INDUSTRY
 from ..core.news_impact_calculator import NewsContribution
 

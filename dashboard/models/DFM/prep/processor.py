@@ -47,7 +47,6 @@ class DataPreparationProcessor:
     def __init__(
         self,
         excel_path: str,
-        target_variable_name: str = None,
         var_industry_map: Dict[str, str] = None,
         var_frequency_map: Dict[str, str] = None,
         target_freq: str = 'W-FRI',
@@ -65,7 +64,6 @@ class DataPreparationProcessor:
 
         Args:
             excel_path: Excel文件路径
-            target_variable_name: 目标变量名称（已弃用，保留参数兼容性）
             var_industry_map: 变量-行业映射字典（从指标字典加载）
             var_frequency_map: 变量-频率映射字典（从指标字典加载）
             target_freq: 目标频率，默认'W-FRI'
@@ -469,9 +467,9 @@ class DataPreparationProcessor:
             self.removal_log.extend(self.data_cleaner.get_removed_variables_log())
             self.data_cleaner.clear_log()
 
-            if not cleaned_df.empty:
-                result_data[freq_name] = cleaned_df
-                logger.info(f"    {freq_name}数据形状: {cleaned_df.shape}")
+            if not combined_df.empty:
+                result_data[freq_name] = combined_df
+                logger.info(f"    {freq_name}数据形状: {combined_df.shape}")
 
         return result_data, all_borrowing_log
 

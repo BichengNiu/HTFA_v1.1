@@ -387,7 +387,6 @@ def prepare_dfm_data_simple(
         logger.info(f"发布日期校准: {'启用' if enable_publication_calibration else '禁用'}")
         processor = DataPreparationProcessor(
             excel_path=excel_input,
-            target_variable_name=target_variable_name,
             var_industry_map=var_industry_map,
             var_frequency_map=var_frequency_map,
             target_freq=target_freq,

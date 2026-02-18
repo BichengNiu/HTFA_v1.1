@@ -34,10 +34,7 @@ class ResourcePathsConfig:
         'preview_main': 'dashboard.preview.main',
 
         # DFM模块
-        'dfm_ui': 'dashboard.models.DFM.results.dfm_ui',
-        'dfm_data_prep': 'dashboard.models.DFM.prep.data_prep_ui',
         'dfm_train_model': 'dashboard.models.DFM.train.ui.pages.model_training_page',
-        'news_analysis': 'dashboard.models.DFM.decomp.news_analysis_front_end',
 
         # 探索模块
         'stationarity_analysis': 'dashboard.explore.ui.stationarity',

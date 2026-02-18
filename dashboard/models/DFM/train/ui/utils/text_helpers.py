@@ -5,29 +5,8 @@
 提供DFM训练UI中常用的文本标准化和处理功能
 """
 
-import unicodedata
-from typing import Dict, List
-
-
-def normalize_variable_name(name: str) -> str:
-    """
-    标准化变量名（用于映射匹配）
-
-    Args:
-        name: 原始变量名
-
-    Returns:
-        标准化后的变量名（NFKC标准化 + 去除首尾空格 + 转小写）
-
-    Examples:
-        >>> normalize_variable_name("  GDP增速  ")
-        'gdp增速'
-        >>> normalize_variable_name("全角空格　test")
-        '全角空格 test'
-    """
-    if not name:
-        return ""
-    return unicodedata.normalize('NFKC', str(name)).strip().lower()
+from typing import Dict
+from dashboard.models.DFM.utils.text_utils import normalize_variable_name
 
 
 def normalize_variable_name_no_space(name: str) -> str:

@@ -41,9 +41,6 @@ from dashboard.models.DFM.train.core.pca_utils import select_num_factors
 from dashboard.models.DFM.train.core.validation import (
     validate_matrix,
     validate_matrices,
-    validate_sample_size,
-    validate_positive_definite,
-    validate_dimensions
 )
 
 # 预处理工具
@@ -71,9 +68,6 @@ __all__ = [
     # 验证工具
     'validate_matrix',
     'validate_matrices',
-    'validate_sample_size',
-    'validate_positive_definite',
-    'validate_dimensions',
 
     # 预处理工具
     'DataStandardizer',

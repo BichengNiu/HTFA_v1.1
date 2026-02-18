@@ -1,7 +1,5 @@
 import pandas as pd
 import joblib
-import pickle
-import io
 import logging
 import numpy as np
 import math
