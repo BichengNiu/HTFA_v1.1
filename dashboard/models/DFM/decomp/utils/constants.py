@@ -5,13 +5,6 @@ DFM Decomp模块常量定义
 集中管理所有数值常量，避免魔法数字散落在代码中。
 """
 
-# 数值精度常量
-NUMERICAL_EPSILON = 1e-10  # 通用数值容差，用于矩阵正则化
-DIVISION_EPSILON = 1e-15   # 除法安全阈值，避免除零
-
-# 异常值检测阈值
-ZSCORE_OUTLIER_THRESHOLD = 3.0  # Z-score异常值阈值
-
 # 关键驱动变量识别阈值
 KEY_DRIVERS_CONTRIBUTION_THRESHOLD = 0.1  # 关键驱动变量贡献度阈值 (10%)
 PRIMARY_DRIVERS_RANK_THRESHOLD = 3        # 主要驱动变量排名阈值 (Top 3)

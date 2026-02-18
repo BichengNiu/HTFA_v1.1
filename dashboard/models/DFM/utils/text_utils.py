@@ -101,7 +101,40 @@ def normalize_column_name(column_name: Union[str, float, None]) -> str:
     return normalize_text(column_name, to_lower=True)
 
 
+def normalize_variable_name(variable_name: Union[str, float, None]) -> str:
+    """
+    标准化变量名以匹配var_industry_map中的键
+
+    简化版标准化：NFKC规范化 + 去除首尾空格 + 英文转小写。
+    供 decomp、train 等模块统一使用。
+
+    Args:
+        variable_name: 原始变量名
+
+    Returns:
+        str: 标准化后的变量名
+
+    Examples:
+        >>> normalize_variable_name('  GDP增速  ')
+        'gdp增速'
+        >>> normalize_variable_name('全角空格　test')
+        '全角空格 test'
+    """
+    if pd.isna(variable_name) or variable_name == '':
+        return ''
+
+    text = str(variable_name)
+    text = unicodedata.normalize('NFKC', text)
+    text = text.strip()
+
+    if any(ord(char) < 128 for char in text):
+        text = text.lower()
+
+    return text
+
+
 __all__ = [
     'normalize_text',
-    'normalize_column_name'
+    'normalize_column_name',
+    'normalize_variable_name',
 ]

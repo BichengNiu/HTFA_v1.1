@@ -3,9 +3,10 @@
 DFM共享工具模块
 """
 
-from .text_utils import normalize_text, normalize_column_name
+from .text_utils import normalize_text, normalize_column_name, normalize_variable_name
 
 __all__ = [
     'normalize_text',
-    'normalize_column_name'
+    'normalize_column_name',
+    'normalize_variable_name',
 ]

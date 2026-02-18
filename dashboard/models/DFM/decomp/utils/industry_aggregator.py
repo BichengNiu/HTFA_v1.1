@@ -10,7 +10,7 @@ import numpy as np
 from typing import Dict, List, Any, Optional
 from collections import defaultdict
 
-from .helpers import normalize_variable_name
+from dashboard.models.DFM.utils.text_utils import normalize_variable_name
 from .constants import DEFAULT_INDUSTRY, INDUSTRY_COLORS
 from ..core.news_impact_calculator import NewsContribution
 
