@@ -8,19 +8,16 @@
 import numpy as np
 import pandas as pd
 from typing import Optional, Tuple, Callable
-from sklearn.decomposition import PCA
 from dashboard.models.DFM.train.core.kalman import KalmanFilter
 from dashboard.models.DFM.train.core.estimator import (
     estimate_loadings,
     estimate_transition_matrix,
     estimate_covariance_matrices,
-    _ensure_positive_definite
 )
 from dashboard.models.DFM.train.core.models import DFMModelResult
 from dashboard.models.DFM.train.utils.logger import get_logger
 from dashboard.models.DFM.train.utils.preprocessing import standardize_data
 from dashboard.models.DFM.train.constants import (
-    ZERO_STD_REPLACEMENT,
     DEFAULT_AR1_COEFFICIENT,
     DEFAULT_Q_VARIANCE,
     DEFAULT_B_SCALE,
@@ -88,8 +85,6 @@ class DFMModel:
             raise ValueError("training_start和train_end必须提供")
         # 设置确定性随机种子
         np.random.seed(self.random_seed)
-
-        Z_orig = data.copy()
 
         # 根据训练期日期范围切分数据
         Z_train = data.loc[training_start:train_end]
@@ -218,8 +213,6 @@ class DFMModel:
 
         # 关键修改：使用中心化数据（而非标准化数据）计算载荷
         # 这与老代码完全一致：calculate_factor_loadings(obs_centered, factors_init_df)
-        from dashboard.models.DFM.train.core.estimator import estimate_loadings
-
         initial_loadings = estimate_loadings(
             obs_centered,  # 使用中心化数据（匹配老代码）
             factors_df
@@ -252,6 +245,50 @@ class DFMModel:
 
         return factors_df, initial_loadings, V
 
+    def _initialize_em_params(
+        self,
+        obs_centered: pd.DataFrame,
+        initial_factors: pd.DataFrame,
+        initial_loadings: np.ndarray,
+        V: np.ndarray,
+        stds: np.ndarray
+    ) -> dict:
+        """初始化EM算法所需的全部参数
+
+        Args:
+            obs_centered: 中心化观测数据（仅训练期）
+            initial_factors: 初始因子估计
+            initial_loadings: 初始载荷矩阵
+            V: SVD分解得到的V矩阵
+            stds: 标准差向量
+
+        Returns:
+            dict: 包含所有初始化参数的字典
+        """
+        n_time, n_obs = obs_centered.shape
+        n_states = self.n_factors * self.max_lags
+
+        A, Q = self._initialize_transition_matrix(initial_factors)
+        R = self._compute_R_matrix(initial_factors.values, V, stds, obs_centered)
+
+        logger.debug(f"[初始化] R矩阵对角线前5个: {np.diag(R)[:5]}")
+        logger.debug(f"[初始化] 初始Q矩阵对角线: {np.diag(Q)}")
+
+        x0 = np.zeros(n_states)
+        P0 = np.eye(n_states)
+        B = np.eye(n_states) * DEFAULT_B_SCALE
+
+        # 重置种子确保U矩阵可复现
+        np.random.seed(self.random_seed)
+        U = np.random.randn(n_time, n_states)
+
+        return {
+            'A': A, 'Q': Q, 'R': R, 'B': B, 'U': U,
+            'x0': x0, 'P0': P0,
+            'Lambda': initial_loadings.copy(),
+            'n_time': n_time, 'n_obs': n_obs, 'n_states': n_states,
+        }
+
     def _em_algorithm(
         self,
         obs_centered: pd.DataFrame,
@@ -276,83 +313,20 @@ class DFMModel:
         Returns:
             DFMModelResult: 估计结果
         """
-        n_time, n_obs = obs_centered.shape
-        Z = obs_centered.values  # (n_time, n_obs)格式,匹配train_model
-        n_states = self.n_factors * self.max_lags
-
-        factors_current = initial_factors.copy()
-
-        # 使用初始载荷矩阵
-        Lambda = initial_loadings.copy()
-
-        # 初始化A矩阵和Q矩阵
-        # 关键修复：k=1用固定值（匹配老代码），k>=2用VAR估计
-        if self.n_factors == 1:
-            # 单因子情况：使用固定初始值（匹配老代码line 354-355）
-            # 不使用AutoReg估计，因为初始PCA因子可能不准确，导致算法发散
-            if self.max_lags == 1:
-                A = np.array([[DEFAULT_AR1_COEFFICIENT]])
-                Q = np.array([[DEFAULT_Q_VARIANCE]])
-            else:
-                # AR(p) companion form
-                A = np.zeros((self.max_lags, self.max_lags))
-                A[0, :] = DEFAULT_AR1_COEFFICIENT / self.max_lags
-                if self.max_lags > 1:
-                    A[1:, :-1] = np.eye(self.max_lags - 1)
-                Q = np.zeros((self.max_lags, self.max_lags))
-                Q[0, 0] = DEFAULT_Q_VARIANCE
-        else:
-            # 多因子情况：使用VAR模型估计（保持原逻辑，已验证成功）
-            from statsmodels.tsa.api import VAR
-            import warnings
-            with warnings.catch_warnings():
-                warnings.filterwarnings('ignore', message='.*No frequency information.*')
-                var_model = VAR(factors_current.dropna())
-                var_results = var_model.fit(self.max_lags)
-
-            # 使用VAR系数初始化A矩阵（完全匹配老代码line 322）
-            if self.max_lags == 1:
-                A = var_results.coefs[0]
-            else:
-                # VAR(p): 构造companion form矩阵
-                n_factors_orig = factors_current.shape[1]
-                A = np.zeros((n_factors_orig * self.max_lags, n_factors_orig * self.max_lags))
-                # 填充VAR系数
-                for lag in range(self.max_lags):
-                    A[:n_factors_orig, lag*n_factors_orig:(lag+1)*n_factors_orig] = var_results.coefs[lag]
-                # 构造companion form下半部分
-                if self.max_lags > 1:
-                    A[n_factors_orig:, :-n_factors_orig] = np.eye(n_factors_orig * (self.max_lags - 1))
-
-            # 使用VAR残差计算初始Q矩阵（匹配老代码）
-            Q = np.cov(var_results.resid, rowvar=False)
-            Q = np.diag(np.maximum(np.diag(Q), R_MATRIX_MIN_VARIANCE))
-
-        # 计算R矩阵（obs_centered已经是训练期数据，无需再切分）
-        R = self._compute_R_matrix(initial_factors.values, V, stds, obs_centered)
-
-        # 调试：打印初始R矩阵
-        logger.debug(f"[初始化] R矩阵对角线前5个: {np.diag(R)[:5]}")
-        logger.debug(f"[初始化] 初始Q矩阵对角线: {np.diag(Q)}")
+        params = self._initialize_em_params(
+            obs_centered, initial_factors, initial_loadings, V, stds
+        )
+        n_time = params['n_time']
+        n_obs = params['n_obs']
+        n_states = params['n_states']
+        A, Q, R, B, U = params['A'], params['Q'], params['R'], params['B'], params['U']
+        x0, P0 = params['x0'], params['P0']
+        Lambda = params['Lambda']
+        Z = obs_centered.values
 
         loglik_prev = -np.inf
         converged = False
-
-        # 初始化Kalman滤波的初始状态（匹配老代码）
-        x0 = np.zeros(n_states)
-        P0 = np.eye(n_states)
-
-        # 初始化B矩阵（匹配老代码line 393: B_current = np.eye(n_factors) * 0.1）
-        B = np.eye(n_states) * DEFAULT_B_SCALE
-
-        # 生成外部shock矩阵U（完全匹配老代码默认行为）
-        # 老代码有个Python陷阱：if error: 将字符串'False'当作True处理！
-        # 所以即使error='False'，也会生成随机U矩阵
-        # 为了保持一致性，这里也生成相同的随机U矩阵
-        DFM_SEED = 42  # 匹配老代码的种子
-        np.random.seed(DFM_SEED)
-        # 注意：老代码U shape是(n_time, n_shocks)，这里n_shocks=n_factors=n_states（max_lags=1时）
-        U = np.random.randn(n_time, n_states)  # (n_time, n_states)格式,匹配train_model
+        factors_current = initial_factors.copy()
 
         for iteration in range(self.max_iter):
             # 报告EM迭代进度：10% - 90%，共80%分配给max_iter次迭代
@@ -447,32 +421,112 @@ class DFMModel:
 
             factors_current = factors_df
 
-        # 提取平滑因子（n_factors × n_time格式）
-        factors_smoothed_final = smoother_result.x_smoothed[:self.n_factors, :]  # (n_factors, n_time)
+        return self._build_em_result(
+            smoother_result, filter_result, A, Q, Lambda, R, obs_centered, converged, iteration
+        )
 
-        logger.debug(f"[EM结束] 因子std={factors_smoothed_final.std(axis=1)}, Lambda范围=[{Lambda.min():.2f}, {Lambda.max():.2f}]")
+    def _build_em_result(
+        self,
+        smoother_result,
+        filter_result,
+        A: np.ndarray,
+        Q: np.ndarray,
+        Lambda: np.ndarray,
+        R: np.ndarray,
+        obs_centered: pd.DataFrame,
+        converged: bool,
+        iteration: int
+    ) -> DFMModelResult:
+        """从EM迭代结果构建DFMModelResult
 
-        # 提取先验因子状态（用于新闻分解的expected_value计算）
-        # x_predicted形状: (n_time, n_states)，n_states = n_factors * max_lags
-        # 只取前n_factors列
+        Args:
+            smoother_result: 卡尔曼平滑结果
+            filter_result: 卡尔曼滤波结果
+            A: 状态转移矩阵
+            Q: 过程噪声协方差矩阵
+            Lambda: 最终载荷矩阵
+            R: 观测噪声协方差矩阵
+            obs_centered: 中心化观测数据
+            converged: 是否收敛
+            iteration: 最终迭代次数（0-based）
+
+        Returns:
+            DFMModelResult
+        """
+        factors_smoothed_final = smoother_result.x_smoothed[:self.n_factors, :]
+        logger.debug(f"[EM结束] 因子std={factors_smoothed_final.std(axis=1)}, "
+                     f"Lambda范围=[{Lambda.min():.2f}, {Lambda.max():.2f}]")
+
         factor_states_predicted = filter_result.x_predicted[:, :self.n_factors].copy()
         logger.info(f"[EM结束] 提取先验因子状态: 形状={factor_states_predicted.shape}")
 
-        # 返回统一的DFMModelResult
         return DFMModelResult(
             A=A,
             Q=Q,
             H=Lambda,
             R=R,
-            factors=factors_smoothed_final,  # (n_factors, n_time)
-            factors_smooth=factors_smoothed_final,  # 同上
-            kalman_gains_history=filter_result.kalman_gains_history,  # 保存卡尔曼增益历史
-            factor_states_predicted=factor_states_predicted,  # 先验因子状态 (n_time, n_factors)
-            variable_names=obs_centered.columns.tolist(),  # 保存训练时使用的变量名列表
+            factors=factors_smoothed_final,
+            factors_smooth=factors_smoothed_final,
+            kalman_gains_history=filter_result.kalman_gains_history,
+            factor_states_predicted=factor_states_predicted,
+            variable_names=obs_centered.columns.tolist(),
             converged=converged,
             iterations=iteration + 1,
-            log_likelihood=loglik_current
+            log_likelihood=filter_result.loglikelihood
         )
+
+    def _initialize_transition_matrix(
+        self,
+        factors: pd.DataFrame
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """初始化状态转移矩阵A和过程噪声协方差Q
+
+        k=1用固定值（匹配老代码），k>=2用VAR估计。
+
+        Args:
+            factors: 初始因子估计 DataFrame
+
+        Returns:
+            Tuple: (A矩阵, Q矩阵)
+        """
+        if self.n_factors == 1:
+            # 单因子情况：使用固定初始值
+            # 不使用AutoReg估计，因为初始PCA因子可能不准确，导致算法发散
+            if self.max_lags == 1:
+                A = np.array([[DEFAULT_AR1_COEFFICIENT]])
+                Q = np.array([[DEFAULT_Q_VARIANCE]])
+            else:
+                # AR(p) companion form
+                A = np.zeros((self.max_lags, self.max_lags))
+                A[0, :] = DEFAULT_AR1_COEFFICIENT / self.max_lags
+                if self.max_lags > 1:
+                    A[1:, :-1] = np.eye(self.max_lags - 1)
+                Q = np.zeros((self.max_lags, self.max_lags))
+                Q[0, 0] = DEFAULT_Q_VARIANCE
+        else:
+            # 多因子情况：使用VAR模型估计
+            from statsmodels.tsa.api import VAR
+            import warnings
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', message='.*No frequency information.*')
+                var_model = VAR(factors.dropna())
+                var_results = var_model.fit(self.max_lags)
+
+            if self.max_lags == 1:
+                A = var_results.coefs[0]
+            else:
+                # VAR(p): 构造companion form矩阵
+                n_factors_orig = factors.shape[1]
+                A = np.zeros((n_factors_orig * self.max_lags, n_factors_orig * self.max_lags))
+                for lag in range(self.max_lags):
+                    A[:n_factors_orig, lag*n_factors_orig:(lag+1)*n_factors_orig] = var_results.coefs[lag]
+                if self.max_lags > 1:
+                    A[n_factors_orig:, :-n_factors_orig] = np.eye(n_factors_orig * (self.max_lags - 1))
+
+            Q = np.cov(var_results.resid, rowvar=False)
+            Q = np.diag(np.maximum(np.diag(Q), R_MATRIX_MIN_VARIANCE))
+
+        return A, Q
 
     def _compute_R_matrix(
         self,

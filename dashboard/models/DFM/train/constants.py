@@ -10,10 +10,6 @@ DFM训练模块常量定义
 # 随机种子
 DFM_RANDOM_SEED = 42
 
-# 数据质量要求
-MIN_DATA_POINTS_PER_VARIABLE = 10  # 每个变量最少需要的有效数据点数
-MIN_FACTORS_FOR_REGRESSION = 2  # 回归至少需要的因子数
-
 # ==================== AR(1)模型默认参数 ====================
 
 # 单因子AR(1)默认系数
