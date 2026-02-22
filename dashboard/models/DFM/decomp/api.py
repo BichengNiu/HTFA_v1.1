@@ -475,8 +475,10 @@ def _generate_analysis_results(
     try:
         # 计算各种分析指标
         ranking_df = news_calculator.rank_variables_by_impact(contributions)
-        pn_split = news_calculator.calculate_positive_negative_split(contributions)
-        key_drivers = news_calculator.identify_key_drivers(contributions, top_n=5)
+
+        # 内联计算正负影响总和
+        positive_impact_sum = sum(c.impact_value for c in contributions if c.impact_value > 0)
+        negative_impact_sum = sum(c.impact_value for c in contributions if c.impact_value < 0)
 
         # 行业聚合分析
         industry_aggregator = IndustryAggregator(var_industry_map)
@@ -542,10 +544,8 @@ def _generate_analysis_results(
             'analysis_end': normalization_info['last_nowcast_date'],
             'total_impact': float(total_impact),
             'total_releases': len(contributions),
-            'positive_impact_sum': float(pn_split['positive_impact']),
-            'negative_impact_sum': float(pn_split['negative_impact']),
-            'top_contributors': ranking_df['variable_name'].head(5).tolist(),
-            'key_drivers_count': key_drivers['driver_count'],
+            'positive_impact_sum': float(positive_impact_sum),
+            'negative_impact_sum': float(negative_impact_sum),
             'industry_breakdown': industry_breakdown,
             'analysis_time': datetime.now().isoformat(),
             # 归一化信息（必需字段）

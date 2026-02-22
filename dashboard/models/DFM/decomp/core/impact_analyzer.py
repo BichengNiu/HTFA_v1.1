@@ -12,7 +12,7 @@ import logging
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
 
-from ..utils.exceptions import ComputationError, ValidationError
+from ..utils.exceptions import ComputationError, ValidationError, decomp_error_handler
 from ..utils.constants import CONFIDENCE_INTERVAL_Z_SCORE, DEFAULT_MEASUREMENT_ERROR
 from ..utils.helpers import get_month_date_range
 from .nowcast_extractor import NowcastExtractor
@@ -101,7 +101,7 @@ class ImpactAnalyzer:
             ComputationError: 计算失败时抛出
             ValidationError: 数据验证失败时抛出
         """
-        try:
+        with decomp_error_handler("单次影响计算"):
             # 调试日志：输入参数
             logger.debug(f"=== {release.variable_name} @ {release.timestamp} ===")
             logger.debug(f"observed={release.observed_value:.4f}, expected={release.expected_value:.4f}")
@@ -131,10 +131,7 @@ class ImpactAnalyzer:
             innovation = release.observed_value - release.expected_value
 
             # 6. 正确的影响计算公式：Δy = λ_y' × K_t[:, i] × v_i
-            # 步骤：K_col * innovation → (n_factors,) 因子状态变化
             delta_f = K_col * innovation  # (n_factors,) 因子状态的变化量
-
-            # 步骤：λ_y' × delta_f → 标量（标准化尺度）
             impact_standardized = np.dot(lambda_y, delta_f)  # 标量，标准化尺度
 
             # 7. 反标准化到原始尺度
@@ -149,7 +146,6 @@ class ImpactAnalyzer:
                   f"std={target_std:.4f}, original={impact_on_target:.4f}")
 
             # 9. 贡献百分比在NewsImpactCalculator中基于总影响计算
-            # 此处设为0.0作为占位符
             contribution_percentage = 0.0
 
             # 10. 计算置信区间
@@ -161,9 +157,9 @@ class ImpactAnalyzer:
             calculation_details = {
                 'innovation': float(innovation),
                 'variable_index': int(variable_index),
-                'kalman_gain_vector': K_col.tolist(),  # 完整的K_t[:, i]向量
-                'factor_loading_vector': lambda_y.tolist(),  # λ_y向量
-                'factor_state_change': delta_f.tolist(),  # Δf向量
+                'kalman_gain_vector': K_col.tolist(),
+                'factor_loading_vector': lambda_y.tolist(),
+                'factor_state_change': delta_f.tolist(),
                 'effective_kalman_weight': float(effective_kalman_weight),
                 'calculation_formula': 'Δy = λ_y\' × K_t[:, i] × v_i',
                 'formula_explanation': {
@@ -179,7 +175,7 @@ class ImpactAnalyzer:
                 release=release,
                 impact_on_target=impact_on_target,
                 contribution_percentage=contribution_percentage,
-                kalman_weight=effective_kalman_weight,  # 使用向量范数作为权重
+                kalman_weight=effective_kalman_weight,
                 confidence_interval=confidence_interval,
                 calculation_details=calculation_details
             )
@@ -187,13 +183,6 @@ class ImpactAnalyzer:
             logger.debug(f"单次影响计算: {release.variable_name} = {impact_on_target:.4f} "
                   f"(innovation={innovation:.4f}, ||K||={effective_kalman_weight:.4f})")
             return result
-
-        except (ComputationError, ValidationError):
-            raise
-        except (KeyError, IndexError) as e:
-            raise ComputationError(f"数据访问错误: {str(e)}", "single_impact_calculation")
-        except (TypeError, ValueError) as e:
-            raise ComputationError(f"数值计算错误: {str(e)}", "single_impact_calculation")
 
     def analyze_sequential_impacts(
         self,
@@ -213,7 +202,7 @@ class ImpactAnalyzer:
         Raises:
             ComputationError: 分析失败时抛出
         """
-        try:
+        with decomp_error_handler("时序影响分析"):
             # 按时间排序数据发布
             sorted_releases = sorted(releases, key=lambda x: x.timestamp)
 
@@ -273,95 +262,6 @@ class ImpactAnalyzer:
 
             logger.info(f"时序影响分析完成: 总影响 = {cumulative_impact:.4f}")
             return result
-
-        except (ComputationError, ValidationError):
-            raise
-        except (KeyError, IndexError) as e:
-            raise ComputationError(f"时序影响分析数据访问错误: {str(e)}", "sequential_impact_analysis")
-        except (TypeError, ValueError) as e:
-            raise ComputationError(f"时序影响分析数值错误: {str(e)}", "sequential_impact_analysis")
-
-    def decompose_total_impact(
-        self,
-        target_date: pd.Timestamp,
-        releases: List[DataRelease]
-    ) -> Dict[str, Any]:
-        """
-        分解总影响为各数据发布的具体贡献
-
-        Args:
-            target_date: 目标日期
-            releases: 数据发布列表
-
-        Returns:
-            影响分解结果
-
-        Raises:
-            ComputationError: 分解失败时抛出
-        """
-        try:
-            # 计算时序影响
-            sequential_result = self.analyze_sequential_impacts(releases, target_date)
-
-            # 按变量分组影响
-            variable_impacts = {}
-            for impact in sequential_result.individual_impacts:
-                var_name = impact.release.variable_name
-                if var_name not in variable_impacts:
-                    variable_impacts[var_name] = []
-                variable_impacts[var_name].append(impact)
-
-            # 计算每个变量的总影响
-            variable_summary = {}
-            total_abs_impact = sum(abs(imp.impact_on_target) for imp in sequential_result.individual_impacts)
-
-            for var_name, impacts in variable_impacts.items():
-                total_impact = sum(imp.impact_on_target for imp in impacts)
-                contribution_pct = (abs(total_impact) / total_abs_impact * 100) if total_abs_impact > 0 else 0
-
-                # 统计该变量的发布次数
-                release_count = len(impacts)
-
-                # 计算平均影响
-                avg_impact = total_impact / release_count if release_count > 0 else 0
-
-                variable_summary[var_name] = {
-                    'total_impact': total_impact,
-                    'contribution_percentage': contribution_pct,
-                    'release_count': release_count,
-                    'average_impact': avg_impact,
-                    'impacts': impacts
-                }
-
-            # 按贡献度排序
-            sorted_variables = sorted(
-                variable_summary.items(),
-                key=lambda x: abs(x[1]['total_impact']),
-                reverse=True
-            )
-
-            # 构建分解结果
-            decomposition_result = {
-                'target_date': target_date,
-                'total_impact': sequential_result.total_impact,
-                'positive_impact_sum': sequential_result.positive_impact_sum,
-                'negative_impact_sum': sequential_result.negative_impact_sum,
-                'variable_contributions': dict(sorted_variables),
-                'top_contributors': [var for var, _ in sorted_variables[:5]],
-                'sequential_result': sequential_result,
-                'impact_count': len(sequential_result.individual_impacts)
-            }
-
-            logger.info(f"影响分解完成: {len(variable_summary)} 个变量")
-            return decomposition_result
-
-        except (ComputationError, ValidationError):
-            raise
-        except (KeyError, IndexError) as e:
-            raise ComputationError(f"影响分解数据访问错误: {str(e)}", "impact_decomposition")
-        except (TypeError, ValueError) as e:
-            raise ComputationError(f"影响分解数值错误: {str(e)}", "impact_decomposition")
-
 
     def _get_target_variable_loading(self) -> np.ndarray:
         """
@@ -515,43 +415,3 @@ class ImpactAnalyzer:
 
         return target_std
 
-    def get_analysis_summary(self) -> Dict[str, Any]:
-        """
-        获取影响分析器摘要
-
-        Returns:
-            分析器摘要字典
-        """
-        data = self.extractor.data
-
-        # 获取K_t维度信息
-        kt_shape = None
-        latest_kt = None
-        if data.kalman_gains_history:
-            for K_t in data.kalman_gains_history:
-                if K_t is not None:
-                    kt_shape = K_t.shape
-                    latest_kt = K_t
-                    break
-
-        summary = {
-            'kalman_gains_available': data.kalman_gains_history is not None,
-            'kalman_gains_timesteps': len(data.kalman_gains_history) if data.kalman_gains_history else 0,
-            'kalman_gains_shape': kt_shape,
-            'variable_mapping_count': len(data.variable_index_map) if data.variable_index_map else 0,
-        }
-
-        if kt_shape is not None:
-            # K_t形状为(n_factors, n_variables)
-            summary.update({
-                'n_factors': kt_shape[0],
-                'n_variables': kt_shape[1],
-            })
-
-        if latest_kt is not None:
-            summary.update({
-                'max_kalman_weight': float(np.max(np.abs(latest_kt))),
-                'mean_kalman_weight': float(np.mean(np.abs(latest_kt))),
-            })
-
-        return summary
