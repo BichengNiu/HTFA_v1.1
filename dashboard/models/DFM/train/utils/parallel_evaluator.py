@@ -15,11 +15,6 @@ from dashboard.models.DFM.train.core.models import EvaluationConfig
 logger = logging.getLogger(__name__)
 
 
-def _build_temp_variables(var: str, current_variables: List[str]) -> List[str]:
-    """构建移除变量后的临时变量列表"""
-    return [v for v in current_variables if v != var]
-
-
 def evaluate_single_variable_removal(
     var: str,
     current_variables: List[str],
@@ -53,7 +48,7 @@ def evaluate_single_variable_removal(
         结果字典包含: var, score (目标变量RMSE)
     """
     try:
-        temp_variables = _build_temp_variables(var, current_variables)
+        temp_variables = [v for v in current_variables if v != var]
         if not temp_variables:
             return (var, None)
 

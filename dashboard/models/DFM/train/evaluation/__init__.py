@@ -7,7 +7,6 @@
 
 # 指标计算
 from dashboard.models.DFM.train.evaluation.metrics import (
-    calculate_average_reconstruction_rmse,
     compare_model_scores
 )
 
@@ -15,7 +14,6 @@ from dashboard.models.DFM.train.evaluation.metrics import (
 from dashboard.models.DFM.train.core.models import EvaluationMetrics
 
 __all__ = [
-    'calculate_average_reconstruction_rmse',
     'compare_model_scores',
     'EvaluationMetrics',
 ]
