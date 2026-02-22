@@ -19,6 +19,7 @@ import pandas as pd
 import joblib
 from dashboard.models.DFM.train.utils.logger import get_logger
 from dashboard.models.DFM.train.utils.file_io import read_data_file
+from dashboard.models.DFM.train.evaluation.metrics import _compute_rmse
 
 logger = get_logger(__name__)
 
@@ -543,10 +544,10 @@ class TrainingResultExporter:
             if target_variable and target_variable in available_vars:
                 target_idx = available_vars.index(target_variable)
                 target_residuals = residuals[:, target_idx]
-                rmse = float(np.sqrt(np.nanmean(target_residuals ** 2)))
+                rmse = _compute_rmse(target_residuals)
                 mae = float(np.nanmean(np.abs(target_residuals)))
             else:
-                rmse = float(np.sqrt(np.nanmean(residuals ** 2)))
+                rmse = _compute_rmse(residuals)
                 mae = float(np.nanmean(np.abs(residuals)))
             return rmse, mae
 

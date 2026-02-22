@@ -8,6 +8,16 @@ DDFM工具函数模块
 from typing import Tuple
 import numpy as np
 from dashboard.models.DFM.train.utils.logger import get_logger
+from dashboard.models.DFM.train.constants import (
+    CONVERGENCE_ABSOLUTE_THRESHOLD,
+    CONVERGENCE_DELTA_MAX,
+    WEEKLY_FREQUENCY_GAP_THRESHOLD,
+    MIN_STD_EPS,
+    AR_COEFFICIENT_CLIP_BOUND,
+    VARIANCE_DENOMINATOR_JITTER,
+    SIGMA0_SCALE_FACTOR,
+    SIGMA0_PD_JITTER,
+)
 
 # 常量定义
 _FACTOR_ORDER_ERROR = "仅支持AR(1)或AR(2)因子动态"
@@ -59,7 +69,7 @@ def convergence_checker(y_prev: np.ndarray, y_now: np.ndarray, y_actual: np.ndar
     loss = mse(y_now[valid_mask], y_actual[valid_mask])
 
     # 双重判断：相对阈值 + 绝对阈值（修复：防止delta爆炸）
-    if loss_minus < 1e-8:
+    if loss_minus < CONVERGENCE_ABSOLUTE_THRESHOLD:
         # 损失极小时，使用绝对变化量
         delta = np.abs(loss - loss_minus)
     else:
@@ -67,7 +77,7 @@ def convergence_checker(y_prev: np.ndarray, y_now: np.ndarray, y_actual: np.ndar
         delta = np.abs(loss - loss_minus) / loss_minus
 
     # 防止delta爆炸（loss_minus很小时）
-    delta = np.minimum(delta, 1000.0)  # 裁剪到合理范围
+    delta = np.minimum(delta, CONVERGENCE_DELTA_MAX)  # 裁剪到合理范围
 
     return delta, loss
 
@@ -162,7 +172,7 @@ def get_transition_params(f_t: np.ndarray, eps_t: np.ndarray, factor_order: int,
     # 放大初始协方差，允许更大的初始不确定性
     # 修复：原先基于训练期计算的Sigma_0可能过小，
     # 导致观察期数据偏离时滤波器响应过激
-    Sigma_0 = Sigma_0 * 2.0
+    Sigma_0 = Sigma_0 * SIGMA0_SCALE_FACTOR
 
     # 特质项与因子不相关，特质项之间协方差为对角阵
     # 注意：先做结构约束，再添加正定性保护
@@ -171,9 +181,22 @@ def get_transition_params(f_t: np.ndarray, eps_t: np.ndarray, factor_order: int,
     Sigma_0[A_f.shape[1]:, A_f.shape[1]:] = np.diag(np.diag(Sigma_0[A_f.shape[1]:, A_f.shape[1]:]))
 
     # 确保正定性（最后执行，避免被结构约束覆盖）
-    Sigma_0 = Sigma_0 + np.eye(Sigma_0.shape[0]) * 0.01
+    Sigma_0 = Sigma_0 + np.eye(Sigma_0.shape[0]) * SIGMA0_PD_JITTER
 
     return A, W, mu_0, Sigma_0, x_t
+
+
+def _detect_is_weekly(non_miss_indices: np.ndarray) -> bool:
+    """检测变量是否为周度频率"""
+    gaps = np.diff(non_miss_indices)
+    return np.median(gaps) <= WEEKLY_FREQUENCY_GAP_THRESHOLD
+
+
+def _set_default_idio(mu_eps, std_eps, phi, j):
+    """设置特质项的默认AR(1)参数"""
+    mu_eps[j] = 0.0
+    std_eps[j] = 1.0
+    phi[j, j] = 0.0
 
 
 def get_idio(eps: np.ndarray, idx_no_missings: np.ndarray, min_obs: int = 20) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -206,24 +229,14 @@ def get_idio(eps: np.ndarray, idx_no_missings: np.ndarray, min_obs: int = 20) ->
         # 检查eps是否全为NaN（关键修复：防止NaN传播）
         eps_col = eps[:, j]
         if np.all(np.isnan(eps_col)):
-            mu_eps[j] = 0.0
-            std_eps[j] = 1.0
-            phi[j, j] = 0.0
+            _set_default_idio(mu_eps, std_eps, phi, j)
             continue
 
         if len(non_miss_indices) < 2:
-            # 观测太少，使用默认值
-            mu_eps[j] = 0.0
-            std_eps[j] = 1.0
-            phi[j, j] = 0.0
+            _set_default_idio(mu_eps, std_eps, phi, j)
             continue
 
-        # 计算非空观测之间的间隔
-        gaps = np.diff(non_miss_indices)
-        median_gap = np.median(gaps)
-
-        # 判断频率：间隔<=2视为周度，否则视为月度/其他低频
-        is_weekly = median_gap <= 2
+        is_weekly = _detect_is_weekly(non_miss_indices)
 
         if is_weekly:
             # 周度变量：检查相邻行都非空
@@ -250,14 +263,14 @@ def get_idio(eps: np.ndarray, idx_no_missings: np.ndarray, min_obs: int = 20) ->
             std_eps[j] = np.std(eps_t)
 
             # 强制std_eps下界（关键修复：防止数值不稳定）
-            std_eps[j] = np.maximum(std_eps[j], 1e-4)
+            std_eps[j] = np.maximum(std_eps[j], MIN_STD_EPS)
 
             # 添加分母稳定性保护
             cov1_eps = np.cov(eps_t, eps_t_1)[0][1]
             variance = std_eps[j] ** 2
-            phi_raw = cov1_eps / (variance + 1e-8)
-            # 放宽裁剪范围，避免边界振荡（从[-0.99,0.99]改为[-0.90,0.90]）
-            phi[j, j] = np.clip(phi_raw, -0.90, 0.90)
+            phi_raw = cov1_eps / (variance + VARIANCE_DENOMINATOR_JITTER)
+            # 放宽裁剪范围，避免边界振荡
+            phi[j, j] = np.clip(phi_raw, -AR_COEFFICIENT_CLIP_BOUND, AR_COEFFICIENT_CLIP_BOUND)
             # 诊断日志：每10个变量输出一次
             if j % 10 == 0:
                 logger.debug(f"[get_idio] 变量{j}: n_pairs={n_pairs}, std_eps={std_eps[j]:.2e}, phi={phi[j,j]:.4f}")
@@ -268,10 +281,9 @@ def get_idio(eps: np.ndarray, idx_no_missings: np.ndarray, min_obs: int = 20) ->
                 mu_eps[j] = np.mean(valid_eps)
                 std_eps[j] = np.std(valid_eps) if len(valid_eps) > 1 else 1.0
                 # 强制std_eps下界（与n_pairs >= min_obs分支保持一致）
-                std_eps[j] = np.maximum(std_eps[j], 1e-4)
+                std_eps[j] = np.maximum(std_eps[j], MIN_STD_EPS)
             else:
-                mu_eps[j] = 0.0
-                std_eps[j] = 1.0
+                _set_default_idio(mu_eps, std_eps, phi, j)
             phi[j, j] = 0.0
 
     return phi, mu_eps, std_eps

@@ -217,6 +217,62 @@ def train_ddfm_model(
 
 # ==================== 评估功能 ====================
 
+def _compute_period_target_rmse(
+    model_result: DFMModelResult,
+    period_data: pd.DataFrame,
+    obs_mean: np.ndarray,
+    factor_start_idx: int,
+    factor_end_idx: int,
+    target_var_index: Optional[int],
+    rmse_alignment: str,
+    var_frequency_map: Optional[Dict[str, str]]
+) -> float:
+    """计算指定时期的目标变量RMSE
+
+    Args:
+        model_result: DFM模型结果
+        period_data: 时期观测数据
+        obs_mean: 中心化均值（训练期均值）
+        factor_start_idx: 因子起始索引
+        factor_end_idx: 因子结束索引
+        target_var_index: 目标变量索引（None则返回inf）
+        rmse_alignment: RMSE对齐方式
+        var_frequency_map: 变量频率映射
+
+    Returns:
+        目标变量RMSE
+    """
+    if target_var_index is None:
+        return np.inf
+
+    n_factors = model_result.factors_smooth.shape[0]
+    H = model_result.H[:, :n_factors]
+    factors = model_result.factors_smooth.T  # (n_time_total, n_factors)
+
+    period_factors = factors[factor_start_idx:factor_end_idx, :]
+    reconstructed = period_factors @ H.T
+
+    obs_centered = period_data.values - obs_mean
+
+    # 确保维度匹配
+    min_time = min(obs_centered.shape[0], reconstructed.shape[0])
+    obs_centered = obs_centered[:min_time, :]
+    reconstructed = reconstructed[:min_time, :]
+
+    # 根据对齐方式调整数据
+    if var_frequency_map:
+        obs_aligned = obs_centered
+        recon_aligned = reconstructed
+    elif rmse_alignment == 'next' and min_time > 1:
+        obs_aligned = obs_centered[1:, :]
+        recon_aligned = reconstructed[:-1, :]
+    else:
+        obs_aligned = obs_centered
+        recon_aligned = reconstructed
+
+    return calculate_single_variable_rmse(obs_aligned, recon_aligned, target_var_index)
+
+
 def evaluate_model_fit(
     model_result: DFMModelResult,
     observation_data: pd.DataFrame,
@@ -250,78 +306,41 @@ def evaluate_model_fit(
     Returns:
         EvaluationMetrics: 包含目标变量RMSE的评估指标对象
     """
-    # 获取训练期数据
     train_start_dt = pd.to_datetime(training_start)
     train_end_dt = pd.to_datetime(train_end)
     train_data = observation_data[
         (observation_data.index >= train_start_dt) &
         (observation_data.index <= train_end_dt)
     ]
-
     n_time = len(train_data)
-
-    # 初始化RMSE值
-    target_rmse = np.inf
 
     # 确定目标变量索引
     target_var_index = None
     if target_variable:
-        # 优先使用传入的variable_names，否则使用observation_data的列名
         var_names = variable_names if variable_names else list(observation_data.columns)
         if target_variable in var_names:
             target_var_index = var_names.index(target_variable)
         else:
             logger.warning(f"目标变量 '{target_variable}' 不在变量列表中，无法计算目标变量RMSE")
 
+    # 计算训练期RMSE
+    target_rmse = np.inf
     if model_result.H is not None and model_result.factors_smooth is not None:
         try:
-            n_factors = model_result.factors_smooth.shape[0]
-            H = model_result.H[:, :n_factors]  # 只取前 n_factors 列（DDFM 的 H 包含特质项）
-            factors = model_result.factors_smooth.T  # (n_time, n_factors)
-
-            # 确保维度匹配
-            if factors.shape[0] >= n_time:
-                factors = factors[:n_time, :]
-
-            reconstructed = factors @ H.T
-
-            # 中心化观测数据
-            obs_values = train_data.values
-            obs_mean = np.nanmean(obs_values, axis=0)
-            obs_centered = obs_values - obs_mean
-
-            # 确保维度匹配
-            min_time = min(obs_centered.shape[0], reconstructed.shape[0])
-            obs_centered = obs_centered[:min_time, :]
-            reconstructed = reconstructed[:min_time, :]
-
-            # 根据对齐方式调整数据
-            if var_frequency_map:
-                # 混频数据：不预先偏移，由混频函数内部处理对齐
-                obs_aligned = obs_centered
-                recon_aligned = reconstructed
-            elif rmse_alignment == 'next':
-                # 下月对齐：预测值[t] vs 实际值[t+1]
-                if min_time > 1:
-                    obs_aligned = obs_centered[1:, :]
-                    recon_aligned = reconstructed[:-1, :]
-                else:
-                    logger.warning("数据期数不足，无法进行下月对齐RMSE计算")
-                    obs_aligned = obs_centered
-                    recon_aligned = reconstructed
-            else:
-                # 当月对齐（默认）
-                obs_aligned = obs_centered
-                recon_aligned = reconstructed
-
-            # 计算目标变量RMSE
-            if target_var_index is not None:
-                target_rmse = calculate_single_variable_rmse(
-                    obs_aligned, recon_aligned, target_var_index
-                )
+            obs_mean = np.nanmean(train_data.values, axis=0)
+            target_rmse = _compute_period_target_rmse(
+                model_result, train_data, obs_mean,
+                factor_start_idx=0, factor_end_idx=n_time,
+                target_var_index=target_var_index,
+                rmse_alignment=rmse_alignment,
+                var_frequency_map=var_frequency_map
+            )
 
             # 存储重构数据
-            model_result.reconstructed_data = reconstructed
+            n_factors = model_result.factors_smooth.shape[0]
+            H = model_result.H[:, :n_factors]
+            factors = model_result.factors_smooth.T[:n_time, :]
+            model_result.reconstructed_data = factors @ H.T
 
         except Exception as e:
             logger.warning(f"训练期RMSE计算失败: {e}")
@@ -338,11 +357,6 @@ def evaluate_model_fit(
             ]
 
             if len(val_data) > 0 and model_result.H is not None and model_result.factors_smooth is not None:
-                n_factors = model_result.factors_smooth.shape[0]
-                H = model_result.H[:, :n_factors]  # 只取前 n_factors 列（DDFM 的 H 包含特质项）
-                factors = model_result.factors_smooth.T  # (n_time, n_factors)
-
-                # 计算验证期对应的因子索引范围
                 full_data = observation_data[
                     (observation_data.index >= train_start_dt) &
                     (observation_data.index <= val_end_dt)
@@ -350,49 +364,20 @@ def evaluate_model_fit(
                 val_start_idx = len(full_data) - len(val_data)
                 val_end_idx = len(full_data)
 
-                # 确保因子数据足够
+                factors = model_result.factors_smooth.T
                 if factors.shape[0] >= val_end_idx:
-                    val_factors = factors[val_start_idx:val_end_idx, :]
-                    val_reconstructed = val_factors @ H.T
-
-                    # 中心化验证期数据（使用训练期均值）
                     train_mean = np.nanmean(train_data.values, axis=0)
-                    val_obs_centered = val_data.values - train_mean
-
-                    # 确保维度匹配
-                    min_val_time = min(val_obs_centered.shape[0], val_reconstructed.shape[0])
-                    val_obs_centered = val_obs_centered[:min_val_time, :]
-                    val_reconstructed = val_reconstructed[:min_val_time, :]
-
-                    # 根据对齐方式调整数据
-                    if var_frequency_map:
-                        # 混频数据：不预先偏移，由混频函数内部处理对齐
-                        val_obs_aligned = val_obs_centered
-                        val_recon_aligned = val_reconstructed
-                    elif rmse_alignment == 'next':
-                        # 下月对齐：预测值[t] vs 实际值[t+1]
-                        if min_val_time > 1:
-                            val_obs_aligned = val_obs_centered[1:, :]
-                            val_recon_aligned = val_reconstructed[:-1, :]
-                        else:
-                            logger.warning("验证期数据期数不足，无法进行下月对齐RMSE计算")
-                            val_obs_aligned = val_obs_centered
-                            val_recon_aligned = val_reconstructed
-                    else:
-                        # 当月对齐（默认）
-                        val_obs_aligned = val_obs_centered
-                        val_recon_aligned = val_reconstructed
-
-                    # 计算验证期目标变量RMSE
-                    if target_var_index is not None:
-                        target_rmse_validation = calculate_single_variable_rmse(
-                            val_obs_aligned, val_recon_aligned, target_var_index
-                        )
+                    target_rmse_validation = _compute_period_target_rmse(
+                        model_result, val_data, train_mean,
+                        factor_start_idx=val_start_idx, factor_end_idx=val_end_idx,
+                        target_var_index=target_var_index,
+                        rmse_alignment=rmse_alignment,
+                        var_frequency_map=var_frequency_map
+                    )
 
         except Exception as e:
             logger.warning(f"验证期RMSE计算失败: {e}")
 
-    # 计算目标变量加权RMSE
     weighted_target_rmse = _calculate_weighted_rmse(
         target_rmse, target_rmse_validation, training_weight
     )

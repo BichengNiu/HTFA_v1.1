@@ -142,8 +142,7 @@ class KalmanFilter:
                 K_t = scipy.linalg.solve((S_t + jitter).T, (P_pred[t] @ H_t.T).T, assume_a='pos').T
             except np.linalg.LinAlgError as e:
                 raise np.linalg.LinAlgError(
-                    f"卡尔曼滤波失败(时刻{t}): 新息协方差矩阵奇异。"
-                    f"可能原因：数据质量不足或模型参数不合理。原始错误: {e}"
+                    f"[KalmanFilter] 新息协方差矩阵求解失败(时刻{t}): {e}。请检查数据质量或模型参数。"
                 )
 
             # 保存完整的卡尔曼增益矩阵（扩展到所有观测变量维度）
@@ -237,7 +236,9 @@ class KalmanFilter:
                 # J_i = P_filt[i] @ A.T @ inv(P_pred[i+1])
                 J_i = scipy.linalg.solve(P_pred[i+1].T, (P_filt[i] @ self.A.T).T, assume_a='pos').T
             except scipy.linalg.LinAlgError as e:
-                raise scipy.linalg.LinAlgError(f"卡尔曼平滑矩阵求解失败(时刻{i}): {e}，请检查数据质量或模型参数")
+                raise scipy.linalg.LinAlgError(
+                    f"[KalmanSmoother] 平滑增益矩阵求解失败(时刻{i}): {e}。请检查数据质量或模型参数。"
+                )
 
             # 平滑状态
             delta_x = x_smooth[i+1, :] - x_pred[i+1, :]

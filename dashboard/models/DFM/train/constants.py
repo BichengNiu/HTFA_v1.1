@@ -40,3 +40,39 @@ INNOVATION_COVARIANCE_JITTER = 1e-4
 
 # DDFM批量推理的内存保护阈值
 DDFM_MAX_BATCH_SIZE = 5000
+
+# ==================== DDFM工具函数常量 (ddfm_utils.py) ====================
+
+# convergence_checker: loss极小时的绝对阈值
+CONVERGENCE_ABSOLUTE_THRESHOLD = 1e-8
+
+# convergence_checker: delta裁剪上界
+CONVERGENCE_DELTA_MAX = 1000.0
+
+# get_idio: 周度频率判断阈值（中位间隔<=此值视为周度）
+WEEKLY_FREQUENCY_GAP_THRESHOLD = 2
+
+# get_idio: std_eps下界（防止数值不稳定）
+MIN_STD_EPS = 1e-4
+
+# get_idio: phi裁剪范围（AR系数边界）
+AR_COEFFICIENT_CLIP_BOUND = 0.90
+
+# get_idio: 方差分母保护（防止除零）
+VARIANCE_DENOMINATOR_JITTER = 1e-8
+
+# ==================== DDFM模型训练常量 (ddfm_model.py) ====================
+
+# _train: 协方差矩阵抖动项
+DDFM_COVARIANCE_JITTER = 1e-6
+
+# _build_state_space: eps_var下界
+DDFM_EPS_VAR_FLOOR = 0.01
+
+# ==================== DDFM状态转移参数常量 (get_transition_params) ====================
+
+# get_transition_params: 初始协方差放大系数
+SIGMA0_SCALE_FACTOR = 2.0
+
+# get_transition_params: 正定性保护
+SIGMA0_PD_JITTER = 0.01

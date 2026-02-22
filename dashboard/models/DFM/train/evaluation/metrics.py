@@ -14,27 +14,9 @@ from dashboard.models.DFM.train.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-def calculate_average_reconstruction_rmse(
-    observation_data: np.ndarray,
-    reconstructed_data: np.ndarray
-) -> float:
-    """
-    计算所有变量的平均重构RMSE
-
-    Args:
-        observation_data: 观测数据 (n_time, n_obs)
-        reconstructed_data: 重构数据 (n_time, n_obs)
-
-    Returns:
-        float: 所有变量的平均RMSE
-    """
-    n_vars = observation_data.shape[1]
-    rmse_list = []
-    for i in range(n_vars):
-        residuals = observation_data[:, i] - reconstructed_data[:, i]
-        rmse = np.sqrt(np.nanmean(residuals ** 2))
-        rmse_list.append(rmse)
-    return float(np.mean(rmse_list))
+def _compute_rmse(residuals: np.ndarray) -> float:
+    """计算残差的RMSE（忽略NaN）"""
+    return float(np.sqrt(np.nanmean(residuals ** 2)))
 
 
 def calculate_single_variable_rmse(
@@ -58,8 +40,7 @@ def calculate_single_variable_rmse(
         return np.inf
 
     residuals = observation_data[:, variable_index] - reconstructed_data[:, variable_index]
-    rmse = np.sqrt(np.nanmean(residuals ** 2))
-    return float(rmse)
+    return _compute_rmse(residuals)
 
 
 def compare_model_scores(score_a: float, score_b: float) -> int:
@@ -147,7 +128,7 @@ def calculate_mixed_frequency_rmse(
             else:
                 # 当月对齐（默认）
                 residuals = observation_data[:, i] - reconstructed_data[:, i]
-            rmse = np.sqrt(np.nanmean(residuals ** 2))
+            rmse = _compute_rmse(residuals)
 
         rmse_dict[var_name] = rmse
 
@@ -214,11 +195,10 @@ def _calculate_monthly_aggregated_rmse(
     if not residuals:
         return np.inf
 
-    return float(np.sqrt(np.mean(np.array(residuals) ** 2)))
+    return _compute_rmse(np.array(residuals))
 
 
 __all__ = [
-    'calculate_average_reconstruction_rmse',
     'calculate_single_variable_rmse',
     'compare_model_scores',
     'calculate_mixed_frequency_rmse',

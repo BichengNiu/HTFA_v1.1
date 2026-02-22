@@ -21,7 +21,7 @@ from dashboard.models.DFM.train.utils.ddfm_utils import (
 )
 from dashboard.models.DFM.train.utils.logger import get_logger
 from dashboard.models.DFM.train.utils.preprocessing import standardize_data
-from dashboard.models.DFM.train.constants import DDFM_MAX_BATCH_SIZE
+from dashboard.models.DFM.train.constants import DDFM_MAX_BATCH_SIZE, DDFM_COVARIANCE_JITTER, DDFM_EPS_VAR_FLOOR
 
 logger = get_logger(__name__)
 
@@ -402,125 +402,138 @@ class DDFMModel:
         )
 
     def _train(self) -> None:
-        """MCMC迭代训练"""
+        """MCMC迭代训练（协调器）"""
+        self._prepare_mcmc_data()
+        self._run_mcmc_loop()
+
+    def _prepare_mcmc_data(self) -> None:
+        """准备MCMC训练数据和初始预测"""
         self.autoencoder.compile(optimizer=self.optimizer, loss=mse_missing)
         self._build_inputs(self.data_mod)
 
         prediction_iter = self.autoencoder.predict(self.data_tmp.values, verbose=0)
-        # Fix: Use direct indexing to avoid chained indexing
         miss_indices = np.where(self.bool_miss)
         data_values = self.data_mod_only_miss.values
         data_values[miss_indices[0], miss_indices[1]] = prediction_iter[self.bool_miss]
 
         self.eps = self.data_tmp[self.data_mod.columns].values - prediction_iter
+        self._prediction_prev_iter = None
+        self._initial_prediction = prediction_iter
 
+    def _run_single_mcmc_iteration(self, iter_count, prediction_prev_iter):
+        """执行单次MCMC迭代
+
+        Returns:
+            (prediction_iter, converged): 当前预测值和是否收敛
+        """
+        # 获取特质项分布
+        phi, mu_eps, std_eps = get_idio(self.eps, self.bool_no_miss)
+
+        # 减去条件AR特质项均值
+        self.data_mod.values[1:] = (
+            self.data_mod_only_miss.values[1:] -
+            self.eps[:-1, :] @ phi
+        )
+        self.data_mod.values[:1] = self.data_mod_only_miss.values[:1]
+        self.data_tmp.values[:] = self.data_mod.values
+
+        # 验证协方差矩阵正定性
+        nan_mask = np.isnan(std_eps)
+        invalid_mask = (std_eps <= 0) & ~nan_mask
+        if np.any(nan_mask) or np.any(invalid_mask):
+            nan_indices = np.where(nan_mask)[0].tolist()
+            invalid_indices = np.where(invalid_mask)[0].tolist()
+            raise ValueError(
+                f"特质项标准差包含无效值，无法构建协方差矩阵。"
+                f"NaN变量索引: {nan_indices}, 非正值变量索引: {invalid_indices}"
+            )
+
+        logger.debug(f"[MCMC] 迭代{iter_count}: mu_eps范围=[{np.min(mu_eps):.2e}, {np.max(mu_eps):.2e}], "
+                    f"std_eps范围=[{np.min(std_eps):.2e}, {np.max(std_eps):.2e}]")
+
+        # 生成MC样本
+        cov_matrix = np.diag(std_eps**2 + DDFM_COVARIANCE_JITTER)
+        cond_num = np.max(std_eps**2) / (np.min(std_eps**2) + 1e-10)
+        if cond_num > 1e10:
+            logger.warning(f"协方差矩阵条件数过大: {cond_num:.2e}")
+        else:
+            logger.debug(f"[MCMC] 协方差条件数={cond_num:.2e}")
+
+        eps_draws = self.rng.multivariate_normal(
+            mu_eps, cov_matrix,
+            (self.epochs, self.data_tmp.shape[0])
+        )
+
+        # 向量化构建MC样本
+        n_vars = eps_draws.shape[2]
+        x_sim_den = np.broadcast_to(
+            self.data_tmp.values[np.newaxis, :, :],
+            (self.epochs, self.data_tmp.shape[0], self.data_tmp.shape[1])
+        ).copy()
+        x_sim_den[:, :, :n_vars] -= eps_draws
+
+        # 训练循环保持串行（保留SGMCMC动态）
+        for i in range(self.epochs):
+            self.autoencoder.fit(
+                x_sim_den[i, :, :], self.z_actual,
+                epochs=1, batch_size=self.batch_size,
+                shuffle=False,
+                verbose=0
+            )
+
+        # 批量推理更新因子
+        batch_shape = x_sim_den.shape
+        factors_output_shape = (batch_shape[0], batch_shape[1], self.n_factors)
+        self.factors = self._batch_inference(self.encoder, x_sim_den, factors_output_shape)
+
+        # 批量推理检查收敛
+        factors_shape = self.factors.shape
+        n_vars = x_sim_den.shape[2] if len(x_sim_den.shape) > 2 else self.z_actual.shape[1]
+        predictions_output_shape = (factors_shape[0], factors_shape[1], n_vars)
+        predictions_all = self._batch_inference(self.decoder, self.factors, predictions_output_shape)
+        prediction_iter = np.mean(predictions_all, axis=0)
+
+        converged = False
+        if iter_count > 1 and prediction_prev_iter is not None:
+            delta, self.loss_now = convergence_checker(
+                prediction_prev_iter, prediction_iter, self.z_actual
+            )
+
+            progress = 0.15 + (iter_count / self.max_iter) * 0.75
+
+            if iter_count % self.display_interval == 0:
+                msg = f'MCMC迭代 {iter_count}/{self.max_iter}: loss={self.loss_now:.6f}, delta={delta:.6f}'
+                self._report_progress(msg, progress)
+                logger.debug(f"[MCMC] φ对角元素范围: [{np.min(np.diag(phi)):.4f}, {np.max(np.diag(phi)):.4f}]")
+                logger.debug(f"[MCMC] data_mod范围: [{np.nanmin(self.data_mod.values):.2e}, {np.nanmax(self.data_mod.values):.2e}]")
+
+            if delta < self.tolerance:
+                converged = True
+                msg = f'收敛于迭代 {iter_count}/{self.max_iter}: loss={self.loss_now:.6f}'
+                self._report_progress(msg, 0.90)
+
+        # 更新缺失值
+        miss_indices = np.where(self.bool_miss)
+        data_values = self.data_mod_only_miss.values
+        data_values[miss_indices[0], miss_indices[1]] = prediction_iter[self.bool_miss]
+        self.eps = self.data_mod_only_miss.values - prediction_iter
+
+        return prediction_iter, converged
+
+    def _run_mcmc_loop(self) -> None:
+        """执行MCMC迭代循环"""
         iter_count = 0
-        not_converged = True
         prediction_prev_iter = None
 
-        while not_converged and iter_count < self.max_iter:
-            # 获取特质项分布
-            phi, mu_eps, std_eps = get_idio(self.eps, self.bool_no_miss)
-
-            # 减去条件AR特质项均值
-            self.data_mod.values[1:] = (
-                self.data_mod_only_miss.values[1:] -
-                self.eps[:-1, :] @ phi
+        while iter_count < self.max_iter:
+            prediction_iter, converged = self._run_single_mcmc_iteration(
+                iter_count, prediction_prev_iter
             )
-            self.data_mod.values[:1] = self.data_mod_only_miss.values[:1]
-
-            # 直接更新data_tmp的值
-            self.data_tmp.values[:] = self.data_mod.values
-
-            # 验证协方差矩阵正定性（检查NaN和非正值）
-            nan_mask = np.isnan(std_eps)
-            invalid_mask = (std_eps <= 0) & ~nan_mask
-            if np.any(nan_mask) or np.any(invalid_mask):
-                nan_indices = np.where(nan_mask)[0].tolist()
-                invalid_indices = np.where(invalid_mask)[0].tolist()
-                raise ValueError(
-                    f"特质项标准差包含无效值，无法构建协方差矩阵。"
-                    f"NaN变量索引: {nan_indices}, 非正值变量索引: {invalid_indices}"
-                )
-
-            # 诊断日志：输出MCMC采样前的参数统计
-            logger.debug(f"[MCMC] 迭代{iter_count}: mu_eps范围=[{np.min(mu_eps):.2e}, {np.max(mu_eps):.2e}], "
-                        f"std_eps范围=[{np.min(std_eps):.2e}, {np.max(std_eps):.2e}]")
-
-            # 生成MC样本（协方差矩阵 = 方差的对角阵 = 标准差²的对角阵）
-            # 添加正则化抖动项，防止协方差矩阵奇异
-            cov_matrix = np.diag(std_eps**2 + 1e-6)
-            # 检查条件数（用于调试）
-            cond_num = np.max(std_eps**2) / (np.min(std_eps**2) + 1e-10)
-            if cond_num > 1e10:
-                logger.warning(f"协方差矩阵条件数过大: {cond_num:.2e}")
-            else:
-                logger.debug(f"[MCMC] 协方差条件数={cond_num:.2e}")
-
-            eps_draws = self.rng.multivariate_normal(
-                mu_eps, cov_matrix,
-                (self.epochs, self.data_tmp.shape[0])
-            )
-
-            # 向量化构建MC样本（优化：替代原for循环的数据准备部分）
-            n_vars = eps_draws.shape[2]  # 原始变量数
-            x_sim_den = np.broadcast_to(
-                self.data_tmp.values[np.newaxis, :, :],
-                (self.epochs, self.data_tmp.shape[0], self.data_tmp.shape[1])
-            ).copy()  # 使用copy()创建可写副本，因为broadcast_to返回只读视图
-            x_sim_den[:, :, :n_vars] -= eps_draws  # 广播减法
-
-            # 训练循环保持串行（保留SGMCMC动态）
-            for i in range(self.epochs):
-                self.autoencoder.fit(
-                    x_sim_den[i, :, :], self.z_actual,
-                    epochs=1, batch_size=self.batch_size,
-                    shuffle=False,  # 禁用shuffle确保确定性
-                    verbose=0
-                )
-
-            # 批量推理更新因子（使用抽取的_batch_inference方法）
-            batch_shape = x_sim_den.shape  # (epochs, T, input_dim)
-            factors_output_shape = (batch_shape[0], batch_shape[1], self.n_factors)
-            self.factors = self._batch_inference(self.encoder, x_sim_den, factors_output_shape)
-
-            # 批量推理检查收敛
-            factors_shape = self.factors.shape  # (epochs, T, n_factors)
-            n_vars = x_sim_den.shape[2] if len(x_sim_den.shape) > 2 else self.z_actual.shape[1]
-            predictions_output_shape = (factors_shape[0], factors_shape[1], n_vars)
-            predictions_all = self._batch_inference(self.decoder, self.factors, predictions_output_shape)
-            prediction_iter = np.mean(predictions_all, axis=0)
-
-            if iter_count > 1 and prediction_prev_iter is not None:
-                delta, self.loss_now = convergence_checker(
-                    prediction_prev_iter, prediction_iter, self.z_actual
-                )
-
-                # 计算当前进度 (15% - 90%)
-                progress = 0.15 + (iter_count / self.max_iter) * 0.75
-
-                if iter_count % self.display_interval == 0:
-                    msg = f'MCMC迭代 {iter_count}/{self.max_iter}: loss={self.loss_now:.6f}, delta={delta:.6f}'
-                    self._report_progress(msg, progress)
-                    # 诊断日志：输出φ和data_mod统计
-                    logger.debug(f"[MCMC] φ对角元素范围: [{np.min(np.diag(phi)):.4f}, {np.max(np.diag(phi)):.4f}]")
-                    logger.debug(f"[MCMC] data_mod范围: [{np.nanmin(self.data_mod.values):.2e}, {np.nanmax(self.data_mod.values):.2e}]")
-
-                if delta < self.tolerance:
-                    not_converged = False
-                    msg = f'收敛于迭代 {iter_count}/{self.max_iter}: loss={self.loss_now:.6f}'
-                    self._report_progress(msg, 0.90)
-
+            if converged:
+                break
             prediction_prev_iter = prediction_iter.copy()
-
-            # 更新缺失值 - Fix: Use direct indexing to avoid chained indexing
-            miss_indices = np.where(self.bool_miss)
-            data_values = self.data_mod_only_miss.values
-            data_values[miss_indices[0], miss_indices[1]] = prediction_iter[self.bool_miss]
-            self.eps = self.data_mod_only_miss.values - prediction_iter
             iter_count += 1
-
-        if not_converged:
+        else:
             self._report_progress(f"未在{self.max_iter}次迭代内收敛，继续处理...", 0.90)
 
         # 保存最后一层神经元（线性解码器，直接使用因子）
@@ -550,8 +563,8 @@ class DDFMModel:
         # 在观察期数据分布偏移时会产生剧烈跳跃
         eps_var = np.nanvar(eps_t, axis=0)
         # 添加下界保护，防止数值不稳定（处理NaN或零方差）
-        eps_var = np.nan_to_num(eps_var, nan=0.01)
-        eps_var = np.maximum(eps_var, 0.01)
+        eps_var = np.nan_to_num(eps_var, nan=DDFM_EPS_VAR_FLOOR)
+        eps_var = np.maximum(eps_var, DDFM_EPS_VAR_FLOOR)
         R = np.diag(eps_var)
         logger.debug(f"R矩阵对角线范围: [{np.min(eps_var):.4f}, {np.max(eps_var):.4f}]")
 

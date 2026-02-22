@@ -28,7 +28,7 @@ from dashboard.models.DFM.train.core.kalman import KalmanFilter
 
 # 评估指标
 from dashboard.models.DFM.train.evaluation.metrics import (
-    calculate_average_reconstruction_rmse,
+    compare_model_scores,
 )
 
 # 变量选择

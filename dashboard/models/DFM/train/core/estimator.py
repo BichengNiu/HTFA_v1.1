@@ -219,7 +219,9 @@ def estimate_covariance_matrices(
             Q = Sigma_corrected
 
         except np.linalg.LinAlgError as e:
-            raise np.linalg.LinAlgError(f"Sigma特征值分解失败: {e}，请检查数据质量或减少因子数")
+            raise np.linalg.LinAlgError(
+                f"[Estimator] Sigma特征值分解失败: {e}。请检查数据质量或减少因子数。"
+            )
     else:
         # 如果没有n_shocks，只计算Q矩阵
         Q = _ensure_positive_definite(Sigma, epsilon=MIN_EIGENVALUE_EPSILON)
