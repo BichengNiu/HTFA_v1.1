@@ -8,15 +8,11 @@
 
 import logging
 import pandas as pd
-from typing import Dict, List, Any, Optional, TYPE_CHECKING
+from typing import Dict, List, Any, Optional
 from collections import defaultdict
 
-from dashboard.models.DFM.utils.text_utils import normalize_variable_name
-from .constants import DEFAULT_INDUSTRY
+from .industry_aggregator import IndustryAggregator
 from ..core.news_impact_calculator import NewsContribution
-
-if TYPE_CHECKING:
-    from .industry_aggregator import IndustryAggregator
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +28,7 @@ class DataFlowFormatter:
     def __init__(
         self,
         var_industry_map: Optional[Dict[str, str]] = None,
-        industry_aggregator: Optional['IndustryAggregator'] = None
+        industry_aggregator: Optional[IndustryAggregator] = None
     ):
         """
         初始化数据流格式化器
@@ -41,8 +37,7 @@ class DataFlowFormatter:
             var_industry_map: 变量名到行业的映射字典
             industry_aggregator: 行业聚合器实例(可选,优先使用)
         """
-        self.var_industry_map = var_industry_map or {}
-        self._industry_aggregator = industry_aggregator
+        self._industry_aggregator = industry_aggregator or IndustryAggregator(var_industry_map or {})
 
     def _get_industry(self, variable_name: str) -> str:
         """
@@ -54,10 +49,7 @@ class DataFlowFormatter:
         Returns:
             行业名称
         """
-        if self._industry_aggregator:
-            return self._industry_aggregator.get_industry(variable_name)
-        normalized_name = normalize_variable_name(variable_name)
-        return self.var_industry_map.get(normalized_name, DEFAULT_INDUSTRY)
+        return self._industry_aggregator.get_industry(variable_name)
 
     def format_data_flow(
         self,
@@ -148,83 +140,3 @@ class DataFlowFormatter:
             data_flow.append(date_entry)
 
         return data_flow
-
-    def group_by_date(
-        self,
-        contributions: List[NewsContribution]
-    ) -> Dict[str, List[NewsContribution]]:
-        """
-        按日期分组贡献数据
-
-        Args:
-            contributions: 新闻贡献列表
-
-        Returns:
-            日期到贡献列表的映射
-        """
-        date_groups = defaultdict(list)
-        for contrib in contributions:
-            date_key = contrib.release_date.strftime('%Y-%m-%d')
-            date_groups[date_key].append(contrib)
-
-        return dict(date_groups)
-
-    def get_summary_by_date(
-        self,
-        contributions: List[NewsContribution]
-    ) -> List[Dict[str, Any]]:
-        """
-        获取按日期的摘要统计
-
-        Args:
-            contributions: 新闻贡献列表
-
-        Returns:
-            日期摘要列表
-        """
-        date_groups = self.group_by_date(contributions)
-
-        summaries = []
-        for date_str in sorted(date_groups.keys(), reverse=True):
-            contribs = date_groups[date_str]
-
-            total_impact = sum(c.impact_value for c in contribs)
-            positive_impact = sum(c.impact_value for c in contribs if c.impact_value > 0)
-            negative_impact = sum(c.impact_value for c in contribs if c.impact_value < 0)
-
-            summary = {
-                'date': date_str,
-                'release_count': len(contribs),
-                'total_impact': total_impact,
-                'positive_impact': positive_impact,
-                'negative_impact': negative_impact
-            }
-
-            summaries.append(summary)
-
-        return summaries
-
-    def format_for_streamlit_display(
-        self,
-        contributions: List[NewsContribution],
-        nowcast_series: Optional[pd.Series] = None
-    ) -> Dict[str, Any]:
-        """
-        格式化为Streamlit显示友好的数据结构
-
-        Args:
-            contributions: 新闻贡献列表
-            nowcast_series: Nowcast时间序列
-
-        Returns:
-            包含格式化数据的字典
-        """
-        data_flow = self.format_data_flow(contributions, nowcast_series)
-        date_summaries = self.get_summary_by_date(contributions)
-
-        return {
-            'data_flow': data_flow,
-            'date_summaries': date_summaries,
-            'total_dates': len(data_flow),
-            'total_releases': len(contributions)
-        }

@@ -6,6 +6,7 @@ DFM影响分解模块专用异常类
 """
 
 from typing import Optional, Any
+from contextlib import contextmanager
 
 
 class DecompError(Exception):
@@ -93,3 +94,21 @@ class DataFormatError(DecompError):
         return " | ".join(parts)
 
 
+@contextmanager
+def decomp_error_handler(operation_name: str):
+    """重复异常处理模式的上下文管理器
+
+    自动将 KeyError/IndexError 和 TypeError/ValueError
+    转换为 ComputationError，同时透传已有的 decomp 异常。
+
+    Args:
+        operation_name: 操作名称，用于错误消息
+    """
+    try:
+        yield
+    except (ComputationError, ValidationError, DataFormatError):
+        raise
+    except (KeyError, IndexError) as e:
+        raise ComputationError(f"{operation_name}数据访问错误: {str(e)}", operation_name)
+    except (TypeError, ValueError) as e:
+        raise ComputationError(f"{operation_name}数值错误: {str(e)}", operation_name)

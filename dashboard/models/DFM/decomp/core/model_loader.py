@@ -13,7 +13,6 @@ import pandas as pd
 from typing import Dict, Any, Tuple, Optional, List
 import io
 import logging
-from datetime import datetime
 
 from ..utils.validators import validate_model_data
 from ..utils.exceptions import ModelLoadError, ValidationError, DataFormatError
@@ -56,7 +55,6 @@ class ModelLoader:
         self._model: Optional[Any] = None
         self._metadata: Optional[Dict[str, Any]] = None
         self._nowcast_data: Optional[SavedNowcastData] = None
-        self._load_time: Optional[datetime] = None
 
     def load_model(self, model_content: bytes) -> Any:
         """
@@ -75,7 +73,6 @@ class ModelLoader:
             # 使用BytesIO避免写入临时文件
             model_stream = io.BytesIO(model_content)
             self._model = joblib.load(model_stream)
-            self._load_time = datetime.now()
 
             # 验证模型对象
             if not hasattr(self._model, '__dict__'):
@@ -627,35 +624,7 @@ class ModelLoader:
         return float(target_mean), float(target_std)
 
     def _validate_extracted_data(self, nowcast_data: SavedNowcastData) -> None:
-        """验证提取的数据完整性"""
-        # 验证必需字段（这些字段如果缺失，extraction方法已经抛出异常）
-        if nowcast_data.nowcast_series is None:
-            raise ValidationError("nowcast时间序列不可用")
-        if nowcast_data.target_variable is None:
-            raise ValidationError("目标变量信息不可用")
-        if nowcast_data.kalman_gains_history is None:
-            raise ValidationError("卡尔曼增益历史不可用")
-        if nowcast_data.target_factor_loading is None:
-            raise ValidationError("目标变量因子载荷不可用")
-        if nowcast_data.factor_loadings is None:
-            raise ValidationError("因子载荷矩阵不可用")
-        if nowcast_data.variable_index_map is None:
-            raise ValidationError("变量索引映射不可用")
-        if nowcast_data.prepared_data is None:
-            raise ValidationError("历史观测数据表不可用")
-        if nowcast_data.factor_states_predicted is None:
-            raise ValidationError("先验因子状态数据不可用")
-        if nowcast_data.target_mean_original is None:
-            raise ValidationError("目标变量均值不可用")
-        if nowcast_data.target_std_original is None:
-            raise ValidationError("目标变量标准差不可用")
-        if nowcast_data.target_std_original <= 0:
-            raise ValidationError(
-                f"目标变量标准差={nowcast_data.target_std_original}不是正数。"
-                "标准差必须大于0才能进行反标准化。"
-            )
-
-        # 验证维度一致性
+        """验证提取的数据维度一致性"""
         # 获取因子数和变量数
         n_factors = nowcast_data.factor_loadings.shape[1]
         n_variables = nowcast_data.factor_loadings.shape[0]
@@ -663,10 +632,6 @@ class ModelLoader:
         # 验证卡尔曼增益历史维度
         first_non_none = next((k for k in nowcast_data.kalman_gains_history if k is not None), None)
         if first_non_none is not None:
-            # K_t存储形状为(n_states, n_variables)，其中n_states = n_factors * max_lags
-            # 使用时会截取前n_factors行
-            # H形状应为(n_variables, n_factors)
-
             # K_t第一维应该 >= n_factors（因为n_states = n_factors * max_lags）
             if first_non_none.shape[0] < n_factors:
                 raise ValidationError(
@@ -681,7 +646,7 @@ class ModelLoader:
             logger.info(f"K_t维度验证: ({first_non_none.shape[0]}, {first_non_none.shape[1]}), "
                   f"将截取前{n_factors}行用于影响分析")
 
-        # 验证factor_states_predicted维度（独立于K_t验证）
+        # 验证factor_states_predicted维度
         fsp_shape = nowcast_data.factor_states_predicted.shape
         if len(fsp_shape) != 2:
             raise ValidationError(
@@ -695,39 +660,3 @@ class ModelLoader:
 
         logger.info("数据完整性验证通过")
 
-    def get_model_info(self) -> Dict[str, Any]:
-        """
-        获取加载的模型信息摘要
-
-        Returns:
-            模型信息字典
-        """
-        if self._model is None or self._metadata is None:
-            return {"status": "未加载"}
-
-        info = {
-            "status": "已加载",
-            "load_time": self._load_time.isoformat() if self._load_time else None,
-            "model_type": str(type(self._model)),
-            "metadata_keys": len(self._metadata) if self._metadata else 0,
-        }
-
-        if self._nowcast_data:
-            # 从factor_loadings获取因子数和变量数（H矩阵形状为n_variables × n_factors）
-            factor_count = None
-            variable_count = None
-            if self._nowcast_data.factor_loadings is not None:
-                variable_count = self._nowcast_data.factor_loadings.shape[0]
-                factor_count = self._nowcast_data.factor_loadings.shape[1]
-
-            info.update({
-                "nowcast_data_points": len(self._nowcast_data.nowcast_series) if self._nowcast_data.nowcast_series is not None else 0,
-                "target_variable": self._nowcast_data.target_variable,
-                "data_period": self._nowcast_data.data_period,
-                "factor_count": factor_count,
-                "variable_count": variable_count,
-                "has_kalman_gains": self._nowcast_data.kalman_gains_history is not None,
-                "kalman_gains_timesteps": len(self._nowcast_data.kalman_gains_history) if self._nowcast_data.kalman_gains_history else 0,
-            })
-
-        return info

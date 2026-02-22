@@ -147,30 +147,3 @@ class NowcastExtractor:
         except (TypeError, ValueError) as e:
             raise ComputationError(f"计算基准预测数值错误: {str(e)}", "baseline_computation")
 
-    def get_extraction_summary(self) -> Dict[str, Any]:
-        """
-        获取数据提取摘要
-
-        Returns:
-            提取摘要字典
-        """
-        summary = {
-            'target_variable': self.data.target_variable,
-            'data_period': self.data.data_period,
-            'nowcast_data_points': len(self.data.nowcast_series) if self.data.nowcast_series is not None else 0,
-            'factor_count': self.data.factor_loadings.shape[1] if self.data.factor_loadings is not None else 0,
-            'variable_count': self.data.factor_loadings.shape[0] if self.data.factor_loadings is not None else 0,
-        }
-
-        if self.data.nowcast_series is not None:
-            summary.update({
-                'nowcast_start_date': str(self.data.nowcast_series.index.min()),
-                'nowcast_end_date': str(self.data.nowcast_series.index.max()),
-                'nowcast_mean': float(self.data.nowcast_series.mean()),
-                'nowcast_std': float(self.data.nowcast_series.std()),
-            })
-
-        if self.data.convergence_info:
-            summary['convergence_info'] = self.data.convergence_info
-
-        return summary

@@ -182,18 +182,8 @@ def create_default_prep_config() -> PrepParallelConfig:
     return PrepParallelConfig()
 
 
-def create_serial_prep_config() -> PrepParallelConfig:
-    """创建串行处理配置（禁用所有并行）
-
-    Returns:
-        PrepParallelConfig: 串行配置实例
-    """
-    return PrepParallelConfig(enable_parallel=False)
-
-
 __all__ = [
     'PrepParallelConfig',
     'get_cpu_count',
     'create_default_prep_config',
-    'create_serial_prep_config'
 ]
