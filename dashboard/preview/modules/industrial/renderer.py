@@ -10,6 +10,7 @@ import io
 from pathlib import Path
 from typing import Optional, Any
 import logging
+import hashlib
 
 from dashboard.preview.core.base_renderer import BaseRenderer
 from dashboard.preview.core.base_config import BasePreviewConfig
@@ -21,6 +22,7 @@ from dashboard.core.ui.utils.state_helpers import (
     get_preview_state,
     set_preview_state,
 )
+from dashboard.core.ui.utils.shared_dataset import get_shared_dataset_file
 from dashboard.preview.shared.frequency_utils import get_all_frequency_names
 from dashboard.preview.modules.industrial.config import UNIFIED_FREQUENCY_CONFIGS
 
@@ -62,19 +64,18 @@ class IndustrialRenderer(BaseRenderer):
             Optional[Any]: 默认文件对象或None
         """
         with st.sidebar:
-            # 自动加载默认文件
-            default_file = self._load_default_data_file()
-            if default_file is None:
-                st.error(f"默认数据文件不存在：{self.default_relative_path.as_posix()}")
+            # 优先使用全局共享数据集；未上传时才使用默认文件。
+            uploaded_file = get_shared_dataset_file() or self._load_default_data_file()
+            if uploaded_file is None:
+                st.error(f"请先上传数据文件，或补充：{self.default_relative_path.as_posix()}")
                 clear_preview_data(namespace=self.state_namespace)
                 return None
 
-            # 检查是否需要重新处理
-            if self._should_reprocess_file(default_file):
+            if self._should_reprocess_file(uploaded_file):
                 with st.spinner("正在加载数据..."):
-                    self._process_uploaded_data(default_file)
+                    self._process_uploaded_data(uploaded_file)
 
-            return default_file
+            return uploaded_file
 
     def _load_default_data_file(self) -> Optional[io.BytesIO]:
         """加载默认数据文件
@@ -133,17 +134,16 @@ class IndustrialRenderer(BaseRenderer):
             print("[DEBUG] _should_reprocess_file: 没有上传文件")
             return False
 
-        current_name = uploaded_file.name
-        cached_name = get_preview_state(
-            'data_loaded_files',
+        current_fingerprint = self._file_fingerprint(uploaded_file)
+        cached_fingerprint = get_preview_state(
+            'data_loaded_file_fingerprint',
             namespace=self.state_namespace,
         )
-        print(f"[DEBUG] _should_reprocess_file: current={current_name}, cached={cached_name}")
+        print(f"[DEBUG] _should_reprocess_file: current={current_fingerprint}, cached={cached_fingerprint}")
 
-        # 文件名检查
-        if current_name != cached_name:
-            print(f"[DEBUG] _should_reprocess_file: 文件名变化，需要重新处理")
-            logger.info(f"[Cache] 文件名变化: {cached_name} -> {current_name}")
+        if current_fingerprint != cached_fingerprint:
+            print("[DEBUG] _should_reprocess_file: 文件内容变化，需要重新处理")
+            logger.info("[Cache] 文件内容变化，需要重新处理")
             return True
 
         # 检查是否有任意数据
@@ -162,7 +162,7 @@ class IndustrialRenderer(BaseRenderer):
             return True
 
         print(f"[DEBUG] _should_reprocess_file: 使用缓存数据")
-        logger.info(f"[Cache] 使用缓存数据: {current_name}")
+        logger.info(f"[Cache] 使用缓存数据: {uploaded_file.name}")
         return False
 
     def _process_uploaded_data(self, uploaded_file):
@@ -184,6 +184,11 @@ class IndustrialRenderer(BaseRenderer):
                 uploaded_file.name,
                 namespace=self.state_namespace,
             )
+            set_preview_state(
+                'data_loaded_file_fingerprint',
+                self._file_fingerprint(uploaded_file),
+                namespace=self.state_namespace,
+            )
 
             st.success(f"数据加载成功：{uploaded_file.name}")
 
@@ -191,6 +196,18 @@ class IndustrialRenderer(BaseRenderer):
             logger.error(f"数据处理失败: {e}", exc_info=True)
             clear_preview_data(namespace=self.state_namespace)
             st.error(f"数据处理失败: {e}")
+
+    @staticmethod
+    def _file_fingerprint(uploaded_file) -> str:
+        """区分同名但内容不同的共享文件。"""
+        if hasattr(uploaded_file, "getvalue"):
+            content = uploaded_file.getvalue()
+        else:
+            position = uploaded_file.tell()
+            uploaded_file.seek(0)
+            content = uploaded_file.read()
+            uploaded_file.seek(position)
+        return f"{uploaded_file.name}:{len(content)}:{hashlib.sha256(content).hexdigest()}"
 
     def _save_to_state(self, preview_data: LoadedPreviewData):
         """保存数据到session_state

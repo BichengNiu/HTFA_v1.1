@@ -10,6 +10,7 @@ from typing import Dict, Any, List
 from contextlib import contextmanager
 from dashboard.core.ui.components.module_selector import render_main_module_selector, render_sub_module_selector
 from dashboard.core.ui.utils.state_helpers import clear_button_state_cache
+from dashboard.core.ui.utils.shared_dataset import render_shared_dataset_uploader
 from dashboard.core import get_current_main_module, get_current_sub_module, set_current_main_module
 
 logger = logging.getLogger(__name__)
@@ -136,16 +137,10 @@ def render_complete_sidebar(
         # 渲染分隔线
         st.markdown("---")
 
-        # 渲染数据上传部分（如果适用）
+        # 三个数据模块共用同一个上传器；其余模块保持各自的专用文件流程。
         upload_info = None
-        if sub_module_result and sub_module_result.get('selected_sub_module'):
-            upload_config = get_upload_section_config(
-                updated_main_module, sub_module_result['selected_sub_module']
-            )
-            if upload_config['show_upload']:
-                upload_info = render_data_upload_section(
-                    updated_main_module, sub_module_result['selected_sub_module']
-                )
+        if updated_main_module in {"数据预览", "监测分析", "数据探索"}:
+            upload_info = render_shared_dataset_uploader(st)
 
     result = {
         'main_module_result': main_module_result,

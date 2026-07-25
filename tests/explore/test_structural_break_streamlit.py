@@ -58,6 +58,7 @@ render_univariate_analysis_page()
 
     assert not app.exception
     assert [tab.label for tab in app.tabs] == [
+        "数据概览",
         "平稳性检验",
         "结构突变检验",
     ]

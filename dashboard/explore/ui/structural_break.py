@@ -3,11 +3,9 @@
 
 from __future__ import annotations
 
-import matplotlib.pyplot as plt
 import pandas as pd
 
 from dashboard.explore.analysis.stationarity import (
-    create_time_series_figure,
     numeric_variable_names,
     prepare_selected_series,
 )
@@ -18,7 +16,6 @@ from dashboard.explore.analysis.structural_break import (
 )
 from dashboard.explore.ui.stationarity import (
     StationarityAnalysisComponent,
-    resolve_table_frequency,
 )
 
 
@@ -57,36 +54,10 @@ class StructuralBreakAnalysisComponent(StationarityAnalysisComponent):
         )
         self._remember_selection("selected_variable", variable)
         try:
-            series, time_label = prepare_selected_series(data, variable)
+            series, _ = prepare_selected_series(data, variable)
         except Exception as exc:
             st_obj.error(f"变量准备失败：{exc}")
             return None
-
-        frequency = resolve_table_frequency(table_key, series)
-        self._render_series_status(
-            st_obj,
-            series,
-            frequency=frequency,
-            time_label=time_label,
-        )
-
-        st_obj.markdown("---")
-        st_obj.markdown("### 2. 原始变量")
-        try:
-            figure = create_time_series_figure(
-                series,
-                title=f"{variable} · 原始序列",
-            )
-            try:
-                st_obj.pyplot(
-                    figure,
-                    width="stretch",
-                    clear_figure=True,
-                )
-            finally:
-                plt.close(figure)
-        except Exception as exc:
-            st_obj.warning(f"时间序列图无法绘制：{exc}")
 
         self._render_structural_break_test(
             st_obj,
@@ -107,7 +78,7 @@ class StructuralBreakAnalysisComponent(StationarityAnalysisComponent):
         table_key: str,
     ) -> None:
         st_obj.markdown("---")
-        st_obj.markdown("### 3. 结构突变检验")
+        st_obj.markdown("### 2. 结构突变检验")
         st_obj.caption(
             "Zivot–Andrews 检验在未知突变时点下检验单位根，"
             "原假设为“允许一个结构突变时序列仍存在单位根”。"
