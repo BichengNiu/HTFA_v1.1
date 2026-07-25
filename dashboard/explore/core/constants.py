@@ -116,7 +116,7 @@ DEFAULT_DTW_WINDOW = 10
 
 # 标签页索引映射
 TAB_INDEX_MAPPING = {
-    0: "stationarity",      # 平稳性分析
+    0: "stationarity",      # 平稳性检验
     1: "time_lag_corr"      # 相关性分析（包含DTW和领先滞后）
 }
 
@@ -139,12 +139,12 @@ STATE_KEYS = {
 
 # ==================== 差分处理相关常量 ====================
 
-# 同比差分周期映射（根据频率确定k_diff）
+# 同比差分周期映射（每年包含的观测期数）
 SEASONAL_DIFF_MAP = {
     'Monthly': 12,      # 月度：12个月
     'Quarterly': 4,     # 季度：4个季度
     'Weekly': 52,       # 周度：52周
-    'Ten_Day': 3,       # 旬度：3旬
+    'Ten_Day': 36,      # 旬度：一年约36旬
     'Annual': 1,        # 年度：退化为环比
     'Daily': None,      # 日度：不支持
     'Irregular': None,

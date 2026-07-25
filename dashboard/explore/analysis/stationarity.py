@@ -1,569 +1,683 @@
 # -*- coding: utf-8 -*-
-"""
-平稳性分析模块
+"""单变量平稳性诊断、预处理与检验。
 
-重构自stationarity_backend.py，将超长函数拆分为多个职责明确的小函数
+本模块只包含可测试的统计逻辑。Streamlit 状态和组件渲染位于
+``dashboard.explore.ui.stationarity``。
 """
 
+from __future__ import annotations
+
+from dataclasses import dataclass
 import logging
-from typing import Tuple, Optional, Dict, Any, List
-import pandas as pd
-import numpy as np
-from statsmodels.tsa.stattools import adfuller
-from statsmodels.tsa.statespace.tools import diff as statespace_diff
-import warnings
+from typing import Any, Iterable, Optional
 
-from dashboard.explore.core.constants import MIN_SAMPLES_ADF, SEASONAL_DIFF_MAP, FREQUENCY_DISPLAY_NAMES
-from dashboard.explore.core.series_utils import prepare_time_index
-from dashboard.explore.preprocessing.frequency_alignment import infer_series_frequency
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+from Ts import TimeSeriesSummary, difference
+from Ts.TsPlots import plot_acf, plot_pacf, plot_series
+from Ts.TsTests import (
+    ADFTest,
+    KPSSTest,
+    PhillipsPerronTest,
+)
+
+from dashboard.explore.core.constants import (
+    MIN_SAMPLES_ADF,
+    SEASONAL_DIFF_MAP,
+)
+from dashboard.explore.core.series_utils import (
+    identify_time_column,
+    prepare_time_index,
+)
+
 
 logger = logging.getLogger(__name__)
 
-# 处理方法选项
-OPERATIONS = ['不处理', '对数', '环比差分', '同比差分']
+
+@dataclass(frozen=True)
+class TransformationSpec:
+    """一个可供界面选择的序列变换。"""
+
+    label: str
+    order: Optional[int] = None
+    log: bool = False
+    year_over_year: bool = False
 
 
-def _format_adf_status(adf_result: str) -> str:
-    """
-    格式化ADF检验结果为显示状态（DRY helper）
+TRANSFORMATIONS: dict[str, TransformationSpec] = {
+    "original": TransformationSpec("不处理"),
+    "log": TransformationSpec("对数", log=True),
+    "first_difference": TransformationSpec("一阶差分", order=1),
+    "second_difference": TransformationSpec("二阶差分", order=2),
+    "year_over_year": TransformationSpec(
+        "同比差分",
+        order=1,
+        year_over_year=True,
+    ),
+    "log_first_difference": TransformationSpec(
+        "对数一阶差分",
+        order=1,
+        log=True,
+    ),
+    "log_second_difference": TransformationSpec(
+        "对数二阶差分",
+        order=2,
+        log=True,
+    ),
+    "log_year_over_year": TransformationSpec(
+        "对数同比差分",
+        order=1,
+        log=True,
+        year_over_year=True,
+    ),
+}
 
-    Args:
-        adf_result: ADF检验结果 ('是', '否', 或错误信息)
 
-    Returns:
-        显示状态 ('平稳', '非平稳', 或原始错误信息)
-    """
-    if adf_result == '是':
-        return '平稳'
-    elif adf_result == '否':
-        return '非平稳'
+TABLE_FREQUENCIES = {
+    "daily": "Daily",
+    "weekly": "Weekly",
+    "ten_day": "Ten_Day",
+    "monthly": "Monthly",
+    "quarterly": "Quarterly",
+    "yearly": "Annual",
+    "annual": "Annual",
+    "table": "Undetermined",
+}
+
+
+YEAR_OVER_YEAR_LAGS = {
+    frequency: lag
+    for frequency, lag in SEASONAL_DIFF_MAP.items()
+    if lag is not None
+}
+
+
+TEST_LABELS = {
+    "adf": "ADF 检验",
+    "kpss": "KPSS 检验",
+    "pp": "Phillips–Perron 检验",
+}
+
+
+TEST_NULL_HYPOTHESES = {
+    "adf": "序列存在单位根（非平稳）",
+    "kpss": "序列平稳",
+    "pp": "序列存在单位根（非平稳）",
+}
+
+
+TEST_TREND_OPTIONS = {
+    "adf": ("n", "c", "ct", "ctt"),
+    "kpss": ("c", "ct"),
+    "pp": ("c", "ct"),
+}
+
+
+TEST_TREND_LABELS = {
+    "adf": {
+        "n": "无常数项",
+        "c": "常数项",
+        "ct": "常数项 + 线性趋势",
+        "ctt": "常数项 + 线性趋势 + 二次趋势",
+    },
+    "kpss": {
+        "c": "水平平稳（常数项）",
+        "ct": "趋势平稳（常数项 + 线性趋势）",
+    },
+    "pp": {
+        "c": "常数项",
+        "ct": "常数项 + 线性趋势",
+    },
+}
+
+
+RESULT_COLUMNS = [
+    "检验代码",
+    "检验",
+    "确定性项",
+    "原假设",
+    "统计量",
+    "P值",
+    "滞后阶数",
+    "有效样本数",
+    "临界值",
+    "判定",
+    "平稳性解释",
+    "错误",
+]
+
+
+SUMMARY_LABELS = {
+    "Name": "名称",
+    "Observations": "总观测数",
+    "Valid observations": "有效观测数",
+    "Frequency": "频率",
+    "Start": "起始时间",
+    "End": "结束时间",
+    "Missing values": "缺失值数",
+    "Missing ratio": "缺失比例",
+    "Missing timestamps": "缺失时间点",
+    "Missing positions": "缺失位置",
+    "Mean": "均值",
+    "Standard deviation": "标准差",
+    "Minimum": "最小值",
+    "First quartile": "第一四分位数",
+    "Median": "中位数",
+    "Third quartile": "第三四分位数",
+    "Maximum": "最大值",
+}
+
+
+def _validate_numeric_series(series: pd.Series) -> pd.Series:
+    """验证并返回浮点副本，不静默改变索引或缺失位置。"""
+    if not isinstance(series, pd.Series):
+        raise TypeError("分析对象必须是 pandas.Series")
+    if series.empty:
+        raise ValueError("序列不能为空")
+    if (
+        not pd.api.types.is_numeric_dtype(series.dtype)
+        or pd.api.types.is_bool_dtype(series.dtype)
+        or pd.api.types.is_complex_dtype(series.dtype)
+    ):
+        raise TypeError("序列必须是实数型变量")
+
+    converted = series.astype(float)
+    values = converted.to_numpy(dtype=float, na_value=np.nan)
+    if np.isinf(values).any():
+        raise ValueError("序列包含无穷值")
+    return converted
+
+
+def numeric_variable_names(data: pd.DataFrame) -> list[str]:
+    """按原始列顺序返回可分析的实数型变量。"""
+    return [
+        column
+        for column in data.columns
+        if pd.api.types.is_numeric_dtype(data[column].dtype)
+        and not pd.api.types.is_bool_dtype(data[column].dtype)
+        and not pd.api.types.is_complex_dtype(data[column].dtype)
+    ]
+
+
+def prepare_selected_series(
+    data: pd.DataFrame,
+    variable: str,
+) -> tuple[pd.Series, Optional[str]]:
+    """提取变量并尽可能建立经过校验的升序时间索引。"""
+    if variable not in data.columns:
+        raise KeyError(f"数据表中不存在变量: {variable}")
+    if variable not in numeric_variable_names(data):
+        raise TypeError(f"变量“{variable}”不是可分析的实数型变量")
+
+    time_column = identify_time_column(data, exclude_columns=[variable])
+    if time_column is None and not isinstance(data.index, pd.DatetimeIndex):
+        prepared, time_label = data.copy(), None
     else:
-        return adf_result
+        prepared, time_label = prepare_time_index(
+            data,
+            time_column=time_column,
+            set_as_index=True,
+            keep_column=False,
+        )
+    series = _validate_numeric_series(prepared[variable])
+    if isinstance(series.index, pd.DatetimeIndex):
+        if series.index.isna().any():
+            raise ValueError("时间列包含无法解析的日期")
+        if series.index.duplicated().any():
+            raise ValueError("时间列包含重复日期")
+        series = series.sort_index()
+    return series, time_label
 
 
-def apply_single_operation(series: pd.Series, operation: str) -> Tuple[Optional[pd.Series], str]:
-    """
-    对序列应用单次操作
-
-    Args:
-        series: 输入序列
-        operation: 操作类型 ('不处理', '对数', '环比差分', '同比差分')
-
-    Returns:
-        Tuple[处理后序列, 错误信息(如有)]
-    """
-    if operation == '不处理':
-        return series, ''
-
-    if operation == '对数':
-        clean = series.dropna()
-        if len(clean) == 0 or (clean <= 0).any():
-            return None, '包含非正值，无法对数'
-        return np.log(series), ''
-
-    if operation == '环比差分':
-        return statespace_diff(series, k_diff=1), ''
-
-    if operation == '同比差分':
-        return statespace_diff(series, k_diff=12), ''
-
-    return series, ''
+def normalize_frequency(frequency: Optional[str]) -> str:
+    """将频率表键和显示名称统一为内部频率名称。"""
+    if frequency is None:
+        return "Undetermined"
+    value = str(frequency).strip()
+    if value in YEAR_OVER_YEAR_LAGS or value in {"Daily", "Undetermined"}:
+        return value
+    return TABLE_FREQUENCIES.get(value.lower(), value)
 
 
-def apply_variable_transformations(
-    df: pd.DataFrame,
-    transform_config: pd.DataFrame,
-    alpha: float = 0.05
-) -> Tuple[pd.DataFrame, pd.DataFrame, List[str]]:
-    """
-    对变量应用转换并进行平稳性检验
+def resolve_year_over_year_lag(frequency: Optional[str]) -> int:
+    """返回同比差分期数；不可靠的频率不做主观推断。"""
+    normalized = normalize_frequency(frequency)
+    lag = YEAR_OVER_YEAR_LAGS.get(normalized)
+    if lag is None:
+        raise ValueError(
+            f"频率“{normalized}”不支持同比差分；"
+            "请选择具有明确年内期数的周度、旬度、月度、季度或年度表"
+        )
+    return lag
 
-    Args:
-        df: 原始数据DataFrame
-        transform_config: 转换配置DataFrame，包含列：变量名, 第一次处理, 第二次处理, 第三次处理
-        alpha: 显著性水平
 
-    Returns:
-        Tuple[处理后数据, 检验结果DataFrame, 未通过检验的变量列表]
-    """
-    results = []
-    failed_vars = []
-    processed_data = {}
+def transform_series(
+    series: pd.Series,
+    transformation: str,
+    *,
+    frequency: Optional[str] = None,
+) -> pd.Series:
+    """使用 ``Ts.difference`` 执行界面支持的序列变换。"""
+    values = _validate_numeric_series(series)
+    try:
+        spec = TRANSFORMATIONS[transformation]
+    except KeyError as exc:
+        raise ValueError(f"未知预处理方法: {transformation}") from exc
 
-    for _, row in transform_config.iterrows():
-        var_name = row['变量名']
-        ops = [row['第一次处理'], row['第二次处理'], row['第三次处理']]
+    if spec.order is None and not spec.log:
+        return values.copy()
 
-        if var_name not in df.columns:
+    if spec.log and (values.dropna() <= 0).any():
+        raise ValueError("对数处理要求所有非缺失观测严格大于 0")
+
+    if spec.order is None:
+        transformed = np.log(values)
+        transformed.name = series.name
+        return transformed
+
+    lag = resolve_year_over_year_lag(frequency) if spec.year_over_year else 1
+    transformed = difference(
+        values,
+        order=spec.order,
+        log=spec.log,
+        lag=lag,
+    )
+    transformed.name = series.name
+    return transformed
+
+
+def _localize_summary_frequency(value: str) -> str:
+    normalized = value.strip()
+    upper = normalized.upper()
+    if upper.startswith(("QE", "Q-")) or upper == "Q":
+        return "季度"
+    if upper.startswith(("ME", "MS", "M-", "WOM")) or upper == "M":
+        return "月度"
+    if upper.startswith("W"):
+        return "周度"
+    if upper.startswith(("YE", "YS", "A-", "Y-")) or upper in {"A", "Y"}:
+        return "年度"
+    if upper.startswith(("D", "B")):
+        return "日度"
+    if normalized == "irregular or unknown":
+        return "不规则或未知"
+    if normalized == "unknown":
+        return "未知"
+    if normalized.startswith("positional"):
+        return normalized.replace("positional", "位置索引").replace(
+            "step",
+            "步长",
+        )
+    return normalized
+
+
+def localize_summary_text(summary: str) -> str:
+    """将 ``Ts.summary()`` 的固定英文标签完整转换为中文。"""
+    localized = []
+    for line in summary.splitlines():
+        stripped = line.strip()
+        if stripped == "Time Series Summary":
+            localized.append("时间序列统计摘要")
             continue
-
-        series = df[var_name].copy()
-        error_msg = ''
-
-        # 依次应用三次处理
-        for op in ops:
-            if op == '不处理':
-                break
-            series, error_msg = apply_single_operation(series, op)
-            if series is None:
-                break
-
-        if series is None:
-            results.append({
-                '变量名': var_name,
-                'ADF检验P值': None,
-                'ADF检验结果': f'处理失败({error_msg})'
-            })
-            failed_vars.append(f"{var_name}(处理失败)")
+        if ":" not in line:
+            localized.append(line)
             continue
+        label, value = line.split(":", 1)
+        english_label = label.strip()
+        chinese_label = SUMMARY_LABELS.get(english_label, english_label)
+        localized_value = value.strip()
+        if english_label == "Frequency":
+            localized_value = _localize_summary_frequency(localized_value)
+        elif localized_value == "None":
+            localized_value = "无"
+        elif localized_value == "Unnamed":
+            localized_value = "未命名"
+        localized.append(f"{chinese_label}：{localized_value}")
+    return "\n".join(localized)
 
-        # 执行检验
-        adf_p, adf_result = run_adf_test(series, alpha)
-        adf_status = _format_adf_status(adf_result)
 
-        results.append({
-            '变量名': var_name,
-            'ADF检验P值': round(adf_p, 4) if adf_p is not None else None,
-            'ADF检验结果': adf_status
-        })
+def summarize_series(series: pd.Series, *, alpha: float = 0.05) -> str:
+    """调用 ``Ts.TimeSeriesSummary.summary`` 并转换为中文摘要。"""
+    values = _validate_numeric_series(series)
+    summary = TimeSeriesSummary(values, alpha=alpha).summary(plot=False)
+    return localize_summary_text(summary)
 
-        # 记录未通过的变量
-        if adf_status == '非平稳':
-            failed_vars.append(f"{var_name}(ADF)")
 
-        # 保存处理后数据
-        processed_data[var_name] = series
+def create_time_series_figure(
+    series: pd.Series,
+    *,
+    title: Optional[str] = None,
+):
+    """使用 ``Ts.TsPlots.plot_series`` 绘制时间序列。"""
+    values = _validate_numeric_series(series)
+    figure, _ = plot_series(
+        values,
+        title=title,
+        xtitle="时间",
+        ytitle=str(series.name or "数值"),
+        markersize=0,
+        grid=True,
+        show_legend=False,
+    )
+    return figure
 
-    results_df = pd.DataFrame(results)
-    processed_df = pd.DataFrame(processed_data)
 
-    return processed_df, results_df, failed_vars
+def resolve_correlation_lags(
+    series: pd.Series,
+    requested: Optional[int] = None,
+) -> tuple[int, int]:
+    """返回 ``(实际滞后阶数, PACF 最大允许阶数)``。"""
+    values = _validate_numeric_series(series).dropna()
+    maximum = len(values) // 2 - 1
+    if maximum < 1:
+        raise ValueError("ACF/PACF 至少需要 4 个有效观测")
+
+    if requested is None:
+        return min(40, maximum), maximum
+    if isinstance(requested, bool) or not isinstance(
+        requested,
+        (int, np.integer),
+    ):
+        raise TypeError("滞后阶数必须是正整数")
+    requested = int(requested)
+    if requested < 1:
+        raise ValueError("滞后阶数必须至少为 1")
+    if requested > maximum:
+        raise ValueError(f"当前有效样本下，PACF 滞后阶数最大允许值为 {maximum}")
+    return requested, maximum
+
+
+def create_correlogram_figure(
+    series: pd.Series,
+    *,
+    nlags: Optional[int] = None,
+    alpha: float = 0.05,
+    title_prefix: Optional[str] = None,
+    include_acf: bool = True,
+    include_pacf: bool = True,
+):
+    """使用 ``Ts`` 绘制同一序列的 ACF 和 PACF。"""
+    if not include_acf and not include_pacf:
+        raise ValueError("至少选择绘制 ACF 或 PACF")
+    values = _validate_numeric_series(series).dropna()
+    resolved_lags, _ = resolve_correlation_lags(values, nlags)
+    if values.nunique() <= 1:
+        raise ValueError("常数序列无法计算 ACF/PACF")
+
+    prefix = f"{title_prefix} · " if title_prefix else ""
+    plotters = []
+    if include_acf:
+        plotters.append(("ACF", plot_acf))
+    if include_pacf:
+        plotters.append(("PACF", plot_pacf))
+    figure, axes = plt.subplots(
+        1,
+        len(plotters),
+        figsize=(6.5 * len(plotters), 4.5),
+        squeeze=False,
+    )
+    try:
+        for axis, (label, plotter) in zip(axes.flat, plotters, strict=True):
+            plot_kwargs = {
+                "nlags": resolved_lags,
+                "alpha": alpha,
+                "title": f"{prefix}{label}",
+                "grid": True,
+                "ax": axis,
+            }
+            if label == "ACF":
+                plot_kwargs["zero_lag"] = False
+            plotter(
+                values,
+                **plot_kwargs,
+            )
+        figure.tight_layout()
+        return figure
+    except Exception:
+        plt.close(figure)
+        raise
+
+
+def _clean_for_inference(series: pd.Series) -> pd.Series:
+    values = _validate_numeric_series(series).dropna()
+    if len(values) < MIN_SAMPLES_ADF:
+        raise ValueError(
+            f"平稳性检验至少需要 {MIN_SAMPLES_ADF} 个有效观测，"
+            f"当前只有 {len(values)} 个"
+        )
+    if values.nunique() <= 1:
+        raise ValueError("常数序列无法进行平稳性检验")
+    return values
+
+
+def _maximum_test_lags(nobs: int) -> int:
+    return min(8, max(1, nobs // 5))
+
+
+def _build_test(test_key: str, values: pd.Series, trend: str):
+    """将统一界面参数映射到各个 ``TsTests`` 构造器。"""
+    max_lags = _maximum_test_lags(len(values))
+    if test_key == "adf":
+        if len(values) < 20:
+            return ADFTest(values, trend=trend, lags=0)
+        return ADFTest(values, trend=trend, max_lags=max_lags)
+    if test_key == "kpss":
+        return KPSSTest(values, trend=trend, nlags="auto")
+    if test_key == "pp":
+        return PhillipsPerronTest(values, trend=trend)
+    raise ValueError(f"未知平稳性检验: {test_key}")
+
+
+def _alpha_label(alpha: float) -> str:
+    return f"{alpha * 100:g}%"
+
+
+def _critical_value(result: Any, test_key: str, alpha: float) -> Optional[float]:
+    critical_values = getattr(result, "critical_values", {}) or {}
+    value = critical_values.get(_alpha_label(alpha))
+    return None if value is None else float(value)
+
+
+def _test_decision(
+    result: Any,
+    test_key: str,
+    alpha: float,
+    critical_value: Optional[float],
+) -> tuple[str, str]:
+    pvalue = getattr(result, "pvalue", None)
+    if pvalue is not None:
+        reject = float(pvalue) < alpha
+    elif critical_value is not None:
+        reject = float(result.statistic) < critical_value
+    else:
+        raise ValueError("检验结果既没有 P 值，也没有对应显著性水平的临界值")
+
+    decision = "拒绝原假设" if reject else "不能拒绝原假设"
+    if test_key == "kpss":
+        interpretation = "支持非平稳" if reject else "支持平稳"
+    else:
+        interpretation = "支持平稳" if reject else "支持非平稳"
+    return decision, interpretation
+
+
+def _empty_test_row(test_key: str, trend: str) -> dict[str, Any]:
+    return {
+        "检验代码": test_key,
+        "检验": TEST_LABELS[test_key],
+        "确定性项": TEST_TREND_LABELS[test_key][trend],
+        "原假设": TEST_NULL_HYPOTHESES[test_key],
+        "统计量": None,
+        "P值": None,
+        "滞后阶数": None,
+        "有效样本数": None,
+        "临界值": None,
+        "判定": "无法判断",
+        "平稳性解释": "无法判断",
+        "错误": "",
+    }
+
+
+def run_selected_stationarity_tests(
+    series: pd.Series,
+    tests: Iterable[str],
+    *,
+    alpha: float = 0.05,
+    trend: str = "c",
+    test_trends: Optional[dict[str, str]] = None,
+) -> pd.DataFrame:
+    """按用户选择运行多个 ``TsTests``，单项失败不终止其他检验。"""
+    selected = list(dict.fromkeys(tests))
+    if not selected:
+        raise ValueError("至少选择一种平稳性检验")
+    unknown = [test for test in selected if test not in TEST_LABELS]
+    if unknown:
+        raise ValueError(f"未知平稳性检验: {', '.join(unknown)}")
+    if not 0 < alpha < 1:
+        raise ValueError("显著性水平必须位于 0 和 1 之间")
+
+    values = _clean_for_inference(series)
+    resolved_trends = {}
+    for test_key in selected:
+        selected_trend = (test_trends or {}).get(test_key, trend)
+        if selected_trend not in TEST_TREND_OPTIONS[test_key]:
+            allowed = ", ".join(TEST_TREND_OPTIONS[test_key])
+            raise ValueError(
+                f"{TEST_LABELS[test_key]}的确定性项必须是 {allowed}"
+            )
+        resolved_trends[test_key] = selected_trend
+
+    rows = []
+    for test_key in selected:
+        selected_trend = resolved_trends[test_key]
+        row = _empty_test_row(test_key, selected_trend)
+        try:
+            test = _build_test(test_key, values, selected_trend)
+            result = test.fit()
+            critical_value = _critical_value(result, test_key, alpha)
+            decision, interpretation = _test_decision(
+                result,
+                test_key,
+                alpha,
+                critical_value,
+            )
+            row.update(
+                {
+                    "统计量": float(result.statistic),
+                    "P值": (
+                        None
+                        if getattr(result, "pvalue", None) is None
+                        else float(result.pvalue)
+                    ),
+                    "滞后阶数": int(result.lags),
+                    "有效样本数": int(result.nobs),
+                    "临界值": critical_value,
+                    "判定": decision,
+                    "平稳性解释": interpretation,
+                }
+            )
+        except Exception as exc:
+            logger.warning("%s 执行失败: %s", TEST_LABELS[test_key], exc)
+            row["错误"] = str(exc)
+        rows.append(row)
+
+    return pd.DataFrame(rows, columns=RESULT_COLUMNS)
 
 
 def run_stationarity_tests(
-    df: pd.DataFrame,
-    alpha: float = 0.05
-) -> pd.DataFrame:
-    """
-    对所有数值变量执行ADF平稳性检验
-
-    Args:
-        df: 输入DataFrame
-        alpha: 显著性水平
-
-    Returns:
-        DataFrame with columns: 变量名, 有效值个数, ADF检验P值, ADF检验结果
-    """
-    results = []
-
-    for col in df.columns:
-        if not pd.api.types.is_numeric_dtype(df[col]):
-            continue
-
-        series = df[col].dropna()
-        valid_count = len(series)
-
-        # ADF检验
-        adf_p, adf_result = run_adf_test(series, alpha)
-
-        results.append({
-            '变量名': col,
-            '有效值个数': valid_count,
-            'ADF检验P值': round(adf_p, 4) if adf_p is not None else None,
-            'ADF检验结果': _format_adf_status(adf_result)
-        })
-
-    return pd.DataFrame(results)
-
-
-def run_adf_test(series: pd.Series, alpha: float = 0.05) -> Tuple[Optional[float], str]:
-    """
-    执行ADF平稳性检验
-
-    Args:
-        series: 输入序列
-        alpha: 显著性水平
-
-    Returns:
-        Tuple[p值, 平稳性状态]
-    """
-    series_cleaned = series.dropna()
-
-    if series_cleaned.empty or len(series_cleaned) < MIN_SAMPLES_ADF:
-        logger.warning(f"序列 '{series.name}' 样本数不足，无法执行ADF检验")
-        return None, '数据不足'
-
-    try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            result = adfuller(series_cleaned, regression='ct')
-
-        p_value = result[1]
-        is_stationary = '是' if p_value < alpha else '否'
-        logger.debug(f"ADF检验: p={p_value:.4f}, 平稳={is_stationary}")
-
-        return p_value, is_stationary
-
-    except Exception as e:
-        logger.error(f"ADF检验失败: {e}")
-
-        # 提供更具体的错误信息
-        if "Ensure that you have included enough lag variables" in str(e):
-            return None, '计算失败(滞后阶数不足)'
-        elif "degrees of freedom" in str(e):
-            return None, '计算失败(自由度不足)'
-        else:
-            return None, f'计算失败({type(e).__name__})'
-
-
-def apply_differencing(
-    series: pd.Series,
-    order: int = 1,
-    use_log: bool = False
-) -> Tuple[Optional[pd.Series], str]:
-    """
-    对序列应用差分处理
-
-    Args:
-        series: 输入序列
-        order: 差分阶数
-        use_log: 是否先取对数
-
-    Returns:
-        Tuple[差分后的序列, 方法描述]
-    """
-    try:
-        temp_series = series.copy()
-        method_desc = f"{order}阶差分" if not use_log else f"{order}阶对数差分"
-
-        # 对数转换
-        if use_log:
-            temp_series_clean = temp_series.dropna()
-            if len(temp_series_clean) == 0 or (temp_series_clean <= 0).any():
-                logger.warning(f"序列 '{series.name}' 包含非正值，无法应用对数转换")
-                return None, method_desc + " (无法应用对数)"
-
-            temp_series = np.log(temp_series)
-
-        # 差分
-        diff_series = statespace_diff(temp_series, k_diff=order)
-
-        logger.info(f"应用 {method_desc} 成功")
-        return diff_series, method_desc
-
-    except Exception as e:
-        logger.error(f"差分处理失败: {e}")
-        return None, method_desc + " (处理失败)"
-
-
-def process_nonstationary_series(
-    series: pd.Series,
-    processing_method: str,
-    diff_order: int,
-    alpha: float
-) -> Dict[str, Any]:
-    """
-    处理非平稳序列
-
-    Args:
-        series: 非平稳序列
-        processing_method: 处理方法 ('diff', 'log_diff', 'log_then_diff', 'keep')
-        diff_order: 差分阶数
-        alpha: ADF检验显著性水平
-
-    Returns:
-        处理结果字典
-    """
-    result = {
-        'processed_series': None,
-        'new_column_name': None,
-        'method_description': '原始序列',
-        'p_value': None,
-        'is_stationary': '否'
-    }
-
-    if processing_method == 'keep':
-        result['method_description'] = '保留原始 (非平稳)'
-        return result
-
-    # 根据处理方法确定参数
-    if processing_method == 'log_then_diff':
-        use_log = True
-        suffix = f"_log_diff{diff_order}"
-    elif processing_method == 'log_diff':
-        use_log = True
-        suffix = f"_log_diff{diff_order}"
-    else:  # diff
-        use_log = False
-        suffix = f"_diff{diff_order}"
-
-    diff_series, method_desc = apply_differencing(series, diff_order, use_log)
-
-    if diff_series is None:
-        result['method_description'] = method_desc
-        return result
-
-    # 检验差分后的平稳性
-    p_value, is_stationary = run_adf_test(diff_series, alpha)
-
-    result.update({
-        'method_description': method_desc,
-        'p_value': p_value,
-        'is_stationary': is_stationary
-    })
-
-    if is_stationary == '是':
-        # 差分成功使序列平稳
-        result['processed_series'] = diff_series
-        result['new_column_name'] = f"{series.name}{suffix}"
-        logger.info(f"序列 '{series.name}' 经 {method_desc} 后平稳")
-
-    return result
-
-
-def test_and_process_stationarity(
-    df_in: pd.DataFrame,
+    data: pd.DataFrame,
     alpha: float = 0.05,
-    processing_method: str = 'keep',
-    diff_order: int = 1
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    测试并处理序列平稳性
-
-    Args:
-        df_in: 输入DataFrame
-        alpha: 显著性水平
-        processing_method: 处理方法 ('keep', 'diff', 'log_diff', 'log_then_diff')
-        diff_order: 差分阶数
-
-    Returns:
-        Tuple[摘要DataFrame, 处理后的数据DataFrame]
-    """
-    logger.info(f"开始平稳性检验: shape={df_in.shape}, method={processing_method}, order={diff_order}")
-
-    df = df_in.copy()
-    summary_results = []
-    processed_data = {}
-
-    # 1. 准备时间索引
-    df_work, time_column = prepare_time_index(df, time_column=None, set_as_index=True, keep_column=True)
-
-    # 记录时间列信息
-    if time_column:
-        summary_results.append({
-            '指标名称': time_column,
-            '原始P值': None,
-            '原始是否平稳': '时间戳列',
-            '处理方法': '保留',
-            '处理后P值': None,
-            '最终是否平稳': '时间戳列'
-        })
-        processed_data[time_column] = df_work[time_column] if time_column in df_work.columns else df_work.index
-        logger.info(f"时间列: '{time_column}'")
-
-    # 2. 处理每个数值列
-    for col_name in df_work.columns:
-        # 跳过已处理的时间列
-        if col_name == time_column:
-            continue
-
-        if not pd.api.types.is_numeric_dtype(df_work[col_name]):
-            logger.debug(f"跳过非数值列: '{col_name}'")
-            continue
-
-        logger.info(f"\n处理列: '{col_name}'")
-        series = df_work[col_name]
-
-        # 保留原始数值序列
-        processed_data[col_name] = series.copy()
-
-        # 初始ADF检验
-        original_p_value, original_status = run_adf_test(series, alpha)
-        logger.info(f"  初始ADF: p={original_p_value}, 平稳={original_status}")
-
-        # 准备摘要条目
-        summary_entry = {
-            '指标名称': col_name,
-            '原始P值': original_p_value,
-            '原始是否平稳': original_status,
-            '处理方法': '原始序列',
-            '处理后P值': None,
-            '最终是否平稳': original_status
-        }
-
-        # 如果非平稳且需要处理
-        if original_status == '否' and processing_method != 'keep':
-            process_result = process_nonstationary_series(
-                series, processing_method, diff_order, alpha
-            )
-
-            summary_entry['处理方法'] = process_result['method_description']
-            summary_entry['处理后P值'] = process_result['p_value']
-            summary_entry['最终是否平稳'] = process_result['is_stationary']
-
-            # 添加新的处理后序列
-            if process_result['processed_series'] is not None:
-                new_col_name = process_result['new_column_name']
-                processed_data[new_col_name] = process_result['processed_series']
-                logger.info(f"  生成新列: '{new_col_name}'")
-
-        elif original_status == '否' and processing_method == 'keep':
-            summary_entry['处理方法'] = '保留原始 (非平稳)'
-
-        summary_results.append(summary_entry)
-
-    # 3. 组装结果
-    summary_df = pd.DataFrame(summary_results)
-
-    # 将时间列排在第一行
-    if time_column:
-        is_time_col = summary_df['指标名称'] == time_column
-        summary_df = pd.concat([summary_df[is_time_col], summary_df[~is_time_col]], ignore_index=True)
-
-    # 创建最终DataFrame
-    if time_column and time_column in processed_data:
-        # 时间列在第一列
-        ordered_columns = [time_column] + [col for col in processed_data.keys() if col != time_column]
-        final_df = pd.DataFrame({col: processed_data[col] for col in ordered_columns})
-    else:
-        final_df = pd.DataFrame(processed_data)
-
-    # 设置时间索引
-    if time_column and time_column in final_df.columns:
-        try:
-            if isinstance(df_work.index, pd.DatetimeIndex):
-                final_df.index = df_work.index
-            logger.info(f"已设置时间索引")
-        except Exception as e:
-            logger.warning(f"设置时间索引失败: {e}")
-
-    logger.info(f"完成: 摘要 {summary_df.shape}, 数据 {final_df.shape}")
-
-    return summary_df, final_df
-
-
-def auto_detect_differencing_options(
-    df: pd.DataFrame,
-    nonstationary_vars: List[str],
-    alpha: float = 0.05
 ) -> pd.DataFrame:
-    """
-    对非平稳变量自动检测差分处理方案
-
-    Args:
-        df: 原始数据DataFrame
-        nonstationary_vars: 非平稳变量列表
-        alpha: ADF检验显著性水平
-
-    Returns:
-        DataFrame with columns: 变量名, 频率, 环比差分, 同比差分, 推荐处理
-    """
-    results = []
-
-    # 准备时间索引（修复频率检测需要DatetimeIndex）
-    df_work, time_col = prepare_time_index(df, time_column=None, set_as_index=True, keep_column=False)
-
-    for var in nonstationary_vars:
-        if var not in df_work.columns:
-            continue
-
-        series = df_work[var].dropna()
-        if len(series) < MIN_SAMPLES_ADF:
-            results.append({
-                '变量名': var, '频率': FREQUENCY_DISPLAY_NAMES.get('Undetermined', '未确定'),
-                '环比差分': '数据不足', '同比差分': '数据不足', '推荐处理': '不处理'
-            })
-            continue
-
-        # 频率检测
-        freq = infer_series_frequency(series)
-
-        # 环比差分检验 (k_diff=1)
-        mom_diff = statespace_diff(df_work[var], k_diff=1)
-        mom_p, mom_result = run_adf_test(mom_diff, alpha)
-        mom_status = '平稳' if mom_result == '是' else ('非平稳' if mom_result == '否' else '无法计算')
-
-        # 同比差分检验
-        seasonal_k = SEASONAL_DIFF_MAP.get(freq)
-        if seasonal_k is not None and len(series) > seasonal_k:
-            yoy_diff = statespace_diff(df_work[var], k_diff=seasonal_k)
-            yoy_p, yoy_result = run_adf_test(yoy_diff, alpha)
-            yoy_status = '平稳' if yoy_result == '是' else ('非平稳' if yoy_result == '否' else '无法计算')
+    """兼容旧调用：对每个数值变量运行 ADF 与 KPSS。"""
+    rows = []
+    for variable in numeric_variable_names(data):
+        results = run_selected_stationarity_tests(
+            data[variable],
+            ["adf", "kpss"],
+            alpha=alpha,
+            trend="ct",
+        ).set_index("检验代码")
+        adf = results.loc["adf"]
+        kpss = results.loc["kpss"]
+        conclusions = {adf["平稳性解释"], kpss["平稳性解释"]}
+        if conclusions == {"支持平稳"}:
+            overall = "平稳"
+        elif conclusions == {"支持非平稳"}:
+            overall = "非平稳"
+        elif "无法判断" in conclusions:
+            overall = "无法判断"
         else:
-            yoy_status = '不支持'
-
-        # 确定推荐处理
-        if mom_status == '平稳':
-            recommended = '环比差分'
-        elif yoy_status == '平稳':
-            recommended = '同比差分'
-        else:
-            recommended = '不处理'
-
-        results.append({
-            '变量名': var,
-            '频率': FREQUENCY_DISPLAY_NAMES.get(freq, freq),
-            '环比差分': mom_status,
-            '同比差分': yoy_status,
-            '推荐处理': recommended
-        })
-
-    return pd.DataFrame(results)
+            overall = "结论不一致"
+        rows.append(
+            {
+                "变量名": variable,
+                "有效值个数": int(data[variable].notna().sum()),
+                "ADF统计量": adf["统计量"],
+                "ADF检验P值": adf["P值"],
+                "ADF检验结果": adf["平稳性解释"],
+                "KPSS统计量": kpss["统计量"],
+                "KPSS检验P值": kpss["P值"],
+                "KPSS检验结果": kpss["平稳性解释"],
+                "综合结论": overall,
+            }
+        )
+    return pd.DataFrame(rows)
 
 
-def apply_automated_transformations(
-    df: pd.DataFrame,
-    config_df: pd.DataFrame,
-    alpha: float = 0.05
-) -> Tuple[pd.DataFrame, pd.DataFrame, List[str]]:
-    """
-    应用自动化差分处理配置
+def _legacy_single_test(
+    series: pd.Series,
+    test_key: str,
+    alpha: float,
+) -> tuple[Optional[float], str]:
+    row = run_selected_stationarity_tests(
+        series,
+        [test_key],
+        alpha=alpha,
+        trend="ct",
+    ).iloc[0]
+    if row["错误"]:
+        return None, f"计算失败({row['错误']})"
+    is_stationary = row["平稳性解释"] == "支持平稳"
+    return row["P值"], "是" if is_stationary else "否"
 
-    Args:
-        df: 原始数据DataFrame
-        config_df: 处理配置表（需包含'变量名', '频率', '用户选择'列）
-        alpha: 显著性水平
 
-    Returns:
-        Tuple[处理后数据, 检验结果, 未通过ADF检验的变量列表]
-    """
-    results = []
-    failed_vars = []
-    processed_data = {}
+def run_adf_test(
+    series: pd.Series,
+    alpha: float = 0.05,
+) -> tuple[Optional[float], str]:
+    """兼容旧调用的 ADF 二元结果。"""
+    return _legacy_single_test(series, "adf", alpha)
 
-    for _, row in config_df.iterrows():
-        var_name = row['变量名']
-        choice = row['用户选择']
-        freq = row.get('频率', 'Monthly')
 
-        if var_name not in df.columns:
-            continue
+def run_kpss_test(
+    series: pd.Series,
+    alpha: float = 0.05,
+) -> tuple[Optional[float], str]:
+    """兼容旧调用的 KPSS 二元结果。"""
+    return _legacy_single_test(series, "kpss", alpha)
 
-        series = df[var_name].copy()
 
-        # 应用处理
-        if choice == '环比差分':
-            processed_series = statespace_diff(series, k_diff=1)
-        elif choice == '同比差分':
-            k_diff = SEASONAL_DIFF_MAP.get(freq, 12)
-            processed_series = statespace_diff(series, k_diff=k_diff)
-        else:  # 不处理
-            processed_series = series
-
-        # 检验
-        adf_p, adf_result = run_adf_test(processed_series, alpha)
-        adf_status = _format_adf_status(adf_result)
-
-        results.append({
-            '变量名': var_name,
-            '处理方法': choice,
-            'ADF检验P值': round(adf_p, 4) if adf_p is not None else None,
-            'ADF检验结果': adf_status
-        })
-
-        if adf_status == '非平稳':
-            failed_vars.append(f"{var_name}(ADF)")
-
-        processed_data[var_name] = processed_series
-
-    return pd.DataFrame(processed_data), pd.DataFrame(results), failed_vars
+__all__ = [
+    "RESULT_COLUMNS",
+    "TABLE_FREQUENCIES",
+    "TEST_LABELS",
+    "TEST_TREND_LABELS",
+    "TEST_TREND_OPTIONS",
+    "TRANSFORMATIONS",
+    "TransformationSpec",
+    "create_correlogram_figure",
+    "create_time_series_figure",
+    "normalize_frequency",
+    "numeric_variable_names",
+    "localize_summary_text",
+    "prepare_selected_series",
+    "resolve_correlation_lags",
+    "resolve_year_over_year_lag",
+    "run_adf_test",
+    "run_kpss_test",
+    "run_selected_stationarity_tests",
+    "run_stationarity_tests",
+    "summarize_series",
+    "transform_series",
+]

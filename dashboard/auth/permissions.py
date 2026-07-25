@@ -68,7 +68,8 @@ GRANULAR_PERMISSION_MAP = {
             "时序性质": {
                 "code": "data_exploration.univariate",
                 "tabs": {
-                    "平稳性分析": "data_exploration.univariate.stationarity"
+                    "平稳性检验": "data_exploration.univariate.stationarity",
+                    "结构突变检验": "data_exploration.univariate.structural_break"
                 }
             },
             "时序关系": {
