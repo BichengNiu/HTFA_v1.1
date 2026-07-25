@@ -95,16 +95,26 @@ def get_staged_data() -> dict:
     return st.session_state.get("dashboard.staged_data", {})
 
 
-def get_preview_state(key: str, default: Any = None) -> Any:
-    """获取预览模块状态 - preview命名空间"""
-    full_key = f"preview.{key}"
+def get_preview_state(
+    key: str,
+    default: Any = None,
+    *,
+    namespace: str = "preview",
+) -> Any:
+    """获取预览模块状态，支持按子模块隔离命名空间。"""
+    full_key = f"{namespace}.{key}"
     return st.session_state.get(full_key, default)
 
 
-def set_preview_state(key: str, value: Any) -> bool:
-    """设置预览模块状态 - preview命名空间"""
+def set_preview_state(
+    key: str,
+    value: Any,
+    *,
+    namespace: str = "preview",
+) -> bool:
+    """设置预览模块状态，支持按子模块隔离命名空间。"""
     try:
-        full_key = f"preview.{key}"
+        full_key = f"{namespace}.{key}"
         st.session_state[full_key] = value
         return True
     except Exception as e:
@@ -112,7 +122,11 @@ def set_preview_state(key: str, value: Any) -> bool:
         return False
 
 
-def get_all_preview_data(cache_key: Optional[str] = None) -> dict:
+def get_all_preview_data(
+    cache_key: Optional[str] = None,
+    *,
+    namespace: str = "preview",
+) -> dict:
     """
     获取所有预览数据
 
@@ -124,31 +138,31 @@ def get_all_preview_data(cache_key: Optional[str] = None) -> dict:
     """
     # 如果指定了cache_key，验证当前加载的文件是否匹配
     if cache_key:
-        loaded_file = get_preview_state('data_loaded_files')
+        loaded_file = get_preview_state('data_loaded_files', namespace=namespace)
         if loaded_file != cache_key:
             return {}
 
     # 收集所有频率的数据
     all_data = {}
-    frequencies = ['daily', 'weekly', 'ten_day', 'monthly', 'yearly']
-    freq_names = ['日度', '周度', '旬度', '月度', '年度']
+    frequencies = ['daily', 'weekly', 'ten_day', 'monthly', 'quarterly', 'yearly']
+    freq_names = ['日度', '周度', '旬度', '月度', '季度', '年度']
 
     for freq_key, freq_name in zip(frequencies, freq_names):
-        df = get_preview_state(f'{freq_key}_df')
+        df = get_preview_state(f'{freq_key}_df', namespace=namespace)
         if df is not None and not df.empty:
             all_data[freq_name] = df
 
     return all_data
 
 
-def clear_preview_data() -> bool:
+def clear_preview_data(*, namespace: str = "preview") -> bool:
     """
     清理所有预览模块的数据
 
     Returns:
         bool: 是否成功清理
     """
-    return clear_state_by_prefix("preview.")
+    return clear_state_by_prefix(f"{namespace}.")
 
 
 def get_exploration_state(key: str, default: Any = None) -> Any:

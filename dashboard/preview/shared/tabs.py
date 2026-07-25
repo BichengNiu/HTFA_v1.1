@@ -313,7 +313,12 @@ def _group_indicators_by_industry_and_type(indicators, industry_map, type_map):
     return result
 
 
-def display_time_series_tab(st_module, frequency):
+def display_time_series_tab(
+    st_module,
+    frequency,
+    *,
+    state_namespace: str = "preview",
+):
     """通用的时间序列数据Tab
 
     通过频率参数和配置驱动,支持周度/月度/日度/旬度/年度所有频率
@@ -326,17 +331,29 @@ def display_time_series_tab(st_module, frequency):
     config = UNIFIED_FREQUENCY_CONFIGS[frequency]
 
     # 2. 获取数据（直接从session_state获取）
-    df = get_preview_state(config['df_key'])
+    df = get_preview_state(config['df_key'], namespace=state_namespace)
 
     if df is None or df.empty:
         st_module.info(config['empty_message'])
         return
 
     # 3. 获取行业和映射数据（直接从session_state获取）
-    industries = get_preview_state(config['industries_key'], [])
-    clean_industry_map = get_preview_state('clean_industry_map', {})
-    source_map = get_preview_state('source_map', {})
-    indicator_type_map = get_preview_state('indicator_type_map', {})
+    industries = get_preview_state(
+        config['industries_key'],
+        [],
+        namespace=state_namespace,
+    )
+    clean_industry_map = get_preview_state(
+        'clean_industry_map',
+        {},
+        namespace=state_namespace,
+    )
+    source_map = get_preview_state('source_map', {}, namespace=state_namespace)
+    indicator_type_map = get_preview_state(
+        'indicator_type_map',
+        {},
+        namespace=state_namespace,
+    )
 
     # 4. 创建筛选UI
     selected_industry, selected_type, filtered_indicators, display_name = \
@@ -347,7 +364,7 @@ def display_time_series_tab(st_module, frequency):
             indicator_type_map=indicator_type_map,
             clean_industry_map=clean_industry_map,
             source_map=source_map,
-            key_prefix=config['key_prefix']
+            key_prefix=f"{state_namespace}.{config['key_prefix']}"
         )
 
     if not filtered_indicators:
@@ -362,8 +379,16 @@ def display_time_series_tab(st_module, frequency):
         filtered_df = df[filtered_indicators]
         try:
             # 获取单位、类型和行业映射
-            indicator_unit_map = get_preview_state('indicator_unit_map', {})
-            indicator_industry_map = get_preview_state('indicator_industry_map', {})
+            indicator_unit_map = get_preview_state(
+                'indicator_unit_map',
+                {},
+                namespace=state_namespace,
+            )
+            indicator_industry_map = get_preview_state(
+                'indicator_industry_map',
+                {},
+                namespace=state_namespace,
+            )
             # 调用calculate_summary时传入映射字典
             summary_table = calculate_summary(
                 filtered_df,
@@ -400,9 +425,21 @@ def display_time_series_tab(st_module, frequency):
         current_year = datetime.now().year
 
     previous_year = current_year - 1
-    indicator_unit_map = get_preview_state('indicator_unit_map', {})
-    indicator_type_map = get_preview_state('indicator_type_map', {})
-    indicator_industry_map = get_preview_state('indicator_industry_map', {})
+    indicator_unit_map = get_preview_state(
+        'indicator_unit_map',
+        {},
+        namespace=state_namespace,
+    )
+    indicator_type_map = get_preview_state(
+        'indicator_type_map',
+        {},
+        namespace=state_namespace,
+    )
+    indicator_industry_map = get_preview_state(
+        'indicator_industry_map',
+        {},
+        namespace=state_namespace,
+    )
 
     # 按行业和类型分组指标
     grouped = _group_indicators_by_industry_and_type(
@@ -505,7 +542,7 @@ def calculate_expected_data_points(start_date, end_date, full_df, frequency):
         return 0
 
 
-def display_overview_tab(st_module):
+def display_overview_tab(st_module, *, state_namespace: str = "preview"):
     """数据概览Tab（重构后）
 
     显示所有频率数据的统计概览、指标详情、数据下载功能
@@ -520,14 +557,30 @@ def display_overview_tab(st_module):
     # 1. 获取数据并创建统一结构（直接从session_state获取）
     # 使用工具函数创建频率到DataFrame的字典
     all_data_dict = {
-        config['display_name']: get_preview_state(config['df_key'], pd.DataFrame())
+        config['display_name']: get_preview_state(
+            config['df_key'],
+            pd.DataFrame(),
+            namespace=state_namespace,
+        )
         for config in UNIFIED_FREQUENCY_CONFIGS.values()
     }
 
     indicator_maps = {
-        'industry': get_preview_state('indicator_industry_map', {}),
-        'type': get_preview_state('indicator_type_map', {}),
-        'clean_industry': get_preview_state('clean_industry_map', {})
+        'industry': get_preview_state(
+            'indicator_industry_map',
+            {},
+            namespace=state_namespace,
+        ),
+        'type': get_preview_state(
+            'indicator_type_map',
+            {},
+            namespace=state_namespace,
+        ),
+        'clean_industry': get_preview_state(
+            'clean_industry_map',
+            {},
+            namespace=state_namespace,
+        ),
     }
 
     # 2. 计算统计（一次遍历完成所有统计）- 使用缓存版本

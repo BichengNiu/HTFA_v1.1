@@ -157,7 +157,7 @@ class IndustrialConfig(BasePreviewConfig):
             'download_label': '下载数据摘要 (CSV)',
             'no_data_warning': '筛选条件 "{}" 没有匹配的指标。',
             'loading_message': '正在生成 {} 的图表...',
-            'empty_data': '{}数据尚未加载或为空,请返回"数据概览"模块上传数据。'
+            'empty_data': '暂无{}数据。'
         }
 
     def _build_plot_config(self) -> Dict[str, Any]:
@@ -301,7 +301,7 @@ for freq in _config.get_frequencies():
         'key_prefix': freq,
         'df_key': f'{freq}_df',
         'industries_key': f'{freq}_industries',
-        'empty_message': f'{freq_cfg.display_name}数据尚未加载或为空,请返回"数据概览"模块上传数据。',
+        'empty_message': f'暂无{freq_cfg.display_name}数据。',
         'summary_config': {
             'sort_column': freq_cfg.sort_column,
             'highlight_columns': freq_cfg.highlight_columns,

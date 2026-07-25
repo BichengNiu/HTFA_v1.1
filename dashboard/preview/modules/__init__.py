@@ -99,6 +99,20 @@ PreviewModuleRegistry.register(
     IndustrialRenderer
 )
 
+# 注册阿联酋模块
+from dashboard.preview.modules.uae import (
+    UAEConfig,
+    UAELoader,
+    UAERenderer,
+)
+
+PreviewModuleRegistry.register(
+    'uae',
+    UAEConfig,
+    UAELoader,
+    UAERenderer,
+)
+
 
 __all__ = [
     'PreviewModuleRegistry',

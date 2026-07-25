@@ -10,6 +10,7 @@ from typing import Dict, Any, List, Tuple, Optional
 import streamlit as st
 
 from dashboard.preview.modules.industrial.config import SUMMARY_CONFIGS
+from dashboard.preview.core.calculation_rules import uses_difference_calculation
 
 
 @st.cache_data(show_spinner=False, max_entries=30, ttl=3600)
@@ -217,7 +218,7 @@ def _calculate_growth_rates(
 
     # 判断是否使用差值计算
     # 规则：单位为"%"且类型不是"开工率"时,使用差值而不是比率
-    use_difference = (indicator_unit == '%' and indicator_type != '开工率')
+    use_difference = uses_difference_calculation(indicator_unit, indicator_type)
 
     # 根据频率选择use_abs参数
     use_abs = frequency != 'monthly'
