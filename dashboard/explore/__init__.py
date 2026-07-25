@@ -50,12 +50,22 @@ from dashboard.explore.metrics import (
 
 # ==================== Analysis模块 ====================
 from dashboard.explore.analysis import (
-    # 平稳性分析
+    # 平稳性检验
+    TEST_LABELS,
+    TEST_TREND_LABELS,
+    TEST_TREND_OPTIONS,
+    TRANSFORMATIONS,
+    create_correlogram_figure,
+    create_time_series_figure,
+    numeric_variable_names,
+    prepare_selected_series,
+    resolve_correlation_lags,
     run_stationarity_tests,
-    test_and_process_stationarity,
     run_adf_test,
-    apply_variable_transformations,
-    OPERATIONS,
+    run_kpss_test,
+    run_selected_stationarity_tests,
+    summarize_series,
+    transform_series,
 
     # 领先滞后分析
     perform_combined_lead_lag_analysis,
@@ -75,6 +85,11 @@ from dashboard.explore.preprocessing import (
     # 标准化
     standardize_series,
     standardize_series_pair,
+)
+from dashboard.explore.analysis.structural_break import (
+    STRUCTURAL_BREAK_LAG_METHODS,
+    STRUCTURAL_BREAK_MODELS,
+    run_zivot_andrews_test,
 )
 
 __all__ = [
@@ -112,11 +127,24 @@ __all__ = [
     'calculate_dtw_path',
 
     # Analysis - 平稳性
+    'TEST_LABELS',
+    'TEST_TREND_LABELS',
+    'TEST_TREND_OPTIONS',
+    'TRANSFORMATIONS',
+    'create_correlogram_figure',
+    'create_time_series_figure',
+    'numeric_variable_names',
+    'prepare_selected_series',
+    'resolve_correlation_lags',
     'run_stationarity_tests',
-    'test_and_process_stationarity',
     'run_adf_test',
-    'apply_variable_transformations',
-    'OPERATIONS',
+    'run_kpss_test',
+    'run_selected_stationarity_tests',
+    'summarize_series',
+    'transform_series',
+    'STRUCTURAL_BREAK_LAG_METHODS',
+    'STRUCTURAL_BREAK_MODELS',
+    'run_zivot_andrews_test',
 
     # Analysis - 领先滞后
     'perform_combined_lead_lag_analysis',

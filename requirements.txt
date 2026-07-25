@@ -26,3 +26,4 @@ bcrypt>=5.0.0
 
 # 时间序列分析
 dtaidistance>=2.3.0
+Ts @ git+https://github.com/BichengNiu/Ts.git@bec57a2610b38be3a8f78071d7e03850b53ca25e

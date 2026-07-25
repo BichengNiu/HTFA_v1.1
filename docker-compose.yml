@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      secrets:
+        - github_token
     image: htfa.alpha.1101:latest
     container_name: htfa-app
     ports:
@@ -31,3 +33,7 @@ services:
 networks:
   htfa-network:
     driver: bridge
+
+secrets:
+  github_token:
+    environment: GITHUB_TOKEN

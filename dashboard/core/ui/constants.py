@@ -37,7 +37,7 @@ class UIConstants:
         },
         "数据探索": {
             "icon": "[EXPLORE]",
-            "description": "深入探索时间序列数据的统计特性和内在规律，包括平稳性分析和相关性分析",
+            "description": "深入探索时间序列数据的统计特性和内在规律，包括平稳性检验和相关性分析",
             "sub_modules": []
         }
     }
@@ -62,7 +62,7 @@ class UIConstants:
         },
         "时序性质": {
             "icon": "📊",
-            "description": "分析单个变量的平稳性特征，包括ADF检验和KPSS检验"
+            "description": "分析单个变量的平稳性与结构突变特征"
         },
         "时序关系": {
             "icon": "🔗",

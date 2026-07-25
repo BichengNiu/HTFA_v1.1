@@ -6,6 +6,9 @@
 
 from dashboard.explore.ui.base import TimeSeriesAnalysisComponent
 from dashboard.explore.ui.stationarity import StationarityAnalysisComponent
+from dashboard.explore.ui.structural_break import (
+    StructuralBreakAnalysisComponent,
+)
 from dashboard.explore.ui.correlation import CorrelationAnalysisComponent
 from dashboard.explore.ui.dtw import DTWAnalysisComponent
 from dashboard.explore.ui.lead_lag import LeadLagAnalysisComponent
@@ -17,6 +20,7 @@ from dashboard.explore.ui.bivariate_page import render_bivariate_analysis_page
 __all__ = [
     'TimeSeriesAnalysisComponent',
     'StationarityAnalysisComponent',
+    'StructuralBreakAnalysisComponent',
     'CorrelationAnalysisComponent',
     'DTWAnalysisComponent',
     'LeadLagAnalysisComponent',

@@ -21,6 +21,7 @@ class ComponentRegistry:
 
             # 时间序列分析组件（已迁移到explore/ui目录）
             'stationarity_analysis': 'dashboard.explore.ui.stationarity',
+            'structural_break_analysis': 'dashboard.explore.ui.structural_break',
             'correlation_analysis': 'dashboard.explore.ui.correlation',
             'lead_lag_analysis': 'dashboard.explore.ui.lead_lag',
             'unified_correlation_analysis': 'dashboard.explore.ui.unified_correlation',
@@ -31,6 +32,7 @@ class ComponentRegistry:
         self.component_dependencies = {
             'shared_data_input': set(),  # 独立组件
             'stationarity_analysis': set(),  # 独立分析组件
+            'structural_break_analysis': set(),  # 独立分析组件
             'correlation_analysis': set(),  # 独立分析组件
             'lead_lag_analysis': set(),  # 独立分析组件
             'dtw_analysis': set(),  # 独立分析组件

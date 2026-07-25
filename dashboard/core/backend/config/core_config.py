@@ -38,6 +38,7 @@ class ResourcePathsConfig:
 
         # 探索模块
         'stationarity_analysis': 'dashboard.explore.ui.stationarity',
+        'structural_break_analysis': 'dashboard.explore.ui.structural_break',
         'dtw_analysis': 'dashboard.explore.ui.dtw',
         'correlation_analysis': 'dashboard.explore.ui.correlation',
         'lead_lag_analysis': 'dashboard.explore.ui.lead_lag',

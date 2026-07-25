@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 # 使用官方Python 3.11运行时作为基础镜像
 FROM python:3.11.5-slim
 
@@ -17,13 +19,21 @@ ENV PYTHONPATH=/app \
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # 复制依赖文件
 COPY requirements.txt .
 
-# 安装Python依赖
-RUN pip install --no-cache-dir -r requirements.txt
+# 安装Python依赖。github_token 仅在构建步骤中挂载，不写入镜像。
+RUN --mount=type=secret,id=github_token,required=true \
+    GITHUB_TOKEN="$(cat /run/secrets/github_token)" && \
+    git config --global \
+        url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf \
+        "https://github.com/" && \
+    pip install --no-cache-dir -r requirements.txt && \
+    git config --global --remove-section \
+        url."https://x-access-token:${GITHUB_TOKEN}@github.com/"
 
 # 复制项目文件
 COPY app.py .
