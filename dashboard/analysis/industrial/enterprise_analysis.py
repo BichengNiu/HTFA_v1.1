@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 # 导入统一的工具函数
 from dashboard.analysis.industrial.utils import (
     convert_cumulative_to_yoy,
+    convert_margin_to_yoy_diff,
     filter_data_by_time_range,
     load_enterprise_profit_data,
     create_excel_download_button
@@ -162,12 +163,12 @@ def render_enterprise_operations_analysis_with_data(
     # 处理营业收入利润率：累计值转换为年同比
     profit_margin_col = None
     for col in df_profit.columns:
-        if '营业收入利润率' in str(col) and '累计值' in str(col):
+        if '营业收入利润率' in str(col):
             profit_margin_col = col
             break
 
     if profit_margin_col:
-        yoy_data = convert_cumulative_to_yoy(df_profit[profit_margin_col])
+        yoy_data = convert_margin_to_yoy_diff(df_profit[profit_margin_col])
         yoy_col_name = profit_margin_col.replace('累计值', '累计同比')
         df_profit[yoy_col_name] = yoy_data
 
@@ -443,12 +444,12 @@ def render_enterprise_profit_analysis_with_data(
     # 处理营业收入利润率：累计值转换为年同比
     profit_margin_col = None
     for col in df_profit.columns:
-        if '营业收入利润率' in str(col) and '累计值' in str(col):
+        if '营业收入利润率' in str(col):
             profit_margin_col = col
             break
 
     if profit_margin_col:
-        yoy_data = convert_cumulative_to_yoy(df_profit[profit_margin_col])
+        yoy_data = convert_margin_to_yoy_diff(df_profit[profit_margin_col])
         yoy_col_name = profit_margin_col.replace('累计值', '累计同比')
         df_profit[yoy_col_name] = yoy_data
 
