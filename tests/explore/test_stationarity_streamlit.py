@@ -31,7 +31,7 @@ def test_stationarity_workflow_renders_and_runs_all_tests():
 
     assert not app.exception
     assert app.selectbox("stationarity_variable_select").value == "value"
-    assert any("时间序列统计摘要" in block.value for block in app.code)
+    assert len(app.code) == 0
 
     app.selectbox("stationarity_transformation_select").select(
         "first_difference"
@@ -39,13 +39,18 @@ def test_stationarity_workflow_renders_and_runs_all_tests():
     app.run(timeout=30)
 
     assert not app.exception
-    assert app.radio("stationarity_test_source").options == [
+    assert app.selectbox("stationarity_test_source").options == [
         "原始变量",
         "处理后变量（一阶差分）",
     ]
+    assert len(app.expander) == 2
     assert len(app.checkbox) == 0
+    assert not any(
+        "已生成" in message.value or "参数变化后需要重新检验" in message.value
+        for message in [*app.info, *app.success]
+    )
 
-    app.radio("stationarity_test_source").set_value("processed")
+    app.selectbox("stationarity_test_source").set_value("processed")
     app.multiselect("stationarity_test_methods").set_value(
         ["adf", "kpss", "pp"]
     )
@@ -67,3 +72,11 @@ def test_stationarity_workflow_renders_and_runs_all_tests():
     run_button = app.button("stationarity_run_tests")
     assert download.proto.type == run_button.proto.type == "primary"
     assert len(app.warning) == 0
+
+
+def test_stationarity_date_range_does_not_render_sample_hint():
+    app = AppTest.from_string(APP_SOURCE)
+
+    app.run(timeout=30)
+    assert not app.exception
+    assert not any("检验样本：" in caption.value for caption in app.caption)

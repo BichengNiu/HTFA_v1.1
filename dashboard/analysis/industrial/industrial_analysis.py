@@ -35,6 +35,7 @@ from dashboard.analysis.industrial.constants import (
     STATE_KEY_ENTERPRISE_TIME_RANGE_CHART3,
     DEFAULT_TIME_RANGE
 )
+from dashboard.core.ui.utils.shared_dataset import get_shared_dataset_file, get_shared_dataset_name
 
 
 def initialize_industrial_states():
@@ -141,15 +142,15 @@ def render_industrial_analysis(st_obj):
     Args:
         st_obj: Streamlit对象
     """
-    # 1. 直接加载默认数据文件
-    uploaded_file = load_default_monitoring_data()
+    # 1. 优先使用侧边栏共享数据集；未上传时保留默认文件作为兜底。
+    uploaded_file = get_shared_dataset_file() or load_default_monitoring_data()
 
     if uploaded_file is None:
-        st_obj.error("默认数据文件不存在: data/监测分析数据库.xlsx")
+        st_obj.error("请先在侧边栏上传数据集，或补充 data/监测分析数据库.xlsx")
         return
 
-    # 显示成功加载提示
-    st_obj.sidebar.success("成功读取监测分析数据库.xlsx")
+    source_name = get_shared_dataset_name() or "监测分析数据库.xlsx"
+    st_obj.sidebar.success(f"当前监测数据：{source_name}")
 
     # 2. 加载和缓存数据
     df_macro, df_weights = load_and_cache_data(uploaded_file)

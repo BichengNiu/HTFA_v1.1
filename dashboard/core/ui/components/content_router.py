@@ -396,15 +396,15 @@ def render_data_exploration_content(sub_module: Optional[str]) -> Dict[str, Any]
     渲染数据探索内容
 
     Args:
-        sub_module: 子模块名称（时序性质、时序关系）
+        sub_module: 子模块名称（单变量分析、多变量分析）
 
     Returns:
         Dict[str, Any]: 渲染结果
     """
-    if sub_module == '时序性质':
+    if sub_module == '单变量分析':
         render_univariate_analysis_page()
         return {'status': 'success', 'content_type': 'data_exploration', 'sub_module': sub_module}
-    elif sub_module == '时序关系':
+    elif sub_module == '多变量分析':
         render_bivariate_analysis_page()
         return {'status': 'success', 'content_type': 'data_exploration', 'sub_module': sub_module}
     else:

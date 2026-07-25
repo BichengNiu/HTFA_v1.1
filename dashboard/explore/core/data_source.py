@@ -42,8 +42,10 @@ def fingerprint_uploaded_file(file_input: Any) -> str:
     return sha256(read_uploaded_bytes(file_input)).hexdigest()
 
 
-def load_stationarity_tables(file_input: Any) -> dict[str, pd.DataFrame]:
-    """解析上传文件，返回可供平稳性检验选择的非空数据表。"""
+def load_stationarity_data(
+    file_input: Any,
+) -> tuple[dict[str, pd.DataFrame], dict[str, Any]]:
+    """解析上传文件，返回可分析数据表及每个指标的工作簿元数据。"""
     file_name = Path(str(getattr(file_input, "name", file_input))).name
     suffix = Path(file_name).suffix.lower()
 
@@ -51,7 +53,7 @@ def load_stationarity_tables(file_input: Any) -> dict[str, pd.DataFrame]:
         data = pd.read_csv(BytesIO(read_uploaded_bytes(file_input)))
         if data.empty:
             raise ValueError("CSV 文件中没有可分析数据")
-        return {"table": data}
+        return {"table": data}, {}
 
     if suffix not in {".xlsx", ".xls"}:
         raise ValueError("仅支持 CSV、XLSX 和 XLS 文件")
@@ -64,6 +66,12 @@ def load_stationarity_tables(file_input: Any) -> dict[str, pd.DataFrame]:
     }
     if not tables:
         raise ValueError("工作簿解析成功，但没有发现非空的频率数据表")
+    return tables, dict(loaded.indicator_metadata_map)
+
+
+def load_stationarity_tables(file_input: Any) -> dict[str, pd.DataFrame]:
+    """解析上传文件，返回可供平稳性检验选择的非空数据表。"""
+    tables, _ = load_stationarity_data(file_input)
     return tables
 
 
@@ -78,6 +86,7 @@ __all__ = [
     "FREQUENCY_LABELS",
     "fingerprint_uploaded_file",
     "format_table_option",
+    "load_stationarity_data",
     "load_stationarity_tables",
     "read_uploaded_bytes",
 ]

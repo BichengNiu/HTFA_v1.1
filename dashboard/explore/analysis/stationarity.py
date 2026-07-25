@@ -12,6 +12,7 @@ import logging
 from typing import Any, Iterable, Optional
 
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 import numpy as np
 import pandas as pd
 
@@ -34,6 +35,13 @@ from dashboard.explore.core.series_utils import (
 
 
 logger = logging.getLogger(__name__)
+
+_GRID_LINE_STYLES = {
+    "solid": "-",
+    "dashed": "--",
+    "dotted": ":",
+    "dashdot": "-.",
+}
 
 
 @dataclass(frozen=True)
@@ -338,28 +346,86 @@ def localize_summary_text(summary: str) -> str:
     return "\n".join(localized)
 
 
-def summarize_series(series: pd.Series, *, alpha: float = 0.05) -> str:
-    """调用 ``Ts.TimeSeriesSummary.summary`` 并转换为中文摘要。"""
+SUMMARY_FREQUENCY_LABELS = {
+    "Daily": "日度",
+    "Weekly": "周度",
+    "Ten_Day": "旬度",
+    "Monthly": "月度",
+    "Quarterly": "季度",
+    "Annual": "年度",
+    "Undetermined": "未确定",
+}
+
+
+def summarize_series(
+    series: pd.Series,
+    *,
+    alpha: float = 0.05,
+    frequency: Optional[str] = None,
+) -> str:
+    """调用 ``Ts.TimeSeriesSummary.summary`` 并转换为中文摘要。
+
+    ``frequency`` 非空时使用调用方已经确认的业务频率，避免 Ts 的索引推断
+    与工作簿元数据/频率表口径不一致。
+    """
     values = _validate_numeric_series(series)
     summary = TimeSeriesSummary(values, alpha=alpha).summary(plot=False)
-    return localize_summary_text(summary)
+    localized = localize_summary_text(summary)
+    if frequency is None:
+        return localized
+
+    display_frequency = SUMMARY_FREQUENCY_LABELS.get(frequency, str(frequency))
+    lines = localized.splitlines()
+    return "\n".join(
+        f"频率：{display_frequency}" if line.startswith("频率：") else line
+        for line in lines
+    )
 
 
 def create_time_series_figure(
     series: pd.Series,
     *,
     title: Optional[str] = None,
+    x_title: str = "时间",
+    y_title: Optional[str] = None,
+    line_width: float = 3,
+    marker_size: float = 0,
+    max_ticks: int = 12,
+    y_tick_count: int = 8,
+    x_start=None,
+    y_start: Optional[float] = None,
+    grid_mode: str = "both",
+    grid_line_style: str = "solid",
+    grid: Optional[bool] = None,
+    ymin: Optional[float] = None,
 ):
     """使用 ``Ts.TsPlots.plot_series`` 绘制时间序列。"""
     values = _validate_numeric_series(series)
-    figure, _ = plot_series(
+    if y_start is None:
+        y_start = ymin
+    if grid is not None:
+        grid_mode = "both" if grid else "none"
+    figure, axis = plot_series(
         values,
         title=title,
-        xtitle="时间",
-        ytitle=str(series.name or "数值"),
-        markersize=0,
-        grid=True,
+        xtitle=x_title,
+        ytitle=y_title or str(series.name or "数值"),
+        linewidth=line_width,
+        markersize=marker_size,
+        max_ticks=max_ticks,
+        grid=False,
+        ymin=y_start,
         show_legend=False,
+    )
+    _apply_axis_options(
+        axis,
+        x_start=x_start,
+        y_start=y_start,
+        x_tick_count=max_ticks,
+        y_tick_count=y_tick_count,
+        grid_mode=grid_mode,
+        grid_line_style=grid_line_style,
+        date_x_axis=isinstance(values.index, pd.DatetimeIndex),
     )
     return figure
 
@@ -389,6 +455,40 @@ def resolve_correlation_lags(
     return requested, maximum
 
 
+def _apply_axis_options(
+    axis,
+    *,
+    x_start=None,
+    y_start: Optional[float] = None,
+    x_tick_count: int = 12,
+    y_tick_count: int = 8,
+    grid_mode: str = "both",
+    grid_line_style: str = "solid",
+    date_x_axis: bool = False,
+) -> None:
+    """将坐标轴范围、刻度数量和网格方向统一应用到单个坐标轴。"""
+    if x_start is not None:
+        axis.set_xlim(left=x_start)
+    if y_start is not None:
+        axis.set_ylim(bottom=y_start)
+    if not date_x_axis:
+        axis.xaxis.set_major_locator(MaxNLocator(nbins=max(2, int(x_tick_count))))
+    axis.yaxis.set_major_locator(MaxNLocator(nbins=max(2, int(y_tick_count))))
+    try:
+        line_style = _GRID_LINE_STYLES[grid_line_style]
+    except KeyError as exc:
+        raise ValueError(f"未知网格线型: {grid_line_style}") from exc
+    axis.grid(False)
+    if grid_mode == "horizontal":
+        axis.yaxis.grid(True, linestyle=line_style)
+    elif grid_mode == "vertical":
+        axis.xaxis.grid(True, linestyle=line_style)
+    elif grid_mode == "both":
+        axis.grid(True, linestyle=line_style)
+    elif grid_mode != "none":
+        raise ValueError(f"未知网格方向: {grid_mode}")
+
+
 def create_correlogram_figure(
     series: pd.Series,
     *,
@@ -397,11 +497,27 @@ def create_correlogram_figure(
     title_prefix: Optional[str] = None,
     include_acf: bool = True,
     include_pacf: bool = True,
+    acf_title: Optional[str] = None,
+    pacf_title: Optional[str] = None,
+    acf_x_title: str = "滞后期数",
+    acf_y_title: str = "ACF值",
+    pacf_x_title: str = "滞后期数",
+    pacf_y_title: str = "PACF值",
+    max_ticks: int = 12,
+    y_tick_count: int = 8,
+    x_start: Optional[float] = 0,
+    y_start: Optional[float] = None,
+    grid_mode: str = "both",
+    grid_line_style: str = "solid",
+    grid: Optional[bool] = None,
+    pacf_method: str = "ywm",
 ):
     """使用 ``Ts`` 绘制同一序列的 ACF 和 PACF。"""
     if not include_acf and not include_pacf:
         raise ValueError("至少选择绘制 ACF 或 PACF")
     values = _validate_numeric_series(series).dropna()
+    if grid is not None:
+        grid_mode = "both" if grid else "none"
     resolved_lags, _ = resolve_correlation_lags(values, nlags)
     if values.nunique() <= 1:
         raise ValueError("常数序列无法计算 ACF/PACF")
@@ -423,15 +539,33 @@ def create_correlogram_figure(
             plot_kwargs = {
                 "nlags": resolved_lags,
                 "alpha": alpha,
-                "title": f"{prefix}{label}",
-                "grid": True,
+                "title": (
+                    acf_title if label == "ACF" and acf_title is not None
+                    else pacf_title if label == "PACF" and pacf_title is not None
+                    else f"{prefix}{label}"
+                ),
+                "xtitle": acf_x_title if label == "ACF" else pacf_x_title,
+                "ytitle": acf_y_title if label == "ACF" else pacf_y_title,
+                "max_ticks": max_ticks,
+                "grid": False,
                 "ax": axis,
             }
             if label == "ACF":
                 plot_kwargs["zero_lag"] = False
+            else:
+                plot_kwargs["method"] = pacf_method
             plotter(
                 values,
                 **plot_kwargs,
+            )
+            _apply_axis_options(
+                axis,
+                x_start=x_start,
+                y_start=y_start,
+                x_tick_count=max_ticks,
+                y_tick_count=y_tick_count,
+                grid_mode=grid_mode,
+                grid_line_style=grid_line_style,
             )
         figure.tight_layout()
         return figure
