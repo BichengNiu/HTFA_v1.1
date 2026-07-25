@@ -15,6 +15,11 @@ from dashboard.core import get_current_main_module, get_current_sub_module
 
 logger = logging.getLogger(__name__)
 
+PREVIEW_MODULE_MAPPING = {
+    '工业': 'industrial',
+    '阿联酋': 'uae',
+}
+
 
 def check_user_permission(module_name: str) -> tuple[bool, Optional[str]]:
     """
@@ -259,17 +264,11 @@ def render_data_preview_content(sub_module: Optional[str]) -> Dict[str, Any]:
     """
     from dashboard.preview.modules import PreviewModuleRegistry
 
-    # 映射中文名到英文标识
-    module_mapping = {
-        '工业': 'industrial',
-        '能源': 'energy'
-    }
-
     if not sub_module:
         st.info("请在左侧选择一个数据预览子模块")
         return {'status': 'info', 'message': '未选择子模块'}
 
-    module_id = module_mapping.get(sub_module)
+    module_id = PREVIEW_MODULE_MAPPING.get(sub_module)
     if not module_id:
         st.error(f"未知的数据预览子模块: {sub_module}")
         return {'status': 'error', 'message': f'未知子模块: {sub_module}'}
@@ -500,7 +499,7 @@ def detect_navigation_level(main_module: str, sub_module: Optional[str]) -> str:
             return 'MAIN_MODULE_ONLY'
 
         # 对于数据预览模块，如果已选择子模块，直接进入功能层
-        if main_module == '数据预览' and sub_module == '工业':
+        if main_module == '数据预览' and sub_module in PREVIEW_MODULE_MAPPING:
             return 'FUNCTION_ACTIVE'
 
         # 对于监测分析模块，如果已选择子模块，直接进入功能层
@@ -655,5 +654,6 @@ __all__ = [
     'get_module_icon', 'get_module_description',
     'validate_content_config', 'detect_navigation_level',
     'render_module_selection_guide', 'render_welcome_page', 'render_platform_header',
-    'check_user_permission', 'render_permission_denied'
+    'check_user_permission', 'render_permission_denied',
+    'PREVIEW_MODULE_MAPPING'
 ]

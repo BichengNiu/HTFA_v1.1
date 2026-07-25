@@ -232,7 +232,8 @@ from dashboard.core.ui.utils.state_helpers import get_staged_data
 
 MODULE_CONFIG = {
     "数据预览": {
-        "工业": None  # 工业数据预览子模块
+        "工业": None,
+        "阿联酋": None,
     },
     "监测分析": {
         "工业": ["工业增加值", "工业企业利润"]

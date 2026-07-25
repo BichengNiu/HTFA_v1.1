@@ -10,6 +10,11 @@ import numpy as np
 from typing import List, Dict, Tuple
 
 from dashboard.preview.modules.industrial.config import UI_TEXT, COLORS
+from dashboard.preview.core.calculation_rules import (
+    group_indicators_by_calculation,
+    uses_difference_calculation,
+)
+from dashboard.preview.core.summary_export import build_summary_workbook
 
 
 def _get_industry_indicators(selected_industry, df, clean_industry_map, source_map):
@@ -179,7 +184,7 @@ def display_summary_table(
             for idx in display_df.index:
                 unit = display_df.loc[idx, '单位']
                 indicator_type = display_df.loc[idx, '类型']
-                use_difference = (unit == '%' and indicator_type != '开工率')
+                use_difference = uses_difference_calculation(unit, indicator_type)
 
                 # 格式化每个数值列（使用之前保存的列表）
                 for col in numeric_cols:
@@ -227,30 +232,50 @@ def display_summary_table(
         st.error(f"格式化/高亮摘要表时出错,列名可能不匹配: {e}")
         st.dataframe(summary_sorted, hide_index=True)
 
+    _display_summary_calculation_note(st, summary_sorted)
+
     # 添加下载按钮（放在表格左下角）
     from datetime import datetime
-    import io
 
-    # 创建Excel文件
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        summary_sorted.to_excel(writer, sheet_name='数据摘要', index=False)
-
-        # 设置列宽自适应
-        worksheet = writer.sheets['数据摘要']
-        for column in worksheet.columns:
-            max_length = max(len(str(cell.value)) for cell in column if cell.value)
-            worksheet.column_dimensions[column[0].column_letter].width = min(max_length + 2, 50)
+    workbook_data = build_summary_workbook(summary_sorted)
 
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
     st.download_button(
         label="下载数据摘要",
-        data=buffer.getvalue(),
+        data=workbook_data,
         file_name=f"{download_prefix}_{timestamp}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         type="primary"
     )
+
+
+def _display_summary_calculation_note(st, summary_table: pd.DataFrame) -> None:
+    """在摘要表下说明当前指标实际采用的变化计算口径。"""
+    growth_indicators, difference_indicators = group_indicators_by_calculation(
+        summary_table
+    )
+    if not growth_indicators and not difference_indicators:
+        return
+
+    with st.expander("摘要计算口径说明", expanded=False):
+        st.markdown(
+            "**按增速计算**  \n"
+            "公式：`（本期值 - 对比期值）/ 对比期值`。  \n"
+            f"指标：{_format_indicator_names(growth_indicators)}"
+        )
+        st.markdown(
+            "**按减差形式计算**  \n"
+            "公式：`本期值 - 对比期值`；单位为 `%` 的指标，其结果按百分点理解。  \n"
+            f"指标：{_format_indicator_names(difference_indicators)}"
+        )
+
+
+def _format_indicator_names(indicators: List[str]) -> str:
+    """将指标名称格式化为适合折叠说明展示的文本。"""
+    if not indicators:
+        return "无"
+    return "、".join(f"`{indicator}`" for indicator in indicators)
 
 
 def _sort_summary_table(

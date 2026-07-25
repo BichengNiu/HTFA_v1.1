@@ -16,7 +16,11 @@ from dashboard.preview.core.base_config import BasePreviewConfig
 from dashboard.preview.core.base_loader import BaseDataLoader
 from dashboard.preview.domain.models import LoadedPreviewData
 from dashboard.preview.shared.tabs import display_time_series_tab, display_overview_tab
-from dashboard.core.ui.utils.state_helpers import get_preview_state, set_preview_state
+from dashboard.core.ui.utils.state_helpers import (
+    clear_preview_data,
+    get_preview_state,
+    set_preview_state,
+)
 from dashboard.preview.shared.frequency_utils import get_all_frequency_names
 from dashboard.preview.modules.industrial.config import UNIFIED_FREQUENCY_CONFIGS
 
@@ -29,6 +33,18 @@ class IndustrialRenderer(BaseRenderer):
     继承BaseRenderer，实现工业数据的UI渲染
     """
 
+    module_title = "工业数据预览"
+    default_relative_path = Path("data") / "工业" / "经济数据库0202.xlsx"
+    tab_names = ['数据概览', '日度', '周度', '旬度', '月度', '季度', '年度']
+    frequency_tabs = {
+        '日度': 'daily',
+        '周度': 'weekly',
+        '旬度': 'ten_day',
+        '月度': 'monthly',
+        '季度': 'quarterly',
+        '年度': 'yearly',
+    }
+
     def __init__(self, config: BasePreviewConfig, loader: BaseDataLoader):
         """初始化渲染器
 
@@ -37,6 +53,7 @@ class IndustrialRenderer(BaseRenderer):
             loader: 数据加载器对象
         """
         super().__init__(config, loader)
+        self.state_namespace = loader.get_state_namespace()
 
     def render_sidebar(self) -> Optional[Any]:
         """渲染侧边栏
@@ -48,7 +65,8 @@ class IndustrialRenderer(BaseRenderer):
             # 自动加载默认文件
             default_file = self._load_default_data_file()
             if default_file is None:
-                st.error("默认数据文件不存在：data/经济指标数据库.xlsx")
+                st.error(f"默认数据文件不存在：{self.default_relative_path.as_posix()}")
+                clear_preview_data(namespace=self.state_namespace)
                 return None
 
             # 检查是否需要重新处理
@@ -64,12 +82,13 @@ class IndustrialRenderer(BaseRenderer):
         Returns:
             Optional[io.BytesIO]: 文件对象或None
         """
-        default_path = Path(__file__).parent.parent.parent.parent.parent / "data" / "经济指标数据库.xlsx"
+        project_root = Path(__file__).resolve().parents[4]
+        default_path = project_root / self.default_relative_path
 
         if default_path.exists():
             with open(default_path, 'rb') as f:
                 file_obj = io.BytesIO(f.read())
-                file_obj.name = "经济指标数据库.xlsx"
+                file_obj.name = default_path.name
                 return file_obj
 
         logger.warning(f"默认数据文件不存在: {default_path}")
@@ -78,14 +97,13 @@ class IndustrialRenderer(BaseRenderer):
     def render_main_content(self):
         """渲染主内容区域"""
         import streamlit as st
-        st.title("工业数据预览")
+        st.title(self.module_title)
 
         # 检查是否有数据
         has_data = self._has_any_data()
 
         # 始终创建Tab页（无论是否有数据）
-        tabs = ['数据概览', '日度', '周度', '旬度', '月度', '季度', '年度']
-        tab_objects = st.tabs(tabs)
+        tab_objects = st.tabs(self.tab_names)
 
         # 数据概览Tab
         with tab_objects[0]:
@@ -95,16 +113,7 @@ class IndustrialRenderer(BaseRenderer):
                 st.info("请在左侧上传数据文件")
 
         # 时间序列Tab
-        freq_tabs = {
-            '日度': 'daily',
-            '周度': 'weekly',
-            '旬度': 'ten_day',
-            '月度': 'monthly',
-            '季度': 'quarterly',
-            '年度': 'yearly'
-        }
-
-        for idx, (tab_name, freq) in enumerate(freq_tabs.items(), start=1):
+        for idx, (_, freq) in enumerate(self.frequency_tabs.items(), start=1):
             with tab_objects[idx]:
                 if has_data:
                     self._render_time_series_tab(freq)
@@ -125,7 +134,10 @@ class IndustrialRenderer(BaseRenderer):
             return False
 
         current_name = uploaded_file.name
-        cached_name = get_preview_state('data_loaded_files')
+        cached_name = get_preview_state(
+            'data_loaded_files',
+            namespace=self.state_namespace,
+        )
         print(f"[DEBUG] _should_reprocess_file: current={current_name}, cached={cached_name}")
 
         # 文件名检查
@@ -138,7 +150,8 @@ class IndustrialRenderer(BaseRenderer):
         keys_to_check = ['weekly_df', 'monthly_df', 'daily_df', 'ten_day_df', 'quarterly_df', 'yearly_df']
         print(f"[DEBUG] _should_reprocess_file: 检查缓存数据，keys={keys_to_check}")
         has_data = any(
-            get_preview_state(key) is not None and not get_preview_state(key).empty
+            get_preview_state(key, namespace=self.state_namespace) is not None
+            and not get_preview_state(key, namespace=self.state_namespace).empty
             for key in keys_to_check
         )
         print(f"[DEBUG] _should_reprocess_file: has_data={has_data}")
@@ -166,12 +179,17 @@ class IndustrialRenderer(BaseRenderer):
             self._save_to_state(preview_data)
 
             # 记录文件名
-            set_preview_state('data_loaded_files', uploaded_file.name)
+            set_preview_state(
+                'data_loaded_files',
+                uploaded_file.name,
+                namespace=self.state_namespace,
+            )
 
             st.success(f"数据加载成功：{uploaded_file.name}")
 
         except Exception as e:
             logger.error(f"数据处理失败: {e}", exc_info=True)
+            clear_preview_data(namespace=self.state_namespace)
             st.error(f"数据处理失败: {e}")
 
     def _save_to_state(self, preview_data: LoadedPreviewData):
@@ -182,22 +200,65 @@ class IndustrialRenderer(BaseRenderer):
         """
         # 保存DataFrame
         for freq, df in preview_data.dataframes.items():
-            set_preview_state(f'{freq}_df', df)
+            set_preview_state(
+                f'{freq}_df',
+                df,
+                namespace=self.state_namespace,
+            )
 
             # 提取行业列表
             if not df.empty:
                 industries = self._extract_industries_from_df(df, preview_data)
-                set_preview_state(f'{freq}_industries', industries)
+                set_preview_state(
+                    f'{freq}_industries',
+                    industries,
+                    namespace=self.state_namespace,
+                )
 
         # 保存映射关系
-        set_preview_state('source_map', preview_data.source_map)
-        set_preview_state('indicator_industry_map', preview_data.indicator_industry_map)
-        set_preview_state('indicator_unit_map', preview_data.indicator_unit_map)
-        set_preview_state('indicator_type_map', preview_data.indicator_type_map)
+        set_preview_state(
+            'source_map',
+            preview_data.source_map,
+            namespace=self.state_namespace,
+        )
+        set_preview_state(
+            'indicator_industry_map',
+            preview_data.indicator_industry_map,
+            namespace=self.state_namespace,
+        )
+        set_preview_state(
+            'indicator_unit_map',
+            preview_data.indicator_unit_map,
+            namespace=self.state_namespace,
+        )
+        set_preview_state(
+            'indicator_type_map',
+            preview_data.indicator_type_map,
+            namespace=self.state_namespace,
+        )
+        set_preview_state(
+            'indicator_freq_map',
+            preview_data.indicator_freq_map,
+            namespace=self.state_namespace,
+        )
+        set_preview_state(
+            'indicator_metadata_map',
+            preview_data.indicator_metadata_map,
+            namespace=self.state_namespace,
+        )
+        set_preview_state(
+            'custom_maps',
+            preview_data.custom_maps,
+            namespace=self.state_namespace,
+        )
 
         # 保存clean_industry_map
         clean_industry_map = self._build_clean_industry_map(preview_data)
-        set_preview_state('clean_industry_map', clean_industry_map)
+        set_preview_state(
+            'clean_industry_map',
+            clean_industry_map,
+            namespace=self.state_namespace,
+        )
 
     def _extract_industries_from_df(self, df: pd.DataFrame, preview_data: LoadedPreviewData) -> list:
         """从DataFrame提取行业列表
@@ -231,7 +292,10 @@ class IndustrialRenderer(BaseRenderer):
         clean_industry_map = {}
 
         for indicator, source in preview_data.source_map.items():
-            industry_name = self.loader.extract_industry_name(source)
+            industry_name = (
+                preview_data.indicator_industry_map.get(indicator)
+                or self.loader.extract_industry_name(source)
+            )
             if industry_name not in clean_industry_map:
                 clean_industry_map[industry_name] = []
             clean_industry_map[industry_name].append(source)
@@ -244,11 +308,18 @@ class IndustrialRenderer(BaseRenderer):
         Returns:
             bool: 是否有数据
         """
-        keys_to_check = ['weekly', 'monthly', 'daily', 'ten_day', 'yearly']
+        keys_to_check = [
+            'daily',
+            'weekly',
+            'ten_day',
+            'monthly',
+            'quarterly',
+            'yearly',
+        ]
 
         for key in keys_to_check:
             state_key = f'{key}_df'
-            data = get_preview_state(state_key)
+            data = get_preview_state(state_key, namespace=self.state_namespace)
             if data is not None and not data.empty:
                 return True
 
@@ -264,7 +335,11 @@ class IndustrialRenderer(BaseRenderer):
             config = UNIFIED_FREQUENCY_CONFIGS[freq_name]
 
             # 获取DataFrame并统计指标
-            df = get_preview_state(config['df_key'], pd.DataFrame())
+            df = get_preview_state(
+                config['df_key'],
+                pd.DataFrame(),
+                namespace=self.state_namespace,
+            )
             indicator_count = len(df.columns) if not df.empty else 0
 
             # 显示指标数量
@@ -272,7 +347,13 @@ class IndustrialRenderer(BaseRenderer):
                 st.markdown(f"{config['display_name']}指标：{indicator_count} 个")
 
             # 同时统计行业数量
-            industry_count = len(get_preview_state(config['industries_key'], []))
+            industry_count = len(
+                get_preview_state(
+                    config['industries_key'],
+                    [],
+                    namespace=self.state_namespace,
+                )
+            )
             max_industries = max(max_industries, industry_count)
 
         # 显示行业数量
@@ -282,7 +363,7 @@ class IndustrialRenderer(BaseRenderer):
     def _render_overview_tab(self):
         """渲染数据概览Tab"""
         import streamlit as st
-        display_overview_tab(st)
+        display_overview_tab(st, state_namespace=self.state_namespace)
 
     def _render_time_series_tab(self, frequency: str):
         """渲染时间序列Tab
@@ -291,4 +372,8 @@ class IndustrialRenderer(BaseRenderer):
             frequency: 频率名称 (如 'weekly', 'monthly')
         """
         import streamlit as st
-        display_time_series_tab(st, frequency)
+        display_time_series_tab(
+            st,
+            frequency,
+            state_namespace=self.state_namespace,
+        )

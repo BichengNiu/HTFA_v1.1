@@ -4,9 +4,30 @@
 定义数据预览相关的数据结构
 """
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Dict, Any, List, Optional
 import pandas as pd
+
+
+@dataclass(frozen=True)
+class IndicatorMetadata:
+    """单个指标在字典、数据sheet和物理文件中的完整元数据。"""
+
+    indicator_name: str
+    frequency: str
+    unit: str
+    sheet_source: str
+    updated_at: str
+    indicator_type: Optional[str] = None
+    industry: Optional[str] = None
+    dictionary_source: Optional[str] = None
+    forecast_variable: Optional[str] = None
+    file_name: str = ""
+    sheet_name: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        """返回便于状态存储和展示的字典。"""
+        return asdict(self)
 
 
 @dataclass
@@ -29,6 +50,7 @@ class LoadedPreviewData:
     indicator_unit_map: Dict[str, str] = field(default_factory=dict)
     indicator_type_map: Dict[str, str] = field(default_factory=dict)
     indicator_freq_map: Dict[str, str] = field(default_factory=dict)
+    indicator_metadata_map: Dict[str, IndicatorMetadata] = field(default_factory=dict)
 
     # 元数据
     module_name: str = "unknown"
@@ -55,7 +77,7 @@ class LoadedPreviewData:
         """
         return self.dataframes
 
-    def get_all_maps(self) -> Dict[str, Dict[str, str]]:
+    def get_all_maps(self) -> Dict[str, Dict[str, Any]]:
         """获取所有映射字典
 
         Returns:
@@ -66,7 +88,8 @@ class LoadedPreviewData:
             'industry': self.indicator_industry_map,
             'unit': self.indicator_unit_map,
             'type': self.indicator_type_map,
-            'freq': self.indicator_freq_map
+            'freq': self.indicator_freq_map,
+            'metadata': self.indicator_metadata_map,
         }
 
     def has_frequency(self, frequency: str) -> bool:
@@ -102,11 +125,9 @@ class LoadedPreviewData:
         if df.empty:
             return []
 
-        # 假设第一列是指标名称列
-        indicator_column = df.columns[0]
-        return df[indicator_column].unique().tolist()
+        return df.columns.tolist()
 
-    def get_indicator_metadata(self, indicator: str) -> Dict[str, str]:
+    def get_indicator_metadata(self, indicator: str) -> Dict[str, Any]:
         """获取指标的元数据
 
         Args:
@@ -115,11 +136,16 @@ class LoadedPreviewData:
         Returns:
             Dict[str, str]: 指标元数据(行业、单位、类型等)
         """
+        metadata = self.indicator_metadata_map.get(indicator)
+        if metadata is not None:
+            return metadata.to_dict()
+
         return {
+            'indicator_name': indicator,
             'industry': self.indicator_industry_map.get(indicator, '未知'),
             'unit': self.indicator_unit_map.get(indicator, ''),
-            'type': self.indicator_type_map.get(indicator, ''),
-            'source': self.source_map.get(indicator, '')
+            'indicator_type': self.indicator_type_map.get(indicator, ''),
+            'physical_source': self.source_map.get(indicator, ''),
         }
 
     def __repr__(self) -> str:

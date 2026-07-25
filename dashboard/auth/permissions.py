@@ -28,6 +28,10 @@ GRANULAR_PERMISSION_MAP = {
             "工业": {
                 "code": "data_preview.industrial",
                 "tabs": None
+            },
+            "阿联酋": {
+                "code": "data_preview.uae",
+                "tabs": None
             }
         }
     },

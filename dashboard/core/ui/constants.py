@@ -22,8 +22,8 @@ class UIConstants:
     MAIN_MODULES = {
         "数据预览": {
             "icon": "[DATA]",
-            "description": "查看和预览各类经济数据，提供工业数据的全面展示和分析",
-            "sub_modules": ["工业"]
+            "description": "查看和预览不同领域及国家的多频率经济数据",
+            "sub_modules": ["工业", "阿联酋"]
         },
         "监测分析": {
             "icon": "[CHART]",
@@ -46,7 +46,11 @@ class UIConstants:
     SUB_MODULES = {
         "工业": {
             "icon": "[INDUSTRY]",
-            "description": "工业数据的预览和分析，支持多频率数据展示（日度、周度、旬度、月度、年度）"
+            "description": "工业数据的预览和分析，支持日、周、旬、月、季、年数据展示"
+        },
+        "阿联酋": {
+            "icon": "[UAE]",
+            "description": "阿联酋经济数据预览，支持日、周、旬、月、季、年数据展示"
         },
         "DFM 模型": {
             "icon": "[MODEL]",

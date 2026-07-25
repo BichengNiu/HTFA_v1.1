@@ -636,6 +636,9 @@ class IndustrialLoader(BaseDataLoader):
     继承BaseDataLoader，封装工业数据加载逻辑
     """
 
+    module_name = "industrial"
+    state_namespace = "preview.industrial"
+
     def __init__(self, config: BasePreviewConfig):
         """初始化工业数据加载器
 
@@ -653,11 +656,17 @@ class IndustrialLoader(BaseDataLoader):
         Returns:
             LoadedPreviewData: 标准化的数据对象
         """
-        # 调用原有的load_and_process_data函数
-        industrial_data = load_and_process_data(files)
+        if len(files) != 1:
+            raise ValueError("每个预览模块必须提供且只能提供一个经济数据库文件")
 
-        # 转换为LoadedPreviewData
-        return self._convert_to_preview_data(industrial_data)
+        from dashboard.preview.core.workbook_parser import parse_preview_workbook
+        from dashboard.preview.modules.industrial.processor import _apply_frequency_processing
+
+        return parse_preview_workbook(
+            files[0],
+            module_name=self.module_name,
+            frequency_processor=_apply_frequency_processing,
+        )
 
     def extract_industry_name(self, source: str) -> str:
         """从数据源提取行业名称
@@ -676,7 +685,7 @@ class IndustrialLoader(BaseDataLoader):
         Returns:
             str: 状态命名空间前缀
         """
-        return 'preview.industrial'
+        return self.state_namespace
 
     def _convert_to_preview_data(self, industrial_data: 'LoadedIndustrialData') -> LoadedPreviewData:
         """将LoadedIndustrialData转换为LoadedPreviewData
@@ -712,4 +721,3 @@ __all__ = [
     'normalize_string',
     'extract_industry_name'
 ]
-
