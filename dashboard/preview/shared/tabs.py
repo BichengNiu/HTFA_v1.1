@@ -343,14 +343,13 @@ def display_time_series_tab(
         [],
         namespace=state_namespace,
     )
-    clean_industry_map = get_preview_state(
-        'clean_industry_map',
+    indicator_type_map = get_preview_state(
+        'indicator_type_map',
         {},
         namespace=state_namespace,
     )
-    source_map = get_preview_state('source_map', {}, namespace=state_namespace)
-    indicator_type_map = get_preview_state(
-        'indicator_type_map',
+    indicator_industry_map = get_preview_state(
+        'indicator_industry_map',
         {},
         namespace=state_namespace,
     )
@@ -362,8 +361,7 @@ def display_time_series_tab(
             industries=industries,
             df=df,
             indicator_type_map=indicator_type_map,
-            clean_industry_map=clean_industry_map,
-            source_map=source_map,
+            indicator_industry_map=indicator_industry_map,
             key_prefix=f"{state_namespace}.{config['key_prefix']}"
         )
 
@@ -381,11 +379,6 @@ def display_time_series_tab(
             # 获取单位、类型和行业映射
             indicator_unit_map = get_preview_state(
                 'indicator_unit_map',
-                {},
-                namespace=state_namespace,
-            )
-            indicator_industry_map = get_preview_state(
-                'indicator_industry_map',
                 {},
                 namespace=state_namespace,
             )
@@ -449,9 +442,9 @@ def display_time_series_tab(
     )
 
     for industry, types_dict in grouped.items():
-        # 行业标题和分隔线
-        st_module.markdown(f"### {industry}")
+        # 分隔线和行业标题
         st_module.markdown("---")
+        st_module.markdown(f"### {industry}")
 
         # 创建两列布局
         col1, col2 = st_module.columns(2)

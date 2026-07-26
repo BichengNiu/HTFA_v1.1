@@ -9,7 +9,6 @@ import pandas as pd
 import numpy as np
 from typing import List, Dict, Tuple
 
-from dashboard.preview.modules.industrial.config import UI_TEXT, COLORS
 from dashboard.preview.core.calculation_rules import (
     group_indicators_by_calculation,
     uses_difference_calculation,
@@ -17,25 +16,37 @@ from dashboard.preview.core.calculation_rules import (
 from dashboard.preview.core.summary_export import build_summary_workbook
 
 
-def _get_industry_indicators(selected_industry, df, clean_industry_map, source_map):
+def _get_ui_text():
+    """Delay configuration loading to avoid an import-time cycle."""
+    from dashboard.preview.modules.industrial.config import UI_TEXT
+
+    return UI_TEXT
+
+
+def _get_colors():
+    """Delay summary color configuration loading."""
+    from dashboard.preview.modules.industrial.config import COLORS
+
+    return COLORS
+
+
+def _get_industry_indicators(selected_industry, df, indicator_industry_map):
     """获取某行业的指标列表（辅助函数）
 
     Args:
         selected_industry: 选中的行业
         df: 数据DataFrame
-        clean_industry_map: 行业映射
-        source_map: 数据源映射
+        indicator_industry_map: 指标名称到行业的映射，来自指标字典
 
     Returns:
         List[str]: 指标列表
     """
-    if selected_industry == UI_TEXT['all_option']:
+    if selected_industry == _get_ui_text()['all_option']:
         return list(df.columns)
 
-    original_sources = clean_industry_map.get(selected_industry, [])
     return [
-        ind for ind, src in source_map.items()
-        if src in original_sources and ind in df.columns
+        indicator for indicator in df.columns
+        if indicator_industry_map.get(indicator) == selected_industry
     ]
 
 
@@ -67,7 +78,7 @@ def _filter_by_type(indicators, selected_type, indicator_type_map):
     Returns:
         List[str]: 筛选后的指标列表
     """
-    if selected_type == UI_TEXT['all_option']:
+    if selected_type == _get_ui_text()['all_option']:
         return indicators
 
     return [
@@ -81,8 +92,7 @@ def create_filter_ui(
     industries: List[str],
     df: pd.DataFrame,
     indicator_type_map: Dict[str, str],
-    clean_industry_map: Dict[str, List[str]],
-    source_map: Dict[str, str],
+    indicator_industry_map: Dict[str, str],
     key_prefix: str
 ) -> Tuple[str, str, List[str], str]:
     """创建统一的行业和类型筛选UI
@@ -92,18 +102,18 @@ def create_filter_ui(
         industries: 行业列表
         df: 数据DataFrame
         indicator_type_map: 指标类型映射
-        clean_industry_map: 行业映射
-        source_map: 数据源映射
+        indicator_industry_map: 指标名称到行业的映射，来自指标字典
         key_prefix: 组件key前缀
 
     Returns:
         Tuple[str, str, List[str], str]: (选中的行业, 选中的类型, 筛选后的指标列表, 显示名称)
     """
+    ui_text = _get_ui_text()
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown(f"**{UI_TEXT['select_industry']}**")
-        industry_options = [UI_TEXT['all_option']] + industries
+        st.markdown(f"**{ui_text['select_industry']}**")
+        industry_options = [ui_text['all_option']] + industries
         selected_industry = st.selectbox(
             f"select_industry_{key_prefix}",
             industry_options,
@@ -114,12 +124,12 @@ def create_filter_ui(
     with col2:
         # 根据选择的行业确定可用的类型（使用辅助函数）
         industry_indicators = _get_industry_indicators(
-            selected_industry, df, clean_industry_map, source_map
+            selected_industry, df, indicator_industry_map
         )
         available_types = _get_available_types(industry_indicators, indicator_type_map)
 
-        st.markdown(f"**{UI_TEXT['select_type']}**")
-        type_options = [UI_TEXT['all_option']] + available_types
+        st.markdown(f"**{ui_text['select_type']}**")
+        type_options = [ui_text['all_option']] + available_types
         selected_type = st.selectbox(
             f"select_type_{key_prefix}",
             type_options,
@@ -129,15 +139,15 @@ def create_filter_ui(
 
     # 根据行业和类型双重筛选指标（使用辅助函数）
     industry_indicators = _get_industry_indicators(
-        selected_industry, df, clean_industry_map, source_map
+        selected_industry, df, indicator_industry_map
     )
     filtered_indicators = _filter_by_type(
         industry_indicators, selected_type, indicator_type_map
     )
 
     # 构建显示名称
-    industry_display = selected_industry if selected_industry != UI_TEXT['all_option'] else f"{UI_TEXT['all_option']}行业"
-    type_display = selected_type if selected_type != UI_TEXT['all_option'] else f"{UI_TEXT['all_option']}类型"
+    industry_display = selected_industry if selected_industry != ui_text['all_option'] else f"{ui_text['all_option']}行业"
+    type_display = selected_type if selected_type != ui_text['all_option'] else f"{ui_text['all_option']}类型"
     display_name = f"{industry_display}-{type_display}"
 
     return selected_industry, selected_type, filtered_indicators, display_name
@@ -332,9 +342,9 @@ def _highlight_positive_negative(val) -> str:
     try:
         val_float = float(str(val).replace('%', ''))
         if val_float > 0:
-            return f'background-color: {COLORS["positive"]}'
+            return f'background-color: {_get_colors()["positive"]}'
         elif val_float < 0:
-            return f'background-color: {COLORS["negative"]}'
+            return f'background-color: {_get_colors()["negative"]}'
         return ''
     except (ValueError, TypeError):
         return ''
