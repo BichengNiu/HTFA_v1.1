@@ -5,8 +5,7 @@
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Any, Optional
-from dashboard.preview.core.base_config import BasePreviewConfig
+from typing import Any, List
 
 
 class BaseDataLoader(ABC):
@@ -18,14 +17,6 @@ class BaseDataLoader(ABC):
     - 单一职责: 只负责数据加载和初步处理
     - 依赖倒置: 依赖配置抽象而非具体配置
     """
-
-    def __init__(self, config: BasePreviewConfig):
-        """初始化数据加载器
-
-        Args:
-            config: 配置对象
-        """
-        self.config = config
 
     @abstractmethod
     def load_and_process_data(self, files: List[Any]) -> Any:
@@ -54,19 +45,7 @@ class BaseDataLoader(ABC):
         """
         pass
 
-    def validate_data(self, data: Any) -> bool:
-        """验证加载的数据
-
-        子类可覆盖以实现自定义验证逻辑
-
-        Args:
-            data: 加载的数据对象
-
-        Returns:
-            bool: 验证是否通过
-        """
-        return data is not None
-
+    @abstractmethod
     def get_state_namespace(self) -> str:
         """获取状态命名空间
 
@@ -75,4 +54,4 @@ class BaseDataLoader(ABC):
         Returns:
             str: 状态命名空间前缀 (如 'preview.industrial')
         """
-        return 'preview'
+        pass

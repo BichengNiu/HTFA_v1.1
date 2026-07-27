@@ -2,6 +2,7 @@
 
 正式协议：
 - `指标字典` sheet 保存指标分类信息；
+- 指标字典是唯一白名单，数据sheet中的未登记指标会被忽略；
 - 其他非空 sheet 的第2至第6行依次保存指标名称、频率、单位、来源、更新时间；
 - 第7行开始为日期和指标值。
 """
@@ -155,6 +156,13 @@ def _parse_data_sheet(
 
     frames = {frequency: [] for frequency in FREQUENCIES}
     metadata_map: Dict[str, IndicatorMetadata] = {}
+    indicator_columns = [
+        (column_index, indicator_name)
+        for column_index, indicator_name in indicator_columns
+        if indicator_name in dictionary
+    ]
+    if not indicator_columns:
+        return frames, metadata_map
 
     data_block = raw.iloc[6:, :].dropna(how="all")
     if data_block.empty:
@@ -162,18 +170,14 @@ def _parse_data_sheet(
 
     raw_dates = data_block.iloc[:, 0]
     parsed_dates = pd.to_datetime(raw_dates, errors="coerce")
-    invalid_dates = raw_dates.notna() & parsed_dates.isna()
+    invalid_dates = parsed_dates.isna()
     if invalid_dates.any():
         first_bad_row = int(invalid_dates[invalid_dates].index[0]) + 1
         raise ValueError(f"sheet“{sheet_name}”第{first_bad_row}行日期无效")
     if parsed_dates.duplicated().any():
         raise ValueError(f"sheet“{sheet_name}”包含重复日期")
 
-    physical_source = f"{Path(file_name).stem}|{sheet_name}"
-
     for column_index, indicator_name in indicator_columns:
-        if indicator_name not in dictionary:
-            raise ValueError(f"sheet“{sheet_name}”包含未登记在指标字典中的指标: {indicator_name}")
         if indicator_name in seen_indicators:
             raise ValueError(f"指标在多个sheet中重复出现: {indicator_name}")
 
@@ -292,13 +296,17 @@ def parse_preview_workbook(
             for name, metadata in metadata_map.items()
             if metadata.industry
         }
-        unit_map = {name: metadata.unit for name, metadata in metadata_map.items()}
+        unit_map = {
+            name: metadata.unit for name, metadata in metadata_map.items()
+        }
         type_map = {
             name: metadata.indicator_type
             for name, metadata in metadata_map.items()
             if metadata.indicator_type
         }
-        frequency_map = {name: metadata.frequency for name, metadata in metadata_map.items()}
+        frequency_map = {
+            name: metadata.frequency for name, metadata in metadata_map.items()
+        }
 
         return LoadedPreviewData(
             dataframes=dataframes,
@@ -311,7 +319,8 @@ def parse_preview_workbook(
             module_name=module_name,
             custom_maps={
                 "sheet_source": {
-                    name: metadata.sheet_source for name, metadata in metadata_map.items()
+                    name: metadata.sheet_source
+                    for name, metadata in metadata_map.items()
                 },
                 "dictionary_source": {
                     name: metadata.dictionary_source
@@ -319,7 +328,8 @@ def parse_preview_workbook(
                     if metadata.dictionary_source
                 },
                 "updated_at": {
-                    name: metadata.updated_at for name, metadata in metadata_map.items()
+                    name: metadata.updated_at
+                    for name, metadata in metadata_map.items()
                 },
                 "forecast_variable": {
                     name: metadata.forecast_variable

@@ -87,7 +87,7 @@ class ResourceLoader:
 
     def preload_critical_resources(self):
         """预加载关键资源"""
-        critical_resources = ['data_loader', 'preview_main']
+        critical_resources = ['preview_parser', 'preview_registry']
 
         logger.info("开始预加载关键资源")
         for resource in critical_resources:

@@ -9,7 +9,7 @@ import numpy as np
 import plotly.graph_objects as go
 from typing import Optional
 
-from dashboard.preview.modules.industrial.config import PLOT_CONFIGS, COLORS
+from dashboard.preview.shared.config import PLOT_CONFIGS, COLORS
 
 
 def plot_indicator(series, name, frequency, current_year, previous_year=None, unit=None, indicator_type=None):
@@ -43,7 +43,7 @@ def plot_indicator(series, name, frequency, current_year, previous_year=None, un
 def _plot_time_series(series, name, frequency, current_year, previous_year, unit, indicator_type=None):
     """绑制时间序列图表(周/月/日/旬),保持与原始逻辑完全一致"""
     series.index = pd.to_datetime(series.index)
-    series_clean = series.replace(0.0, np.nan)
+    series_clean = series.copy()
 
     # 用电量类型数据：将值乘以100转换为百分比显示
     is_percentage_type = indicator_type == '用电量'
@@ -54,9 +54,6 @@ def _plot_time_series(series, name, frequency, current_year, previous_year, unit
     config = PLOT_CONFIGS[frequency]
 
     # 1. 准备数据
-    current_data = series_clean[series_clean.index.year == current_year].copy()
-    previous_data = series_clean[series_clean.index.year == previous_year].copy()
-
     # 2. 根据频率对齐数据和计算历史统计
     plot_data = _prepare_plot_data(series_clean, frequency, current_year, previous_year, config)
 
@@ -88,7 +85,8 @@ def _prepare_plot_data(series, frequency, current_year, previous_year, config):
             series, current_year, previous_year, x_range,
             period_key='week',
             label_formatter=lambda w: f"W{w}",
-            use_loop_stats=True
+            use_loop_stats=True,
+            config=config,
         )
     elif frequency == 'monthly':
         # 月度数据：直接调用通用函数
@@ -96,10 +94,17 @@ def _prepare_plot_data(series, frequency, current_year, previous_year, config):
             series, current_year, previous_year, x_range,
             period_key='month',
             label_formatter=lambda m: f"{m}月",
-            use_loop_stats=False
+            use_loop_stats=False,
+            config=config,
         )
     elif frequency == 'daily':
-        return _prepare_daily_data(series, current_year, previous_year, x_range)
+        return _prepare_daily_data(
+            series,
+            current_year,
+            previous_year,
+            x_range,
+            config,
+        )
     elif frequency == 'ten_day':
         # 旬度数据：直接调用通用函数
         def extract_ten_day_index(index):
@@ -120,7 +125,8 @@ def _prepare_plot_data(series, frequency, current_year, previous_year, config):
             period_key='ten_day_index',
             label_formatter=lambda idx: f"第{idx}旬",
             use_loop_stats=False,
-            period_extractor=extract_ten_day_index
+            period_extractor=extract_ten_day_index,
+            config=config,
         )
     elif frequency == 'quarterly':
         # 季度数据：直接调用通用函数
@@ -133,12 +139,22 @@ def _prepare_plot_data(series, frequency, current_year, previous_year, config):
             period_key='quarter',
             label_formatter=lambda q: f"Q{q}",
             use_loop_stats=False,
-            period_extractor=extract_quarter_index
+            period_extractor=extract_quarter_index,
+            config=config,
         )
 
 
-def _prepare_periodic_data_generic(series, current_year, previous_year, x_range,
-                                   period_key, label_formatter, use_loop_stats=False, period_extractor=None):
+def _prepare_periodic_data_generic(
+    series,
+    current_year,
+    previous_year,
+    x_range,
+    period_key,
+    label_formatter,
+    config,
+    use_loop_stats=False,
+    period_extractor=None,
+):
     """通用周期数据准备框架（适用于weekly/monthly/ten_day）
 
     Args:
@@ -153,7 +169,7 @@ def _prepare_periodic_data_generic(series, current_year, previous_year, x_range,
     Returns:
         dict: 绘图数据字典
     """
-    series_clean = series.replace(0.0, np.nan)
+    series_clean = series.copy()
 
     # 准备DataFrame
     if period_extractor:
@@ -166,10 +182,11 @@ def _prepare_periodic_data_generic(series, current_year, previous_year, x_range,
         })
     elif period_key == 'week':
         # weekly特殊处理：使用isocalendar()
+        iso_calendar = series_clean.index.isocalendar()
         plot_df = pd.DataFrame({
             'value': series_clean,
-            'year': series_clean.index.year,
-            period_key: series_clean.index.isocalendar().week,
+            'year': iso_calendar.year.to_numpy(),
+            period_key: iso_calendar.week.to_numpy(),
             'date': series_clean.index
         })
     else:
@@ -181,21 +198,27 @@ def _prepare_periodic_data_generic(series, current_year, previous_year, x_range,
             'date': series_clean.index
         })
 
-    # 计算历史统计
+    # 计算历史统计：排除当前年和上年，仅使用配置限定的历史窗口。
     historical_stats = pd.DataFrame(index=x_range, columns=['hist_min', 'hist_max', 'hist_mean'])
+    historical_year_count = config.get('historical_years', 5)
+    historical_years = range(
+        previous_year - historical_year_count,
+        previous_year,
+    )
+    historical_df = plot_df[plot_df['year'].isin(historical_years)]
 
     if use_loop_stats:
         # weekly使用循环（因为isocalendar()特性）
         for period_val in x_range:
-            period_mask = plot_df[period_key] == period_val
-            period_data = plot_df[period_mask]['value'].dropna()
+            period_mask = historical_df[period_key] == period_val
+            period_data = historical_df[period_mask]['value'].dropna()
             if not period_data.empty:
                 historical_stats.loc[period_val, 'hist_min'] = period_data.min()
                 historical_stats.loc[period_val, 'hist_max'] = period_data.max()
                 historical_stats.loc[period_val, 'hist_mean'] = period_data.mean()
     else:
         # monthly和ten_day使用groupby（更高效）
-        period_stats = plot_df.groupby(period_key)['value'].agg(['min', 'max', 'mean'])
+        period_stats = historical_df.groupby(period_key)['value'].agg(['min', 'max', 'mean'])
         historical_stats.loc[period_stats.index, 'hist_min'] = period_stats['min']
         historical_stats.loc[period_stats.index, 'hist_max'] = period_stats['max']
         historical_stats.loc[period_stats.index, 'hist_mean'] = period_stats['mean']
@@ -285,7 +308,17 @@ def _prepare_periodic_data_generic(series, current_year, previous_year, x_range,
     }
 
 
-def _prepare_daily_data(series, current_year, previous_year, x_range):
+def _calendar_day_index(index: pd.DatetimeIndex) -> pd.Index:
+    """Map month/day values to a shared leap-year calendar."""
+    return pd.Index(
+        [
+            pd.Timestamp(year=2000, month=date.month, day=date.day).dayofyear
+            for date in index
+        ]
+    )
+
+
+def _prepare_daily_data(series, current_year, previous_year, x_range, config):
     """准备日度数据（向量化优化版）
 
     性能优化：使用groupby替代366次循环，性能提升10-50倍
@@ -293,8 +326,16 @@ def _prepare_daily_data(series, current_year, previous_year, x_range):
     # 计算历史统计（向量化操作：一次性计算所有天的统计）
     historical_stats = pd.DataFrame(index=x_range, columns=['hist_min', 'hist_max', 'hist_mean'])
 
-    # 使用groupby向量化替代循环
-    day_stats = series.groupby(series.index.dayofyear).agg(['min', 'max', 'mean'])
+    historical_year_count = config.get('historical_years', 5)
+    historical_years = range(
+        previous_year - historical_year_count,
+        previous_year,
+    )
+    historical_data = series[series.index.year.isin(historical_years)]
+    historical_day_index = _calendar_day_index(historical_data.index)
+    day_stats = historical_data.groupby(historical_day_index).agg(
+        ['min', 'max', 'mean']
+    )
 
     if not day_stats.empty:
         # 直接赋值，避免逐行循环
@@ -309,18 +350,18 @@ def _prepare_daily_data(series, current_year, previous_year, x_range):
 
     plot_data = {
         'x': list(x_range),
-        'hist_min': historical_stats['hist_min'].ffill().bfill().values,
-        'hist_max': historical_stats['hist_max'].ffill().bfill().values,
-        'hist_mean': historical_stats['hist_mean'].ffill().bfill().values,
+        'hist_min': historical_stats['hist_min'].values,
+        'hist_max': historical_stats['hist_max'].values,
+        'hist_mean': historical_stats['hist_mean'].values,
     }
 
     if not current_data.empty:
-        plot_data['current_x'] = current_data.index.dayofyear.tolist()
+        plot_data['current_x'] = _calendar_day_index(current_data.index).tolist()
         plot_data['current_y'] = current_data.values.tolist()
         plot_data['current_dates'] = current_data.index.strftime('%Y-%m-%d').tolist()
 
     if not previous_data.empty:
-        plot_data['previous_x'] = previous_data.index.dayofyear.tolist()
+        plot_data['previous_x'] = _calendar_day_index(previous_data.index).tolist()
         plot_data['previous_y'] = previous_data.values.tolist()
         plot_data['previous_dates'] = previous_data.index.strftime('%Y-%m-%d').tolist()
 
@@ -384,7 +425,7 @@ def _add_historical_range(fig, plot_data):
 def _add_historical_mean(fig, plot_data):
     """添加历史均值,保持与原始代码完全一致"""
     hist_mean = plot_data.get('hist_mean')
-    if hist_mean is None:
+    if hist_mean is None or not any(pd.notna(hist_mean)):
         return
 
     fig.add_trace(go.Scatter(
@@ -537,7 +578,7 @@ def _apply_layout(fig, name, unit, config, plot_data, is_percentage_type=False):
 def _plot_yearly(series, name, unit):
     """绘制年度柱状图,完全复制原始逻辑"""
     series.index = pd.to_datetime(series.index)
-    series_clean = series.replace(0.0, np.nan)
+    series_clean = series.copy()
 
     years = series_clean.index.year.tolist()
     values = series_clean.values.tolist()

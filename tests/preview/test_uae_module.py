@@ -12,6 +12,9 @@ def test_uae_module_is_registered_with_isolated_configuration():
     assert isinstance(renderer, UAERenderer)
     assert renderer.module_title == "阿联酋数据预览"
     assert renderer.default_relative_path == Path("data") / "阿联酋.xlsx"
+    default_file = renderer._load_default_data_file()
+    assert default_file is not None
+    assert default_file.name == "阿联酋.xlsx"
     assert renderer.state_namespace == "preview.uae"
     assert renderer.tab_names == [
         "数据概览",

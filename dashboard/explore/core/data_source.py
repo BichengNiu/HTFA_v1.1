@@ -9,7 +9,6 @@ from typing import Any
 
 import pandas as pd
 
-from dashboard.preview.modules.uae.config import UAEConfig
 from dashboard.preview.modules.uae.loader import UAELoader
 
 
@@ -58,7 +57,7 @@ def load_stationarity_data(
     if suffix not in {".xlsx", ".xls"}:
         raise ValueError("仅支持 CSV、XLSX 和 XLS 文件")
 
-    loaded = UAELoader(UAEConfig()).load_and_process_data([file_input])
+    loaded = UAELoader().load_and_process_data([file_input])
     tables = {
         frequency: frame
         for frequency, frame in loaded.get_all_dataframes().items()

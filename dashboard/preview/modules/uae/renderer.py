@@ -2,11 +2,11 @@
 
 from pathlib import Path
 
-from dashboard.preview.modules.industrial.renderer import IndustrialRenderer
+from dashboard.preview.shared.renderer import PreviewRenderer
 
 
-class UAERenderer(IndustrialRenderer):
-    """复用工业布局，仅替换模块身份和默认数据源。"""
+class UAERenderer(PreviewRenderer):
+    """阿联酋预览模块身份适配器。"""
 
     module_title = "阿联酋数据预览"
     default_relative_path = Path("data") / "阿联酋.xlsx"

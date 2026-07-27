@@ -1,10 +1,10 @@
-"""阿联酋经济数据库加载器。"""
+"""阿联酋数据预览加载器。"""
 
-from dashboard.preview.modules.industrial.loader import IndustrialLoader
+from dashboard.preview.shared.loader import PreviewWorkbookLoader
 
 
-class UAELoader(IndustrialLoader):
-    """使用统一工作簿协议加载阿联酋数据。"""
+class UAELoader(PreviewWorkbookLoader):
+    """阿联酋预览模块身份适配器。"""
 
     module_name = "uae"
     state_namespace = "preview.uae"

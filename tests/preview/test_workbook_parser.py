@@ -2,7 +2,7 @@ from io import BytesIO
 
 import pandas as pd
 import pytest
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 from dashboard.preview.core.workbook_parser import parse_preview_workbook
 
@@ -87,3 +87,35 @@ def test_parse_workbook_validates_fixed_metadata_rows():
             _build_workbook(frequency_label="周期"),
             module_name="test",
         )
+
+
+def test_parse_workbook_rejects_value_with_blank_date():
+    workbook_file = _build_workbook()
+    loaded_workbook = load_workbook(workbook_file)
+    daily = loaded_workbook["日度_Wind"]
+    daily.cell(row=7, column=1).value = None
+
+    output = BytesIO()
+    loaded_workbook.save(output)
+    output.seek(0)
+    output.name = "空日期.xlsx"
+
+    with pytest.raises(ValueError, match="第7行日期"):
+        parse_preview_workbook(output, module_name="test")
+
+
+def test_parse_workbook_discards_indicators_not_registered_in_dictionary():
+    workbook_file = _build_workbook()
+    loaded_workbook = load_workbook(workbook_file)
+    dictionary = loaded_workbook["指标字典"]
+    dictionary.delete_rows(3)
+
+    output = BytesIO()
+    loaded_workbook.save(output)
+    output.seek(0)
+    output.name = "白名单数据库.xlsx"
+
+    result = parse_preview_workbook(output, module_name="test")
+
+    assert result.get_dataframe("monthly").empty
+    assert "指标B" not in result.indicator_metadata_map
