@@ -14,20 +14,7 @@ from dashboard.preview.core.calculation_rules import (
     uses_difference_calculation,
 )
 from dashboard.preview.core.summary_export import build_summary_workbook
-
-
-def _get_ui_text():
-    """Delay configuration loading to avoid an import-time cycle."""
-    from dashboard.preview.modules.industrial.config import UI_TEXT
-
-    return UI_TEXT
-
-
-def _get_colors():
-    """Delay summary color configuration loading."""
-    from dashboard.preview.modules.industrial.config import COLORS
-
-    return COLORS
+from dashboard.preview.shared.config import COLORS, UI_TEXT
 
 
 def _get_industry_indicators(selected_industry, df, indicator_industry_map):
@@ -41,7 +28,7 @@ def _get_industry_indicators(selected_industry, df, indicator_industry_map):
     Returns:
         List[str]: 指标列表
     """
-    if selected_industry == _get_ui_text()['all_option']:
+    if selected_industry == UI_TEXT['all_option']:
         return list(df.columns)
 
     return [
@@ -78,7 +65,7 @@ def _filter_by_type(indicators, selected_type, indicator_type_map):
     Returns:
         List[str]: 筛选后的指标列表
     """
-    if selected_type == _get_ui_text()['all_option']:
+    if selected_type == UI_TEXT['all_option']:
         return indicators
 
     return [
@@ -108,7 +95,7 @@ def create_filter_ui(
     Returns:
         Tuple[str, str, List[str], str]: (选中的行业, 选中的类型, 筛选后的指标列表, 显示名称)
     """
-    ui_text = _get_ui_text()
+    ui_text = UI_TEXT
     col1, col2 = st.columns(2)
 
     with col1:
@@ -342,9 +329,9 @@ def _highlight_positive_negative(val) -> str:
     try:
         val_float = float(str(val).replace('%', ''))
         if val_float > 0:
-            return f'background-color: {_get_colors()["positive"]}'
+            return f'background-color: {COLORS["positive"]}'
         elif val_float < 0:
-            return f'background-color: {_get_colors()["negative"]}'
+            return f'background-color: {COLORS["negative"]}'
         return ''
     except (ValueError, TypeError):
         return ''

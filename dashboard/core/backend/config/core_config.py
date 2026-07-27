@@ -30,8 +30,8 @@ class ResourcePathsConfig:
     """资源路径配置"""
     module_paths: Dict[str, str] = field(default_factory=lambda: {
         # 预览模块
-        'data_loader': 'dashboard.preview.modules.industrial.loader',
-        'preview_main': 'dashboard.preview.main',
+        'preview_parser': 'dashboard.preview.core.workbook_parser',
+        'preview_registry': 'dashboard.preview.modules',
 
         # DFM模块
         'dfm_train_model': 'dashboard.models.DFM.train.ui.pages.model_training_page',

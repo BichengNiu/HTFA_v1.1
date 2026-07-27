@@ -7,9 +7,11 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 import logging
 from typing import Any, Iterable, Optional
+import warnings
 
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
@@ -42,6 +44,19 @@ _GRID_LINE_STYLES = {
     "dotted": ":",
     "dashdot": "-.",
 }
+
+
+@contextmanager
+def matplotlib_date_compatibility():
+    """隔离 Matplotlib 与 NumPy 2.5 日期转换的第三方弃用警告。"""
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r"The 'generic' unit for NumPy timedelta is deprecated",
+            category=DeprecationWarning,
+            module=r"matplotlib\.dates",
+        )
+        yield
 
 
 @dataclass(frozen=True)
@@ -405,28 +420,29 @@ def create_time_series_figure(
         y_start = ymin
     if grid is not None:
         grid_mode = "both" if grid else "none"
-    figure, axis = plot_series(
-        values,
-        title=title,
-        xtitle=x_title,
-        ytitle=y_title or str(series.name or "数值"),
-        linewidth=line_width,
-        markersize=marker_size,
-        max_ticks=max_ticks,
-        grid=False,
-        ymin=y_start,
-        show_legend=False,
-    )
-    _apply_axis_options(
-        axis,
-        x_start=x_start,
-        y_start=y_start,
-        x_tick_count=max_ticks,
-        y_tick_count=y_tick_count,
-        grid_mode=grid_mode,
-        grid_line_style=grid_line_style,
-        date_x_axis=isinstance(values.index, pd.DatetimeIndex),
-    )
+    with matplotlib_date_compatibility():
+        figure, axis = plot_series(
+            values,
+            title=title,
+            xtitle=x_title,
+            ytitle=y_title or str(series.name or "数值"),
+            linewidth=line_width,
+            markersize=marker_size,
+            max_ticks=max_ticks,
+            grid=False,
+            ymin=y_start,
+            show_legend=False,
+        )
+        _apply_axis_options(
+            axis,
+            x_start=x_start,
+            y_start=y_start,
+            x_tick_count=max_ticks,
+            y_tick_count=y_tick_count,
+            grid_mode=grid_mode,
+            grid_line_style=grid_line_style,
+            date_x_axis=isinstance(values.index, pd.DatetimeIndex),
+        )
     return figure
 
 
@@ -802,6 +818,7 @@ __all__ = [
     "TransformationSpec",
     "create_correlogram_figure",
     "create_time_series_figure",
+    "matplotlib_date_compatibility",
     "normalize_frequency",
     "numeric_variable_names",
     "localize_summary_text",

@@ -11,7 +11,11 @@ import numpy as np
 from datetime import datetime
 import io
 
-from dashboard.preview.modules.industrial.config import UNIFIED_FREQUENCY_CONFIGS, UI_TEXT, FREQUENCY_ORDER
+from dashboard.preview.shared.config import (
+    FREQUENCY_ORDER,
+    UI_TEXT,
+    UNIFIED_FREQUENCY_CONFIGS,
+)
 from dashboard.preview.shared.calculators import calculate_summary
 from dashboard.preview.shared.plotting import plot_indicator
 from dashboard.preview.shared.components import create_filter_ui, display_summary_table
@@ -406,18 +410,6 @@ def display_time_series_tab(
         )
 
     # 6. 绑制图表（按行业和类型分组）
-    # 从数据中获取实际的最新年份
-    try:
-        if not df.empty:
-            if not isinstance(df.index, pd.DatetimeIndex):
-                df.index = pd.to_datetime(df.index)
-            current_year = df.index.max().year
-        else:
-            current_year = datetime.now().year
-    except Exception:
-        current_year = datetime.now().year
-
-    previous_year = current_year - 1
     indicator_unit_map = get_preview_state(
         'indicator_unit_map',
         {},
@@ -454,6 +446,13 @@ def display_time_series_tab(
             for indicator in indicators:
                 series = df[indicator].dropna()
                 if not series.empty:
+                    latest_date = pd.Timestamp(series.index.max())
+                    current_year = (
+                        int(latest_date.isocalendar().year)
+                        if frequency == "weekly"
+                        else latest_date.year
+                    )
+                    previous_year = current_year - 1
                     current_col = col1 if col_idx % 2 == 0 else col2
                     with current_col:
                         with st_module.spinner(UI_TEXT['loading_message'].format(indicator)):

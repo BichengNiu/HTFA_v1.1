@@ -17,6 +17,7 @@ from dashboard.explore.analysis.stationarity import (
     TRANSFORMATIONS,
     create_correlogram_figure,
     create_time_series_figure,
+    matplotlib_date_compatibility,
     normalize_frequency,
     numeric_variable_names,
     prepare_selected_series,
@@ -402,18 +403,19 @@ class StationarityAnalysisComponent(TimeSeriesAnalysisComponent):
                 "grid_line_style": "solid",
             }
             config = get_applied_config(st_obj, time_scope, time_defaults)
-            figure = create_time_series_figure(
-                processed,
-                **config,
-            )
-            try:
-                st_obj.pyplot(
-                    figure,
-                    width="stretch",
-                    clear_figure=True,
+            with matplotlib_date_compatibility():
+                figure = create_time_series_figure(
+                    processed,
+                    **config,
                 )
-            finally:
-                plt.close(figure)
+                try:
+                    st_obj.pyplot(
+                        figure,
+                        width="stretch",
+                        clear_figure=True,
+                    )
+                finally:
+                    plt.close(figure)
             render_time_series_config_expander(
                 st_obj,
                 scope=time_scope,

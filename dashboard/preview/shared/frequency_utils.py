@@ -8,11 +8,9 @@ Preview模块频率处理工具
 from typing import Dict, List, Set, Optional, Iterator, Any
 import pandas as pd
 
-from dashboard.preview.modules.industrial.config import (
+from dashboard.preview.shared.config import (
     UNIFIED_FREQUENCY_CONFIGS,
     FREQUENCY_ORDER,
-    CHINESE_TO_ENGLISH_FREQ,
-    ENGLISH_TO_CHINESE_FREQ
 )
 
 

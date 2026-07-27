@@ -4,13 +4,17 @@ Preview模块统一计算组件
 通过配置驱动,一个函数支持所有频率的摘要计算
 """
 
+import logging
+
 import pandas as pd
 import numpy as np
 from typing import Dict, Any, List, Tuple, Optional
 import streamlit as st
 
-from dashboard.preview.modules.industrial.config import SUMMARY_CONFIGS
+from dashboard.preview.shared.config import SUMMARY_CONFIGS
 from dashboard.preview.core.calculation_rules import uses_difference_calculation
+
+logger = logging.getLogger(__name__)
 
 
 @st.cache_data(show_spinner=False, max_entries=30, ttl=3600)
@@ -39,7 +43,7 @@ def calculate_summary(
         return pd.DataFrame()
 
     if not isinstance(df.index, pd.DatetimeIndex):
-        print(f"输入的 {frequency} DataFrame 索引无效,无法计算。")
+        logger.warning("输入的 %s DataFrame 索引无效，无法计算", frequency)
         return pd.DataFrame()
 
     df = df.sort_index()
@@ -372,10 +376,9 @@ def _get_value_by_year_quarter(series: pd.Series, year: int, quarter: int) -> An
 
 
 def _get_value_by_year_end(series: pd.Series, target_year: int) -> Any:
-    """获取指定年份年末前的最新值"""
-    target_date = pd.Timestamp(f'{target_year}-12-31')
+    """获取指定年份内最后一个有效值，不跨年借用旧观测。"""
     try:
-        data = series.loc[series.index <= target_date]
+        data = series.loc[series.index.year == target_year]
         return data.iloc[-1] if len(data) > 0 else np.nan
     except (KeyError, IndexError):
         return np.nan

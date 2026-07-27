@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+import warnings
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -211,6 +212,19 @@ def test_time_series_figure_uses_ts_plot_series(monkeypatch):
         "ymin": 0,
         "show_legend": False,
     }
+    plt.close(figure)
+
+
+def test_time_series_figure_handles_matplotlib_date_deprecation(
+    positive_monthly_series,
+):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        figure = create_time_series_figure(
+            positive_monthly_series,
+            x_start=positive_monthly_series.index.min().date(),
+        )
+
     plt.close(figure)
 
 

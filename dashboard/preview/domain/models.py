@@ -34,8 +34,6 @@ class IndicatorMetadata:
 class LoadedPreviewData:
     """预览数据加载结果的通用封装
 
-    替代原来的LoadedIndustrialData，更通用化
-
     设计原则:
     - 不可变性: 使用dataclass确保数据一致性
     - 通用性: 支持任意频率和映射关系

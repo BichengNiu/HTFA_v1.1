@@ -1,21 +1,14 @@
-"""
-工业数据预览配置
-
-从原config.py迁移的工业特定配置
-"""
+"""数据预览共享配置。"""
 
 from typing import List, Dict, Any
-from dashboard.preview.core.base_config import BasePreviewConfig, FrequencyConfig
+from dashboard.preview.core.base_config import FrequencyConfig
 
 
-class IndustrialConfig(BasePreviewConfig):
-    """工业数据预览配置
-
-    实现工业子模块的具体配置
-    """
+class PreviewConfig:
+    """多频率数据预览的共享配置。"""
 
     def __init__(self):
-        """初始化工业配置"""
+        """初始化共享预览配置。"""
         self._frequencies = ['weekly', 'monthly', 'daily', 'ten_day', 'quarterly', 'yearly']
         self._frequency_configs = self._build_frequency_configs()
         self._colors = self._build_colors()
@@ -198,7 +191,7 @@ class IndustrialConfig(BasePreviewConfig):
             'daily': {
                 'x_range': range(1, 367),
                 'x_label_func': lambda x: f"{x}日",
-                'x_tick_vals': [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335],
+                'x_tick_vals': [1, 32, 61, 92, 122, 153, 183, 214, 245, 275, 306, 336],
                 'x_tick_labels': ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
                 'historical_years': 5,
                 'layout': {
@@ -292,7 +285,7 @@ FREQ_CHAR_TO_ENGLISH = {
 }
 
 # 初始化配置
-_config = IndustrialConfig()
+_config = PreviewConfig()
 for freq in _config.get_frequencies():
     freq_cfg = _config.get_frequency_config(freq)
     UNIFIED_FREQUENCY_CONFIGS[freq] = {

@@ -9,6 +9,7 @@ import pandas as pd
 from dashboard.explore.analysis.stationarity import (
     create_correlogram_figure,
     create_time_series_figure,
+    matplotlib_date_compatibility,
     numeric_variable_names,
     prepare_selected_series,
     resolve_correlation_lags,
@@ -193,11 +194,12 @@ def render_data_overview(st_obj, uploaded_file) -> None:
                 "grid_line_style": "solid",
             }
             config = get_applied_config(st_obj, time_scope, time_defaults)
-            figure = create_time_series_figure(series, **config)
-            try:
-                st_obj.pyplot(figure, width="stretch", clear_figure=True)
-            finally:
-                plt.close(figure)
+            with matplotlib_date_compatibility():
+                figure = create_time_series_figure(series, **config)
+                try:
+                    st_obj.pyplot(figure, width="stretch", clear_figure=True)
+                finally:
+                    plt.close(figure)
             render_time_series_config_expander(
                 st_obj,
                 scope=time_scope,
