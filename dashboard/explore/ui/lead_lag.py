@@ -1,26 +1,36 @@
-# -*- coding: utf-8 -*-
 """
 领先滞后分析组件
 提供多变量领先滞后筛选分析功能，基于KL散度评估
 """
 
-import streamlit as st
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
+import logging
+from typing import Any
+
 import matplotlib
 import matplotlib.dates as mdates
-import logging
-from typing import List, Dict, Any
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
 # 配置matplotlib中文字体
 matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans', 'Arial Unicode MS', 'sans-serif']
 matplotlib.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
 
-from dashboard.explore.ui.base import TimeSeriesAnalysisComponent
-from dashboard.explore import perform_combined_lead_lag_analysis, get_detailed_lag_data_for_candidate
-from dashboard.explore.preprocessing.frequency_alignment import align_series_for_analysis
+from dashboard.explore.analysis.lead_lag import (
+    perform_combined_lead_lag_analysis,
+)
+from dashboard.explore.preprocessing.frequency_alignment import (
+    align_series_for_analysis,
+)
 from dashboard.explore.preprocessing.standardization import standardize_series
+from dashboard.explore.ui.base import TimeSeriesAnalysisComponent
+from dashboard.explore.ui.multivariate_state import (
+    build_lead_lag_result_signature,
+)
+from dashboard.explore.ui.result_presenters import (
+    encode_csv_with_bom,
+    prepare_lead_lag_display,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,29 +41,27 @@ class LeadLagAnalysisComponent(TimeSeriesAnalysisComponent):
     def __init__(self):
         super().__init__("lead_lag", "领先滞后分析")
 
-    def render(self, st_obj, **kwargs) -> Any:
+    def render(self, st_obj, **_kwargs) -> Any:
         """
         重写渲染方法，跳过数据状态显示
 
         Args:
             st_obj: Streamlit对象
-            **kwargs: 其他参数
+            **_kwargs: 保留给统一组件调用协议的其他参数
 
         Returns:
             Any: 分析结果
         """
         try:
-            # 检测标签页激活状态
-            tab_index = kwargs.get('tab_index', 0)
-            self.detect_tab_activation(st_obj, tab_index)
+            self.detect_tab_activation()
 
             # 直接获取数据，不显示数据状态信息
-            data, data_source, data_name = self.get_module_data()
+            data, _, data_name = self.get_module_data()
 
             if data is None:
                 st_obj.info("请上传数据文件以进行分析")
                 st_obj.divider()
-                st_obj.markdown(f"""
+                st_obj.markdown("""
                 **使用说明：**
                 1. **数据格式**：第一列为时间戳，其余列为变量数据
                 2. **支持格式**：CSV、Excel (.xlsx, .xls)
@@ -64,7 +72,7 @@ class LeadLagAnalysisComponent(TimeSeriesAnalysisComponent):
             # 渲染分析界面
             return self.render_analysis_interface(st_obj, data, data_name)
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - top-level component render boundary
             self.handle_error(st_obj, e, f"渲染{self.title}组件")
             return None
     
@@ -80,18 +88,19 @@ class LeadLagAnalysisComponent(TimeSeriesAnalysisComponent):
         Returns:
             Any: 分析结果
         """
+        del data_name  # 兼容基类接口；状态键已由组件 analysis_type 隔离。
         try:
                        
             # 渲染领先滞后分析
-            result = self.render_multivariate_screening(st_obj, data, data_name)
+            result = self.render_multivariate_screening(st_obj, data)
             return result
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - user-facing analysis interface boundary
             logger.error(f"渲染领先滞后分析界面时出错: {e}")
             st_obj.error(f"渲染分析界面时出错: {e}")
             return None
     
-    def render_multivariate_screening(self, st_obj, data: pd.DataFrame, data_name: str) -> Any:
+    def render_multivariate_screening(self, st_obj, data: pd.DataFrame) -> Any:
         """渲染多变量领先滞后筛选界面"""
         try:
 
@@ -170,58 +179,75 @@ class LeadLagAnalysisComponent(TimeSeriesAnalysisComponent):
             enable_frequency_alignment = (alignment_mode == 'strict_align')
             standardize_for_kl = True  # 固定为True
             standardization_method = 'zscore'  # 固定为zscore
+            target_frequency = None
 
             # 自动获取所有候选变量（除目标变量外的所有数值型变量）
             candidate_vars = [col for col in numeric_columns if col != target_var]
-
-            if analyze_button and target_var:
-                return self.perform_multivariate_screening(st_obj, data, target_var, candidate_vars, max_lags_val, standardize_for_kl, standardization_method, enable_frequency_alignment, None, freq_agg_method)
-            
-            # 显示之前的结果（如果有）
-            results = self.get_state('multivariate_results')
-            if results:
-                self.render_multivariate_results(st_obj, results)
-                
-            return results
-            
-        except Exception as e:
-            logger.error(f"渲染多变量领先滞后筛选界面时出错: {e}")
-            st_obj.error(f"渲染多变量领先滞后筛选界面时出错: {e}")
-            return None
-    
-    def perform_multivariate_screening(self, st_obj, data: pd.DataFrame, target_var: str, candidate_vars: List[str], max_lags: int, standardize_for_kl: bool = True, standardization_method: str = 'zscore', enable_frequency_alignment: bool = True, target_frequency: str = None, freq_agg_method: str = 'mean'):
-        """执行多变量领先滞后筛选分析"""
-        with st_obj.spinner("正在进行多变量领先滞后筛选分析..."):
-            # 构建配置字典
             config = {
-                'max_lags': max_lags,
+                'max_lags': int(max_lags_val),
                 'standardize_for_kl': standardize_for_kl,
                 'standardization_method': standardization_method,
                 'enable_frequency_alignment': enable_frequency_alignment,
                 'target_frequency': target_frequency,
-                'freq_agg_method': freq_agg_method
+                'freq_agg_method': freq_agg_method,
             }
+            result_signature = build_lead_lag_result_signature(
+                data,
+                target_var,
+                candidate_vars,
+                config,
+            )
 
+            if analyze_button and target_var:
+                return self.perform_multivariate_screening(
+                    st_obj,
+                    data,
+                    target_var,
+                    candidate_vars,
+                    config,
+                    result_signature,
+                )
+            
+            # 显示之前的结果（如果有）
+            results = self.get_state('multivariate_results')
+            saved_signature = self.get_state("multivariate_signature")
+            if results and saved_signature == result_signature:
+                self.render_multivariate_results(st_obj, results)
+                
+            return results if saved_signature == result_signature else None
+            
+        except Exception as e:  # noqa: BLE001 - user-facing control boundary
+            logger.error(f"渲染多变量领先滞后筛选界面时出错: {e}")
+            st_obj.error(f"渲染多变量领先滞后筛选界面时出错: {e}")
+            return None
+    
+    def perform_multivariate_screening(
+        self,
+        st_obj,
+        data: pd.DataFrame,
+        target_var: str,
+        candidate_vars: list[str],
+        config: dict,
+        result_signature=None,
+    ):
+        """执行多变量领先滞后筛选分析"""
+        with st_obj.spinner("正在进行多变量领先滞后筛选分析..."):
             # 调用后端函数
             results_list, errors, warnings = perform_combined_lead_lag_analysis(
                 data, target_var, candidate_vars, config
             )
 
             # 转换结果为DataFrame
-            if results_list:
-                results_df = pd.DataFrame(results_list)
-            else:
-                results_df = pd.DataFrame()
+            results_df = (
+                pd.DataFrame(results_list)
+                if results_list
+                else pd.DataFrame()
+            )
 
             results = {
                 'target_var': target_var,
                 'candidate_vars': candidate_vars,
-                'max_lags': max_lags,
-                'standardize_for_kl': standardize_for_kl,
-                'standardization_method': standardization_method,
-                'enable_frequency_alignment': enable_frequency_alignment,
-                'target_frequency': target_frequency,
-                'freq_agg_method': freq_agg_method,
+                **config,
                 'results_df': results_df,
                 'errors': errors,
                 'warnings': warnings
@@ -229,18 +255,18 @@ class LeadLagAnalysisComponent(TimeSeriesAnalysisComponent):
 
             # 保存结果
             self.set_state('multivariate_results', results)
+            self.set_state("multivariate_signature", result_signature)
 
             # 渲染结果
             self.render_multivariate_results(st_obj, results)
 
             return results
 
-    def render_multivariate_results(self, st_obj, results: Dict[str, Any]):
+    def render_multivariate_results(self, st_obj, results: dict[str, Any]):
         """渲染多变量领先滞后筛选结果"""
         try:
             results_df = results['results_df']
             errors = results['errors']
-            warnings = results['warnings']
 
             # 显示错误（不显示警告信息）
             if errors:
@@ -253,47 +279,14 @@ class LeadLagAnalysisComponent(TimeSeriesAnalysisComponent):
 
             st_obj.markdown("##### 分析结果")
 
-            # 格式化结果表格
-            display_results = results_df.copy()
-
-            # 移除不能序列化的列
-            columns_to_remove = ['full_kl_divergence_df']
-            for col in columns_to_remove:
-                if col in display_results.columns:
-                    display_results = display_results.drop(columns=[col])
-
-            # 列名映射
-            column_mapping = {
-                'target_variable': '目标变量',
-                'candidate_variable': '候选变量',
-                'k_kl': '最优滞后(KL)',
-                'kl_at_k_kl': '最小KL散度',
-                'notes': '备注'
-            }
-
-            display_results = display_results.rename(columns=column_mapping)
-
-            # 数值格式化
-            if '最小KL散度' in display_results.columns:
-                display_results['最小KL散度'] = display_results['最小KL散度'].round(4)
-
-            # 结果排序：按KL散度升序排列
-            if not display_results.empty and '最小KL散度' in display_results.columns:
-                display_results = display_results.sort_values(
-                    by='最小KL散度',
-                    ascending=True,
-                    na_position='last'
-                )
-                display_results = display_results.reset_index(drop=True)
+            display_results = prepare_lead_lag_display(results_df)
 
             st_obj.dataframe(display_results, hide_index=True, width='stretch')
 
             # 提供下载功能
-            csv_string = display_results.to_csv(index=False, encoding='utf-8-sig')
-            csv_data = csv_string.encode('utf-8-sig')
             st_obj.download_button(
                 label="下载结果",
-                data=csv_data,
+                data=encode_csv_with_bom(display_results),
                 file_name=f"lead_lag_analysis_{results['target_var']}.csv",
                 mime="text/csv",
                 key="download_lead_lag_data",
@@ -329,11 +322,11 @@ class LeadLagAnalysisComponent(TimeSeriesAnalysisComponent):
             if candidate_var_for_plot:
                 self.render_detailed_multivariate_charts(st_obj, results, candidate_var_for_plot)
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - user-facing result rendering boundary
             logger.error(f"渲染多变量结果时出错: {e}")
             st_obj.error(f"显示结果时出错: {e}")
 
-    def render_detailed_multivariate_charts(self, st_obj, results: Dict[str, Any], candidate_var: str):
+    def render_detailed_multivariate_charts(self, st_obj, results: dict[str, Any], candidate_var: str):
         """渲染多变量分析的详细图表"""
         # 获取原始数据
         data, _, _ = self.get_module_data()
@@ -341,18 +334,14 @@ class LeadLagAnalysisComponent(TimeSeriesAnalysisComponent):
             st_obj.warning("无法获取原始数据")
             return
 
-        # 构建配置字典
-        config = {
-            'max_lags': results['max_lags'],
-            'standardize_for_kl': results['standardize_for_kl'],
-            'standardization_method': results['standardization_method'],
-            'enable_frequency_alignment': results['enable_frequency_alignment'],
-            'target_frequency': results['target_frequency'],
-            'freq_agg_method': results['freq_agg_method']
-        }
-
-        detailed_kl_df = get_detailed_lag_data_for_candidate(
-            data, results['target_var'], candidate_var, config
+        result_rows = results["results_df"]
+        selected_rows = result_rows[
+            result_rows["candidate_variable"] == candidate_var
+        ]
+        detailed_kl_df = (
+            selected_rows.iloc[0]["full_kl_divergence_df"]
+            if not selected_rows.empty
+            else None
         )
 
         if detailed_kl_df is not None:
@@ -382,7 +371,7 @@ class LeadLagAnalysisComponent(TimeSeriesAnalysisComponent):
         st_obj.markdown(f"**{results['target_var']} vs {candidate_var} 时间序列对比**")
         self.render_time_series_comparison(st_obj, data, results, candidate_var)
 
-    def render_time_series_comparison(self, st_obj, data: pd.DataFrame, results: Dict[str, Any], candidate_var: str):
+    def render_time_series_comparison(self, st_obj, data: pd.DataFrame, results: dict[str, Any], candidate_var: str):
         """渲染目标变量与候选变量的时间序列对比图"""
         target_var = results['target_var']
 

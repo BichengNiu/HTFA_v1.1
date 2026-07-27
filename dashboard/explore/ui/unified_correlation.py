@@ -1,16 +1,13 @@
-# -*- coding: utf-8 -*-
 """
 统一同步分析组件
 提供多变量领先滞后筛选分析功能，包含相关性和KL散度双重评估
 """
 
-import streamlit as st
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib
 import logging
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Any
+
+import matplotlib
+import pandas as pd
 
 # 配置matplotlib中文字体
 matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans', 'Arial Unicode MS', 'sans-serif']
@@ -28,28 +25,26 @@ class UnifiedCorrelationAnalysisComponent(TimeSeriesAnalysisComponent):
     def __init__(self):
         super().__init__("time_lag_corr", "同步分析")
 
-    def render(self, st_obj, **kwargs) -> Any:
+    def render(self, st_obj, **_kwargs) -> Any:
         """
         重写渲染方法，跳过数据状态显示
 
         Args:
             st_obj: Streamlit对象
-            **kwargs: 其他参数
+            **_kwargs: 保留给统一组件调用协议的其他参数
 
         Returns:
             Any: 分析结果
         """
         try:
-            # 检测标签页激活状态
-            tab_index = kwargs.get('tab_index', 0)
-            self.detect_tab_activation(st_obj, tab_index)
+            self.detect_tab_activation()
 
             # 直接获取数据，不显示数据状态信息
-            data, data_source, data_name = self.get_module_data()
+            data, _, data_name = self.get_module_data()
 
             if data is None:
                 st_obj.info("请在左侧侧边栏上传数据文件以进行分析")
-                st_obj.markdown(f"""
+                st_obj.markdown("""
                 **使用说明：**
                 1. **数据格式**：第一列为时间戳，其余列为变量数据
                 2. **支持格式**：CSV、Excel (.xlsx, .xls)
@@ -60,7 +55,7 @@ class UnifiedCorrelationAnalysisComponent(TimeSeriesAnalysisComponent):
             # 渲染分析界面
             return self.render_analysis_interface(st_obj, data, data_name)
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - top-level component render boundary
             self.handle_error(st_obj, e, f"渲染{self.title}组件")
             return None
 
@@ -88,7 +83,7 @@ class UnifiedCorrelationAnalysisComponent(TimeSeriesAnalysisComponent):
 
             return results
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - user-facing analysis interface boundary
             logger.error(f"渲染统一同步分析界面时出错: {e}")
             st_obj.error(f"渲染分析界面时出错: {e}")
             return None

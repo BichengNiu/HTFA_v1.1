@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 KL散度计算模块
 
@@ -7,13 +6,13 @@ KL散度计算模块
 
 import logging
 import math
-from typing import Tuple, Optional
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 
 from dashboard.explore.core.constants import (
     DEFAULT_KL_SMOOTHING_ALPHA,
-    MIN_SAMPLES_KL_DIVERGENCE
+    MIN_SAMPLES_KL_DIVERGENCE,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,7 +35,7 @@ def calculate_stata_bins(n: int) -> int:
 
     bins_sqrt = math.sqrt(n)
     bins_log = 10 * math.log10(n)
-    bins = int(math.ceil(min(bins_sqrt, bins_log)))
+    bins = math.ceil(min(bins_sqrt, bins_log))
 
     return max(2, bins)
 
@@ -44,8 +43,8 @@ def calculate_stata_bins(n: int) -> int:
 def series_to_distribution(
     series_a: pd.Series,
     series_b: pd.Series,
-    bins: Optional[int] = None
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    bins: int | None = None
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     将两个时间序列转换为离散概率分布
 
@@ -69,27 +68,17 @@ def series_to_distribution(
     if series_a_clean.empty or series_b_clean.empty:
         raise ValueError("序列在移除NaN后为空，无法创建分布")
 
+    if bins is not None and (
+        isinstance(bins, bool)
+        or not isinstance(bins, (int, np.integer))
+        or bins < 1
+    ):
+        raise ValueError("分箱数必须是正整数")
+
     # 自动计算分箱数
     if bins is None:
         n_samples = min(len(series_a_clean), len(series_b_clean))
         bins = calculate_stata_bins(n_samples)
-
-    # 检查常数序列
-    series_a_is_constant = len(series_a_clean.unique()) == 1
-    series_b_is_constant = len(series_b_clean.unique()) == 1
-
-    if series_a_is_constant and series_b_is_constant:
-        if series_a_clean.iloc[0] != series_b_clean.iloc[0]:
-            # 不抛出异常，而是记录警告并返回None，避免中断批量计算
-            logger.warning(
-                f"序列A为常数 {series_a_clean.iloc[0]}，序列B为常数 {series_b_clean.iloc[0]}，KL散度为无穷"
-            )
-            raise ValueError(
-                f"序列A和B为不同常数值，无法计算KL散度"
-            )
-        bins = 1
-    elif series_a_is_constant or series_b_is_constant:
-        bins = 1
 
     # 确定共同的分箱范围
     combined_min = min(series_a_clean.min(), series_b_clean.min())
@@ -98,10 +87,9 @@ def series_to_distribution(
     if combined_min == combined_max:
         # 所有数据点相同
         bin_edges = np.array([combined_min, combined_max + 1e-9])
-        bins_actual = 1
     else:
+        bins = max(2, int(bins))
         bin_edges = np.linspace(combined_min, combined_max, bins + 1)
-        bins_actual = bins
 
     # 计算直方图（计数）
     counts_a, _ = np.histogram(series_a_clean, bins=bin_edges, density=False)
@@ -148,6 +136,8 @@ def kl_divergence(
     """
     if p.shape != q.shape:
         raise ValueError(f"分布形状不匹配: p.shape={p.shape}, q.shape={q.shape}")
+    if smoothing_alpha <= 0:
+        raise ValueError("平滑参数必须大于0")
 
     # 归一化（处理浮点误差）
     if not np.isclose(p.sum(), 1.0, atol=1e-9):
@@ -189,10 +179,10 @@ def kl_divergence(
 def calculate_kl_divergence_series(
     series_a: pd.Series,
     series_b: pd.Series,
-    bins: Optional[int] = None,
+    bins: int | None = None,
     smoothing_alpha: float = DEFAULT_KL_SMOOTHING_ALPHA,
-    min_samples: Optional[int] = None
-) -> Tuple[Optional[float], Optional[str]]:
+    min_samples: int | None = None
+) -> tuple[float | None, str | None]:
     """
     计算两个序列之间的KL散度（一站式函数）
 
@@ -209,6 +199,11 @@ def calculate_kl_divergence_series(
     # 数据验证
     series_a_clean = series_a.dropna()
     series_b_clean = series_b.dropna()
+
+    if series_a_clean.empty:
+        return None, "序列A在移除NaN后为空"
+    if series_b_clean.empty:
+        return None, "序列B在移除NaN后为空"
 
     # 自动计算分箱数（用于确定最小样本数）
     if bins is None:
@@ -235,10 +230,6 @@ def calculate_kl_divergence_series(
 
         return kl_val, None
 
-    except ValueError as ve:
-        logger.warning(f"KL散度计算失败: {ve}")
-        return np.inf, str(ve)
-
-    except Exception as e:
-        logger.error(f"KL散度计算出错: {e}")
-        return np.inf, str(e)
+    except ValueError as exc:
+        logger.warning(f"KL散度计算失败: {exc}")
+        return np.inf, str(exc)

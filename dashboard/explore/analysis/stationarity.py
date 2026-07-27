@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """单变量平稳性诊断、预处理与检验。
 
 本模块只包含可测试的统计逻辑。Streamlit 状态和组件渲染位于
@@ -7,17 +6,17 @@
 
 from __future__ import annotations
 
+import logging
+import warnings
+from collections.abc import Iterable
 from contextlib import contextmanager
 from dataclasses import dataclass
-import logging
-from typing import Any, Iterable, Optional
-import warnings
+from typing import Any
 
 import matplotlib.pyplot as plt
-from matplotlib.ticker import MaxNLocator
 import numpy as np
 import pandas as pd
-
+from matplotlib.ticker import MaxNLocator
 from Ts import TimeSeriesSummary, difference
 from Ts.TsPlots import plot_acf, plot_pacf, plot_series
 from Ts.TsTests import (
@@ -34,7 +33,6 @@ from dashboard.explore.core.series_utils import (
     identify_time_column,
     prepare_time_index,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +62,7 @@ class TransformationSpec:
     """一个可供界面选择的序列变换。"""
 
     label: str
-    order: Optional[int] = None
+    order: int | None = None
     log: bool = False
     year_over_year: bool = False
 
@@ -227,7 +225,7 @@ def numeric_variable_names(data: pd.DataFrame) -> list[str]:
 def prepare_selected_series(
     data: pd.DataFrame,
     variable: str,
-) -> tuple[pd.Series, Optional[str]]:
+) -> tuple[pd.Series, str | None]:
     """提取变量并尽可能建立经过校验的升序时间索引。"""
     if variable not in data.columns:
         raise KeyError(f"数据表中不存在变量: {variable}")
@@ -254,7 +252,7 @@ def prepare_selected_series(
     return series, time_label
 
 
-def normalize_frequency(frequency: Optional[str]) -> str:
+def normalize_frequency(frequency: str | None) -> str:
     """将频率表键和显示名称统一为内部频率名称。"""
     if frequency is None:
         return "Undetermined"
@@ -264,7 +262,7 @@ def normalize_frequency(frequency: Optional[str]) -> str:
     return TABLE_FREQUENCIES.get(value.lower(), value)
 
 
-def resolve_year_over_year_lag(frequency: Optional[str]) -> int:
+def resolve_year_over_year_lag(frequency: str | None) -> int:
     """返回同比差分期数；不可靠的频率不做主观推断。"""
     normalized = normalize_frequency(frequency)
     lag = YEAR_OVER_YEAR_LAGS.get(normalized)
@@ -280,7 +278,7 @@ def transform_series(
     series: pd.Series,
     transformation: str,
     *,
-    frequency: Optional[str] = None,
+    frequency: str | None = None,
 ) -> pd.Series:
     """使用 ``Ts.difference`` 执行界面支持的序列变换。"""
     values = _validate_numeric_series(series)
@@ -376,7 +374,7 @@ def summarize_series(
     series: pd.Series,
     *,
     alpha: float = 0.05,
-    frequency: Optional[str] = None,
+    frequency: str | None = None,
 ) -> str:
     """调用 ``Ts.TimeSeriesSummary.summary`` 并转换为中文摘要。
 
@@ -400,19 +398,19 @@ def summarize_series(
 def create_time_series_figure(
     series: pd.Series,
     *,
-    title: Optional[str] = None,
+    title: str | None = None,
     x_title: str = "时间",
-    y_title: Optional[str] = None,
+    y_title: str | None = None,
     line_width: float = 3,
     marker_size: float = 0,
     max_ticks: int = 12,
     y_tick_count: int = 8,
     x_start=None,
-    y_start: Optional[float] = None,
+    y_start: float | None = None,
     grid_mode: str = "both",
     grid_line_style: str = "solid",
-    grid: Optional[bool] = None,
-    ymin: Optional[float] = None,
+    grid: bool | None = None,
+    ymin: float | None = None,
 ):
     """使用 ``Ts.TsPlots.plot_series`` 绘制时间序列。"""
     values = _validate_numeric_series(series)
@@ -448,7 +446,7 @@ def create_time_series_figure(
 
 def resolve_correlation_lags(
     series: pd.Series,
-    requested: Optional[int] = None,
+    requested: int | None = None,
 ) -> tuple[int, int]:
     """返回 ``(实际滞后阶数, PACF 最大允许阶数)``。"""
     values = _validate_numeric_series(series).dropna()
@@ -475,7 +473,7 @@ def _apply_axis_options(
     axis,
     *,
     x_start=None,
-    y_start: Optional[float] = None,
+    y_start: float | None = None,
     x_tick_count: int = 12,
     y_tick_count: int = 8,
     grid_mode: str = "both",
@@ -508,24 +506,24 @@ def _apply_axis_options(
 def create_correlogram_figure(
     series: pd.Series,
     *,
-    nlags: Optional[int] = None,
+    nlags: int | None = None,
     alpha: float = 0.05,
-    title_prefix: Optional[str] = None,
+    title_prefix: str | None = None,
     include_acf: bool = True,
     include_pacf: bool = True,
-    acf_title: Optional[str] = None,
-    pacf_title: Optional[str] = None,
+    acf_title: str | None = None,
+    pacf_title: str | None = None,
     acf_x_title: str = "滞后期数",
     acf_y_title: str = "ACF值",
     pacf_x_title: str = "滞后期数",
     pacf_y_title: str = "PACF值",
     max_ticks: int = 12,
     y_tick_count: int = 8,
-    x_start: Optional[float] = 0,
-    y_start: Optional[float] = None,
+    x_start: float | None = 0,
+    y_start: float | None = None,
     grid_mode: str = "both",
     grid_line_style: str = "solid",
-    grid: Optional[bool] = None,
+    grid: bool | None = None,
     pacf_method: str = "ywm",
 ):
     """使用 ``Ts`` 绘制同一序列的 ACF 和 PACF。"""
@@ -624,7 +622,7 @@ def _alpha_label(alpha: float) -> str:
     return f"{alpha * 100:g}%"
 
 
-def _critical_value(result: Any, test_key: str, alpha: float) -> Optional[float]:
+def _critical_value(result: Any, alpha: float) -> float | None:
     critical_values = getattr(result, "critical_values", {}) or {}
     value = critical_values.get(_alpha_label(alpha))
     return None if value is None else float(value)
@@ -634,7 +632,7 @@ def _test_decision(
     result: Any,
     test_key: str,
     alpha: float,
-    critical_value: Optional[float],
+    critical_value: float | None,
 ) -> tuple[str, str]:
     pvalue = getattr(result, "pvalue", None)
     if pvalue is not None:
@@ -675,7 +673,7 @@ def run_selected_stationarity_tests(
     *,
     alpha: float = 0.05,
     trend: str = "c",
-    test_trends: Optional[dict[str, str]] = None,
+    test_trends: dict[str, str] | None = None,
 ) -> pd.DataFrame:
     """按用户选择运行多个 ``TsTests``，单项失败不终止其他检验。"""
     selected = list(dict.fromkeys(tests))
@@ -705,7 +703,7 @@ def run_selected_stationarity_tests(
         try:
             test = _build_test(test_key, values, selected_trend)
             result = test.fit()
-            critical_value = _critical_value(result, test_key, alpha)
+            critical_value = _critical_value(result, alpha)
             decision, interpretation = _test_decision(
                 result,
                 test_key,
@@ -727,7 +725,7 @@ def run_selected_stationarity_tests(
                     "平稳性解释": interpretation,
                 }
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - isolate one selected statistical test
             logger.warning("%s 执行失败: %s", TEST_LABELS[test_key], exc)
             row["错误"] = str(exc)
         rows.append(row)
@@ -779,7 +777,7 @@ def _legacy_single_test(
     series: pd.Series,
     test_key: str,
     alpha: float,
-) -> tuple[Optional[float], str]:
+) -> tuple[float | None, str]:
     row = run_selected_stationarity_tests(
         series,
         [test_key],
@@ -795,7 +793,7 @@ def _legacy_single_test(
 def run_adf_test(
     series: pd.Series,
     alpha: float = 0.05,
-) -> tuple[Optional[float], str]:
+) -> tuple[float | None, str]:
     """兼容旧调用的 ADF 二元结果。"""
     return _legacy_single_test(series, "adf", alpha)
 
@@ -803,7 +801,7 @@ def run_adf_test(
 def run_kpss_test(
     series: pd.Series,
     alpha: float = 0.05,
-) -> tuple[Optional[float], str]:
+) -> tuple[float | None, str]:
     """兼容旧调用的 KPSS 二元结果。"""
     return _legacy_single_test(series, "kpss", alpha)
 
@@ -818,10 +816,10 @@ __all__ = [
     "TransformationSpec",
     "create_correlogram_figure",
     "create_time_series_figure",
+    "localize_summary_text",
     "matplotlib_date_compatibility",
     "normalize_frequency",
     "numeric_variable_names",
-    "localize_summary_text",
     "prepare_selected_series",
     "resolve_correlation_lags",
     "resolve_year_over_year_lag",

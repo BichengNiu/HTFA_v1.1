@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """共享数据集的原始变量概览页。"""
 
 from __future__ import annotations
@@ -17,24 +16,16 @@ from dashboard.explore.analysis.stationarity import (
 )
 from dashboard.explore.core.constants import FREQUENCY_DISPLAY_NAMES
 from dashboard.explore.core.data_source import (
-    fingerprint_uploaded_file,
     format_table_option,
-    load_stationarity_data,
 )
-from dashboard.explore.ui.stationarity import resolve_table_frequency
 from dashboard.explore.ui.chart_controls import (
     chart_scope,
     get_applied_config,
     render_correlogram_config_expander,
     render_time_series_config_expander,
 )
-
-
-STATE_PREFIX = "tools.analysis.data_overview"
-
-
-def _key(name: str) -> str:
-    return f"{STATE_PREFIX}.{name}"
+from dashboard.explore.ui.dataset_context import get_explore_dataset
+from dashboard.explore.ui.stationarity import resolve_table_frequency
 
 
 def _render_series_status(
@@ -109,30 +100,23 @@ def _render_correlogram(
             defaults=defaults,
             maximum_lags=maximum,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - optional chart render boundary
         st_obj.warning(f"ACF/PACF 无法绘制：{exc}")
 
 
-def render_data_overview(st_obj, uploaded_file) -> None:
+def render_data_overview(st_obj, uploaded_file, *, dataset=None) -> None:
     """渲染原始变量的时间序列、统计摘要与相关结构。"""
     if uploaded_file is None:
         st_obj.info("请先在侧边栏上传共享数据集。")
         return
 
     try:
-        fingerprint = fingerprint_uploaded_file(uploaded_file)
-        if fingerprint != st_obj.session_state.get(_key("fingerprint")):
-            tables, metadata_map = load_stationarity_data(uploaded_file)
-            st_obj.session_state[_key("tables")] = tables
-            st_obj.session_state[_key("metadata_map")] = metadata_map
-            st_obj.session_state[_key("fingerprint")] = fingerprint
-            st_obj.session_state.pop("data_overview_table_select", None)
-            st_obj.session_state.pop("data_overview_variable_select", None)
-    except Exception as exc:
+        dataset = dataset or get_explore_dataset(st_obj, uploaded_file)
+    except Exception as exc:  # noqa: BLE001 - user-facing file load boundary
         st_obj.error(f"文件读取或数据库解析失败：{exc}")
         return
 
-    tables = st_obj.session_state.get(_key("tables"), {})
+    tables = dataset.tables
     if not tables:
         st_obj.error("数据集没有可分析的数据表。")
         return
@@ -157,12 +141,12 @@ def render_data_overview(st_obj, uploaded_file) -> None:
 
     try:
         series, time_label = prepare_selected_series(data, variable)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - user-facing selection boundary
         st_obj.error(f"变量准备失败：{exc}")
         return
 
     frequency = resolve_table_frequency(table_key, series)
-    metadata = st_obj.session_state.get(_key("metadata_map"), {}).get(variable)
+    metadata = dataset.metadata_map.get(variable)
     updated_at = getattr(metadata, "updated_at", None) or "未提供"
     _render_series_status(
         st_obj,
@@ -205,7 +189,7 @@ def render_data_overview(st_obj, uploaded_file) -> None:
                 scope=time_scope,
                 defaults=time_defaults,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - optional chart render boundary
             st_obj.warning(f"原始序列图无法绘制：{exc}")
     with summary_column:
         try:
@@ -213,7 +197,7 @@ def render_data_overview(st_obj, uploaded_file) -> None:
                 summarize_series(series, frequency=frequency),
                 language=None,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - optional summary render boundary
             st_obj.warning(f"Ts 统计摘要无法生成：{exc}")
 
     _render_correlogram(

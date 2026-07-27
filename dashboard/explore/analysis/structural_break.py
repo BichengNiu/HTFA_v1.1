@@ -1,15 +1,12 @@
-# -*- coding: utf-8 -*-
 """使用 TsTests 执行结构突变检验。"""
 
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-
 from Ts.TsTests import ZivotAndrewsTest
 
 from dashboard.explore.core.constants import MIN_SAMPLES_ADF
-
 
 STRUCTURAL_BREAK_MODELS = {
     "intercept": "截距突变",

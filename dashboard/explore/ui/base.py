@@ -1,22 +1,17 @@
-# -*- coding: utf-8 -*-
 """
 时间序列分析组件基类
 提供时间序列分析组件的基础接口和通用功能
 """
 
-import streamlit as st
-import pandas as pd
-import numpy as np
-from typing import List, Dict, Any, Optional, Tuple
-from abc import abstractmethod
 import logging
 import time
+from abc import abstractmethod
+from typing import Any
+
+import pandas as pd
+import streamlit as st
 
 from dashboard.core.ui.components.base import UIComponent
-from dashboard.core.ui.utils.state_helpers import (
-    get_exploration_state,
-    set_exploration_state
-)
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +19,7 @@ logger = logging.getLogger(__name__)
 class TimeSeriesAnalysisComponent(UIComponent):
     """时间序列分析组件基类"""
 
-    def __init__(self, analysis_type: str, title: str = None):
+    def __init__(self, analysis_type: str, title: str | None = None):
         # 先设置属性
         self.analysis_type = analysis_type
         self.title = title or analysis_type
@@ -37,7 +32,7 @@ class TimeSeriesAnalysisComponent(UIComponent):
         """获取组件ID"""
         return f"timeseries_{self.analysis_type}"
 
-    def get_state_keys(self) -> List[str]:
+    def get_state_keys(self) -> list[str]:
         """获取组件相关的状态键"""
         return [
             f'{self.analysis_type}_data',
@@ -49,50 +44,41 @@ class TimeSeriesAnalysisComponent(UIComponent):
 
     def get_state(self, key: str, default=None):
         """获取分析状态"""
-        import streamlit as st
         state_key = f'tools.analysis.{self.analysis_type}.{key}'
         return st.session_state.get(state_key, default)
 
     def set_state(self, key: str, value):
         """设置分析状态"""
-        import streamlit as st
         state_key = f'tools.analysis.{self.analysis_type}.{key}'
         try:
             st.session_state[state_key] = value
             return True
-        except Exception:
+        except Exception:  # noqa: BLE001 - Streamlit state adapter boundary
             return False
 
     def set_state_value(self, key: str, value):
         """设置状态值"""
-        import streamlit as st
         state_key = f'tools.ui_state.{key}'
         try:
             st.session_state[state_key] = value
-        except Exception:
+        except Exception:  # noqa: BLE001 - Streamlit state adapter boundary
             self.logger.debug(f"Failed to set UI state: {key}")
 
     def get_session_state_value(self, key: str, default=None):
         """获取session state值"""
-        import streamlit as st
         state_key = f'tools.ui_state.session.{key}'
         value = st.session_state.get(state_key, None)
         return value if value is not None else default
 
-    def detect_tab_activation(self, st_obj, tab_index: int) -> bool:
+    def detect_tab_activation(self) -> bool:
         """
         检测当前标签页是否激活
 
         Args:
-            st_obj: Streamlit对象
-            tab_index: 标签页索引
-
         Returns:
             bool: 是否激活
         """
         is_really_active = False
-
-        import streamlit as st
 
         # 检查管理的标签页状态
         current_active_tab = st.session_state.get('tools.ui_state.data_exploration_active_tab')
@@ -114,7 +100,7 @@ class TimeSeriesAnalysisComponent(UIComponent):
 
         return is_really_active
 
-    def get_module_data(self) -> Tuple[Optional[pd.DataFrame], str, str]:
+    def get_module_data(self) -> tuple[pd.DataFrame | None, str, str]:
         """
         获取当前模块的数据
 
@@ -171,29 +157,26 @@ class TimeSeriesAnalysisComponent(UIComponent):
         Returns:
             Any: 分析结果
         """
-        pass
 
-    def render(self, st_obj, **kwargs) -> Any:
+    def render(self, st_obj, **_kwargs) -> Any:
         """
         渲染完整的时间序列分析组件
 
         Args:
             st_obj: Streamlit对象
-            **kwargs: 其他参数
+            **_kwargs: 保留给统一组件调用协议的其他参数
 
         Returns:
             Any: 分析结果
         """
         try:
-            # 检测标签页激活状态
-            tab_index = kwargs.get('tab_index', 0)
-            self.detect_tab_activation(st_obj, tab_index)
+            self.detect_tab_activation()
 
             # 移除重复的标题渲染，因为标签页已经显示了标题
             # st_obj.markdown(f"### {self.title}")
 
             # 渲染数据状态和获取数据
-            data, data_source, data_name = self.render_data_status(st_obj)
+            data, _, data_name = self.render_data_status(st_obj)
 
             if data is None:
                 return None
@@ -201,7 +184,7 @@ class TimeSeriesAnalysisComponent(UIComponent):
             # 渲染分析界面
             return self.render_analysis_interface(st_obj, data, data_name)
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - top-level component render boundary
             self.handle_error(st_obj, e, f"渲染{self.title}组件")
             return None
 

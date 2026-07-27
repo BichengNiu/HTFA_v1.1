@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 时间序列频率对齐工具模块
 
@@ -12,18 +11,66 @@
 """
 
 import logging
-import pandas as pd
-import numpy as np
-from typing import Tuple, List, Dict, Any, Optional
-import warnings
+from typing import Any
 
-from dashboard.explore.core.constants import FREQUENCY_MAPPINGS, FREQUENCY_PRIORITY, TIMEDELTA_TOLERANCE_DAYS
+import numpy as np
+import pandas as pd
+
+from dashboard.explore.core.constants import (
+    FREQUENCY_MAPPINGS,
+    FREQUENCY_PRIORITY,
+    TIMEDELTA_TOLERANCE_DAYS,
+)
 from dashboard.explore.core.series_utils import identify_time_column
 
-# 抑制pandas频率相关警告
-warnings.filterwarnings('ignore', category=FutureWarning, module='pandas')
-
 logger = logging.getLogger(__name__)
+
+AGGREGATION_METHODS = ("mean", "last", "first", "sum", "median")
+PANDAS_FREQUENCY_PREFIXES = (
+    ("Q", "Quarterly"),
+    (("M", "WOM"), "Monthly"),
+    ("W", "Weekly"),
+    (("D", "B"), "Daily"),
+    (("A", "Y"), "Annual"),
+)
+
+
+def _frequency_from_pandas_alias(alias: str | None) -> str | None:
+    if not alias:
+        return None
+    for prefixes, frequency_name in PANDAS_FREQUENCY_PREFIXES:
+        if alias.startswith(prefixes):
+            logger.debug(
+                "识别为%s（pandas推断: %s）",
+                frequency_name,
+                alias,
+            )
+            return frequency_name
+    return None
+
+
+def _frequency_from_interval(median_days: int) -> str:
+    frequency_order = (
+        "Daily",
+        "Weekly",
+        "Ten_Day",
+        "Monthly",
+        "Quarterly",
+        "Annual",
+    )
+    for frequency_name in frequency_order:
+        minimum, maximum = TIMEDELTA_TOLERANCE_DAYS[frequency_name]
+        if minimum <= median_days <= maximum:
+            logger.debug(
+                "基于时间间隔识别为%s（%s天在[%s, %s]范围内）",
+                frequency_name,
+                median_days,
+                minimum,
+                maximum,
+            )
+            return frequency_name
+    logger.debug("无法匹配已知频率（%s天）, 标记为Irregular", median_days)
+    return "Irregular"
 
 
 def infer_series_frequency(series: pd.Series) -> str:
@@ -41,26 +88,11 @@ def infer_series_frequency(series: pd.Series) -> str:
 
     try:
         # 首先尝试pandas内置频率推断
-        freq = pd.infer_freq(series.index)
-        if freq:
-            # 注意：不能使用 'X' in freq 的方式，因为 'QE-DEC' 包含 'D'
-            # 必须检查频率字符串的开头
-            if freq.startswith('Q'):
-                logger.debug(f"识别为Quarterly（pandas推断: {freq}）")
-                return 'Quarterly'
-            elif freq.startswith('M') or freq.startswith('ME') or freq.startswith('MS') or freq.startswith('WOM'):
-                # WOM-*表示Week Of Month（如WOM-4FRI=每月第4个星期五），应识别为Monthly
-                logger.debug(f"识别为Monthly（pandas推断: {freq}）")
-                return 'Monthly'
-            elif freq.startswith('W'):
-                logger.debug(f"识别为Weekly（pandas推断: {freq}）")
-                return 'Weekly'
-            elif freq.startswith('D') or freq.startswith('B'):
-                logger.debug(f"识别为Daily（pandas推断: {freq}）")
-                return 'Daily'
-            elif freq.startswith('A') or freq.startswith('Y'):
-                logger.debug(f"识别为Annual（pandas推断: {freq}）")
-                return 'Annual'
+        inferred = _frequency_from_pandas_alias(
+            pd.infer_freq(series.index)
+        )
+        if inferred:
+            return inferred
 
         # 如果pandas无法推断，基于时间间隔差值分析
         if not isinstance(series.index, pd.DatetimeIndex):
@@ -77,21 +109,9 @@ def infer_series_frequency(series: pd.Series) -> str:
 
         logger.debug(f"序列长度: {len(series)}, 中位数间隔: {median_days}天")
 
-        # 基于中位数时间间隔判断频率
-        # 按照从小到大的顺序检查，确保匹配最接近的频率
-        freq_order = ['Daily', 'Weekly', 'Ten_Day', 'Monthly', 'Quarterly', 'Annual']
+        return _frequency_from_interval(median_days)
 
-        for freq_name in freq_order:
-            min_days, max_days = TIMEDELTA_TOLERANCE_DAYS[freq_name]
-            if min_days <= median_days <= max_days:
-                logger.debug(f"基于时间间隔识别为{freq_name}（{median_days}天在[{min_days}, {max_days}]范围内）")
-                return freq_name
-
-        # 如果不在任何已知频率范围内
-        logger.debug(f"无法匹配已知频率（{median_days}天）, 标记为Irregular")
-        return 'Irregular'
-
-    except Exception as e:
+    except (TypeError, ValueError, OverflowError) as e:
         logger.error(f"频率推断失败: {e}")
         return 'Undetermined'
 
@@ -100,7 +120,7 @@ def resample_series_to_frequency(
     df: pd.DataFrame,
     target_freq: str,
     agg_method: str = 'mean'
-) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+) -> tuple[pd.DataFrame, dict[str, Any]]:
     """
     将DataFrame重采样到指定频率
 
@@ -118,23 +138,22 @@ def resample_series_to_frequency(
             'error': 'DataFrame必须具有DatetimeIndex才能进行频率重采样'
         }
 
-    # 使用统一的频率映射常量（DRY）
-    pandas_freq = FREQUENCY_MAPPINGS.get(target_freq, 'ME')
+    if target_freq not in FREQUENCY_MAPPINGS:
+        return df, {
+            "status": "error",
+            "error": f"不支持的目标频率: {target_freq}",
+        }
+    if agg_method not in AGGREGATION_METHODS:
+        return df, {
+            "status": "error",
+            "error": f"不支持的聚合方法: {agg_method}",
+        }
 
-    # 使用字典映射优化聚合方法选择（避免if-elif链）
-    AGG_METHOD_MAP = {
-        'mean': lambda r: r.mean(),
-        'last': lambda r: r.last(),
-        'first': lambda r: r.first(),
-        'sum': lambda r: r.sum(),
-        'median': lambda r: r.median()
-    }
+    pandas_freq = FREQUENCY_MAPPINGS[target_freq]
 
     try:
-        # 执行重采样（使用字典映射）
         resampler = df.resample(pandas_freq)
-        agg_func = AGG_METHOD_MAP.get(agg_method, AGG_METHOD_MAP['mean'])
-        resampled = agg_func(resampler)
+        resampled = getattr(resampler, agg_method)()
 
         # 移除全为NaN的行
         result = resampled.dropna(how='all')
@@ -147,18 +166,18 @@ def resample_series_to_frequency(
             'resampled_rows': len(result)
         }
 
-    except Exception as e:
+    except (TypeError, ValueError) as e:
         return df, {
             'status': 'error',
-            'error': f'重采样失败: {str(e)}'
+            'error': f'重采样失败: {e!s}'
         }
 
 
 def _prepare_datetime_index(
     df: pd.DataFrame,
     time_column: str,
-    all_series_names: List[str]
-) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    all_series_names: list[str]
+) -> tuple[pd.DataFrame, dict[str, Any]]:
     """
     准备DatetimeIndex
 
@@ -182,10 +201,10 @@ def _prepare_datetime_index(
             df_work[time_column] = pd.to_datetime(df_work[time_column])
             df_work = df_work.set_index(time_column)
             return df_work, {'status': 'success'}
-        except Exception as e:
+        except (KeyError, TypeError, ValueError, OverflowError) as e:
             return df, {
                 'status': 'error',
-                'error': f'无法将时间列转换为DatetimeIndex: {str(e)}',
+                'error': f'无法将时间列转换为DatetimeIndex: {e!s}',
                 'frequencies': {}
             }
 
@@ -201,10 +220,10 @@ def _prepare_datetime_index(
                 df_work[time_col_found] = pd.to_datetime(df_work[time_col_found])
                 df_work = df_work.set_index(time_col_found)
                 return df_work, {'status': 'success'}
-            except Exception as e:
+            except (KeyError, TypeError, ValueError, OverflowError) as e:
                 return df, {
                     'status': 'error',
-                    'error': f'找到时间列但无法转换为DatetimeIndex: {str(e)}',
+                    'error': f'找到时间列但无法转换为DatetimeIndex: {e!s}',
                     'frequencies': {}
                 }
     else:
@@ -217,8 +236,8 @@ def _prepare_datetime_index(
 
 def _analyze_series_frequencies(
     df: pd.DataFrame,
-    all_series_names: List[str]
-) -> Dict[str, str]:
+    all_series_names: list[str]
+) -> dict[str, str]:
     """
     分析各序列的频率
 
@@ -252,8 +271,8 @@ def _analyze_series_frequencies(
 
 
 def _check_frequency_consistency(
-    freq_analysis: Dict[str, str]
-) -> Tuple[bool, List[str]]:
+    freq_analysis: dict[str, str]
+) -> tuple[bool, list[str]]:
     """
     检查频率一致性
 
@@ -274,10 +293,10 @@ def _check_frequency_consistency(
 
 
 def _determine_target_frequency(
-    unique_freqs: List[str],
-    target_frequency: Optional[str],
+    unique_freqs: list[str],
+    target_frequency: str | None,
     auto_align: bool
-) -> Tuple[Optional[str], Dict[str, Any]]:
+) -> tuple[str | None, dict[str, Any]]:
     """
     确定目标对齐频率
 
@@ -307,8 +326,8 @@ def _execute_frequency_alignment(
     df: pd.DataFrame,
     target_frequency: str,
     agg_method: str,
-    all_series_names: List[str]
-) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    all_series_names: list[str]
+) -> tuple[pd.DataFrame, dict[str, Any]]:
     """
     执行频率对齐
 
@@ -350,12 +369,12 @@ def _execute_frequency_alignment(
 def detect_and_align_frequencies(
     df_input: pd.DataFrame,
     target_series_name: str,
-    candidate_series_names: List[str],
+    candidate_series_names: list[str],
     auto_align: bool = True,
-    target_frequency: str = None,
+    target_frequency: str | None = None,
     agg_method: str = 'mean',
-    time_column: str = None
-) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    time_column: str | None = None
+) -> tuple[pd.DataFrame, dict[str, Any]]:
     """
     检测时间序列频率并进行统一化对齐处理
 
@@ -434,12 +453,12 @@ def detect_and_align_frequencies(
 def align_series_for_analysis(
     df: pd.DataFrame,
     target_var: str,
-    candidate_vars: List[str],
+    candidate_vars: list[str],
     enable_frequency_alignment: bool = True,
-    target_frequency: str = None,
+    target_frequency: str | None = None,
     agg_method: str = 'mean',
-    time_column: str = None
-) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    time_column: str | None = None
+) -> tuple[pd.DataFrame, dict[str, Any]]:
     """
     为时间序列分析准备对齐的数据
     
@@ -474,11 +493,77 @@ def align_series_for_analysis(
     )
 
 
+def _prepare_alignment_frame(
+    df: pd.DataFrame,
+    time_column: str | None,
+) -> pd.DataFrame | None:
+    working = df.copy()
+    logger.info("[频率对齐] 索引类型: %s", type(working.index).__name__)
+    if isinstance(working.index, pd.DatetimeIndex):
+        return working
+
+    logger.info("[频率对齐] 非DatetimeIndex，尝试准备时间索引")
+    prepared, report = _prepare_datetime_index(
+        working,
+        time_column,
+        list(working.columns),
+    )
+    if report["status"] == "error":
+        logger.error(
+            "[频率对齐] 准备时间索引失败: %s",
+            report.get("error", "未知错误"),
+        )
+        return None
+    return prepared
+
+
+def _requires_calendar_alignment(
+    df: pd.DataFrame,
+    numeric_columns: list[str],
+    unique_frequencies: list[str],
+) -> bool:
+    calendar_frequencies = {"Monthly", "Quarterly", "Annual"}
+    if (
+        len(unique_frequencies) != 1
+        or unique_frequencies[0] not in calendar_frequencies
+    ):
+        return False
+
+    target_frequency = unique_frequencies[0]
+    valid_date_sets = []
+    for column in numeric_columns:
+        valid_dates = df[column].dropna().index
+        if len(valid_dates) > 0:
+            valid_date_sets.append(set(valid_dates))
+    if len(valid_date_sets) <= 1:
+        logger.info("[频率对齐] 只有一个有效序列，无需检查时间点对齐")
+        return False
+
+    overlap = set.intersection(*valid_date_sets)
+    maximum_points = max(len(dates) for dates in valid_date_sets)
+    overlap_ratio = len(overlap) / maximum_points
+    logger.info(
+        "[频率对齐] 时间点重叠比例: %.2f%% (%s/%s)",
+        overlap_ratio * 100,
+        len(overlap),
+        maximum_points,
+    )
+    if overlap_ratio >= 0.5:
+        logger.info("[频率对齐] 时间点已对齐，无需重采样")
+        return False
+
+    logger.info(
+        "[频率对齐] 重叠率过低，强制重采样到%s期末",
+        target_frequency,
+    )
+    return True
+
+
 def align_multiple_series_frequencies(
     df: pd.DataFrame,
     mode: str = 'stat_align',
     agg_method: str = 'mean',
-    time_column: str = None
+    time_column: str | None = None
 ) -> pd.DataFrame:
     """
     对DataFrame中的所有序列进行频率对齐
@@ -494,27 +579,17 @@ def align_multiple_series_frequencies(
     Returns:
         对齐后的DataFrame
     """
+    del mode  # 保留旧调用签名；当前实现只有一种经验证的对齐语义。
     logger.info(f"[频率对齐] 开始 - 输入数据形状: {df.shape}, 列: {list(df.columns)}")
 
     if df.empty or len(df.columns) == 0:
         logger.warning("[频率对齐] 数据为空，直接返回")
         return df
 
-    # 准备时间索引
-    df_work = df.copy()
-
-    logger.info(f"[频率对齐] 索引类型: {type(df_work.index).__name__}")
-
-    # 如果没有DatetimeIndex，尝试找到并设置时间列
-    if not isinstance(df_work.index, pd.DatetimeIndex):
-        logger.info("[频率对齐] 非DatetimeIndex，尝试准备时间索引")
-        all_cols = list(df_work.columns)
-        df_work, prepare_result = _prepare_datetime_index(df_work, time_column, all_cols)
-        if prepare_result['status'] == 'error':
-            # 如果无法准备时间索引，返回原始数据
-            logger.error(f"[频率对齐] 准备时间索引失败: {prepare_result.get('error', '未知错误')}")
-            return df
-        logger.info("[频率对齐] 时间索引准备成功")
+    df_work = _prepare_alignment_frame(df, time_column)
+    if df_work is None:
+        return df
+    logger.info("[频率对齐] 时间索引准备成功")
 
     # 获取所有数值列
     numeric_cols = df_work.select_dtypes(include=[np.number]).columns.tolist()
@@ -532,39 +607,13 @@ def align_multiple_series_frequencies(
     needs_alignment, unique_freqs = _check_frequency_consistency(freq_analysis)
     logger.info(f"[频率对齐] 需要对齐: {needs_alignment}, 唯一频率: {unique_freqs}")
 
-    if not needs_alignment:
-        # 频率一致，但对于月度/季度/年度数据，仍需检查时间点是否对齐
-        if len(unique_freqs) == 1 and unique_freqs[0] in ['Monthly', 'Quarterly', 'Annual']:
-            target_freq = unique_freqs[0]
-            logger.info(f"[频率对齐] 频率相同但为{target_freq}，检查时间点对齐性")
-
-            # 检查各序列的有效日期是否有重叠
-            valid_dates_list = []
-            for col in numeric_cols:
-                valid_dates = df_work[col].dropna().index
-                if len(valid_dates) > 0:
-                    valid_dates_list.append(set(valid_dates))
-
-            # 计算重叠日期
-            if len(valid_dates_list) > 1:
-                overlap = set.intersection(*valid_dates_list)
-                overlap_ratio = len(overlap) / max(len(vd) for vd in valid_dates_list)
-                logger.info(f"[频率对齐] 时间点重叠比例: {overlap_ratio:.2%} ({len(overlap)}/{max(len(vd) for vd in valid_dates_list)})")
-
-                # 如果重叠率低于50%，强制对齐到月末/季末/年末
-                if overlap_ratio < 0.5:
-                    logger.info(f"[频率对齐] 重叠率过低，强制重采样到{target_freq}期末")
-                    # 继续执行对齐流程
-                else:
-                    logger.info("[频率对齐] 时间点已对齐，无需重采样")
-                    return df_work
-            else:
-                logger.info("[频率对齐] 只有一个序列，无需检查时间点对齐")
-                return df_work
-        else:
-            # 不需要对齐，直接返回
-            logger.info("[频率对齐] 频率一致，无需对齐")
-            return df_work
+    if not needs_alignment and not _requires_calendar_alignment(
+        df_work,
+        numeric_cols,
+        unique_freqs,
+    ):
+        logger.info("[频率对齐] 频率一致，无需对齐")
+        return df_work
 
     # 确定目标频率（选择最低频率以避免信息丢失）
     if unique_freqs:
@@ -591,7 +640,7 @@ def align_multiple_series_frequencies(
 
 
 # 工具函数：格式化频率对齐报告
-def format_alignment_report(alignment_report: Dict[str, Any]) -> str:
+def format_alignment_report(alignment_report: dict[str, Any]) -> str:
     """格式化频率对齐报告为用户友好的文本"""
     if alignment_report['status'] == 'success':
         freqs_text = ', '.join([f"{k}:{v}" for k, v in alignment_report['original_frequencies'].items()])
