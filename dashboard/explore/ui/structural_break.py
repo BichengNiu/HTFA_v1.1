@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """与平稳性检验并列的结构突变检验界面。"""
 
 from __future__ import annotations
@@ -45,7 +44,7 @@ class StructuralBreakAnalysisComponent(StationarityAnalysisComponent):
         variables = numeric_variable_names(data)
         if not variables:
             st_obj.error("所选数据表没有实数型变量")
-            return None
+            return
 
         variable = st_obj.selectbox(
             "选择变量",
@@ -55,9 +54,9 @@ class StructuralBreakAnalysisComponent(StationarityAnalysisComponent):
         self._remember_selection("selected_variable", variable)
         try:
             series, _ = prepare_selected_series(data, variable)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - user-facing variable preparation boundary
             st_obj.error(f"变量准备失败：{exc}")
-            return None
+            return
 
         self._render_structural_break_test(
             st_obj,
@@ -66,7 +65,7 @@ class StructuralBreakAnalysisComponent(StationarityAnalysisComponent):
             data_name=data_name,
             table_key=table_key,
         )
-        return None
+        return
 
     def _render_structural_break_test(
         self,
@@ -130,7 +129,7 @@ class StructuralBreakAnalysisComponent(StationarityAnalysisComponent):
                     )
                 self.set_state("test_results", result)
                 self.set_state("test_signature", signature)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - selected statistical test boundary
                 self.set_state("test_results", None)
                 self.set_state("test_signature", None)
                 st_obj.error(f"结构突变检验无法执行：{exc}")

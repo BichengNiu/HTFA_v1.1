@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
@@ -11,7 +12,6 @@ import pandas as pd
 
 from dashboard.preview.modules.uae.loader import UAELoader
 
-
 FREQUENCY_LABELS = {
     "daily": "日度数据",
     "weekly": "周度数据",
@@ -20,6 +20,16 @@ FREQUENCY_LABELS = {
     "quarterly": "季度数据",
     "yearly": "年度数据",
 }
+
+
+@dataclass(frozen=True)
+class ExploreDataset:
+    """一次解析后供整个数据探索模块共享的数据集。"""
+
+    fingerprint: str
+    file_name: str
+    tables: dict[str, pd.DataFrame]
+    metadata_map: dict[str, Any]
 
 
 def read_uploaded_bytes(file_input: Any) -> bytes:
@@ -68,6 +78,18 @@ def load_stationarity_data(
     return tables, dict(loaded.indicator_metadata_map)
 
 
+def load_explore_dataset(file_input: Any) -> ExploreDataset:
+    """按统一契约解析数据探索模块使用的数据集。"""
+    file_name = Path(str(getattr(file_input, "name", file_input))).name
+    tables, metadata_map = load_stationarity_data(file_input)
+    return ExploreDataset(
+        fingerprint=fingerprint_uploaded_file(file_input),
+        file_name=file_name,
+        tables=tables,
+        metadata_map=metadata_map,
+    )
+
+
 def load_stationarity_tables(file_input: Any) -> dict[str, pd.DataFrame]:
     """解析上传文件，返回可供平稳性检验选择的非空数据表。"""
     tables, _ = load_stationarity_data(file_input)
@@ -83,8 +105,10 @@ def format_table_option(table_key: str, tables: dict[str, pd.DataFrame]) -> str:
 
 __all__ = [
     "FREQUENCY_LABELS",
+    "ExploreDataset",
     "fingerprint_uploaded_file",
     "format_table_option",
+    "load_explore_dataset",
     "load_stationarity_data",
     "load_stationarity_tables",
     "read_uploaded_bytes",

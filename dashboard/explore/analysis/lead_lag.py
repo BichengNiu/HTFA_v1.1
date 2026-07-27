@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 领先滞后分析模块
 
@@ -6,17 +5,28 @@
 """
 
 import logging
-from typing import Tuple, List, Optional, Dict, Any, Union
-import pandas as pd
-import numpy as np
+from typing import Any
 
-from dashboard.explore.core.validation import validate_analysis_inputs
-from dashboard.explore.core.constants import MIN_SAMPLES_KL_DIVERGENCE, ERROR_MESSAGES, MAX_DISPLAY_LAG_RANGE
-from dashboard.explore.core.series_utils import get_lagged_slices
-from dashboard.explore.metrics.kl_divergence import series_to_distribution, kl_divergence
-from dashboard.explore.preprocessing.frequency_alignment import align_series_for_analysis, format_alignment_report
-from dashboard.explore.preprocessing.standardization import standardize_array
+import numpy as np
+import pandas as pd
+
 from dashboard.explore.analysis.config import LeadLagAnalysisConfig
+from dashboard.explore.core.constants import (
+    ERROR_MESSAGES,
+    MAX_DISPLAY_LAG_RANGE,
+    MIN_SAMPLES_KL_DIVERGENCE,
+)
+from dashboard.explore.core.series_utils import get_lagged_slices
+from dashboard.explore.core.validation import validate_analysis_inputs
+from dashboard.explore.metrics.kl_divergence import (
+    kl_divergence,
+    series_to_distribution,
+)
+from dashboard.explore.preprocessing.frequency_alignment import (
+    align_series_for_analysis,
+    format_alignment_report,
+)
+from dashboard.explore.preprocessing.standardization import standardize_array
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +37,7 @@ def get_overlapping_series(
     lag: int,
     standardize_for_kl: bool = False,
     standardization_method: str = 'zscore'
-) -> Tuple[Optional[pd.Series], Optional[pd.Series]]:
+) -> tuple[pd.Series | None, pd.Series | None]:
     """
     提取两个序列在给定滞后下的重叠部分
 
@@ -106,30 +116,31 @@ def calculate_kl_divergence_optimized(
     Returns:
         DataFrame包含Lag和KL_Divergence列
     """
-    # 1. 预先清洗和转换（只做一次）
-    target_clean = series_target.dropna()
-    cand_clean = series_candidate.dropna()
+    if isinstance(max_lags, bool) or not isinstance(max_lags, (int, np.integer)):
+        raise TypeError("max_lags必须是非负整数")
+    if max_lags < 0:
+        raise ValueError("max_lags必须是非负整数")
 
-    # 验证长度
-    min_required = max_lags + MIN_SAMPLES_KL_DIVERGENCE
-    if len(target_clean) < min_required or len(cand_clean) < min_required:
-        # 数据不足，返回全NaN
-        lags = list(range(-max_lags, max_lags + 1))
-        return pd.DataFrame({
-            'Lag': lags,
-            'KL_Divergence': [np.nan] * len(lags)
-        })
+    # 先按时间索引对齐，再保留缺失位置执行滞后切片。
+    aligned = pd.concat(
+        [
+            series_target.rename("target"),
+            series_candidate.rename("candidate"),
+        ],
+        axis=1,
+        join="outer",
+    ).sort_index()
+    target_arr = aligned["target"].astype(float).to_numpy()
+    cand_arr = aligned["candidate"].astype(float).to_numpy()
+    if np.isinf(target_arr).any() or np.isinf(cand_arr).any():
+        raise ValueError("序列包含无穷值")
 
-    # 2. 转换为numpy数组（减少pandas开销）
-    target_arr = target_clean.values
-    cand_arr = cand_clean.values
-
-    # 3. 预先标准化（如果需要，只做一次）
+    # 预先标准化，同时保留 NaN 位置。
     if standardize_for_kl and standardization_method != 'none':
         target_arr = standardize_array(target_arr, standardization_method)
         cand_arr = standardize_array(cand_arr, standardization_method)
 
-    # 4. 批量计算KL散度（使用统一切片函数）
+    # 批量计算KL散度（使用统一切片函数）
     kl_lags = []
     kl_values = []
 
@@ -139,19 +150,24 @@ def calculate_kl_divergence_optimized(
         # 使用统一的切片函数（view，零拷贝）
         a_view, c_view = get_lagged_slices(target_arr, cand_arr, k_lag)
 
-        if a_view is None or c_view is None or len(a_view) < MIN_SAMPLES_KL_DIVERGENCE:
+        if a_view is None or c_view is None:
             kl_values.append(np.nan)
             continue
 
-        # 直接计算KL散度（避免重复转换，使用自动分箱）
+        valid_mask = ~(np.isnan(a_view) | np.isnan(c_view))
+        if np.count_nonzero(valid_mask) < MIN_SAMPLES_KL_DIVERGENCE:
+            kl_values.append(np.nan)
+            continue
+
+        # 只删除当前滞后下成对缺失的观测。
         try:
-            a_series_temp = pd.Series(a_view)
-            c_series_temp = pd.Series(c_view)
+            a_series_temp = pd.Series(a_view[valid_mask])
+            c_series_temp = pd.Series(c_view[valid_mask])
 
             p, q, _ = series_to_distribution(a_series_temp, c_series_temp)
             kl_val = kl_divergence(p, q)
             kl_values.append(kl_val)
-        except Exception as e:
+        except ValueError as e:
             logger.debug(f"KL散度计算失败 (lag={k_lag}): {e}")
             kl_values.append(np.nan)
 
@@ -167,7 +183,7 @@ def calculate_lead_lag_for_pair(
     max_lags: int,
     standardize_for_kl: bool,
     standardization_method: str
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     计算单对序列的领先滞后分析（基于KL散度）
 
@@ -223,12 +239,119 @@ def calculate_lead_lag_for_pair(
     return result
 
 
+def _coerce_lead_lag_config(
+    config: LeadLagAnalysisConfig | dict,
+) -> LeadLagAnalysisConfig:
+    if isinstance(config, dict):
+        return LeadLagAnalysisConfig(**config)
+    if isinstance(config, LeadLagAnalysisConfig):
+        return config
+    raise TypeError(
+        "config必须是LeadLagAnalysisConfig或字典，"
+        f"收到: {type(config)}"
+    )
+
+
+def _alignment_message(
+    report: dict[str, Any],
+) -> tuple[str | None, str | None]:
+    status = report["status"]
+    if status == "error":
+        return f"频率对齐失败: {report.get('error')}", None
+    if status == "success":
+        return None, f"频率对齐: {format_alignment_report(report)}"
+    if status == "no_alignment_needed":
+        return None, "频率检查: 所有序列频率一致，无需对齐"
+    if status == "disabled":
+        return None, "频率检查: 频率对齐功能已禁用"
+    if status == "alignment_skipped":
+        return None, f"频率检查: {format_alignment_report(report)}"
+    return None, f"频率检查: 未知状态 - {status or 'Unknown'}"
+
+
+def _align_lead_lag_data(
+    df: pd.DataFrame,
+    target_name: str,
+    candidate_names: list[str],
+    config: LeadLagAnalysisConfig,
+) -> tuple[pd.DataFrame, str | None, str | None]:
+    if not config.enable_frequency_alignment:
+        return df, None, None
+
+    try:
+        aligned, report = align_series_for_analysis(
+            df,
+            target_name,
+            candidate_names,
+            enable_frequency_alignment=True,
+            target_frequency=config.target_frequency,
+            agg_method=config.freq_agg_method,
+            time_column=config.time_column,
+        )
+    except Exception as exc:  # noqa: BLE001 - public batch API returns structured errors
+        return df, f"频率对齐过程出错: {exc!s}", None
+
+    error, warning = _alignment_message(report)
+    return aligned, error, warning
+
+
+def _failed_candidate_result(
+    target_name: str,
+    candidate_name: str,
+    note: str,
+) -> dict[str, Any]:
+    return {
+        "target_variable": target_name,
+        "candidate_variable": candidate_name,
+        "k_kl": np.nan,
+        "kl_at_k_kl": np.nan,
+        "full_kl_divergence_df": pd.DataFrame(),
+        "notes": note,
+    }
+
+
+def _analyze_candidate(
+    df: pd.DataFrame,
+    target_name: str,
+    candidate_name: str,
+    config: LeadLagAnalysisConfig,
+) -> tuple[dict[str, Any], str | None, str | None]:
+    if candidate_name not in df.columns:
+        note = ERROR_MESSAGES["candidate_not_found"]
+        return (
+            _failed_candidate_result(target_name, candidate_name, note),
+            None,
+            f"候选变量 '{candidate_name}' {note}，已跳过",
+        )
+
+    try:
+        result = calculate_lead_lag_for_pair(
+            df[target_name],
+            df[candidate_name],
+            config.max_lags,
+            config.standardize_for_kl,
+            config.standardization_method,
+        )
+    except Exception as exc:  # noqa: BLE001 - isolate one failed candidate
+        logger.error("处理候选变量 '%s' 时出错: %s", candidate_name, exc)
+        return (
+            _failed_candidate_result(
+                target_name,
+                candidate_name,
+                f"处理失败: {str(exc)[:50]}",
+            ),
+            f"处理 '{candidate_name}' 时出错: {str(exc)[:100]}",
+            None,
+        )
+    return result, None, None
+
+
 def perform_combined_lead_lag_analysis(
     df_input: pd.DataFrame,
     target_variable_name: str,
-    candidate_variable_names_list: List[str],
-    config: Union[LeadLagAnalysisConfig, Dict]
-) -> Tuple[List[Dict], List[str], List[str]]:
+    candidate_variable_names_list: list[str],
+    config: LeadLagAnalysisConfig | dict
+) -> tuple[list[dict], list[str], list[str]]:
     """
     执行综合领先滞后分析
 
@@ -256,30 +379,17 @@ def perform_combined_lead_lag_analysis(
             {'max_lags': 12}
         )
     """
-    # 配置处理：支持字典或配置类
-    if isinstance(config, dict):
-        config = LeadLagAnalysisConfig(**config)
-    elif not isinstance(config, LeadLagAnalysisConfig):
-        raise TypeError(f"config必须是LeadLagAnalysisConfig或字典，收到: {type(config)}")
-
-    # 提取配置参数
-    max_lags = config.max_lags
-    std_for_kl = config.standardize_for_kl
-    std_method = config.standardization_method
-    enable_freq_align = config.enable_frequency_alignment
-    target_freq = config.target_frequency
-    agg_method = config.freq_agg_method
-    time_col = config.time_column
-    all_results = []
-    error_messages = []
-    warning_messages = []
+    config = _coerce_lead_lag_config(config)
+    all_results: list[dict[str, Any]] = []
+    error_messages: list[str] = []
+    warning_messages: list[str] = []
 
     # 1. 输入验证
     errors, warnings = validate_analysis_inputs(
         df_input,
         target_variable_name,
         candidate_variable_names_list,
-        min_samples=max_lags + 2
+        min_samples=config.max_lags + 2,
     )
 
     error_messages.extend(errors)
@@ -288,80 +398,30 @@ def perform_combined_lead_lag_analysis(
     if errors:
         return all_results, error_messages, warning_messages
 
-    # 2. 频率对齐
-    df_aligned = df_input
-    if enable_freq_align:
-        try:
-            df_aligned, alignment_report = align_series_for_analysis(
-                df_input,
-                target_variable_name,
-                candidate_variable_names_list,
-                enable_frequency_alignment=True,
-                target_frequency=target_freq,
-                agg_method=agg_method,
-                time_column=time_col
-            )
+    df_aligned, alignment_error, alignment_warning = _align_lead_lag_data(
+        df_input,
+        target_variable_name,
+        candidate_variable_names_list,
+        config,
+    )
+    if alignment_error:
+        error_messages.append(alignment_error)
+        return all_results, error_messages, warning_messages
+    if alignment_warning:
+        warning_messages.append(alignment_warning)
 
-            if alignment_report['status'] == 'success':
-                warning_messages.append(f"频率对齐: {format_alignment_report(alignment_report)}")
-            elif alignment_report['status'] == 'error':
-                error_messages.append(f"频率对齐失败: {alignment_report.get('error')}")
-                return all_results, error_messages, warning_messages
-            elif alignment_report['status'] == 'no_alignment_needed':
-                warning_messages.append("频率检查: 所有序列频率一致，无需对齐")
-            elif alignment_report['status'] == 'disabled':
-                warning_messages.append("频率检查: 频率对齐功能已禁用")
-            elif alignment_report['status'] == 'alignment_skipped':
-                warning_messages.append(f"频率检查: {format_alignment_report(alignment_report)}")
-            else:
-                warning_messages.append(f"频率检查: 未知状态 - {alignment_report.get('status', 'Unknown')}")
-
-        except Exception as e:
-            error_messages.append(f"频率对齐过程出错: {str(e)}")
-            return all_results, error_messages, warning_messages
-
-    # 3. 准备目标序列
-    series_target = df_aligned[target_variable_name]
-
-    # 4. 批量处理候选序列
     for candidate_name in candidate_variable_names_list:
-        if candidate_name not in df_aligned.columns:
-            warning_messages.append(f"候选变量 '{candidate_name}' {ERROR_MESSAGES['candidate_not_found']}，已跳过")
-            all_results.append({
-                'target_variable': target_variable_name,
-                'candidate_variable': candidate_name,
-                'k_kl': np.nan,
-                'kl_at_k_kl': np.nan,
-                'full_kl_divergence_df': pd.DataFrame(),
-                'notes': ERROR_MESSAGES['candidate_not_found']
-            })
-            continue
-
-        try:
-            series_candidate = df_aligned[candidate_name]
-
-            # 执行分析
-            result = calculate_lead_lag_for_pair(
-                series_target,
-                series_candidate,
-                max_lags,
-                std_for_kl,
-                std_method
-            )
-
-            all_results.append(result)
-
-        except Exception as e:
-            logger.error(f"处理候选变量 '{candidate_name}' 时出错: {e}")
-            error_messages.append(f"处理 '{candidate_name}' 时出错: {str(e)[:100]}")
-            all_results.append({
-                'target_variable': target_variable_name,
-                'candidate_variable': candidate_name,
-                'k_kl': np.nan,
-                'kl_at_k_kl': np.nan,
-                'full_kl_divergence_df': pd.DataFrame(),
-                'notes': f"处理失败: {str(e)[:50]}"
-            })
+        result, error, warning = _analyze_candidate(
+            df_aligned,
+            target_variable_name,
+            candidate_name,
+            config,
+        )
+        all_results.append(result)
+        if error:
+            error_messages.append(error)
+        if warning:
+            warning_messages.append(warning)
 
     logger.info(f"综合领先滞后分析完成: {len(all_results)} 个结果")
     return all_results, error_messages, warning_messages
@@ -371,7 +431,7 @@ def get_detailed_lag_data_for_candidate(
     df_input: pd.DataFrame,
     target_variable_name: str,
     candidate_variable_name: str,
-    config: Union[LeadLagAnalysisConfig, Dict]
+    config: LeadLagAnalysisConfig | dict
 ) -> pd.DataFrame:
     """
     获取单个候选变量的详细滞后数据（用于绘图）
@@ -411,7 +471,7 @@ def get_detailed_lag_data_for_candidate(
     df_aligned = df_input
     if enable_freq_align:
         try:
-            df_aligned, _ = align_series_for_analysis(
+            df_aligned, alignment_report = align_series_for_analysis(
                 df_input,
                 target_variable_name,
                 [candidate_variable_name],
@@ -420,9 +480,15 @@ def get_detailed_lag_data_for_candidate(
                 agg_method=agg_method,
                 time_column=time_col
             )
+            if alignment_report["status"] == "error":
+                raise ValueError(
+                    f"频率对齐失败: {alignment_report.get('error', '未知错误')}"
+                )
         except Exception as e:
             logger.error(f"频率对齐失败: {e}")
-            raise ValueError(f"频率对齐过程出错: {str(e)}")
+            if isinstance(e, ValueError) and str(e).startswith("频率对齐失败:"):
+                raise
+            raise ValueError(f"频率对齐过程出错: {e!s}") from e
 
     # 验证变量存在
     if target_variable_name not in df_aligned.columns:

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 数据验证工具模块
 
@@ -6,18 +5,12 @@
 """
 
 import logging
-from typing import Optional, List, Tuple
 from dataclasses import dataclass
-import pandas as pd
-import numpy as np
 
-from dashboard.explore.core.constants import (
-    MIN_SAMPLES_ADF,
-    MIN_SAMPLES_CORRELATION,
-    MIN_SAMPLES_KL_DIVERGENCE,
-    MIN_SAMPLES_WIN_RATE,
-    ERROR_MESSAGES
-)
+import numpy as np
+import pandas as pd
+
+from dashboard.explore.core.constants import ERROR_MESSAGES, MIN_SAMPLES_CORRELATION
 
 logger = logging.getLogger(__name__)
 
@@ -26,17 +19,17 @@ logger = logging.getLogger(__name__)
 class ValidationResult:
     """验证结果数据类"""
     is_valid: bool
-    error_message: Optional[str] = None
-    warning_message: Optional[str] = None
-    cleaned_data: Optional[pd.Series] = None
-    metadata: Optional[dict] = None
+    error_message: str | None = None
+    warning_message: str | None = None
+    cleaned_data: pd.Series | None = None
+    metadata: dict | None = None
 
 
 def validate_series(
     series: pd.Series,
     min_samples: int = MIN_SAMPLES_CORRELATION,
     require_numeric: bool = True,
-    series_name: Optional[str] = None
+    series_name: str | None = None
 ) -> ValidationResult:
     """
     验证单个序列的有效性
@@ -66,7 +59,7 @@ def validate_series(
             # 尝试转换为数值类型
             try:
                 series_numeric = pd.to_numeric(series, errors='coerce')
-            except Exception as e:
+            except (TypeError, ValueError) as e:
                 logger.error(f"序列 '{name}' 无法转换为数值类型: {e}")
                 return ValidationResult(
                     is_valid=False,
@@ -116,8 +109,8 @@ def validate_series_pair(
     series1: pd.Series,
     series2: pd.Series,
     min_samples: int = MIN_SAMPLES_CORRELATION,
-    series1_name: Optional[str] = None,
-    series2_name: Optional[str] = None
+    series1_name: str | None = None,
+    series2_name: str | None = None
 ) -> ValidationResult:
     """
     验证序列对的有效性
@@ -186,9 +179,9 @@ def validate_series_pair(
 def validate_analysis_inputs(
     df: pd.DataFrame,
     target_var: str,
-    candidate_vars: List[str],
+    candidate_vars: list[str],
     min_samples: int = MIN_SAMPLES_CORRELATION
-) -> Tuple[List[str], List[str]]:
+) -> tuple[list[str], list[str]]:
     """
     验证分析输入（批量分析的标准验证）
 
@@ -226,8 +219,10 @@ def validate_analysis_inputs(
             errors.append(result.error_message)
 
     # 验证候选变量
-    for var in candidate_vars:
-        if var not in df.columns:
-            warnings.append(f"候选变量 '{var}' 不存在于数据中")
+    warnings.extend(
+        f"候选变量 '{var}' 不存在于数据中"
+        for var in candidate_vars
+        if var not in df.columns
+    )
 
     return errors, warnings

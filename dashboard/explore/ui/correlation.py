@@ -1,23 +1,24 @@
-# -*- coding: utf-8 -*-
 """
 时间滞后相关性分析组件
 迁移自 dashboard/explore/time_lag_corr_frontend.py
 """
 
-import streamlit as st
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib
 import logging
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Any
+
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
 # 配置matplotlib中文字体
 matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans', 'Arial Unicode MS', 'sans-serif']
 matplotlib.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
 
+from dashboard.explore.metrics.correlation import (
+    calculate_time_lagged_correlation,
+)
 from dashboard.explore.ui.base import TimeSeriesAnalysisComponent
-from dashboard.explore import calculate_time_lagged_correlation
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ class CorrelationAnalysisComponent(TimeSeriesAnalysisComponent):
     def __init__(self):
         super().__init__("time_lag_corr", "时间滞后相关性分析")
 
-    def render_input_section(self, st_obj, data: pd.DataFrame, data_name: str = "数据") -> Dict[str, Any]:
+    def render_input_section(self, st_obj, data: pd.DataFrame, data_name: str = "数据") -> dict[str, Any]:
         """渲染相关性分析输入界面"""
         st_obj.markdown("#### 时间滞后相关性分析配置")
 
@@ -56,7 +57,7 @@ class CorrelationAnalysisComponent(TimeSeriesAnalysisComponent):
             'max_lag': max_lag
         }
 
-    def render_analysis_parameters(self, st_obj, data: pd.DataFrame, data_name: str) -> Tuple[str, str, int]:
+    def render_analysis_parameters(self, st_obj, data: pd.DataFrame, data_name: str) -> tuple[str, str, int]:
         """
         渲染分析参数设置界面
 
@@ -135,7 +136,7 @@ class CorrelationAnalysisComponent(TimeSeriesAnalysisComponent):
 
         return selected_lagged_variable, selected_leading_variable, max_lags
 
-    def plot_correlation_chart(self, st_obj, correlations: List[float], lags: List[int],
+    def plot_correlation_chart(self, st_obj, correlations: list[float], lags: list[int],
                               lagged_var: str, leading_var: str):
         """
         绘制相关性图表
@@ -163,7 +164,7 @@ class CorrelationAnalysisComponent(TimeSeriesAnalysisComponent):
                 ax.annotate(f'最大相关性\n滞后期: {max_lag}\n相关系数: {max_corr:.3f}',
                            xy=(max_lag, max_corr),
                            xytext=(max_lag, max_corr + 0.1 * np.sign(max_corr)),
-                           arrowprops=dict(arrowstyle='->', color='red'),
+                           arrowprops={'arrowstyle': '->', 'color': 'red'},
                            fontsize=10, ha='center')
 
             ax.axhline(0, color='black', linewidth=0.8, linestyle='--')
@@ -176,11 +177,11 @@ class CorrelationAnalysisComponent(TimeSeriesAnalysisComponent):
             st_obj.pyplot(fig)
             plt.close(fig)
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - user-facing chart boundary
             logger.error(f"绘制相关性图表失败: {e}")
-            st_obj.error(f"绘制图表失败: {str(e)}")
+            st_obj.error(f"绘制图表失败: {e!s}")
 
-    def render_analysis_results(self, st_obj, results: Dict[str, Any]):
+    def render_analysis_results(self, st_obj, results: dict[str, Any]):
         """
         渲染分析结果
 
@@ -192,7 +193,7 @@ class CorrelationAnalysisComponent(TimeSeriesAnalysisComponent):
             st_obj.warning("没有分析结果可显示")
             return
 
-        col1, col2 = st_obj.columns(2)
+        _, col2 = st_obj.columns(2)
 
         with col2:
             st_obj.markdown("### 分析结果")
@@ -334,7 +335,7 @@ class CorrelationAnalysisComponent(TimeSeriesAnalysisComponent):
 
             return None
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - top-level component render boundary
             self.handle_error(st_obj, e, "渲染时间滞后相关性分析界面")
             return None
 

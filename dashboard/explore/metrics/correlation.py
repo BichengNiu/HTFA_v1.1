@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 相关性计算模块
 
@@ -6,9 +5,9 @@
 """
 
 import logging
-from typing import Tuple, Optional
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 
 from dashboard.explore.core.constants import MIN_SAMPLES_CORRELATION
 from dashboard.explore.core.series_utils import get_lagged_slices
@@ -30,7 +29,7 @@ def _prepare_correlation_inputs(series1, series2):
     try:
         arr1 = series1.astype(float).values
         arr2 = series2.astype(float).values
-    except Exception as e:
+    except (TypeError, ValueError) as e:
         logger.error(f"序列转换失败: {e}")
         return None, None
 
@@ -158,7 +157,7 @@ def _calculate_correlation(s1: pd.Series, s2: pd.Series) -> float:
     try:
         correlation = s1_reset.corr(s2_reset)
         return correlation
-    except Exception as e:
+    except (TypeError, ValueError) as e:
         logger.warning(f"相关系数计算失败: {e}")
         return np.nan
 
@@ -166,8 +165,8 @@ def _calculate_correlation(s1: pd.Series, s2: pd.Series) -> float:
 def find_optimal_lag(
     correlogram_df: pd.DataFrame,
     lag_range: str = 'all',
-    max_lag_range: Optional[int] = None
-) -> Tuple[Optional[int], Optional[float]]:
+    max_lag_range: int | None = None
+) -> tuple[int | None, float | None]:
     """
     从相关图中找到最优滞后阶数
 
@@ -240,10 +239,6 @@ def _calculate_time_lagged_correlation_numpy(
         if len(np.unique(s1_valid)) < 2 or len(np.unique(s2_valid)) < 2:
             return np.nan
 
-        try:
-            return np.corrcoef(s1_valid, s2_valid)[0, 1]
-        except Exception as e:
-            logger.debug(f"相关系数计算失败: {e}")
-            return np.nan
+        return np.corrcoef(s1_valid, s2_valid)[0, 1]
 
     return _correlation_loop(arr1, arr2, max_lags, _numpy_corr)

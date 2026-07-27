@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 时间序列数据标准化工具模块
 
@@ -15,9 +14,9 @@
 - YAGNI：不提供未使用的功能
 """
 
-import pandas as pd
+
 import numpy as np
-from typing import Tuple, Union
+import pandas as pd
 
 
 def standardize_array(data: np.ndarray, method: str = 'zscore') -> np.ndarray:
@@ -93,10 +92,10 @@ def standardize_series(series: pd.Series, method: str = 'zscore') -> pd.Series:
 
 
 def standardize_series_pair(
-    series1: Union[pd.Series, np.ndarray],
-    series2: Union[pd.Series, np.ndarray],
+    series1: pd.Series | np.ndarray,
+    series2: pd.Series | np.ndarray,
     method: str = 'zscore'
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     标准化一对序列
 

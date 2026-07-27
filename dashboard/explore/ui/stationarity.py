@@ -1,10 +1,8 @@
-# -*- coding: utf-8 -*-
 """平稳性检验的 Streamlit 单变量工作流。"""
 
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -28,9 +26,8 @@ from dashboard.explore.analysis.stationarity import (
 )
 from dashboard.explore.core.data_source import (
     FREQUENCY_LABELS,
-    fingerprint_uploaded_file,
+    ExploreDataset,
     format_table_option,
-    load_stationarity_tables,
 )
 from dashboard.explore.preprocessing.frequency_alignment import (
     infer_series_frequency,
@@ -42,7 +39,7 @@ from dashboard.explore.ui.chart_controls import (
     render_correlogram_config_expander,
     render_time_series_config_expander,
 )
-
+from dashboard.explore.ui.dataset_context import get_explore_dataset
 
 logger = logging.getLogger(__name__)
 
@@ -141,8 +138,15 @@ class StationarityAnalysisComponent(TimeSeriesAnalysisComponent):
             preprocessing_container=selection_columns[2],
         )
 
-    def render(self, st_obj, tab_index: int = 0, uploaded_file=None):
+    def render(
+        self,
+        st_obj,
+        tab_index: int = 0,
+        uploaded_file=None,
+        dataset: ExploreDataset | None = None,
+    ):
         """使用侧边栏共享数据集渲染单变量分析流程。"""
+        del tab_index  # 兼容统一组件调用签名；此页面不依赖标签索引。
         if self.analysis_type == "stationarity":
             st_obj.markdown("### 选择数据")
 
@@ -153,12 +157,11 @@ class StationarityAnalysisComponent(TimeSeriesAnalysisComponent):
             return None
 
         try:
-            fingerprint = fingerprint_uploaded_file(uploaded_file)
-            if fingerprint != self.get_state("file_fingerprint"):
-                tables = load_stationarity_tables(uploaded_file)
-                self.set_state("data_tables", tables)
-                self.set_state("file_fingerprint", fingerprint)
-                self.set_state("file_name", uploaded_file.name)
+            dataset = dataset or get_explore_dataset(st_obj, uploaded_file)
+            if dataset.fingerprint != self.get_state("file_fingerprint"):
+                self.set_state("data_tables", dataset.tables)
+                self.set_state("file_fingerprint", dataset.fingerprint)
+                self.set_state("file_name", dataset.file_name)
                 self.set_state("selected_table_key", None)
                 self.set_state("selected_variable", None)
                 self.set_state("selected_transformation", None)
@@ -167,7 +170,7 @@ class StationarityAnalysisComponent(TimeSeriesAnalysisComponent):
                     st_obj,
                     self._dependent_widget_keys(),
                 )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - user-facing file load boundary
             self._reset_uploaded_data(st_obj)
             st_obj.error(f"文件读取或数据库解析失败：{exc}")
             return None
@@ -227,7 +230,7 @@ class StationarityAnalysisComponent(TimeSeriesAnalysisComponent):
         variables = numeric_variable_names(data)
         if not variables:
             st_obj.error("所选数据表没有实数型变量")
-            return None
+            return
 
         variable_container = variable_container or st_obj
         selected_variable = variable_container.selectbox(
@@ -242,9 +245,9 @@ class StationarityAnalysisComponent(TimeSeriesAnalysisComponent):
                 data,
                 selected_variable,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - user-facing variable preparation boundary
             st_obj.error(f"变量准备失败：{exc}")
-            return None
+            return
 
         st_obj.markdown("---")
         st_obj.markdown("### 平稳性检验")
@@ -272,7 +275,7 @@ class StationarityAnalysisComponent(TimeSeriesAnalysisComponent):
             input_container=date_source_columns[0],
         )
         if analysis_series is None:
-            return None
+            return
 
         frequency = resolve_table_frequency(table_key, analysis_series)
         processed_series, transformation = self._render_preprocessing(
@@ -299,7 +302,7 @@ class StationarityAnalysisComponent(TimeSeriesAnalysisComponent):
             trend_options_container=trend_options_container,
             output_container=test_output_container,
         )
-        return None
+        return
 
     def _render_date_range(
         self,
@@ -307,7 +310,7 @@ class StationarityAnalysisComponent(TimeSeriesAnalysisComponent):
         series: pd.Series,
         *,
         input_container=None,
-    ) -> tuple[Optional[pd.Series], Optional[tuple[str, str]]]:
+    ) -> tuple[pd.Series | None, tuple[str, str] | None]:
         """筛选平稳性检验的样本区间，并返回可签名的起止日期。"""
         if not isinstance(series.index, pd.DatetimeIndex):
             st_obj.info("未识别到时间索引，平稳性检验将使用全部观测。")
@@ -351,7 +354,7 @@ class StationarityAnalysisComponent(TimeSeriesAnalysisComponent):
         input_container=None,
         correlogram_alpha: float = 0.05,
         chart_context: tuple[str, str] = ("table", "variable"),
-    ) -> tuple[Optional[pd.Series], str]:
+    ) -> tuple[pd.Series | None, str]:
         options = transformation_options_for_frequency(frequency)
         input_container = input_container or st_obj
         transformation = input_container.selectbox(
@@ -375,7 +378,7 @@ class StationarityAnalysisComponent(TimeSeriesAnalysisComponent):
                 transformation,
                 frequency=frequency,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - user-facing preprocessing boundary
             st_obj.error(f"预处理失败：{exc}")
             return None, transformation
 
@@ -421,7 +424,7 @@ class StationarityAnalysisComponent(TimeSeriesAnalysisComponent):
                 scope=time_scope,
                 defaults=time_defaults,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - optional chart boundary
             st_obj.warning(f"处理后序列图无法绘制：{exc}")
 
         self._render_correlogram(
@@ -498,7 +501,7 @@ class StationarityAnalysisComponent(TimeSeriesAnalysisComponent):
                 defaults=defaults,
                 maximum_lags=maximum,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - optional diagnostic chart boundary
             st_obj.warning(f"ACF/PACF 无法绘制：{exc}")
 
     def _render_stationarity_tests(
@@ -506,12 +509,12 @@ class StationarityAnalysisComponent(TimeSeriesAnalysisComponent):
         st_obj,
         *,
         original_series: pd.Series,
-        processed_series: Optional[pd.Series],
+        processed_series: pd.Series | None,
         variable: str,
         transformation: str,
         data_name: str,
         table_key: str,
-        date_range: Optional[tuple[str, str]],
+        date_range: tuple[str, str] | None,
         source_container,
         selected_tests,
         alpha,
@@ -578,7 +581,7 @@ class StationarityAnalysisComponent(TimeSeriesAnalysisComponent):
                     )
                 self.set_state("test_results", results)
                 self.set_state("test_signature", signature)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - selected statistical test boundary
                 self.set_state("test_results", None)
                 self.set_state("test_signature", None)
                 output_container.error(f"平稳性检验无法执行：{exc}")

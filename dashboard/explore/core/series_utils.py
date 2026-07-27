@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 序列处理工具模块
 
@@ -6,11 +5,29 @@
 """
 
 import logging
-from typing import Optional, Tuple, List
-import pandas as pd
+from hashlib import sha256
+
 import numpy as np
+import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+
+def fingerprint_dataframe(df: pd.DataFrame) -> str:
+    """返回同时覆盖结构、索引和数据值的稳定 DataFrame 指纹。"""
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError("指纹对象必须是 pandas.DataFrame")
+
+    digest = sha256()
+    schema = tuple(
+        (str(column), str(dtype))
+        for column, dtype in zip(df.columns, df.dtypes, strict=True)
+    )
+    digest.update(repr(schema).encode("utf-8"))
+    digest.update(
+        pd.util.hash_pandas_object(df, index=True).to_numpy().tobytes()
+    )
+    return digest.hexdigest()
 
 
 def clean_numeric_series(
@@ -62,7 +79,7 @@ def clean_dataframe_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def identify_time_column(df: pd.DataFrame, exclude_columns: Optional[List[str]] = None) -> Optional[str]:
+def identify_time_column(df: pd.DataFrame, exclude_columns: list[str] | None = None) -> str | None:
     """
     智能识别DataFrame中的时间列
 
@@ -106,7 +123,7 @@ def identify_time_column(df: pd.DataFrame, exclude_columns: Optional[List[str]] 
                     if not time_series.isnull().all():
                         logger.info(f"第一列 '{first_col}' 可转换为datetime类型")
                         return first_col
-            except Exception as e:
+            except (TypeError, ValueError, OverflowError) as e:
                 logger.debug(f"第一列 '{first_col}' 无法转换为datetime: {e}")
 
     logger.warning("未能识别到时间列")
@@ -115,10 +132,10 @@ def identify_time_column(df: pd.DataFrame, exclude_columns: Optional[List[str]] 
 
 def prepare_time_index(
     df: pd.DataFrame,
-    time_column: Optional[str] = None,
+    time_column: str | None = None,
     set_as_index: bool = True,
     keep_column: bool = True
-) -> Tuple[pd.DataFrame, Optional[str]]:
+) -> tuple[pd.DataFrame, str | None]:
     """
     准备时间索引
 
@@ -154,7 +171,7 @@ def prepare_time_index(
     try:
         df_work[time_column] = pd.to_datetime(df_work[time_column], errors='coerce')
         logger.info(f"时间列 '{time_column}' 已转换为datetime类型")
-    except Exception as e:
+    except (KeyError, TypeError, ValueError, OverflowError) as e:
         logger.error(f"转换时间列失败: {e}")
         return df_work, None
 
@@ -163,7 +180,7 @@ def prepare_time_index(
         try:
             df_work = df_work.set_index(time_column, drop=not keep_column)
             logger.info(f"时间列 '{time_column}' 已设置为索引 (keep_column={keep_column})")
-        except Exception as e:
+        except (KeyError, TypeError, ValueError) as e:
             logger.error(f"设置时间索引失败: {e}")
 
     return df_work, time_column
@@ -173,7 +190,7 @@ def get_lagged_slices(
     data1: np.ndarray,
     data2: np.ndarray,
     lag: int
-) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+) -> tuple[np.ndarray | None, np.ndarray | None]:
     """
     获取两个数组在给定滞后下的切片（统一实现，消除重复）
 
@@ -248,7 +265,7 @@ def get_lagged_series_slices(
     series1: pd.Series,
     series2: pd.Series,
     lag: int
-) -> Tuple[Optional[pd.Series], Optional[pd.Series]]:
+) -> tuple[pd.Series | None, pd.Series | None]:
     """
     获取两个pandas Series在给定滞后下的切片
 

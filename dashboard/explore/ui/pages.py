@@ -1,12 +1,11 @@
-# -*- coding: utf-8 -*-
 """
 数据探索欢迎页面
 """
 
-import streamlit as st
-from typing import List
+
 from dashboard.core.ui.components.base import UIComponent
 from dashboard.core.ui.constants import UIConstants
+
 
 class DataExplorationWelcomePage(UIComponent):
     """数据探索欢迎页面"""
@@ -16,7 +15,7 @@ class DataExplorationWelcomePage(UIComponent):
         self.constants = UIConstants
         self.module_config = self.constants.SUB_MODULES["数据探索"]
 
-    def render(self, st_obj, **kwargs) -> None:
+    def render(self, st_obj, **_kwargs) -> None:
         """渲染数据探索欢迎页面"""
         st_obj.markdown("""
         <div style="
@@ -32,6 +31,6 @@ class DataExplorationWelcomePage(UIComponent):
         </div>
         """, unsafe_allow_html=True)
 
-    def get_state_keys(self) -> List[str]:
+    def get_state_keys(self) -> list[str]:
         """获取组件相关的状态键"""
         return []

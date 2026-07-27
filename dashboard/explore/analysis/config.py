@@ -1,17 +1,13 @@
-# -*- coding: utf-8 -*-
 """
 分析配置类
 
 提供统一的配置管理，简化函数参数，遵循KISS原则
 
-基于YAGNI原则优化：
-- 默认禁用参数验证（UI通常已保证参数有效）
-- 提供validate_on_init参数控制是否在初始化时验证
-- 提供独立的validate()方法供需要时手动调用
+公共配置在构造时完成验证，避免 UI 与程序化调用产生不同语义。
 """
 
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
+from numbers import Integral
 
 
 @dataclass
@@ -31,27 +27,26 @@ class LeadLagAnalysisConfig:
 
     # 频率对齐配置
     enable_frequency_alignment: bool = True
-    target_frequency: Optional[str] = None
+    target_frequency: str | None = None
     freq_agg_method: str = 'mean'
-    time_column: Optional[str] = None
-
-    # 验证控制（优化：默认不验证，减少开销）
-    validate_on_init: bool = field(default=False, repr=False, compare=False)
+    time_column: str | None = None
 
     def __post_init__(self):
-        """条件验证（基于validate_on_init）"""
-        if self.validate_on_init:
-            self.validate()
+        """公共配置在进入分析链路前必须完成验证。"""
+        self.validate()
 
     def validate(self):
         """
         手动验证配置参数
 
-        仅在需要时调用此方法（如从外部配置文件加载时）
-        UI控制的参数通常不需要验证
+        UI 和外部调用使用同一约束，避免静默改变统计含义。
         """
-        if self.max_lags < 1:
-            raise ValueError("max_lags必须大于0")
+        if (
+            isinstance(self.max_lags, bool)
+            or not isinstance(self.max_lags, Integral)
+            or self.max_lags < 1
+        ):
+            raise ValueError("max_lags必须大于0且为整数")
 
         if self.standardization_method not in ['zscore', 'minmax', 'none']:
             raise ValueError(
@@ -66,7 +61,15 @@ class LeadLagAnalysisConfig:
                 f"请使用 {valid_freq_agg} 之一"
             )
 
-        valid_freqs = [None, 'Daily', 'Weekly', 'Monthly', 'Quarterly', 'Annual']
+        valid_freqs = [
+            None,
+            'Daily',
+            'Weekly',
+            'Ten_Day',
+            'Monthly',
+            'Quarterly',
+            'Annual',
+        ]
         if self.target_frequency not in valid_freqs:
             raise ValueError(
                 f"不支持的目标频率: {self.target_frequency}，"

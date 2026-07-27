@@ -1,14 +1,12 @@
-# -*- coding: utf-8 -*-
 """时间序列图表的延迟应用配置控件。"""
 
 from __future__ import annotations
 
-from datetime import date, datetime
 import hashlib
+from datetime import date, datetime
 from typing import Any
 
 import pandas as pd
-
 
 PACF_METHODS = ("ywm", "yw", "ols")
 GRID_MODE_OPTIONS = {
@@ -176,27 +174,27 @@ def render_time_series_config_expander(
     with st_obj.expander("图表设置", expanded=False):
         st_obj.markdown("**标题**")
         title_columns = st_obj.columns(3)
-        title = title_columns[0].text_input(
+        title_columns[0].text_input(
             "图片标题", applied["title"], key=_state_key(scope, "title")
         )
-        x_title = title_columns[1].text_input(
+        title_columns[1].text_input(
             "横轴标题", applied["x_title"], key=_state_key(scope, "x_title")
         )
-        y_title = title_columns[2].text_input(
+        title_columns[2].text_input(
             "纵轴标题", applied["y_title"], key=_state_key(scope, "y_title")
         )
-        axis_options = _time_series_axis_options(st_obj, scope, applied)
+        _time_series_axis_options(st_obj, scope, applied)
 
         st_obj.markdown("**图形样式**")
         style_columns = st_obj.columns(4)
-        line_width = style_columns[0].number_input(
+        style_columns[0].number_input(
             "线宽",
             min_value=0.1,
             value=float(applied["line_width"]),
             step=0.1,
             key=_state_key(scope, "line_width"),
         )
-        marker_size = style_columns[1].number_input(
+        style_columns[1].number_input(
             "点大小",
             min_value=0.0,
             value=float(applied["marker_size"]),
@@ -204,9 +202,9 @@ def render_time_series_config_expander(
             key=_state_key(scope, "marker_size"),
         )
         with style_columns[2]:
-            grid_mode = _grid_mode_select(st_obj, scope, applied)
+            _grid_mode_select(st_obj, scope, applied)
         with style_columns[3]:
-            grid_line_style = _grid_line_style_select(st_obj, scope, applied)
+            _grid_line_style_select(st_obj, scope, applied)
 
 
 def render_correlogram_config_expander(
@@ -221,31 +219,31 @@ def render_correlogram_config_expander(
     with st_obj.expander("ACF/PACF 图表设置", expanded=False):
         st_obj.markdown("**标题**")
         title_columns = st_obj.columns(2)
-        acf_title = title_columns[0].text_input(
+        title_columns[0].text_input(
             "ACF 图片标题", applied["acf_title"], key=_state_key(scope, "acf_title")
         )
-        pacf_title = title_columns[1].text_input(
+        title_columns[1].text_input(
             "PACF 图片标题", applied["pacf_title"], key=_state_key(scope, "pacf_title")
         )
         st_obj.markdown("**轴标题**")
         axis_title_columns = st_obj.columns(4)
-        acf_x_title = axis_title_columns[0].text_input(
+        axis_title_columns[0].text_input(
             "ACF 横轴标题", applied["acf_x_title"], key=_state_key(scope, "acf_x_title")
         )
-        acf_y_title = axis_title_columns[1].text_input(
+        axis_title_columns[1].text_input(
             "ACF 纵轴标题", applied["acf_y_title"], key=_state_key(scope, "acf_y_title")
         )
-        pacf_x_title = axis_title_columns[2].text_input(
+        axis_title_columns[2].text_input(
             "PACF 横轴标题", applied["pacf_x_title"], key=_state_key(scope, "pacf_x_title")
         )
-        pacf_y_title = axis_title_columns[3].text_input(
+        axis_title_columns[3].text_input(
             "PACF 纵轴标题", applied["pacf_y_title"], key=_state_key(scope, "pacf_y_title")
         )
-        axis_options = _correlogram_axis_options(st_obj, scope, applied)
+        _correlogram_axis_options(st_obj, scope, applied)
 
         st_obj.markdown("**图形样式**")
         option_columns = st_obj.columns(4)
-        nlags = option_columns[0].number_input(
+        option_columns[0].number_input(
             "滞后阶数",
             min_value=1,
             max_value=maximum_lags,
@@ -253,16 +251,16 @@ def render_correlogram_config_expander(
             step=1,
             key=_state_key(scope, "nlags"),
         )
-        pacf_method = option_columns[1].selectbox(
+        option_columns[1].selectbox(
             "PACF 计算方法",
             options=PACF_METHODS,
             index=PACF_METHODS.index(applied["pacf_method"]),
             key=_state_key(scope, "pacf_method"),
         )
         with option_columns[2]:
-            grid_mode = _grid_mode_select(st_obj, scope, applied)
+            _grid_mode_select(st_obj, scope, applied)
         with option_columns[3]:
-            grid_line_style = _grid_line_style_select(st_obj, scope, applied)
+            _grid_line_style_select(st_obj, scope, applied)
 
 
 __all__ = [

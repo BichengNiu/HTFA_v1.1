@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 DTW距离计算模块
 
@@ -12,10 +11,8 @@ DTW距离计算模块
 """
 
 import logging
-from typing import Tuple, Optional, List
-import numpy as np
 
-from dashboard.explore.core.constants import DEFAULT_DTW_WINDOW
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +29,9 @@ except ImportError:
 def calculate_dtw_distance(
     series1: np.ndarray,
     series2: np.ndarray,
-    window_size: Optional[int] = None,
+    window_size: int | None = None,
     use_window: bool = False
-) -> Optional[float]:
+) -> float | None:
     """
     计算两个序列之间的DTW距离
 
@@ -50,26 +47,21 @@ def calculate_dtw_distance(
     if not DTW_AVAILABLE:
         raise ImportError("dtaidistance库未安装，无法计算DTW距离")
 
-    try:
-        if use_window and window_size is not None and window_size > 0:
-            distance = dtaidist_dtw.distance(series1, series2, window=window_size)
-        else:
-            distance = dtaidist_dtw.distance(series1, series2)
+    if use_window and window_size is not None and window_size > 0:
+        distance = dtaidist_dtw.distance(series1, series2, window=window_size)
+    else:
+        distance = dtaidist_dtw.distance(series1, series2)
 
-        return float(distance)
-
-    except Exception as e:
-        logger.error(f"DTW距离计算失败: {e}")
-        raise
+    return float(distance)
 
 
 def calculate_dtw_path(
     series1: np.ndarray,
     series2: np.ndarray,
-    window_size: Optional[int] = None,
+    window_size: int | None = None,
     use_window: bool = False,
-    radius: Optional[int] = None
-) -> Tuple[float, Optional[List[Tuple[int, int]]]]:
+    radius: int | None = None
+) -> tuple[float, list[tuple[int, int]] | None]:
     """
     计算DTW距离和对齐路径
 
@@ -98,20 +90,15 @@ def calculate_dtw_path(
     else:
         actual_window = None  # 无约束
 
-    try:
-        # 计算DTW距离
-        if actual_window is not None and actual_window > 0:
-            logger.debug(f"[DTW] 使用窗口约束: window={actual_window}, 序列长度=({len(series1)}, {len(series2)})")
-            distance = dtaidist_dtw.distance(series1, series2, window=actual_window)
-            path = dtaidist_dtw.warping_path(series1, series2, window=actual_window)
-        else:
-            logger.debug(f"[DTW] 无窗口约束模式, 序列长度=({len(series1)}, {len(series2)})")
-            distance = dtaidist_dtw.distance(series1, series2)
-            path = dtaidist_dtw.warping_path(series1, series2)
+    # 计算DTW距离
+    if actual_window is not None and actual_window > 0:
+        logger.debug(f"[DTW] 使用窗口约束: window={actual_window}, 序列长度=({len(series1)}, {len(series2)})")
+        distance = dtaidist_dtw.distance(series1, series2, window=actual_window)
+        path = dtaidist_dtw.warping_path(series1, series2, window=actual_window)
+    else:
+        logger.debug(f"[DTW] 无窗口约束模式, 序列长度=({len(series1)}, {len(series2)})")
+        distance = dtaidist_dtw.distance(series1, series2)
+        path = dtaidist_dtw.warping_path(series1, series2)
 
-        logger.debug(f"[DTW] 计算完成: distance={distance:.4f}, path_length={len(path) if path else 0}")
-        return float(distance), path
-
-    except Exception as e:
-        logger.error(f"DTW路径计算失败: {e}")
-        raise
+    logger.debug(f"[DTW] 计算完成: distance={distance:.4f}, path_length={len(path) if path else 0}")
+    return float(distance), path

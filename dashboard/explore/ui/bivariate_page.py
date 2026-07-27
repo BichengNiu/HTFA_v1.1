@@ -1,84 +1,131 @@
-# -*- coding: utf-8 -*-
 """
 多变量分析页面
 包含同步分析和领先滞后分析功能
 """
 
-import streamlit as st
-import pandas as pd
 import logging
-from typing import Optional
+from typing import Any
 
-from dashboard.explore.ui.unified_correlation import UnifiedCorrelationAnalysisComponent
-from dashboard.explore.ui.lead_lag import LeadLagAnalysisComponent
-from dashboard.explore.core.series_utils import clean_dataframe_columns
+import pandas as pd
+import streamlit as st
+
 from dashboard.core.ui.utils.shared_dataset import (
-    get_shared_dataset_data,
-    get_shared_dataset_name,
+    get_shared_dataset_file,
 )
+from dashboard.explore.core.data_source import ExploreDataset, format_table_option
+from dashboard.explore.core.series_utils import clean_dataframe_columns
+from dashboard.explore.ui.dataset_context import get_explore_dataset
+from dashboard.explore.ui.lead_lag import LeadLagAnalysisComponent
+from dashboard.explore.ui.unified_correlation import UnifiedCorrelationAnalysisComponent
 
 logger = logging.getLogger(__name__)
+TAB_NAMES = ("同步分析", "领先滞后分析")
 
 
-def render_bivariate_analysis_page():
-    """渲染多变量分析页面"""
-    # 权限过滤
+def _visible_tab_names() -> list[str]:
     debug_mode = st.session_state.get("auth.debug_mode", False)
     current_user = st.session_state.get("auth.current_user", None)
+    if debug_mode or not current_user:
+        return list(TAB_NAMES)
 
-    # 定义所有Tab及其对应的权限
-    all_tabs_info = [
-        ("同步分析", "data_exploration.bivariate.correlation"),
-        ("领先滞后分析", "data_exploration.bivariate.lead_lag")
+    from dashboard.auth.ui.middleware import get_auth_middleware
+
+    permission_manager = get_auth_middleware().permission_manager
+    return [
+        tab_name
+        for tab_name in TAB_NAMES
+        if permission_manager.check_granular_access(
+            current_user,
+            "数据探索",
+            "多变量分析",
+            tab_name,
+        )
     ]
 
-    # 过滤Tab
-    if debug_mode or not current_user:
-        visible_tabs = all_tabs_info
-    else:
-        from dashboard.auth.ui.middleware import get_auth_middleware
-        auth_middleware = get_auth_middleware()
 
-        visible_tabs = []
-        for tab_name, permission_code in all_tabs_info:
-            if auth_middleware.permission_manager.check_granular_access(
-                current_user, "数据探索", "多变量分析", tab_name
-            ):
-                visible_tabs.append((tab_name, permission_code))
+def _load_dataset(uploaded_file: Any) -> ExploreDataset | None:
+    try:
+        dataset = get_explore_dataset(st, uploaded_file)
+    except Exception as exc:  # noqa: BLE001 - user-facing file load boundary
+        st.error(f"文件读取或数据库解析失败：{exc}")
+        return None
 
-    # 如果没有可访问的Tab
+    if not dataset.tables:
+        st.error("数据集没有可分析的数据表。")
+        return None
+    return dataset
+
+
+def _select_analysis_table(
+    dataset: ExploreDataset,
+) -> tuple[str, pd.DataFrame] | None:
+    selected_table = st.selectbox(
+        "选择要分析的数据表",
+        options=list(dataset.tables),
+        format_func=lambda key: format_table_option(key, dataset.tables),
+        key="bivariate_table_select",
+    )
+    analysis_data = dataset.tables[selected_table].copy()
+    clean_dataframe_columns(analysis_data)
+    if not analysis_data.columns.is_unique:
+        st.error("清理列名后出现重复变量名，请先修正数据文件。")
+        return None
+    return selected_table, analysis_data
+
+
+def _publish_analysis_data(
+    dataset: ExploreDataset,
+    selected_table: str,
+    analysis_data: pd.DataFrame,
+) -> None:
+    data_signature = (dataset.fingerprint, selected_table)
+    if st.session_state.get("exploration.bivariate.data_signature") != data_signature:
+        _clear_bivariate_results()
+        st.session_state["exploration.bivariate.data_signature"] = data_signature
+
+    data_name = f"{dataset.file_name}-{selected_table}"
+    for analysis_type in ("time_lag_corr", "lead_lag"):
+        st.session_state[f"exploration.{analysis_type}.upload_data"] = analysis_data
+        st.session_state[f"exploration.{analysis_type}.file_name"] = data_name
+    st.caption(
+        f"当前数据：{dataset.file_name} · "
+        f"{format_table_option(selected_table, dataset.tables)}"
+    )
+
+
+def render_bivariate_analysis_page() -> None:
+    """渲染多变量分析页面。"""
+    visible_tabs = _visible_tab_names()
     if not visible_tabs:
         st.warning("您没有权限访问任何Tab")
         return
 
-    # 创建可见的标签页
-    tab_names = [tab[0] for tab in visible_tabs]
-    tabs = st.tabs(tab_names)
+    uploaded_file = get_shared_dataset_file()
+    if uploaded_file is None:
+        st.info("请先在侧边栏上传共享数据集。")
+        return
 
-    # 渲染Tab
-    for i, (tab_name, permission_code) in enumerate(visible_tabs):
-        with tabs[i]:
+    dataset = _load_dataset(uploaded_file)
+    if dataset is None:
+        return
+    selection = _select_analysis_table(dataset)
+    if selection is None:
+        return
+    selected_table, analysis_data = selection
+    _publish_analysis_data(dataset, selected_table, analysis_data)
+
+    tabs = st.tabs(visible_tabs)
+    for index, tab_name in enumerate(visible_tabs):
+        with tabs[index]:
             if tab_name == "同步分析":
                 _render_correlation_tab()
-            elif tab_name == "领先滞后分析":
+            else:
                 _render_lead_lag_tab()
 
 
 def _render_correlation_tab():
     """渲染同步分析Tab"""
     with st.container():
-        shared_data = get_shared_dataset_data()
-        data_corr = shared_data.copy() if shared_data is not None else None
-
-        if data_corr is not None:
-            clean_dataframe_columns(data_corr)
-            file_name_corr = get_shared_dataset_name()
-            st.session_state['exploration.time_lag_corr.upload_data'] = data_corr
-            st.session_state['exploration.time_lag_corr.file_name'] = file_name_corr
-            st.success(f"数据已加载: {file_name_corr} ({data_corr.shape[0]} 行 x {data_corr.shape[1]} 列)")
-        else:
-            st.info("请先在侧边栏上传共享数据集。")
-
         correlation_component = UnifiedCorrelationAnalysisComponent()
         correlation_component.render(st, tab_index=0)
 
@@ -86,18 +133,17 @@ def _render_correlation_tab():
 def _render_lead_lag_tab():
     """渲染领先滞后分析Tab"""
     with st.container():
-        shared_data = get_shared_dataset_data()
-        data_lag = shared_data.copy() if shared_data is not None else None
-
-        if data_lag is not None:
-            clean_dataframe_columns(data_lag)
-            file_name_lag = get_shared_dataset_name()
-            st.session_state['exploration.lead_lag.upload_data'] = data_lag
-            st.session_state['exploration.lead_lag.file_name'] = file_name_lag
-            st.success(f"数据已加载: {file_name_lag} ({data_lag.shape[0]} 行 x {data_lag.shape[1]} 列)")
-            st.divider()
-        else:
-            st.info("请先在侧边栏上传共享数据集。")
-
         lead_lag_component = LeadLagAnalysisComponent()
         lead_lag_component.render(st, tab_index=1)
+
+
+def _clear_bivariate_results() -> None:
+    """切换文件或频率表时清除依赖旧数据的结果。"""
+    prefixes = (
+        "tools.analysis.time_lag_corr.",
+        "tools.analysis.dtw.",
+        "tools.analysis.lead_lag.",
+    )
+    for key in list(st.session_state):
+        if str(key).startswith(prefixes):
+            del st.session_state[key]
