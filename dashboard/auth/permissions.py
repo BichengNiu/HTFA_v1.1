@@ -45,6 +45,10 @@ GRANULAR_PERMISSION_MAP = {
                     "工业企业利润分析": "monitoring_analysis.industrial.profit",
                     "工业企业经营效率分析": "monitoring_analysis.industrial.efficiency"
                 }
+            },
+            "阿联酋": {
+                "code": "monitoring_analysis.uae",
+                "tabs": None
             }
         }
     },

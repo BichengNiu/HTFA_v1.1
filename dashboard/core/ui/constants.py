@@ -28,7 +28,7 @@ class UIConstants:
         "监测分析": {
             "icon": "[CHART]",
             "description": "对经济运行数据进行深度监测和分析，提供专业的分析报告",
-            "sub_modules": ["工业"]
+            "sub_modules": ["工业", "阿联酋"]
         },
         "模型分析": {
             "icon": "[MODEL]",
@@ -50,7 +50,7 @@ class UIConstants:
         },
         "阿联酋": {
             "icon": "[UAE]",
-            "description": "阿联酋经济数据预览，支持日、周、旬、月、季、年数据展示"
+            "description": "阿联酋经济数据预览与宏观诊断，监测页明确区分真实和模拟数据"
         },
         "DFM 模型": {
             "icon": "[MODEL]",
