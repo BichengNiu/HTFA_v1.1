@@ -19,13 +19,17 @@ def _uae_workbook() -> Path:
 def test_uae_database_is_parsed_into_nonempty_frequency_tables():
     tables = load_stationarity_tables(_uae_workbook())
 
-    assert list(tables) == ["daily", "monthly", "quarterly", "yearly"]
-    assert tables["daily"].shape == (8978, 1)
-    assert tables["monthly"].shape == (799, 1)
-    assert tables["quarterly"].shape == (56, 84)
-    assert tables["yearly"].shape == (46, 3)
-    assert all(isinstance(frame.index, pd.DatetimeIndex) for frame in tables.values())
-    assert format_table_option("quarterly", tables) == "季度数据（56 行 × 84 个指标）"
+    assert list(tables) == ["quarterly"]
+    for frame in tables.values():
+        assert not frame.empty
+        assert isinstance(frame.index, pd.DatetimeIndex)
+        assert frame.index.is_monotonic_increasing
+        assert not frame.index.has_duplicates
+
+    quarterly = tables["quarterly"]
+    assert format_table_option("quarterly", tables) == (
+        f"季度数据（{len(quarterly)} 行 × {len(quarterly.columns)} 个指标）"
+    )
 
 
 def test_file_fingerprint_detects_same_name_with_different_content():

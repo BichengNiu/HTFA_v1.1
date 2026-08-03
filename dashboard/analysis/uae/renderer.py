@@ -8,34 +8,49 @@ from typing import Any
 import streamlit as st
 
 from dashboard.analysis.uae.charts import (
+    build_growth_and_sector_pull_figure,
+    build_industry_breadth_figure,
+    build_industry_concentration_figure,
+    build_industry_price_volume_quadrant_figure,
+    build_industry_state_matrix_figure,
     build_latest_contribution_figure,
     build_line_figure,
+    build_nonoil_industry_pull_figure,
+    build_price_volume_figure,
 )
 from dashboard.analysis.uae.contracts import ProvenanceKind
-from dashboard.analysis.uae.data_adapter import DEFAULT_UAE_WORKBOOK
-from dashboard.analysis.uae.results import (
-    MacroPanelResult,
-    MonitoringDashboardResult,
-)
+from dashboard.analysis.uae.results import MacroPanelResult
 from dashboard.analysis.uae.services import build_monitoring_dashboard
 from dashboard.core.ui.utils.shared_dataset import get_shared_dataset_file
 
-
 TAB_CONFIG = (
-    ("总览", None),
-    ("增长与结构", "growth"),
+    ("宏观概览", "growth_overview"),
+    ("行业分析", "growth_industry"),
     ("通货膨胀", "inflation"),
     ("就业与收入", "labor"),
     ("财政与外部", "fiscal_external"),
     ("货币与金融", "monetary"),
 )
 
+GROWTH_OVERVIEW_GROUPS = (
+    "实际GDP增速与GDP平减指数同比",
+    "非石油实际GDP增速与非石油GDP平减指数同比",
+    "非金融公司实际增加值增速与平减指数同比",
+)
+GROWTH_INDUSTRY_GROUPS = (
+    "GDP部门拉动与石油产量同比",
+    "非油实际GDP同比及行业拉动",
+    "行业量价四象限图",
+    "行业扩张广度指数",
+    "行业增长集中度",
+    "行业增长持续性与状态矩阵",
+)
+
 
 def _select_data_source() -> Any:
-    """共享上传优先；未上传时使用现有阿联酋工作簿。"""
+    """仅返回当前会话已经上传的共享工作簿。"""
 
-    uploaded = get_shared_dataset_file()
-    return uploaded if uploaded is not None else DEFAULT_UAE_WORKBOOK
+    return get_shared_dataset_file()
 
 
 def _source_name(file_input: Any) -> str:
@@ -53,36 +68,9 @@ def _metric_label(metric) -> str:
     return f"{prefix}{metric.label}"
 
 
-def _render_diagnostic(st_obj, panel: MacroPanelResult) -> None:
-    headline = panel.headline
-    confidence_color = {
-        "高": "#1B7F3A",
-        "中": "#B26A00",
-        "低": "#B3261E",
-    }[headline.confidence.value]
-    st_obj.markdown(
-        f"""
-        <div style="
-            border-left: 5px solid {confidence_color};
-            background: #f7f9fc;
-            padding: 1rem 1.15rem;
-            border-radius: 6px;
-            margin-bottom: 1rem;">
-          <div style="font-weight: 700; margin-bottom: .35rem;">
-            诊断结论｜置信度：{headline.confidence.value}
-          </div>
-          <div style="line-height: 1.7;">{headline.summary}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    if headline.uses_simulated_data:
-        st_obj.caption(
-            "本诊断包含模拟证据；模拟值仅用于页面和分析流程开发。"
-        )
-
-
 def _render_metrics(st_obj, panel: MacroPanelResult) -> None:
+    if not panel.metrics:
+        return
     columns = st_obj.columns(len(panel.metrics))
     for column, metric in zip(columns, panel.metrics):
         with column:
@@ -96,17 +84,68 @@ def _render_metrics(st_obj, panel: MacroPanelResult) -> None:
             )
 
 
-def _render_panel(st_obj, panel: MacroPanelResult) -> None:
-    st_obj.subheader(panel.title)
-    _render_diagnostic(st_obj, panel)
+def _render_panel(
+    st_obj,
+    panel: MacroPanelResult,
+    *,
+    show_title: bool = True,
+    series_group_titles: tuple[str, ...] | None = None,
+) -> None:
+    if show_title:
+        st_obj.subheader(panel.title)
     _render_metrics(st_obj, panel)
 
     for group_title, frame in panel.series_groups.items():
-        st_obj.plotly_chart(
-            build_line_figure(
+        if (
+            series_group_titles is not None
+            and group_title not in series_group_titles
+        ):
+            continue
+        if group_title in GROWTH_OVERVIEW_GROUPS:
+            figure = build_price_volume_figure(
                 frame,
                 title=group_title,
-            ),
+            )
+        elif group_title == "行业量价四象限图":
+            figure = build_industry_price_volume_quadrant_figure(
+                frame,
+                title=group_title,
+            )
+        elif group_title == "行业扩张广度指数":
+            figure = build_industry_breadth_figure(
+                frame,
+                title=group_title,
+            )
+        elif group_title == "行业增长集中度":
+            figure = build_industry_concentration_figure(
+                frame,
+                title=group_title,
+            )
+        elif group_title == "行业增长持续性与状态矩阵":
+            figure = build_industry_state_matrix_figure(
+                frame,
+                title=group_title,
+            )
+        elif group_title == "非油实际GDP同比及行业拉动":
+            figure = build_nonoil_industry_pull_figure(
+                frame,
+                title=group_title,
+            )
+        elif {
+            "【真实】非石油经济部门拉动",
+            "【真实】石油经济部门拉动",
+        }.issubset(frame.columns):
+            figure = build_growth_and_sector_pull_figure(
+                frame,
+                title=group_title,
+            )
+        else:
+            figure = build_line_figure(
+                frame,
+                title=group_title,
+            )
+        st_obj.plotly_chart(
+            figure,
             use_container_width=True,
             key=f"analysis.uae.{panel.key}.series.{group_title}",
         )
@@ -122,7 +161,7 @@ def _render_panel(st_obj, panel: MacroPanelResult) -> None:
         )
 
     with st_obj.expander("证据、来源与方法限制", expanded=False):
-        st_obj.markdown("**诊断限制**")
+        st_obj.markdown("**数据与解释限制**")
         st_obj.write(panel.headline.limitation)
         st_obj.markdown("**证据类型**")
         for item in panel.headline.evidence:
@@ -147,44 +186,34 @@ def _render_panel(st_obj, panel: MacroPanelResult) -> None:
             )
 
 
-def _render_overview(
-    st_obj,
-    dashboard: MonitoringDashboardResult,
-) -> None:
-    st_obj.subheader("宏观诊断总览")
-    st_obj.caption(
-        "每张卡片依次报告结果、核算贡献、机制证据、限制和置信度。"
-    )
-    panels = list(dashboard.panels.values())
-    for start in range(0, len(panels), 2):
-        columns = st_obj.columns(2)
-        for column, panel in zip(columns, panels[start : start + 2]):
-            with column:
-                simulated = "含模拟数据" if panel.uses_simulated_data else "全部真实数据"
-                st_obj.markdown(f"### {panel.title}")
-                st_obj.caption(
-                    f"置信度：{panel.headline.confidence.value}｜{simulated}"
-                )
-                st_obj.write(panel.headline.summary)
-                st_obj.markdown("---")
-
-
 def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
     """渲染阿联酋监测；不写入或生成任何工作簿。"""
 
-    file_input = _select_data_source()
-    source_name = _source_name(file_input)
     st_obj.title("阿联酋经济监测")
-    st_obj.caption(f"当前真实数据来源：{source_name}")
+    file_input = _select_data_source()
+    if file_input is None:
+        message = (
+            "请先在侧边栏“共享数据集”上传阿联酋工作簿。"
+            "只有上传并通过工作簿协议校验后，才会读取数据并显示图表。"
+        )
+        st_obj.info(message)
+        return {
+            "status": "no_data",
+            "message": message,
+            "panel_count": 0,
+        }
+
+    source_name = _source_name(file_input)
+    st_obj.caption(f"当前上传数据来源：{source_name}")
     st_obj.warning(
         "数据说明：工作簿已有指标使用真实数据；缺失指标由程序在运行时模拟。"
         "模拟序列不写回Excel，不代表官方统计、事实判断或预测。"
     )
 
     try:
-        with st_obj.spinner("正在构建宏观诊断..."):
+        with st_obj.spinner("正在构建宏观监测页面..."):
             dashboard = build_monitoring_dashboard(file_input)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - 页面边界需展示工作簿解析错误
         for key in list(st.session_state):
             if str(key).startswith("analysis.uae."):
                 del st.session_state[key]
@@ -196,15 +225,26 @@ def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
         }
 
     tab_objects = st_obj.tabs([label for label, _ in TAB_CONFIG])
-    for tab, (_, panel_key) in zip(tab_objects, TAB_CONFIG):
+    for tab, (_, view_key) in zip(tab_objects, TAB_CONFIG):
         with tab:
-            if panel_key is None:
-                _render_overview(st_obj, dashboard)
+            if view_key == "growth_overview":
+                _render_panel(
+                    st_obj,
+                    dashboard.require_panel("growth"),
+                    show_title=False,
+                    series_group_titles=GROWTH_OVERVIEW_GROUPS,
+                )
+            elif view_key == "growth_industry":
+                _render_panel(
+                    st_obj,
+                    dashboard.require_panel("growth"),
+                    show_title=False,
+                    series_group_titles=GROWTH_INDUSTRY_GROUPS,
+                )
             else:
-                _render_panel(st_obj, dashboard.require_panel(panel_key))
+                _render_panel(st_obj, dashboard.require_panel(view_key))
     return {
         "status": "success",
         "source": source_name,
         "panel_count": len(dashboard.panels),
     }
-

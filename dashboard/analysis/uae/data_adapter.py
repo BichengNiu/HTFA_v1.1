@@ -19,11 +19,10 @@ from dashboard.analysis.uae.indicator_catalog import (
 from dashboard.analysis.uae.simulation import merge_runtime_simulation
 from dashboard.preview.core.workbook_parser import parse_preview_workbook
 
-
 DEFAULT_UAE_WORKBOOK = Path("data") / "阿联酋.xlsx"
 
 
-def load_real_uae_bundle(file_input: Any = DEFAULT_UAE_WORKBOOK) -> UAEDataBundle:
+def load_real_uae_bundle(file_input: Any) -> UAEDataBundle:
     """读取真实工作簿；不生成模拟数据。"""
 
     try:
@@ -58,7 +57,9 @@ def load_real_uae_bundle(file_input: Any = DEFAULT_UAE_WORKBOOK) -> UAEDataBundl
 
         workbook_name = matches[0]
         metadata = metadata_map[workbook_name]
-        resolved[spec.indicator_id] = available[workbook_name].copy()
+        resolved[spec.indicator_id] = (
+            available[workbook_name].dropna().copy()
+        )
         provenance[spec.indicator_id] = DataProvenance(
             indicator_id=spec.indicator_id,
             display_name=spec.display_name,
@@ -85,7 +86,7 @@ def load_real_uae_bundle(file_input: Any = DEFAULT_UAE_WORKBOOK) -> UAEDataBundl
 
 
 def load_runtime_uae_bundle(
-    file_input: Any = DEFAULT_UAE_WORKBOOK,
+    file_input: Any,
 ) -> UAEDataBundle:
     """加载真实数据，并仅为缺失指标补充运行时模拟序列。"""
 

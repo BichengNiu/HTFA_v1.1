@@ -2,7 +2,10 @@ from pathlib import Path
 
 import pytest
 
-from dashboard.analysis.uae.data_adapter import load_runtime_uae_bundle
+from dashboard.analysis.uae.data_adapter import (
+    DEFAULT_UAE_WORKBOOK,
+    load_runtime_uae_bundle,
+)
 
 
 def test_valid_industrial_workbook_is_rejected_as_non_uae():
@@ -19,7 +22,7 @@ def test_runtime_simulation_does_not_create_or_modify_workbooks():
         for path in Path("data").rglob("*.xlsx")
     }
 
-    load_runtime_uae_bundle()
+    load_runtime_uae_bundle(DEFAULT_UAE_WORKBOOK)
 
     after = {
         path.resolve(): (path.stat().st_size, path.stat().st_mtime_ns)

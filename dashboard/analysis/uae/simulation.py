@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import hashlib
-from typing import Callable
+from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
@@ -17,13 +17,12 @@ from dashboard.analysis.uae.contracts import (
     UAEDataBundle,
 )
 
-
 SIMULATED_SOURCE = "模拟数据（非官方，仅用于界面开发）"
 
 
 def _seed(group_id: str) -> int:
     digest = hashlib.sha256(
-        f"HTFA-UAE-RUNTIME-2026::{group_id}".encode("utf-8")
+        f"HTFA-UAE-RUNTIME-2026::{group_id}".encode()
     ).digest()
     return int.from_bytes(digest[:8], "big", signed=False)
 
@@ -123,8 +122,28 @@ class _SimulationBuilder:
         )
 
 
+def _add_nominal_gdp_anchor(builder: _SimulationBuilder) -> None:
+    """缺失名义GDP时，生成仅供其他模拟账户定标的序列。"""
+
+    real = builder.real_bundle.require_series("growth.real_gdp").dropna()
+    t = np.arange(len(real), dtype=float)
+    deflator = 0.80 * np.exp(0.008 * t)
+    builder.add(
+        "growth.nominal_gdp",
+        real * deflator,
+        real.index,
+        display_name="名义GDP（模拟定标）",
+        frequency="quarterly",
+        unit=builder.real_bundle.require_provenance("growth.real_gdp").unit,
+        note=(
+            "由真实实际GDP和固定确定性平减指数路径生成；"
+            "只用于模拟账户定标，不作为名义GDP分析。"
+        ),
+    )
+
+
 def _add_growth_accounts(builder: _SimulationBuilder) -> None:
-    nominal = builder.real_bundle.require_series("growth.nominal_gdp").dropna()
+    nominal = builder.series["growth.nominal_gdp"].dropna()
     index = nominal.index
     t = np.arange(len(index), dtype=float)
 
@@ -150,9 +169,7 @@ def _add_growth_accounts(builder: _SimulationBuilder) -> None:
             index,
             display_name=name,
             frequency="quarterly",
-            unit=builder.real_bundle.require_provenance(
-                "growth.nominal_gdp"
-            ).unit,
+            unit=builder.provenance["growth.nominal_gdp"].unit,
             note="按支出法恒等式约束生成。",
         )
 
@@ -173,9 +190,7 @@ def _add_growth_accounts(builder: _SimulationBuilder) -> None:
             index,
             display_name=name,
             frequency="quarterly",
-            unit=builder.real_bundle.require_provenance(
-                "growth.nominal_gdp"
-            ).unit,
+            unit=builder.provenance["growth.nominal_gdp"].unit,
             note="按收入法恒等式约束生成。",
         )
 
@@ -285,7 +300,7 @@ def _add_labor(
 
 
 def _add_fiscal_external(builder: _SimulationBuilder) -> None:
-    nominal = builder.real_bundle.require_series("growth.nominal_gdp").dropna()
+    nominal = builder.series["growth.nominal_gdp"].dropna()
     index = nominal.index
     t = np.arange(len(index), dtype=float)
 
@@ -305,7 +320,7 @@ def _add_fiscal_external(builder: _SimulationBuilder) -> None:
             net_lending,
         ),
     }
-    unit = builder.real_bundle.require_provenance("growth.nominal_gdp").unit
+    unit = builder.provenance["growth.nominal_gdp"].unit
     for indicator_id, (name, values) in fiscal.items():
         builder.add(
             indicator_id,
@@ -389,7 +404,7 @@ def _add_monetary_high_frequency(
         )
 
     rng = _rng("high_frequency")
-    brent = 72 + 12 * np.sin(m / 11.0) + rng.normal(0, 2.0, len(m))
+    dubai_crude = 72 + 12 * np.sin(m / 11.0) + rng.normal(0, 2.0, len(m))
     pmi = 53 + 1.5 * np.sin(m / 8.0) + rng.normal(0, 0.5, len(m))
     payments = 100e9 * np.power(1.008, m) * (1 + 0.03 * np.sin(m / 6.0))
     visitors = 1.1e6 * np.power(1.004, m) * (
@@ -399,7 +414,12 @@ def _add_monetary_high_frequency(
         1 + 0.025 * np.sin(m / 10.0)
     )
     high_frequency = {
-        "oil.brent_price": ("Brent油价", brent, "美元/桶", "全球"),
+        "oil.dubai_crude_price": (
+            "迪拜原油价格",
+            dubai_crude,
+            "美元/桶",
+            "全球",
+        ),
         "business.pmi_headline": (
             "非油私营部门PMI",
             pmi,
@@ -436,16 +456,39 @@ def _add_monetary_high_frequency(
             coverage=coverage,
         )
 
+    daily = pd.date_range(
+        monthly.min().normalize(),
+        monthly.max().normalize(),
+        freq="B",
+    )
+    dfm = _smooth_growth_index(
+        daily,
+        base=1600,
+        monthly_growth=0.00018,
+        volatility=0.008,
+        group_id="market.dfm_index",
+    )
+    builder.add(
+        "market.dfm_index",
+        dfm,
+        daily,
+        display_name="DFM综合股票指数",
+        frequency="daily",
+        unit="指数",
+        coverage="迪拜金融市场",
+    )
+
 
 def merge_runtime_simulation(real_bundle: UAEDataBundle) -> UAEDataBundle:
     """将模拟序列加入真实数据集，绝不覆盖真实指标。"""
 
     builder = _SimulationBuilder(real_bundle)
-    quarterly = real_bundle.require_series("growth.nominal_gdp").dropna().index
+    quarterly = real_bundle.require_series("growth.real_gdp").dropna().index
     monthly = _monthly_index(real_bundle)
     annual = _annual_index(quarterly)
 
     generators: tuple[Callable[[], None], ...] = (
+        lambda: _add_nominal_gdp_anchor(builder),
         lambda: _add_growth_accounts(builder),
         lambda: _add_inflation(builder, monthly),
         lambda: _add_labor(builder, monthly, annual),
@@ -455,4 +498,3 @@ def merge_runtime_simulation(real_bundle: UAEDataBundle) -> UAEDataBundle:
     for generate in generators:
         generate()
     return builder.result()
-

@@ -3,6 +3,7 @@
 正式协议：
 - `指标字典` sheet 保存指标分类信息；
 - 指标字典是唯一白名单，数据sheet中的未登记指标会被忽略；
+- 指标原始数值中的0统一按缺失值处理，不进行插值；
 - 其他非空 sheet 的第2至第6行依次保存指标名称、频率、单位、来源、更新时间；
 - 第7行开始为日期和指标值。
 """
@@ -209,6 +210,7 @@ def _parse_data_sheet(
             raise ValueError(
                 f"sheet“{sheet_name}”指标“{indicator_name}”第{first_bad_row}行不是数值"
             )
+        numeric_values = numeric_values.mask(numeric_values.eq(0))
 
         frame = pd.DataFrame(
             {indicator_name: numeric_values.to_numpy()},
