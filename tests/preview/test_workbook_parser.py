@@ -119,3 +119,21 @@ def test_parse_workbook_discards_indicators_not_registered_in_dictionary():
 
     assert result.get_dataframe("monthly").empty
     assert "指标B" not in result.indicator_metadata_map
+
+
+def test_parse_workbook_converts_zero_values_to_missing():
+    workbook_file = _build_workbook()
+    loaded_workbook = load_workbook(workbook_file)
+    daily = loaded_workbook["日度_Wind"]
+    daily.cell(row=7, column=2).value = 0
+
+    output = BytesIO()
+    loaded_workbook.save(output)
+    output.seek(0)
+    output.name = "零值占位数据库.xlsx"
+
+    result = parse_preview_workbook(output, module_name="test")
+    series = result.get_dataframe("daily")["指标A"]
+
+    assert pd.isna(series.iloc[0])
+    assert series.iloc[1] == 11.0

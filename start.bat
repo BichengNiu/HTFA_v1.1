@@ -65,8 +65,8 @@ echo [信息] 调试模式: %HTFA_DEBUG_MODE%
 echo.
 echo [4/5] 启动应用程序...
 echo.
-REM 自动输入空邮箱(直接回车)跳过邮箱提示
-echo. | py -m streamlit run app.py --server.port=8501
+REM 启动器在同一Python进程中检查并预加载Ts
+py scripts\run_htfa.py --server.port=8501
 
 echo.
 echo [5/5] 应用程序已退出

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Mapping
 
 import pandas as pd
 
@@ -55,4 +55,3 @@ class MonitoringDashboardResult:
             return self.panels[key]
         except KeyError as exc:
             raise ValueError(f"未知的阿联酋监测页面: {key}") from exc
-

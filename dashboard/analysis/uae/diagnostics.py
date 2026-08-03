@@ -11,7 +11,6 @@ from dashboard.analysis.uae.contracts import (
     ProvenanceKind,
 )
 
-
 CAUSAL_WORDS = ("导致", "造成", "决定")
 
 
