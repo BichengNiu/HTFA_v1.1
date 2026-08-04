@@ -208,35 +208,30 @@ def test_industry_quadrant_rejects_non_reconciled_bubble_shares():
         )
 
 
-def test_industry_breadth_chart_switches_weighting_without_rerun():
+def test_industry_breadth_chart_shows_only_unweighted_core_metrics():
     index = pd.period_range("2025Q3", periods=2, freq="Q")
-    metrics = (
-        "正增长行业比例",
-        "增速高于历史均值的行业比例",
-        "增速较上季度加快的行业比例",
-        "连续四季度正增长的行业比例",
-    )
     frame = pd.DataFrame(
         {
-            f"{weighting}｜{metric}": [60.0 + position, 70.0 + position]
-            for weighting in ("不加权", "加权")
-            for position, metric in enumerate(metrics)
+            "不加权｜正增长行业比例": [60.0, 70.0],
+            "不加权｜连续四季度正增长的行业比例": [50.0, 62.5],
         },
         index=index,
     )
 
     figure = build_industry_breadth_figure(
         frame,
-        title="行业扩张广度指数",
+        title="行业增长广度与持续性",
     )
 
-    assert [trace.type for trace in figure.data] == ["scatter"] * 8
-    assert [trace.visible for trace in figure.data[:4]] == [None] * 4
-    assert [trace.visible for trace in figure.data[4:]] == [False] * 4
-    assert [
-        button.label
-        for button in figure.layout.updatemenus[0].buttons
-    ] == ["不加权", "按上年同期行业权重加权"]
+    assert figure.layout.title.text == "行业增长广度与持续性"
+    assert [trace.type for trace in figure.data] == ["scatter"] * 2
+    assert [trace.name for trace in figure.data] == [
+        "正增长行业比例",
+        "连续四季度正增长的行业比例",
+    ]
+    assert [trace.line.dash for trace in figure.data] == ["solid", "dash"]
+    assert all("口径：不加权" in trace.hovertemplate for trace in figure.data)
+    assert len(figure.layout.updatemenus) == 0
     assert tuple(figure.layout.yaxis.range) == (0, 100)
     assert {
         float(shape.y0)
@@ -245,14 +240,18 @@ def test_industry_breadth_chart_switches_weighting_without_rerun():
     } == {50.0, 80.0}
 
 
-def test_industry_concentration_chart_preserves_boundary_semantics():
+def test_industry_concentration_chart_maps_direction_and_concentration():
     frame = pd.DataFrame(
         {
-            "前三行业净增长覆盖率": [150.0, float("nan"), 80.0],
-            "正向贡献HHI": [0.4, 0.5, 0.3],
-            "正向贡献有效行业数": [2.5, 2.0, 10 / 3],
-            "加权增速方差": [9.0, 16.0, 4.0],
-            "加权增速标准差": [3.0, 4.0, 2.0],
+            "贡献平衡指数": [50.0, -45.5, 100.0],
+            "标准化绝对贡献集中度": [4.2, 9.6, 0.0],
+            "绝对贡献HHI": [0.281, 0.322, 0.250],
+            "总变动强度": [16.0, 11.0, 8.0],
+            "非油GDP同比": [8.0, -5.0, 8.0],
+            "最大正向贡献行业": ["制造业", "建筑业", "金融业"],
+            "最大正向贡献": [6.0, 2.0, 3.0],
+            "最大负向贡献行业": ["运输业", "房地产业", pd.NA],
+            "最大负向贡献": [-4.0, -5.0, float("nan")],
         },
         index=pd.period_range("2025Q2", periods=3, freq="Q"),
     )
@@ -263,14 +262,110 @@ def test_industry_concentration_chart_preserves_boundary_semantics():
     )
 
     assert [trace.type for trace in figure.data] == ["scatter"] * 3
-    assert figure.data[0].y[0] == 150.0
-    assert figure.data[0].connectgaps is False
-    assert figure.data[1].customdata[0][0] == 2.5
-    assert figure.layout.yaxis.title.text == "CR3（%）"
-    assert figure.layout.yaxis2.title.text == "正向贡献 HHI"
-    assert tuple(figure.layout.yaxis2.range) == (0, 1)
-    assert figure.layout.yaxis3.title.text == "加权标准差（百分点）"
-    assert figure.layout.xaxis3.title.text == "季度"
+    assert [trace.name for trace in figure.data] == [
+        "历史净增长期",
+        "历史净收缩期",
+        "当前季度",
+    ]
+    assert all(trace.marker.sizemode == "area" for trace in figure.data)
+    assert figure.data[0].marker.symbol == "circle"
+    assert figure.data[1].marker.symbol == "circle-open"
+    assert "贡献平衡指数：%{x:.1f}" in figure.data[0].hovertemplate
+    assert "最大负向贡献" in figure.data[0].hovertemplate
+    assert figure.layout.xaxis.title.text == "贡献平衡指数（%）"
+    assert tuple(figure.layout.xaxis.range) == (-100, 100)
+    assert figure.layout.yaxis.title.text == "标准化绝对贡献集中度（%）"
+    assert tuple(figure.layout.yaxis.range) == (0, 20)
+    assert any(float(shape.x0) == 0 for shape in figure.layout.shapes)
+    assert any("2025 Q4" in annotation.text for annotation in figure.layout.annotations)
+    assert [frame.name for frame in figure.frames] == [
+        "2025Q2",
+        "2025Q3",
+        "2025Q4",
+    ]
+    assert len(figure.layout.sliders) == 1
+    assert figure.layout.sliders[0].active == 2
+    assert [step.label for step in figure.layout.sliders[0].steps] == [
+        "",
+        "",
+        "2025Q4",
+    ]
+    assert [button.label for button in figure.layout.updatemenus[0].buttons] == [
+        "▶ 从头播放",
+        "⏸ 暂停",
+    ]
+    assert len(figure.frames[0].data[0].x) == 0
+    assert len(figure.frames[0].data[1].x) == 0
+    assert len(figure.frames[0].data[2].x) == 1
+    assert len(figure.frames[-1].data[0].x) == 1
+    assert len(figure.frames[-1].data[1].x) == 1
+    assert len(figure.frames[-1].data[2].x) == 1
+
+
+def test_series_group_explanations_are_specific_and_collapsed():
+    class _Context:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+    class _Recorder:
+        def __init__(self):
+            self.expanders = []
+            self.markdown_values = []
+
+        def expander(self, label, *, expanded):
+            self.expanders.append((label, expanded))
+            return _Context()
+
+        def markdown(self, value):
+            self.markdown_values.append(value)
+
+    expected_terms = {
+        "GDP部门拉动与石油产量同比": (
+            "上年同期总体实际GDP",
+            "相加等于实际GDP同比",
+            "不能与贡献柱相加",
+        ),
+        "非油实际GDP同比及行业拉动": (
+            "上年同期非油实际GDP",
+            "前5个行业",
+            "其他11个行业",
+            "相加等于非油GDP同比",
+        ),
+        "行业扩张广度指数": (
+            "16个行业",
+            "连续四季度",
+            "50%",
+            "80%",
+        ),
+        "行业增长集中度": (
+            "贡献平衡指数",
+            "标准化绝对贡献集中度",
+            "总变动强度",
+            "图内时间轴",
+            "理论范围",
+            "完整样本",
+            "左侧",
+            "右侧",
+            "越高",
+        ),
+    }
+
+    recorder = _Recorder()
+    renderer_module._render_series_group_explanation(recorder, "其他图")
+    assert recorder.expanders == []
+
+    for group_title, terms in expected_terms.items():
+        recorder = _Recorder()
+        renderer_module._render_series_group_explanation(
+            recorder,
+            group_title,
+        )
+        assert recorder.expanders == [("指标算法与解读", False)]
+        explanation = "\n".join(recorder.markdown_values)
+        assert all(term in explanation for term in terms)
 
 
 def test_industry_state_matrix_displays_latest_quarter_and_four_states():
@@ -341,6 +436,39 @@ def test_renderer_has_six_reading_tabs_and_no_raw_dataframe():
     assert ".table(" not in source
 
 
+def test_industry_groups_follow_the_analysis_narrative_order():
+    expected = (
+        "GDP部门拉动与石油产量同比",
+        "非油实际GDP同比及行业拉动",
+        "行业扩张广度指数",
+        "行业增长集中度",
+        "行业增长持续性与状态矩阵",
+        "行业量价四象限图",
+    )
+    assert renderer_module.GROWTH_INDUSTRY_GROUPS == expected
+    assert (
+        renderer_module.INDUSTRY_BREADTH_DISPLAY_TITLE
+        == "行业增长广度与持续性"
+    )
+
+    source_order = (
+        "行业量价四象限图",
+        "行业增长集中度",
+        "GDP部门拉动与石油产量同比",
+        "行业增长持续性与状态矩阵",
+        "非油实际GDP同比及行业拉动",
+        "行业扩张广度指数",
+    )
+    frames = {
+        title: pd.DataFrame({"value": [position]})
+        for position, title in enumerate(source_order)
+    }
+
+    ordered = renderer_module._ordered_series_groups(frames, expected)
+
+    assert tuple(title for title, _ in ordered) == expected
+
+
 def test_page_without_upload_shows_gate_and_no_charts():
     app = AppTest.from_string(
         """
@@ -392,3 +520,18 @@ renderer.render_uae_monitoring()
         type(child).__name__ == "UnknownElement"
         for child in app.tabs[1].children.values()
     ) == 6
+    industry_expander_labels = [
+        expander.label for expander in app.tabs[1].expander
+    ]
+    assert industry_expander_labels.count("指标算法与解读") == 4
+    assert len(app.tabs[1].select_slider) == 0
+    industry_section_titles = [
+        markdown.value
+        for markdown in app.tabs[1].markdown
+        if markdown.value.startswith("### ")
+    ]
+    assert industry_section_titles == [
+        "### 一、长期趋势：总量与增长来源",
+        "### 二、中长期结构：行业增长质量",
+        "### 三、短期动能：行业状态与量价表现",
+    ]
