@@ -103,7 +103,7 @@ def build_streamlit_argv(
         "run",
         str(project_root / "app.py"),
         "--server.headless",
-        "true",
+        "false",
         *extra_arguments,
     ]
 

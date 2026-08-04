@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import math
+
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 COLORS = (
     "#0B5CAD",
@@ -291,19 +292,13 @@ def build_industry_breadth_figure(
     title: str,
     max_points: int = 80,
 ) -> go.Figure:
-    """绘制可切换等权与上年同期权重的行业扩张广度。"""
+    """绘制不加权的行业增长广度与持续性。"""
 
     metrics = (
         "正增长行业比例",
-        "增速高于历史均值的行业比例",
-        "增速较上季度加快的行业比例",
         "连续四季度正增长的行业比例",
     )
-    required = tuple(
-        f"{weighting}｜{metric}"
-        for weighting in ("不加权", "加权")
-        for metric in metrics
-    )
+    required = tuple(f"不加权｜{metric}" for metric in metrics)
     missing = [column for column in required if column not in frame.columns]
     if missing:
         raise ValueError("行业扩张广度缺少字段: " + ", ".join(missing))
@@ -311,44 +306,36 @@ def build_industry_breadth_figure(
     if clean.empty:
         raise ValueError("行业扩张广度没有有效观测")
     quarter_labels = pd.PeriodIndex(clean.index, freq="Q").astype(str)
-    metric_colors = {
-        metric: COLORS[position]
-        for position, metric in enumerate(metrics)
+    metric_styles = {
+        "正增长行业比例": {"color": COLORS[0], "dash": "solid"},
+        "连续四季度正增长的行业比例": {
+            "color": COLORS[4],
+            "dash": "dash",
+        },
     }
 
     figure = go.Figure()
-    for weighting in ("不加权", "加权"):
-        for metric in metrics:
-            column = f"{weighting}｜{metric}"
-            figure.add_trace(
-                go.Scatter(
-                    x=quarter_labels,
-                    y=clean[column].values,
-                    name=metric,
-                    legendgroup=metric,
-                    mode="lines+markers",
-                    visible=None if weighting == "不加权" else False,
-                    line={
-                        "width": 2.4,
-                        "color": metric_colors[metric],
-                        "dash": "solid" if weighting == "不加权" else "dash",
-                    },
-                    marker={"size": 5},
-                    customdata=[[weighting]] * len(clean),
-                    hovertemplate=(
-                        "%{x}<br>%{y:.1f}%<br>"
-                        "口径：%{customdata[0]}"
-                        "<extra>%{fullData.name}</extra>"
-                    ),
-                )
+    for metric in metrics:
+        column = f"不加权｜{metric}"
+        figure.add_trace(
+            go.Scatter(
+                x=quarter_labels,
+                y=clean[column].values,
+                name=metric,
+                mode="lines+markers",
+                line={"width": 2.4, **metric_styles[metric]},
+                marker={"size": 5},
+                hovertemplate=(
+                    "%{x}<br>%{y:.1f}%<br>口径：不加权"
+                    "<extra>%{fullData.name}</extra>"
+                ),
             )
+        )
 
-    unweighted_visibility = [True] * len(metrics) + [False] * len(metrics)
-    weighted_visibility = [False] * len(metrics) + [True] * len(metrics)
     figure.update_layout(
         title={"text": title, "x": 0.01, "xanchor": "left"},
-        height=460,
-        margin={"l": 60, "r": 90, "t": 95, "b": 55},
+        height=440,
+        margin={"l": 60, "r": 90, "t": 75, "b": 55},
         template="plotly_white",
         hovermode="x unified",
         legend={
@@ -359,30 +346,6 @@ def build_industry_breadth_figure(
             "x": 1,
             "itemsizing": "constant",
         },
-        updatemenus=[
-            {
-                "type": "buttons",
-                "direction": "left",
-                "showactive": True,
-                "active": 0,
-                "x": 0,
-                "y": 1.18,
-                "xanchor": "left",
-                "yanchor": "top",
-                "buttons": [
-                    {
-                        "label": "不加权",
-                        "method": "update",
-                        "args": [{"visible": unweighted_visibility}],
-                    },
-                    {
-                        "label": "按上年同期行业权重加权",
-                        "method": "update",
-                        "args": [{"visible": weighted_visibility}],
-                    },
-                ],
-            }
-        ],
         shapes=[
             {
                 "type": "line",
@@ -457,128 +420,329 @@ def build_industry_concentration_figure(
     *,
     title: str,
     max_points: int = 80,
+    frame_duration_ms: int = 700,
 ) -> go.Figure:
-    """绘制增长来源集中度、正向贡献 HHI 与行业增速离散度。"""
+    """绘制带内置季度时间轴的行业方向—集中度气泡图。"""
 
     required = (
-        "前三行业净增长覆盖率",
-        "正向贡献HHI",
-        "正向贡献有效行业数",
-        "加权增速标准差",
+        "贡献平衡指数",
+        "标准化绝对贡献集中度",
+        "绝对贡献HHI",
+        "总变动强度",
+        "非油GDP同比",
+        "最大正向贡献行业",
+        "最大正向贡献",
+        "最大负向贡献行业",
+        "最大负向贡献",
     )
     missing = [column for column in required if column not in frame.columns]
     if missing:
         raise ValueError("行业增长集中度缺少字段: " + ", ".join(missing))
-    clean = frame[list(required)].dropna(how="all").tail(max_points)
+    clean = (
+        frame[list(required)]
+        .sort_index()
+        .dropna(
+            subset=[
+                "贡献平衡指数",
+                "标准化绝对贡献集中度",
+                "总变动强度",
+            ]
+        )
+        .tail(max_points)
+        .copy()
+    )
     if clean.empty:
         raise ValueError("行业增长集中度没有有效观测")
     quarter_labels = pd.PeriodIndex(clean.index, freq="Q").astype(str)
+    if quarter_labels.duplicated().any():
+        raise ValueError("行业增长集中度包含重复季度")
+    clean["__quarter__"] = quarter_labels
 
-    figure = make_subplots(
-        rows=3,
-        cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.08,
+    def _driver_text(row: pd.Series, direction: str) -> str:
+        industry = row[f"最大{direction}贡献行业"]
+        value = row[f"最大{direction}贡献"]
+        if pd.isna(industry) or pd.isna(value):
+            return "无"
+        return f"{industry}（{float(value):+.2f} 个百分点）"
+
+    clean["__positive_driver__"] = clean.apply(
+        _driver_text,
+        axis=1,
+        direction="正向",
     )
-    figure.add_trace(
-        go.Scatter(
-            x=quarter_labels,
-            y=clean["前三行业净增长覆盖率"],
-            name="前三行业净增长覆盖率",
-            mode="lines+markers",
-            connectgaps=False,
-            line={"width": 2.4, "color": COLORS[2]},
-            marker={"size": 5},
-            hovertemplate=(
-                "%{x}<br>前三行业净增长覆盖率：%{y:.1f}%"
-                "<extra></extra>"
-            ),
-        ),
-        row=1,
-        col=1,
+    clean["__negative_driver__"] = clean.apply(
+        _driver_text,
+        axis=1,
+        direction="负向",
     )
-    effective_industries = clean["正向贡献有效行业数"].to_numpy()
-    figure.add_trace(
-        go.Scatter(
-            x=quarter_labels,
-            y=clean["正向贡献HHI"],
-            name="正向贡献 HHI",
-            mode="lines+markers",
-            connectgaps=False,
-            line={"width": 2.4, "color": COLORS[0]},
-            marker={"size": 5},
-            customdata=effective_industries.reshape(-1, 1),
-            hovertemplate=(
-                "%{x}<br>正向贡献 HHI：%{y:.3f}<br>"
-                "有效行业数：%{customdata[0]:.2f}<extra></extra>"
-            ),
-        ),
-        row=2,
-        col=1,
-    )
-    figure.add_trace(
-        go.Scatter(
-            x=quarter_labels,
-            y=clean["加权增速标准差"],
-            name="行业增速加权标准差",
-            mode="lines+markers",
-            connectgaps=False,
-            line={"width": 2.4, "color": COLORS[4]},
-            marker={"size": 5},
-            hovertemplate=(
-                "%{x}<br>加权标准差：%{y:.2f} 个百分点"
-                "<extra></extra>"
-            ),
-        ),
-        row=3,
-        col=1,
+    max_intensity = float(clean["总变动强度"].max())
+    if max_intensity <= 0:
+        raise ValueError("行业增长集中度的总变动强度必须为正数")
+    size_reference = 2 * max_intensity / 46**2
+    observed_maximum = float(clean["标准化绝对贡献集中度"].max())
+    y_upper = min(
+        100.0,
+        max(20.0, math.ceil(observed_maximum * 1.2 / 5.0) * 5.0),
     )
 
-    annual_ticks = [
-        quarter for quarter in quarter_labels if quarter.endswith("Q4")
+    custom_columns = [
+        "__quarter__",
+        "非油GDP同比",
+        "绝对贡献HHI",
+        "总变动强度",
+        "__positive_driver__",
+        "__negative_driver__",
     ]
-    if not annual_ticks:
-        annual_ticks = quarter_labels.tolist()
+    hovertemplate = (
+        "季度：%{customdata[0]}<br>"
+        "非油GDP同比：%{customdata[1]:+.2f}%<br>"
+        "贡献平衡指数：%{x:.1f}<br>"
+        "标准化集中度：%{y:.1f}%<br>"
+        "绝对贡献 HHI：%{customdata[2]:.3f}<br>"
+        "总变动强度：%{customdata[3]:.2f} 个百分点<br>"
+        "最大正向贡献：%{customdata[4]}<br>"
+        "最大负向贡献：%{customdata[5]}"
+        "<extra>%{fullData.name}</extra>"
+    )
+
+    def _trace(
+        subset: pd.DataFrame,
+        *,
+        name: str,
+        color: str,
+        symbol: str,
+        current: bool = False,
+    ) -> go.Scatter:
+        return go.Scatter(
+            x=subset["贡献平衡指数"],
+            y=subset["标准化绝对贡献集中度"],
+            name=name,
+            mode="markers",
+            cliponaxis=False,
+            customdata=subset[custom_columns].to_numpy(),
+            marker={
+                "size": subset["总变动强度"],
+                "sizemode": "area",
+                "sizeref": size_reference,
+                "sizemin": 8 if current else 7,
+                "symbol": symbol,
+                "color": color,
+                "opacity": 0.96 if current else 0.42,
+                "line": {
+                    "color": "#111827" if current else color,
+                    "width": 3 if current else 1.5,
+                },
+            },
+            hovertemplate=hovertemplate,
+        )
+
+    def quarter_traces(position: int) -> list[go.Scatter]:
+        history = clean.iloc[:position]
+        current = clean.iloc[[position]]
+        current_is_growth = bool(current["非油GDP同比"].iloc[0] >= 0)
+        return [
+            _trace(
+                history.loc[history["非油GDP同比"].ge(0)],
+                name="历史净增长期",
+                color=COLORS[0],
+                symbol="circle",
+            ),
+            _trace(
+                history.loc[history["非油GDP同比"].lt(0)],
+                name="历史净收缩期",
+                color=COLORS[2],
+                symbol="circle-open",
+            ),
+            _trace(
+                current,
+                name="当前季度",
+                color=COLORS[0] if current_is_growth else COLORS[2],
+                symbol="circle" if current_is_growth else "circle-open",
+                current=True,
+            ),
+        ]
+
+    def quarter_annotations(quarter: str) -> list[dict[str, object]]:
+        return [
+            {
+                "text": f"<b>{quarter.replace('Q', ' Q')}</b>",
+                "xref": "paper",
+                "yref": "paper",
+                "x": 0.5,
+                "y": 0.98,
+                "yanchor": "top",
+                "showarrow": False,
+                "font": {"size": 18, "color": "white"},
+                "bgcolor": "#0B5CAD",
+                "bordercolor": "#0B5CAD",
+                "borderpad": 6,
+            },
+            {
+                "x": 0.01,
+                "y": 0.98,
+                "xref": "paper",
+                "yref": "paper",
+                "text": "<b>拖累占主导</b>",
+                "showarrow": False,
+                "xanchor": "left",
+                "yanchor": "top",
+                "font": {"color": "#6B7280", "size": 12},
+            },
+            {
+                "x": 0.99,
+                "y": 0.98,
+                "xref": "paper",
+                "yref": "paper",
+                "text": "<b>拉动占主导</b>",
+                "showarrow": False,
+                "xanchor": "right",
+                "yanchor": "top",
+                "font": {"color": "#6B7280", "size": 12},
+            },
+            {
+                "x": 0.99,
+                "y": 0.02,
+                "xref": "paper",
+                "yref": "paper",
+                "text": f"纵轴显示 0–{y_upper:g}；理论范围 0–100",
+                "showarrow": False,
+                "xanchor": "right",
+                "yanchor": "bottom",
+                "font": {"color": "#6B7280", "size": 11},
+            },
+        ]
+
+    quarter_values = clean["__quarter__"].tolist()
+    latest_position = len(quarter_values) - 1
+    animation_frames = [
+        go.Frame(
+            name=quarter,
+            data=quarter_traces(position),
+            traces=[0, 1, 2],
+            layout=go.Layout(annotations=quarter_annotations(quarter)),
+        )
+        for position, quarter in enumerate(quarter_values)
+    ]
+    figure = go.Figure(
+        data=quarter_traces(latest_position),
+        frames=animation_frames,
+    )
+    slider_steps = [
+        {
+            "label": quarter if quarter.endswith("Q4") else "",
+            "method": "animate",
+            "args": [
+                [quarter],
+                {
+                    "mode": "immediate",
+                    "frame": {"duration": 0, "redraw": True},
+                    "transition": {"duration": 0},
+                },
+            ],
+        }
+        for quarter in quarter_values
+    ]
     figure.update_layout(
-        title={"text": title, "x": 0.01, "xanchor": "left"},
-        height=700,
-        margin={"l": 75, "r": 35, "t": 75, "b": 55},
+        title={
+            "text": (
+                f"{title}<br><sup>横轴表示正负贡献平衡；纵轴表示全部行业"
+                f"绝对贡献的集中程度（完整样本固定显示 0–{y_upper:g}，"
+                "理论范围 0–100）；气泡面积表示总变动强度</sup>"
+            ),
+            "x": 0.01,
+            "xanchor": "left",
+        },
+        height=650,
+        margin={"l": 75, "r": 45, "t": 110, "b": 130},
         template="plotly_white",
-        hovermode="x unified",
-        showlegend=False,
+        hovermode="closest",
+        legend={
+            "orientation": "h",
+            "x": 0,
+            "y": 1.02,
+            "xanchor": "left",
+            "yanchor": "bottom",
+        },
+        shapes=[
+            {
+                "type": "line",
+                "x0": 0,
+                "x1": 0,
+                "y0": 0,
+                "y1": 1,
+                "xref": "x",
+                "yref": "paper",
+                "line": {"color": "#555", "width": 1.4, "dash": "dash"},
+            }
+        ],
+        annotations=quarter_annotations(quarter_values[-1]),
+        sliders=[
+            {
+                "active": latest_position,
+                "steps": slider_steps,
+                "x": 0.08,
+                "len": 0.9,
+                "y": -0.13,
+                "pad": {"t": 25, "b": 0},
+                "currentvalue": {"visible": False},
+                "tickcolor": "#9CA3AF",
+                "font": {"size": 10},
+            }
+        ],
+        updatemenus=[
+            {
+                "type": "buttons",
+                "direction": "left",
+                "showactive": False,
+                "x": 0,
+                "y": -0.19,
+                "xanchor": "left",
+                "yanchor": "top",
+                "buttons": [
+                    {
+                        "label": "▶ 从头播放",
+                        "method": "animate",
+                        "args": [
+                            quarter_values,
+                            {
+                                "mode": "immediate",
+                                "fromcurrent": False,
+                                "frame": {
+                                    "duration": frame_duration_ms,
+                                    "redraw": True,
+                                },
+                                "transition": {"duration": 180},
+                            },
+                        ],
+                    },
+                    {
+                        "label": "⏸ 暂停",
+                        "method": "animate",
+                        "args": [
+                            [None],
+                            {
+                                "mode": "immediate",
+                                "frame": {"duration": 0, "redraw": False},
+                                "transition": {"duration": 0},
+                            },
+                        ],
+                    },
+                ],
+            }
+        ],
     )
     figure.update_xaxes(
-        type="category",
-        categoryorder="array",
-        categoryarray=quarter_labels.tolist(),
-        tickmode="array",
-        tickvals=annual_ticks,
-        ticktext=annual_ticks,
-        showgrid=False,
-    )
-    figure.update_xaxes(title_text="季度", row=3, col=1)
-    figure.update_yaxes(
-        title_text="CR3（%）",
+        title_text="贡献平衡指数（%）",
+        range=[-100, 100],
+        tickvals=[-100, -50, 0, 50, 100],
+        ticktext=["-100<br>全部拖累", "-50", "0<br>完全抵消", "50", "100<br>全部拉动"],
         gridcolor="rgba(0,0,0,0.08)",
-        zeroline=True,
-        zerolinecolor="#555",
-        row=1,
-        col=1,
     )
     figure.update_yaxes(
-        title_text="正向贡献 HHI",
-        range=[0, 1],
+        title_text="标准化绝对贡献集中度（%）",
+        range=[0, y_upper],
         gridcolor="rgba(0,0,0,0.08)",
         zeroline=False,
-        row=2,
-        col=1,
-    )
-    figure.update_yaxes(
-        title_text="加权标准差（百分点）",
-        gridcolor="rgba(0,0,0,0.08)",
-        zeroline=False,
-        row=3,
-        col=1,
     )
     return figure
 

@@ -189,7 +189,7 @@ def test_industry_diagnostics_calculates_unweighted_and_weighted_breadth():
     )
 
 
-def test_industry_diagnostics_preserves_cr3_hhi_and_dispersion_boundaries():
+def test_industry_diagnostics_builds_direction_concentration_map_metrics():
     index = pd.period_range("2025Q1", periods=2, freq="Q")
     components = {
         "a": pd.Series([30, 36], index=index, dtype=float),
@@ -208,26 +208,36 @@ def test_industry_diagnostics_preserves_cr3_hhi_and_dispersion_boundaries():
     )
     latest = index[-1]
 
+    assert list(result.concentration) == [
+        "贡献平衡指数",
+        "标准化绝对贡献集中度",
+        "绝对贡献HHI",
+        "总变动强度",
+        "非油GDP同比",
+        "最大正向贡献行业",
+        "最大正向贡献",
+        "最大负向贡献行业",
+        "最大负向贡献",
+    ]
+    expected_hhi = (
+        (6 / 16) ** 2
+        + (4 / 16) ** 2
+        + (2 / 16) ** 2
+        + (4 / 16) ** 2
+    )
+    assert result.concentration.loc[latest, "贡献平衡指数"] == 50
     assert result.concentration.loc[
-        latest, "前三行业净增长覆盖率"
-    ] == pytest.approx(150.0)
+        latest, "绝对贡献HHI"
+    ] == pytest.approx(expected_hhi)
     assert result.concentration.loc[
-        latest, "正向贡献HHI"
-    ] == pytest.approx((6 / 12) ** 2 + (4 / 12) ** 2 + (2 / 12) ** 2)
-    expected_variance = (
-        result.base_year_shares.loc[latest]
-        * (
-            result.growth_rates.loc[latest]
-            - result.contribution_result.total_growth.loc[latest]
-        )
-        ** 2
-    ).sum()
-    assert result.concentration.loc[
-        latest, "加权增速方差"
-    ] == pytest.approx(expected_variance)
-    assert result.concentration.loc[
-        latest, "加权增速标准差"
-    ] == pytest.approx(np.sqrt(expected_variance))
+        latest, "标准化绝对贡献集中度"
+    ] == pytest.approx((expected_hhi - 1 / 4) / (1 - 1 / 4) * 100)
+    assert result.concentration.loc[latest, "总变动强度"] == 16
+    assert result.concentration.loc[latest, "非油GDP同比"] == 8
+    assert result.concentration.loc[latest, "最大正向贡献行业"] == "a"
+    assert result.concentration.loc[latest, "最大正向贡献"] == 6
+    assert result.concentration.loc[latest, "最大负向贡献行业"] == "d"
+    assert result.concentration.loc[latest, "最大负向贡献"] == -4
 
     shrinking_components = {
         "a": pd.Series([30, 32], index=index, dtype=float),
@@ -242,12 +252,19 @@ def test_industry_diagnostics_preserves_cr3_hhi_and_dispersion_boundaries():
         history_min_periods=1,
         persistence_window=1,
     )
-    assert pd.isna(
-        shrinking.concentration.loc[latest, "前三行业净增长覆盖率"]
-    )
+    shrinking_hhi = (2 / 11) ** 2 + (1 / 11) ** 2 + (3 / 11) ** 2 + (5 / 11) ** 2
     assert shrinking.concentration.loc[
-        latest, "正向贡献HHI"
-    ] == pytest.approx((2 / 3) ** 2 + (1 / 3) ** 2)
+        latest, "贡献平衡指数"
+    ] == pytest.approx(-5 / 11 * 100)
+    assert shrinking.concentration.loc[
+        latest, "绝对贡献HHI"
+    ] == pytest.approx(shrinking_hhi)
+    assert shrinking.concentration.loc[
+        latest, "标准化绝对贡献集中度"
+    ] == pytest.approx((shrinking_hhi - 1 / 4) / (1 - 1 / 4) * 100)
+    assert shrinking.concentration.loc[latest, "总变动强度"] == 11
+    assert shrinking.concentration.loc[latest, "最大正向贡献行业"] == "a"
+    assert shrinking.concentration.loc[latest, "最大负向贡献行业"] == "d"
 
     all_negative_components = {
         name: series - pd.Series([0, amount], index=index)
@@ -263,9 +280,32 @@ def test_industry_diagnostics_preserves_cr3_hhi_and_dispersion_boundaries():
         history_min_periods=1,
         persistence_window=1,
     )
-    assert pd.isna(
-        all_negative.concentration.loc[latest, "正向贡献HHI"]
+    assert all_negative.concentration.loc[latest, "贡献平衡指数"] == -100
+    assert pd.notna(
+        all_negative.concentration.loc[latest, "绝对贡献HHI"]
     )
+    assert pd.isna(
+        all_negative.concentration.loc[latest, "最大正向贡献行业"]
+    )
+    assert all_negative.concentration.loc[latest, "最大负向贡献行业"] == "d"
+
+
+def test_industry_concentration_is_empty_when_industries_do_not_change():
+    index = pd.period_range("2025Q1", periods=2, freq="Q")
+    components = {
+        "a": pd.Series([60, 60], index=index, dtype=float),
+        "b": pd.Series([40, 40], index=index, dtype=float),
+    }
+
+    result = calculate_industry_diagnostics(
+        sum(components.values()).rename("total"),
+        components,
+        periods=1,
+        history_min_periods=1,
+        persistence_window=1,
+    )
+
+    assert result.concentration.iloc[-1].isna().all()
 
 
 def _levels_from_growth(

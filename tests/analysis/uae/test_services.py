@@ -268,19 +268,28 @@ def test_growth_panel_exposes_real_industry_quality_diagnostics():
     ].dropna().iloc[-1] == pytest.approx(66.926, abs=1e-3)
 
     latest_concentration = concentration.dropna(
-        subset=["正向贡献HHI", "加权增速标准差"]
+        subset=["贡献平衡指数", "标准化绝对贡献集中度"]
     ).iloc[-1]
-    assert latest_concentration[
-        "前三行业净增长覆盖率"
-    ] == pytest.approx(56.236, abs=1e-3)
-    assert latest_concentration["正向贡献HHI"] == pytest.approx(
-        0.133877,
+    assert "正向贡献HHI" not in concentration
+    assert "加权增速标准差" not in concentration
+    assert latest_concentration["贡献平衡指数"] == pytest.approx(
+        99.911322,
         abs=1e-6,
     )
-    assert latest_concentration["加权增速标准差"] == pytest.approx(
-        3.258837,
+    assert latest_concentration["标准化绝对贡献集中度"] == pytest.approx(
+        7.600939,
         abs=1e-6,
     )
+    assert latest_concentration["绝对贡献HHI"] == pytest.approx(
+        0.133759,
+        abs=1e-6,
+    )
+    assert latest_concentration["总变动强度"] == pytest.approx(
+        8.095209,
+        abs=1e-6,
+    )
+    assert latest_concentration["最大正向贡献行业"] == "建筑业"
+    assert latest_concentration["最大负向贡献行业"] == "农业、林业和渔业"
 
     latest_persistence = persistence.xs("2025Q4", level="季度")
     assert len(latest_persistence) == len(INDUSTRY_NAMES)

@@ -379,49 +379,78 @@ def calculate_industry_diagnostics(
 
     contributions = contribution_result.contributions
     complete_contributions = contributions.notna().all(axis=1)
-    positive_contributions = contributions.clip(lower=0)
-    positive_sum = positive_contributions.sum(
+    absolute_contribution_sum = contributions.abs().sum(
         axis=1,
         min_count=industry_count,
-    )
-    top_three = positive_contributions.apply(
-        lambda row: row.nlargest(3).sum(),
-        axis=1,
-    ).where(complete_contributions)
-    total_growth = contribution_result.total_growth
-    cr3 = (
-        top_three.div(total_growth.where(total_growth > 0))
-        .mul(100)
-        .rename("前三行业净增长覆盖率")
-    )
-    normalized_positive = positive_contributions.div(
-        positive_sum.replace(0, np.nan),
+    ).rename("总变动强度")
+    valid_concentration = complete_contributions & absolute_contribution_sum.gt(0)
+    absolute_contribution_shares = contributions.abs().div(
+        absolute_contribution_sum.replace(0, np.nan),
         axis=0,
     )
-    hhi = (
-        normalized_positive.pow(2)
+    absolute_hhi = (
+        absolute_contribution_shares.pow(2)
         .sum(axis=1, min_count=industry_count)
-        .where(complete_contributions & positive_sum.gt(0))
-        .rename("正向贡献HHI")
+        .where(valid_concentration)
+        .rename("绝对贡献HHI")
     )
-    effective_industries = hhi.rdiv(1).rename("正向贡献有效行业数")
-    dispersion_variance = (
-        base_year_shares.mul(
-            growth_rates.sub(total_growth, axis=0).pow(2)
+    equal_share_hhi = 1 / industry_count
+    standardized_concentration = (
+        absolute_hhi.sub(equal_share_hhi)
+        .div(1 - equal_share_hhi)
+        .mul(100)
+        .clip(lower=0, upper=100)
+        .rename("标准化绝对贡献集中度")
+    )
+    net_contribution = contributions.sum(
+        axis=1,
+        min_count=industry_count,
+    ).where(complete_contributions)
+    contribution_balance = (
+        net_contribution.div(absolute_contribution_sum.replace(0, np.nan))
+        .mul(100)
+        .where(valid_concentration)
+        .rename("贡献平衡指数")
+    )
+
+    def _driver_series(
+        *,
+        positive: bool,
+    ) -> tuple[pd.Series, pd.Series]:
+        names = pd.Series(pd.NA, index=contributions.index, dtype="object")
+        values = pd.Series(np.nan, index=contributions.index, dtype=float)
+        for period, row in contributions.loc[complete_contributions].iterrows():
+            candidates = row[row.gt(0) if positive else row.lt(0)]
+            if candidates.empty:
+                continue
+            industry = candidates.idxmax() if positive else candidates.idxmin()
+            names.loc[period] = industry
+            values.loc[period] = float(candidates.loc[industry])
+        direction = "正向" if positive else "负向"
+        return (
+            names.rename(f"最大{direction}贡献行业"),
+            values.rename(f"最大{direction}贡献"),
         )
-        .sum(axis=1, min_count=industry_count)
-        .rename("加权增速方差")
+
+    max_positive_industry, max_positive_contribution = _driver_series(
+        positive=True
     )
-    dispersion_std = np.sqrt(dispersion_variance).rename(
-        "加权增速标准差"
+    max_negative_industry, max_negative_contribution = _driver_series(
+        positive=False
     )
     concentration = pd.concat(
         [
-            cr3,
-            hhi,
-            effective_industries,
-            dispersion_variance,
-            dispersion_std,
+            contribution_balance,
+            standardized_concentration,
+            absolute_hhi,
+            absolute_contribution_sum.where(valid_concentration),
+            contribution_result.total_growth.where(valid_concentration).rename(
+                "非油GDP同比"
+            ),
+            max_positive_industry.where(valid_concentration),
+            max_positive_contribution.where(valid_concentration),
+            max_negative_industry.where(valid_concentration),
+            max_negative_contribution.where(valid_concentration),
         ],
         axis=1,
     )

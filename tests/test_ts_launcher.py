@@ -85,7 +85,7 @@ def test_streamlit_arguments_use_the_project_app():
         "run",
         str(PROJECT_ROOT / "app.py"),
         "--server.headless",
-        "true",
+        "false",
         "--server.port=8501",
     ]
 
