@@ -1,73 +1,94 @@
 @echo off
+setlocal
+
 echo ========================================
 echo HTFA Dashboard Startup
 echo ========================================
 echo.
 
 cd /d "%~dp0"
-
-REM 设置启动标记，防止app.py重复执行启动逻辑
-set HTFA_LAUNCHER_ACTIVE=true
-
-REM 清理Python缓存文件
-echo [1/4] 清理Python缓存文件...
-echo [信息] 正在删除 __pycache__ 目录和 .pyc 文件...
-
-REM 删除所有的 .pyc 和 .pyo 文件
-for /r %%i in (*.pyc *.pyo) do (
-    del /f /q "%%i" >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] Cannot open the project directory.
+    goto :failed
 )
 
-REM 删除所有的 __pycache__ 目录
-for /d /r %%i in (__pycache__) do (
-    rd /s /q "%%i" >nul 2>&1
+echo [1/5] Checking the project virtual environment...
+if not exist ".venv\Scripts\python.exe" (
+    echo [ERROR] Project virtual environment .venv was not found.
+    echo [HINT] Run: py -3.14 -m venv .venv
+    echo [HINT] Then run: .venv\Scripts\python.exe -m pip install -r requirements.txt
+    goto :failed
 )
 
-echo [完成] Python缓存已清理
-echo.
+for /f "delims=" %%V in ('".venv\Scripts\python.exe" --version 2^>^&1') do set "HTFA_PYTHON_VERSION=%%V"
+echo [OK] Using %HTFA_PYTHON_VERSION%
 
-REM 检查端口8501是否被占用
-echo [2/4] 检查端口占用情况...
-netstat -ano | findstr ":8501" >nul 2>&1
-if %errorlevel% equ 0 (
-    echo [警告] 端口8501已被占用，正在关闭占用进程...
-
-    REM 获取占用端口的进程ID并关闭
-    for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8501" ^| findstr "LISTENING"') do (
-        echo [信息] 正在关闭进程 PID: %%a
-        taskkill /F /PID %%a >nul 2>&1
+".venv\Scripts\python.exe" -c "from pathlib import Path; import sysconfig, Ts; module_file = getattr(Ts, '__file__', None); raise SystemExit(0 if module_file and Path(module_file).resolve().is_relative_to(Path(sysconfig.get_path('purelib')).resolve()) else 1)" >nul 2>&1
+if errorlevel 1 (
+    echo [INFO] Installing Ts into the project virtual environment...
+    ".venv\Scripts\python.exe" scripts\install_ts.py
+    if errorlevel 1 (
+        echo [ERROR] Ts installation failed.
+        goto :failed
     )
+)
+echo [OK] Ts is installed in the project virtual environment.
+echo.
 
-    REM 等待端口释放
-    echo [信息] 等待端口释放...
+set "HTFA_LAUNCHER_ACTIVE=true"
+
+echo [2/5] Clearing Python caches...
+call :clean_python_cache dashboard
+call :clean_python_cache scripts
+call :clean_python_cache Ts
+call :clean_python_cache tests
+if exist "__pycache__" rd /s /q "__pycache__" >nul 2>&1
+echo [OK] Python caches cleared.
+echo.
+
+echo [3/5] Checking port 8501...
+set "HTFA_PORT_IN_USE=false"
+for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":8501" ^| findstr "LISTENING"') do (
+    set "HTFA_PORT_IN_USE=true"
+    echo [INFO] Stopping process %%P on port 8501...
+    taskkill /F /PID %%P >nul 2>&1
+)
+if "%HTFA_PORT_IN_USE%"=="true" (
     timeout /t 2 /nobreak >nul
-    echo [完成] 端口已清理
+    echo [OK] Port 8501 released.
 ) else (
-    echo [完成] 端口8501空闲
+    echo [OK] Port 8501 is available.
+)
+echo.
+
+echo [4/5] Configuring the runtime environment...
+set "HTFA_DEBUG_MODE=true"
+echo [INFO] Debug mode: %HTFA_DEBUG_MODE%
+echo.
+
+echo [5/5] Starting HTFA...
+echo.
+".venv\Scripts\python.exe" scripts\run_htfa.py --server.port=8501 %*
+if errorlevel 1 (
+    echo.
+    echo [ERROR] HTFA exited with an error.
+    goto :failed
 )
 
 echo.
-echo [3/4] 配置运行环境...
-REM ========================================
-REM 调试模式配置
-REM ========================================
-REM 调试模式：跳过用户认证和权限检查（适用于开发调试）
-REM 正常模式：启用完整的用户认证和权限控制（适用于生产环境）
-REM
-REM 设置 HTFA_DEBUG_MODE=true  -> 调试模式（默认）
-REM 设置 HTFA_DEBUG_MODE=false -> 正常模式
-REM ========================================
-
-REM 设置调试模式（开发时使用true，生产时使用false）
-set HTFA_DEBUG_MODE=true
-
-echo [信息] 调试模式: %HTFA_DEBUG_MODE%
-echo.
-echo [4/5] 启动应用程序...
-echo.
-REM 启动器在同一Python进程中检查并预加载Ts
-py scripts\run_htfa.py --server.port=8501
-
-echo.
-echo [5/5] 应用程序已退出
+echo [OK] HTFA has stopped.
 pause
+exit /b 0
+
+:clean_python_cache
+if not exist "%~1" exit /b 0
+for /r "%~1" %%F in (*.pyc) do del /f /q "%%F" >nul 2>&1
+for /r "%~1" %%F in (*.pyo) do del /f /q "%%F" >nul 2>&1
+for /d /r "%~1" %%D in (__pycache__) do rd /s /q "%%D" >nul 2>&1
+exit /b 0
+
+:failed
+echo.
+echo Startup failed. Review the error above, then press any key to close.
+pause >nul
+exit /b 1

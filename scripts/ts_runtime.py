@@ -6,14 +6,16 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import shutil
 import stat
 import subprocess
 import sys
+import sysconfig
 import tempfile
 import zipfile
-from collections.abc import Callable
-from contextlib import AbstractContextManager
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -46,6 +48,7 @@ DOWNLOAD_TIMEOUT_SECONDS = 30
 MAX_ARCHIVE_BYTES = 25 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 50 * 1024 * 1024
 COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+INSTALLED_METADATA_NAME = "HTFA_RUNTIME.json"
 
 
 class RuntimeUpdateError(RuntimeError):
@@ -66,32 +69,60 @@ def _timestamp() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def installed_runtime_root() -> Path:
+    """Return the environment package root containing the installed Ts package."""
+
+    return Path(sysconfig.get_path("purelib")).resolve()
+
+
 def default_cache_root() -> Path:
-    """Return the per-user cache used by the local Windows launcher."""
+    """Return the Ts update cache inside the active Python environment."""
 
-    local_app_data = os.environ.get("LOCALAPPDATA")
-    if local_app_data:
-        return Path(local_app_data) / "HTFA" / "ts-runtime"
-    return Path(tempfile.gettempdir()) / "HTFA" / "ts-runtime"
+    return installed_runtime_root() / ".htfa-ts-runtime"
 
 
-def load_vendored_metadata(project_root: Path) -> dict[str, str]:
-    """Load and validate the immutable fallback version metadata."""
+def load_pinned_metadata(project_root: Path) -> dict[str, str]:
+    """Load and validate the pinned bootstrap version metadata."""
 
-    metadata_path = project_root / "Ts" / "VENDORED.json"
+    metadata_path = project_root / "scripts" / "ts_runtime.json"
     try:
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise RuntimeUpdateError(f"invalid vendored metadata: {exc}") from exc
+        raise RuntimeUpdateError(f"invalid pinned Ts metadata: {exc}") from exc
 
     expected_repository = f"https://github.com/{GITHUB_REPOSITORY}"
     if metadata.get("repository") != expected_repository:
-        raise RuntimeUpdateError("vendored repository does not match the allowlist")
+        raise RuntimeUpdateError("pinned Ts repository does not match the allowlist")
     if metadata.get("branch") != GITHUB_BRANCH:
-        raise RuntimeUpdateError("vendored branch does not match the allowlist")
+        raise RuntimeUpdateError("pinned Ts branch does not match the allowlist")
     commit = str(metadata.get("commit", ""))
     if not COMMIT_PATTERN.fullmatch(commit):
-        raise RuntimeUpdateError("vendored commit is not a full SHA-1")
+        raise RuntimeUpdateError("pinned Ts commit is not a full SHA-1")
+    return {
+        "repository": expected_repository,
+        "branch": GITHUB_BRANCH,
+        "commit": commit,
+    }
+
+
+def load_installed_metadata(root: Path | None = None) -> dict[str, str]:
+    """Load validated metadata from the Ts package installed in the environment."""
+
+    package_root = (root or installed_runtime_root()).resolve() / "Ts"
+    metadata_path = package_root / INSTALLED_METADATA_NAME
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeUpdateError(f"invalid installed Ts metadata: {exc}") from exc
+
+    expected_repository = f"https://github.com/{GITHUB_REPOSITORY}"
+    commit = str(metadata.get("commit", ""))
+    if metadata.get("repository") != expected_repository:
+        raise RuntimeUpdateError("installed Ts repository does not match the allowlist")
+    if metadata.get("branch") != GITHUB_BRANCH:
+        raise RuntimeUpdateError("installed Ts branch does not match the allowlist")
+    if not COMMIT_PATTERN.fullmatch(commit):
+        raise RuntimeUpdateError("installed Ts commit is not a full SHA-1")
     return {
         "repository": expected_repository,
         "branch": GITHUB_BRANCH,
@@ -203,6 +234,8 @@ def _run_git(
             ["git", *arguments],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
             check=False,
             env=_git_environment(),
@@ -387,6 +420,125 @@ def _runtime_layout_is_valid(root: Path) -> bool:
     return all(path.is_file() for path in required)
 
 
+def _clear_readonly_and_retry(function, path, error) -> None:
+    if not isinstance(error, PermissionError):
+        raise error
+    os.chmod(path, stat.S_IWRITE)
+    function(path)
+
+
+def _remove_tree(path: Path) -> None:
+    shutil.rmtree(path, onexc=_clear_readonly_and_retry)
+
+
+def _make_unique_directory(parent: Path, prefix: str) -> Path:
+    """Create a private work directory without restrictive cloud-drive ACLs."""
+
+    parent.mkdir(parents=True, exist_ok=True)
+    for _ in range(100):
+        candidate = parent / f"{prefix}{secrets.token_hex(4)}"
+        try:
+            candidate.mkdir()
+        except FileExistsError:
+            continue
+        return candidate
+    raise RuntimeUpdateError(f"could not create a work directory in {parent}")
+
+
+@contextmanager
+def temporary_work_directory(parent: Path, prefix: str) -> Iterator[Path]:
+    """Yield a temporary directory compatible with Windows subprocess ACLs."""
+
+    directory = _make_unique_directory(parent, prefix)
+    try:
+        yield directory
+    finally:
+        if directory.exists():
+            _remove_tree(directory)
+
+
+def _make_tree_writable(path: Path) -> None:
+    """Remove copied read-only attributes without changing file contents."""
+
+    for entry in [path, *path.rglob("*")]:
+        mode = stat.S_IRUSR | stat.S_IWUSR
+        if entry.is_dir():
+            mode |= stat.S_IXUSR
+        os.chmod(entry, mode)
+
+
+def installed_runtime_selection(root: Path | None = None) -> RuntimeSelection:
+    """Return the Ts runtime installed alongside the environment dependencies."""
+
+    runtime_root = (root or installed_runtime_root()).resolve()
+    if not _runtime_layout_is_valid(runtime_root):
+        raise RuntimeUpdateError(
+            f"Ts is not installed in the active environment: {runtime_root / 'Ts'}"
+        )
+    metadata = load_installed_metadata(runtime_root)
+    return RuntimeSelection(
+        root=runtime_root,
+        commit=metadata["commit"],
+        source="installed",
+        detail="using Ts installed in the active Python environment",
+    )
+
+
+def install_ts_runtime(
+    source_root: Path,
+    *,
+    commit: str,
+    install_root: Path | None = None,
+) -> RuntimeSelection:
+    """Atomically install a validated Ts source tree into site-packages."""
+
+    source_root = source_root.resolve()
+    install_root = (install_root or installed_runtime_root()).resolve()
+    if not COMMIT_PATTERN.fullmatch(commit):
+        raise RuntimeUpdateError("refusing to install an invalid Ts commit")
+    if not _runtime_layout_is_valid(source_root):
+        raise RuntimeUpdateError(f"invalid Ts runtime layout: {source_root}")
+
+    install_root.mkdir(parents=True, exist_ok=True)
+    staging_root = _make_unique_directory(install_root, ".htfa-ts-install-")
+    staged_package = staging_root / "Ts"
+    target_package = install_root / "Ts"
+    backup_package = staging_root / "previous-Ts"
+    replaced_existing = False
+    try:
+        shutil.copytree(
+            source_root / "Ts",
+            staged_package,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"),
+        )
+        _make_tree_writable(staged_package)
+        write_state(
+            staged_package / INSTALLED_METADATA_NAME,
+            {
+                "repository": f"https://github.com/{GITHUB_REPOSITORY}",
+                "branch": GITHUB_BRANCH,
+                "commit": commit,
+                "installed_at": _timestamp(),
+            },
+        )
+        if target_package.exists():
+            os.replace(target_package, backup_package)
+            replaced_existing = True
+        try:
+            os.replace(staged_package, target_package)
+        except Exception:
+            if replaced_existing and backup_package.exists():
+                os.replace(backup_package, target_package)
+            raise
+        if backup_package.exists():
+            _remove_tree(backup_package)
+    finally:
+        if staging_root.exists():
+            _remove_tree(staging_root)
+
+    return installed_runtime_selection(install_root)
+
+
 def smoke_test_runtime(
     root: Path,
     *,
@@ -468,9 +620,9 @@ def _cached_selections(cache_root: Path) -> list[RuntimeSelection]:
 
 
 def _fallback_selection(
-    project_root: Path,
     cache_root: Path,
     state: dict[str, Any],
+    install_root: Path | None = None,
 ) -> RuntimeSelection:
     cached = _cached_selections(cache_root)
     active_commit = state.get("active_commit")
@@ -479,13 +631,7 @@ def _fallback_selection(
             return selection
     if cached:
         return cached[0]
-    metadata = load_vendored_metadata(project_root)
-    return RuntimeSelection(
-        root=project_root,
-        commit=metadata["commit"],
-        source="vendored",
-        detail="using the repository's vendored Ts runtime",
-    )
+    return installed_runtime_selection(install_root)
 
 
 def _safe_write_state(state_path: Path, state: dict[str, Any]) -> None:
@@ -520,7 +666,7 @@ def _prune_versions(cache_root: Path, active_commit: str, keep: int = 2) -> None
         keep_commits.add(selection.commit)
     for selection in candidates:
         if selection.commit not in keep_commits:
-            shutil.rmtree(selection.root)
+            _remove_tree(selection.root)
 
 
 def prepare_ts_runtime(
@@ -534,22 +680,16 @@ def prepare_ts_runtime(
     """Select the latest validated runtime without risking HTFA availability."""
 
     project_root = project_root.resolve()
-    vendored_metadata = load_vendored_metadata(project_root)
-    vendored = RuntimeSelection(
-        root=project_root,
-        commit=vendored_metadata["commit"],
-        source="vendored",
-        detail="using the repository's vendored Ts runtime",
-    )
+    installed = installed_runtime_selection()
     cache_root = (cache_root or default_cache_root()).resolve()
     state_path = cache_root / "state.json"
     try:
         cache_root.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
-        return replace(vendored, detail=f"Ts cache is unavailable: {exc}")
+        return replace(installed, detail=f"Ts cache is unavailable: {exc}")
 
     state = read_state(state_path)
-    fallback = _fallback_selection(project_root, cache_root, state)
+    fallback = _fallback_selection(cache_root, state)
 
     with UpdateLock(cache_root / "update.lock") as acquired:
         if not acquired:
@@ -577,22 +717,23 @@ def prepare_ts_runtime(
             )
             return replace(selected, detail="the cached Ts runtime matches main HEAD")
 
-        if head_commit == vendored.commit:
+        if head_commit == installed.commit:
             _safe_write_state(
                 state_path,
                 {
                     **state,
-                    "active_commit": vendored.commit,
+                    "active_commit": installed.commit,
                     "last_check_at": _timestamp(),
                     "last_error": None,
                 },
             )
-            return replace(vendored, detail="the vendored Ts runtime matches main HEAD")
+            return replace(installed, detail="the installed Ts runtime matches main HEAD")
 
         staging_parent = cache_root / "staging"
         staging_parent.mkdir(parents=True, exist_ok=True)
-        staging_root = Path(
-            tempfile.mkdtemp(prefix=f"{head_commit[:12]}-", dir=staging_parent)
+        staging_root = _make_unique_directory(
+            staging_parent,
+            f"{head_commit[:12]}-",
         )
         try:
             candidate_root = staging_root / "candidate"
@@ -649,10 +790,15 @@ __all__ = [
     "default_cache_root",
     "extract_runtime_archive",
     "fetch_head_commit",
-    "load_vendored_metadata",
+    "install_ts_runtime",
+    "installed_runtime_root",
+    "installed_runtime_selection",
+    "load_installed_metadata",
+    "load_pinned_metadata",
     "materialize_git_runtime",
     "prepare_ts_runtime",
     "read_state",
     "smoke_test_runtime",
+    "temporary_work_directory",
     "write_state",
 ]

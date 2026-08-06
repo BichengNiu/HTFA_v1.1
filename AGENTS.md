@@ -6,7 +6,8 @@
 
 ## Build, Test, and Development Commands
 
-- `pip install -r requirements.txt` installs Python 3.11 dependencies.
+- `.venv\Scripts\python.exe -m pip install -r requirements.txt` installs Python 3.14 dependencies into the project virtual environment.
+- `.venv\Scripts\python.exe scripts\install_ts.py` installs the pinned `Ts` runtime into that virtual environment; do not restore or commit a root-level `Ts/` copy.
 - `streamlit run app.py --server.port=8501` starts the local dashboard.
 - `start.bat` starts the Windows development environment, clears Python caches, and frees port 8501.
 - `docker compose up --build -d` builds and runs the containerized application.
@@ -23,6 +24,10 @@ The repository currently has no committed automated test suite or coverage thres
 ## Commit & Pull Request Guidelines
 
 Recent commits use short Chinese summaries such as `优化` and `优化-可用`. Preserve the concise style but describe the affected behavior, for example `修复 DFM 训练日期校验`. Keep each commit focused. Pull requests should include the problem, implementation summary, validation evidence, and any data or configuration impact. Add screenshots for visible UI changes and link the relevant issue or task when available.
+
+### Mandatory Pre-Push Cleanup
+
+Before every commit intended for a remote branch, and again immediately before pushing, remove all reproducible test artifacts and caches from the repository working tree. This includes `__pycache__/`, `*.pyc`, `*.pyo`, `.pytest_cache/`, `.ruff_cache/`, `.mypy_cache/`, coverage outputs, pytest temporary directories, test logs, smoke-test outputs, and other files created only by local validation. Inspect and resolve each target before deletion; never use a broad recursive cleanup against the repository root. Do not delete `.venv/`, `.git/`, files under `data/`, user-created logs or exports, or unrelated untracked/modified files. After cleanup, run `git status --short` and confirm that no generated test or cache artifacts remain before committing or pushing. Report what was cleaned and preserve every user change not explicitly in scope.
 
 ## Security & Data Handling
 

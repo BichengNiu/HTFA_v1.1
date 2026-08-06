@@ -6,11 +6,12 @@ import Ts
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_ts_import_resolves_to_vendored_package():
-    assert Path(Ts.__file__).resolve().parent == (PROJECT_ROOT / "Ts").resolve()
+def test_ts_import_resolves_to_environment_package():
+    package_root = Path(Ts.__file__).resolve().parent
+    assert package_root.parent.name == "site-packages"
 
 
-def test_vendored_ts_exposes_htfa_interfaces():
+def test_installed_ts_exposes_htfa_interfaces():
     from Ts import TimeSeriesSummary, difference
     from Ts.TsPlots import plot_acf, plot_pacf, plot_series
     from Ts.TsTests import (
@@ -43,11 +44,11 @@ def test_requirements_do_not_install_ts_from_git():
     assert "git+" not in requirements
 
 
-def test_vendored_metadata_matches_documented_commit():
+def test_runtime_metadata_matches_documented_commit():
     metadata = json.loads(
-        (PROJECT_ROOT / "Ts" / "VENDORED.json").read_text(encoding="utf-8")
+        (PROJECT_ROOT / "scripts" / "ts_runtime.json").read_text(encoding="utf-8")
     )
-    documentation = (PROJECT_ROOT / "Ts" / "VENDORED.md").read_text(
+    documentation = (PROJECT_ROOT / "docs" / "ts-runtime.md").read_text(
         encoding="utf-8"
     )
 

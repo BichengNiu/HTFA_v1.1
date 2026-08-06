@@ -94,7 +94,7 @@ def prepare_dtw_display(
     display = ordered.copy()
     for column in DTW_MIXED_TYPE_COLUMNS:
         if column in display.columns:
-            display[column] = display[column].astype(str)
+            display[column] = display[column].astype(str).astype(object)
     return display, valid
 
 
