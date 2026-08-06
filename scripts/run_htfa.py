@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import sys
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from pathlib import Path
 from types import ModuleType
 
@@ -16,7 +17,7 @@ from scripts.ts_runtime import (
     REQUIRED_INTERFACES,
     RuntimeSelection,
     RuntimeUpdateError,
-    load_vendored_metadata,
+    installed_runtime_selection,
     prepare_ts_runtime,
 )
 
@@ -76,20 +77,17 @@ def activate_ts_runtime(
     except Exception as selected_error:  # noqa: BLE001 - imported code may fail freely
         _purge_ts_modules()
         _remove_path(selection.root)
-        vendored_metadata = load_vendored_metadata(project_root)
-        vendored = RuntimeSelection(
-            root=project_root.resolve(),
-            commit=vendored_metadata["commit"],
-            source="vendored",
+        installed = replace(
+            installed_runtime_selection(),
             detail=f"selected runtime failed to load: {selected_error}",
         )
         try:
-            return _load_ts_from(vendored.root), vendored
-        except Exception as vendored_error:
+            return _load_ts_from(installed.root), installed
+        except Exception as installed_error:
             raise RuntimeUpdateError(
-                "both the selected and vendored Ts runtimes failed: "
-                f"selected={selected_error}; vendored={vendored_error}"
-            ) from vendored_error
+                "both the selected and installed Ts runtimes failed: "
+                f"selected={selected_error}; installed={installed_error}"
+            ) from installed_error
 
 
 def build_streamlit_argv(
@@ -116,7 +114,7 @@ def format_selection_message(selection: RuntimeSelection) -> str:
         return f"[Ts] 已下载并使用最新版 {short_commit}"
     if selection.source == "cached":
         return f"[Ts] 使用最近验证版本 {short_commit}；{selection.detail}"
-    return f"[Ts] 使用内置离线版本 {short_commit}；{selection.detail}"
+    return f"[Ts] 使用虚拟环境安装版本 {short_commit}；{selection.detail}"
 
 
 def main(

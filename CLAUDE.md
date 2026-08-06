@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 HTFA（经济运行分析平台）是一个基于 Streamlit 的数据分析仪表板应用，用于经济数据的监测、分析和预测。
 
-**技术栈**: Python 3.11 + Streamlit + Pandas + Plotly/Altair + statsmodels
+**技术栈**: Python 3.14 + Streamlit + Pandas + Plotly/Altair + statsmodels
 **架构**: 模块化单体应用，垂直切分架构
 **部署**: Docker 容器化，端口 8501
 

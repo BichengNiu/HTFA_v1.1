@@ -5,6 +5,7 @@ import zipfile
 from pathlib import Path
 
 import pytest
+import Ts
 
 from scripts.ts_runtime import (
     RuntimeUpdateError,
@@ -17,6 +18,7 @@ from scripts.ts_runtime import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+TS_PACKAGE_ROOT = Path(Ts.__file__).resolve().parent
 VENDORED_COMMIT = "bec57a2610b38be3a8f78071d7e03850b53ca25e"
 REMOTE_COMMIT = "1" * 40
 
@@ -25,8 +27,8 @@ def _runtime_zip(commit: str) -> bytes:
     output = io.BytesIO()
     prefix = f"Ts-{commit}"
     with zipfile.ZipFile(output, "w") as archive:
-        for source in (PROJECT_ROOT / "Ts").rglob("*.py"):
-            relative = source.relative_to(PROJECT_ROOT / "Ts")
+        for source in TS_PACKAGE_ROOT.rglob("*.py"):
+            relative = source.relative_to(TS_PACKAGE_ROOT)
             archive.writestr(
                 f"{prefix}/{relative.as_posix()}",
                 source.read_bytes(),
@@ -48,7 +50,7 @@ def _offline_head_fetcher() -> str:
 def _candidate_materializer(*, broken_init: bool = False):
     def materialize(commit: str, destination: Path) -> str:
         shutil.copytree(
-            PROJECT_ROOT / "Ts",
+            TS_PACKAGE_ROOT,
             destination / "Ts",
             ignore=shutil.ignore_patterns("__pycache__", "VENDORED.*"),
         )
@@ -65,7 +67,7 @@ def _candidate_materializer(*, broken_init: bool = False):
 def _seed_cached_version(cache_root: Path, commit: str, verified_at: str) -> None:
     version_root = cache_root / "versions" / commit
     shutil.copytree(
-        PROJECT_ROOT / "Ts",
+        TS_PACKAGE_ROOT,
         version_root / "Ts",
         ignore=shutil.ignore_patterns("__pycache__", "VENDORED.*"),
     )
@@ -93,7 +95,7 @@ def test_state_round_trip_is_json(tmp_path):
     assert json.loads(state_path.read_text(encoding="utf-8")) == expected
 
 
-def test_offline_without_cache_uses_vendored_version(tmp_path):
+def test_offline_without_cache_uses_installed_version(tmp_path):
     selection = prepare_ts_runtime(
         project_root=PROJECT_ROOT,
         cache_root=tmp_path,
@@ -101,8 +103,8 @@ def test_offline_without_cache_uses_vendored_version(tmp_path):
     )
 
     assert selection.commit == VENDORED_COMMIT
-    assert selection.root == PROJECT_ROOT
-    assert selection.source == "vendored"
+    assert selection.root == TS_PACKAGE_ROOT.parent
+    assert selection.source == "installed"
     assert "offline" in selection.detail
 
 
@@ -116,7 +118,7 @@ def test_corrupt_state_does_not_break_offline_fallback(tmp_path):
     )
 
     assert selection.commit == VENDORED_COMMIT
-    assert selection.source == "vendored"
+    assert selection.source == "installed"
 
 
 def test_valid_remote_version_is_downloaded_verified_and_reused(tmp_path):
@@ -209,7 +211,7 @@ def test_busy_update_lock_skips_network_and_uses_fallback(tmp_path):
             head_fetcher=fetch_head,
         )
 
-    assert selection.source == "vendored"
+    assert selection.source == "installed"
     assert "another HTFA process" in selection.detail
     assert head_calls == []
 

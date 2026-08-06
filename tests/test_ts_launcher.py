@@ -3,18 +3,21 @@ import subprocess
 import sys
 from pathlib import Path
 
+import Ts
+
 from scripts import run_htfa
 from scripts.run_htfa import build_streamlit_argv
 from scripts.ts_runtime import RuntimeSelection
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+INSTALLED_RUNTIME_ROOT = Path(Ts.__file__).resolve().parent.parent
 VENDORED_COMMIT = "bec57a2610b38be3a8f78071d7e03850b53ca25e"
 
 
 def _copy_runtime(destination: Path) -> Path:
     runtime_root = destination / "runtime"
     shutil.copytree(
-        PROJECT_ROOT / "Ts",
+        INSTALLED_RUNTIME_ROOT / "Ts",
         runtime_root / "Ts",
         ignore=shutil.ignore_patterns("__pycache__", "VENDORED.*"),
     )
@@ -70,8 +73,8 @@ def test_activate_ts_runtime_falls_back_when_selected_version_fails(tmp_path):
 
     assert completed.returncode == 0, completed.stderr
     lines = completed.stdout.strip().splitlines()
-    assert Path(lines[0]) == (PROJECT_ROOT / "Ts").resolve()
-    assert lines[1:] == ["vendored", VENDORED_COMMIT]
+    assert Path(lines[0]) == (INSTALLED_RUNTIME_ROOT / "Ts").resolve()
+    assert lines[1:] == ["installed", VENDORED_COMMIT]
 
 
 def test_streamlit_arguments_use_the_project_app():
@@ -91,17 +94,20 @@ def test_streamlit_arguments_use_the_project_app():
 
 
 def test_start_batch_uses_the_runtime_launcher():
-    batch = (PROJECT_ROOT / "start.bat").read_text(encoding="gbk")
+    batch = (PROJECT_ROOT / "start.bat").read_text(encoding="utf-8")
 
-    assert "py scripts\\run_htfa.py --server.port=8501" in batch
+    assert (
+        '".venv\\Scripts\\python.exe" scripts\\run_htfa.py --server.port=8501'
+        in batch
+    )
     assert "py -m streamlit run app.py" not in batch
 
 
 def test_launcher_checks_once_before_starting_streamlit(monkeypatch):
     selection = RuntimeSelection(
-        root=PROJECT_ROOT,
+        root=INSTALLED_RUNTIME_ROOT,
         commit=VENDORED_COMMIT,
-        source="vendored",
+        source="installed",
         detail="test",
     )
     calls = {"prepare": 0, "streamlit": 0}
