@@ -40,6 +40,10 @@ def test_portable_spec_pins_python_3134_and_official_sha256():
     }
 
 
+def test_builder_targets_project_root_runtime():
+    assert build_portable.RUNTIME_ROOT == PROJECT_ROOT / "runtime"
+
+
 def test_portable_lock_contains_only_exact_pins():
     lock_path = PROJECT_ROOT / "requirements-win-py313.lock"
     requirements = [
@@ -81,31 +85,29 @@ def test_runtime_verification_disables_bytecode_writes(tmp_path, monkeypatch):
         lambda arguments, *, cwd: calls.append((arguments, cwd)),
     )
 
-    build_portable.verify_runtime(
-        tmp_path / "runtime.exe", release_root=tmp_path
-    )
+    build_portable.verify_runtime(tmp_path / "runtime.exe", project_root=tmp_path)
 
     assert len(calls) == 1
     assert calls[0][0][1] == "-B"
 
 
-def test_builder_refuses_cleanup_outside_build_and_dist(tmp_path):
+def test_builder_refuses_cleanup_outside_approved_runtime(tmp_path):
     project_root = tmp_path / "project"
     project_root.mkdir()
+    runtime_root = project_root / "runtime"
 
     with pytest.raises(ValueError, match="unsafe generated target"):
         build_portable.assert_safe_generated_target(
             project_root,
             tmp_path / "outside",
-            project_root / "build" / "portable",
+            runtime_root,
         )
 
-    expected = project_root / "build" / "portable"
     assert build_portable.assert_safe_generated_target(
         project_root,
-        expected,
-        expected,
-    ) == expected.resolve()
+        runtime_root,
+        runtime_root,
+    ) == runtime_root.resolve()
 
 
 def test_builder_resets_readonly_generated_directory(tmp_path):
@@ -150,37 +152,6 @@ def test_builder_writes_embedded_python_path_file(tmp_path):
     ]
 
 
-def test_builder_copies_only_release_files(tmp_path):
-    source_root = tmp_path / "source"
-    release_root = tmp_path / "release"
-    source_root.mkdir()
-    (source_root / "app.py").write_text("APP = 1\n", encoding="utf-8")
-    (source_root / "start.bat").write_text("@echo off\n", encoding="utf-8")
-    (source_root / "requirements-win-py313.lock").write_text(
-        "demo==1.0\n", encoding="utf-8"
-    )
-    for name in ("dashboard", "scripts", "data", ".streamlit"):
-        directory = source_root / name
-        directory.mkdir()
-        (directory / "kept.txt").write_text("kept\n", encoding="utf-8")
-    (source_root / "tests").mkdir()
-    (source_root / "tests" / "excluded.txt").write_text("no\n", encoding="utf-8")
-    (release_root / "runtime").mkdir(parents=True)
-
-    copied = build_portable.copy_release_files(source_root, release_root)
-
-    assert set(copied) == {
-        ".streamlit",
-        "app.py",
-        "dashboard",
-        "data",
-        "requirements-win-py313.lock",
-        "scripts",
-        "start.bat",
-    }
-    assert (release_root / "runtime").is_dir()
-    assert not (release_root / "tests").exists()
-
 
 def test_builder_manifest_records_python_dependencies_and_ts(tmp_path):
     lock_path = tmp_path / "requirements.lock"
@@ -195,7 +166,6 @@ def test_builder_manifest_records_python_dependencies_and_ts(tmp_path):
         spec,
         lock_path,
         ts_commit="b" * 40,
-        copied_entries=["app.py", "dashboard"],
         built_at="2026-08-11T00:00:00+00:00",
     )
 
@@ -203,4 +173,3 @@ def test_builder_manifest_records_python_dependencies_and_ts(tmp_path):
     assert manifest["dependency_lock"]["sha256"] == hashlib.sha256(lock_path.read_bytes()).hexdigest()
     assert manifest["ts_commit"] == "b" * 40
     assert manifest["built_at"] == "2026-08-11T00:00:00+00:00"
-    assert manifest["copied_entries"] == ["app.py", "dashboard"]

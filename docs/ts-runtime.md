@@ -1,47 +1,36 @@
-# HTFA Python and Ts runtime
+# HTFA portable project runtime
 
-HTFA has separate development and Windows distribution environments. Neither one is portable as a conventional virtual environment.
+The project folder contains two Python environments with different purposes:
 
-## Development environment
+- `.venv/` is only for development and can remain machine-local.
+- `runtime/` is the self-contained CPython 3.13.4 runtime used by `start.bat`.
 
-The repository `.venv/` is machine-local. Do not copy or synchronize it to another computer. Recreate it with Python 3.13.4 whenever the checkout moves:
+## Make the project folder portable
 
-```powershell
-python -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements.txt
-.venv\Scripts\python.exe scripts\install_ts.py
-```
-
-The pinned bootstrap repository, branch and commit are stored in `scripts/ts_runtime.json`. The development environment and its installed Ts package remain ignored by Git.
-
-The current bootstrap commit is `bec57a2610b38be3a8f78071d7e03850b53ca25e`.
-
-## Build the Windows x64 portable release
-
-Run from a working development environment:
+Run once from the development computer:
 
 ```powershell
 .venv\Scripts\python.exe scripts\build_portable.py
 ```
 
-The builder downloads the official CPython 3.13.4 Windows embeddable archive, verifies its pinned SHA-256, installs the exact binary dependencies from `requirements-win-py313.lock`, installs the pinned bootstrap Ts, and writes:
+The builder downloads the official CPython 3.13.4 Windows embeddable archive, verifies its pinned SHA-256, installs the exact binary dependencies from `requirements-win-py313.lock`, installs the pinned bootstrap Ts, and writes directly into the current project:
 
 ```text
-dist/HTFA-win-x64/
-|-- runtime/                 Python 3.13.4, dependencies, and current Ts
+HTFA_v1.1/
+|-- runtime/                 Python 3.13.4, dependencies, Ts, and manifest
 |-- dashboard/
 |-- scripts/
 |-- data/
 |-- .streamlit/
 |-- app.py
-|-- start.bat
-|-- requirements-win-py313.lock
-`-- runtime-manifest.json
+`-- start.bat
 ```
 
-Copy the whole `HTFA-win-x64` directory. The target Windows x64 computer needs no installed Python, pip, Git or compiler. It starts HTFA through `start.bat`; never copy the development `.venv/` as part of a release.
+Copy the whole `HTFA_v1.1` folder to any Windows x64 path and double-click its root `start.bat`. The target computer needs no installed Python, pip, Git or compiler. The copied `.venv/` and `.git/` directories are not used by startup and may be omitted to reduce copy size.
 
-`requirements.txt` expresses supported dependency ranges for development. `requirements-win-py313.lock` records the exact versions used by the portable release. `runtime-manifest.json` records the Python archive, dependency-lock hash, bootstrap Ts commit and build timestamp.
+The builder safely replaces only the root `runtime/` directory. `requirements-win-py313.lock` records exact dependency versions; `runtime/runtime-manifest.json` records the Python archive, dependency-lock hash, bootstrap Ts commit and build timestamp.
+
+The pinned bootstrap Ts commit is `bec57a2610b38be3a8f78071d7e03850b53ca25e`.
 
 ## Ts update behavior
 
