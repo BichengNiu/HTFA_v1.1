@@ -1,6 +1,8 @@
 # 经济运行分析平台 - 依赖包列表
 # 核心框架
 streamlit>=1.50.0
+# Streamlit 1.61.0 的 GZip 中间件尚不兼容 Starlette 1.4.0。
+starlette>=0.46.0,<1.4.0
 
 # 数据处理
 pandas>=2.3.0
