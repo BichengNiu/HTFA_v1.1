@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-# 使用与本地开发环境一致的官方Python 3.14运行时
+# 容器独立使用官方 Python 3.14 运行时；Windows 便携包使用 Python 3.13.4。
 FROM python:3.14.6-slim
 
 # 设置工作目录

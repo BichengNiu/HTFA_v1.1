@@ -6,7 +6,8 @@
 
 ## Build, Test, and Development Commands
 
-- `.venv\Scripts\python.exe -m pip install -r requirements.txt` installs Python 3.14 dependencies into the project virtual environment.
+- `python -m venv .venv` creates the machine-local Python 3.13.4 development environment; never copy `.venv/` between computers.
+- `.venv\Scripts\python.exe -m pip install -r requirements.txt` installs the development dependencies into that environment.
 - `.venv\Scripts\python.exe scripts\install_ts.py` installs the pinned `Ts` runtime into that virtual environment; do not restore or commit a root-level `Ts/` copy.
 - `streamlit run app.py --server.port=8501` starts the local dashboard.
 - `start.bat` starts the Windows development environment, clears Python caches, and frees port 8501.
