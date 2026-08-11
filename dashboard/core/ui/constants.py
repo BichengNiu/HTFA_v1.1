@@ -28,7 +28,7 @@ class UIConstants:
         "监测分析": {
             "icon": "[CHART]",
             "description": "对经济运行数据进行深度监测和分析，提供专业的分析报告",
-            "sub_modules": ["工业", "阿联酋"]
+            "sub_modules": ["工业", "阿联酋", "阿联酋V2"]
         },
         "模型分析": {
             "icon": "[MODEL]",
@@ -51,6 +51,10 @@ class UIConstants:
         "阿联酋": {
             "icon": "[UAE]",
             "description": "阿联酋经济数据预览与宏观诊断，监测页明确区分真实和模拟数据"
+        },
+        "阿联酋V2": {
+            "icon": "[UAE V2]",
+            "description": "按七条高频传导链组织的阿联酋经济监测看板"
         },
         "DFM 模型": {
             "icon": "[MODEL]",

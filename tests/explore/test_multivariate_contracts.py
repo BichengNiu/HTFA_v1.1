@@ -34,8 +34,12 @@ def test_explore_dataset_uses_contract_aware_frequency_tables():
 
     dataset = load_explore_dataset(workbook)
 
-    assert list(dataset.tables) == ["daily", "monthly", "quarterly", "yearly"]
-    assert dataset.tables["quarterly"].shape == (56, 84)
+    assert list(dataset.tables) == ["daily", "weekly", "monthly", "quarterly"]
+    for frame in dataset.tables.values():
+        assert not frame.empty
+        assert isinstance(frame.index, pd.DatetimeIndex)
+        assert frame.index.is_monotonic_increasing
+        assert not frame.index.has_duplicates
     assert dataset.file_name == "阿联酋.xlsx"
 
 
