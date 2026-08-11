@@ -1,11 +1,10 @@
-"""Launch local HTFA with the newest validated Ts runtime available."""
+"""Update Ts once and launch HTFA in the current Python process."""
 
 from __future__ import annotations
 
 import importlib
 import sys
 from collections.abc import Callable, Sequence
-from dataclasses import replace
 from pathlib import Path
 from types import ModuleType
 
@@ -13,13 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.ts_runtime import (
-    REQUIRED_INTERFACES,
-    RuntimeSelection,
-    RuntimeUpdateError,
-    installed_runtime_selection,
-    prepare_ts_runtime,
-)
+from scripts.ts_runtime import RuntimeSelection, RuntimeUpdateError, prepare_ts_runtime
 
 
 def _purge_ts_modules() -> None:
@@ -52,49 +45,23 @@ def _load_ts_from(root: Path) -> ModuleType:
         raise RuntimeUpdateError(
             f"selected Ts path mismatch: expected {expected_root}, got {actual_root}"
         )
-    missing = [
-        name
-        for name in REQUIRED_INTERFACES
-        if not callable(getattr(module, name, None))
-    ]
-    if missing:
-        raise RuntimeUpdateError(
-            "selected Ts runtime is missing HTFA interfaces: " + ", ".join(missing)
-        )
     return module
 
 
 def activate_ts_runtime(
     selection: RuntimeSelection,
-    *,
-    project_root: Path = PROJECT_ROOT,
 ) -> tuple[ModuleType, RuntimeSelection]:
-    """Preload the selected Ts package, falling back to the vendored copy."""
+    """Import the selected Ts without interface checks or fallback."""
 
     _purge_ts_modules()
-    try:
-        return _load_ts_from(selection.root), selection
-    except Exception as selected_error:  # noqa: BLE001 - imported code may fail freely
-        _purge_ts_modules()
-        _remove_path(selection.root)
-        installed = replace(
-            installed_runtime_selection(),
-            detail=f"selected runtime failed to load: {selected_error}",
-        )
-        try:
-            return _load_ts_from(installed.root), installed
-        except Exception as installed_error:
-            raise RuntimeUpdateError(
-                "both the selected and installed Ts runtimes failed: "
-                f"selected={selected_error}; installed={installed_error}"
-            ) from installed_error
+    return _load_ts_from(selection.root), selection
 
 
 def build_streamlit_argv(
     project_root: Path,
     extra_arguments: Sequence[str],
 ) -> list[str]:
-    """Build deterministic Streamlit CLI arguments for the local launcher."""
+    """Build deterministic Streamlit CLI arguments."""
 
     return [
         "streamlit",
@@ -107,14 +74,10 @@ def build_streamlit_argv(
 
 
 def format_selection_message(selection: RuntimeSelection) -> str:
-    """Return a short Chinese status line for the startup console."""
-
     short_commit = selection.commit[:7]
     if selection.source == "downloaded":
-        return f"[Ts] 已下载并使用最新版 {short_commit}"
-    if selection.source == "cached":
-        return f"[Ts] 使用最近验证版本 {short_commit}；{selection.detail}"
-    return f"[Ts] 使用虚拟环境安装版本 {short_commit}；{selection.detail}"
+        return f"[Ts] Updated from main: {short_commit}"
+    return f"[Ts] Using local version {short_commit}: {selection.detail}"
 
 
 def main(
@@ -123,11 +86,11 @@ def main(
     preparer: Callable[..., RuntimeSelection] | None = None,
     streamlit_main: Callable[[], int | None] | None = None,
 ) -> int:
-    """Check Ts once, activate it, then start Streamlit in this process."""
+    """Check Ts once, import it, then start Streamlit."""
 
     prepare = preparer or prepare_ts_runtime
     selected = prepare(project_root=PROJECT_ROOT)
-    _, active = activate_ts_runtime(selected, project_root=PROJECT_ROOT)
+    _, active = activate_ts_runtime(selected)
     print(format_selection_message(active), flush=True)
 
     sys.argv = build_streamlit_argv(PROJECT_ROOT, list(arguments or ()))
@@ -143,9 +106,4 @@ if __name__ == "__main__":
     raise SystemExit(main(sys.argv[1:]))
 
 
-__all__ = [
-    "activate_ts_runtime",
-    "build_streamlit_argv",
-    "format_selection_message",
-    "main",
-]
+__all__ = ["activate_ts_runtime", "build_streamlit_argv", "format_selection_message", "main"]
