@@ -50,6 +50,5 @@ data/nul
 
 # Windows portable build artifacts
 /build/
-/dist/
 /runtime/
 /wheelhouse/

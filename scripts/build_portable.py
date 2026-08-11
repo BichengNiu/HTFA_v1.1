@@ -1,4 +1,4 @@
-"""Build the self-contained Windows x64 HTFA release directory."""
+"""Build the self-contained Windows x64 HTFA project runtime."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import stat
 import subprocess
 import sys
 import zipfile
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, BinaryIO
@@ -25,23 +25,7 @@ from scripts.ts_runtime import load_pinned_metadata
 SPEC_PATH = PROJECT_ROOT / "scripts" / "portable_runtime.json"
 LOCK_PATH = PROJECT_ROOT / "requirements-win-py313.lock"
 BUILD_ROOT = PROJECT_ROOT / "build" / "portable"
-RELEASE_ROOT = PROJECT_ROOT / "dist" / "HTFA-win-x64"
-RELEASE_ENTRIES = (
-    ".streamlit",
-    "app.py",
-    "dashboard",
-    "data",
-    "requirements-win-py313.lock",
-    "scripts",
-    "start.bat",
-)
-COPY_IGNORE_NAMES = {
-    "__pycache__",
-    ".pytest_cache",
-    ".mypy_cache",
-    ".ruff_cache",
-}
-COPY_IGNORE_SUFFIXES = {".pyc", ".pyo", ".orig", ".rej"}
+RUNTIME_ROOT = PROJECT_ROOT / "runtime"
 USER_AGENT = "HTFA portable builder"
 
 
@@ -125,37 +109,12 @@ def write_embedded_path_file(runtime_root: Path) -> Path:
     return path_file
 
 
-def _copy_ignore(_directory: str, names: list[str]) -> set[str]:
-    return {
-        name
-        for name in names
-        if name in COPY_IGNORE_NAMES or Path(name).suffix in COPY_IGNORE_SUFFIXES
-    }
-
-
-def copy_release_files(source_root: Path, release_root: Path) -> list[str]:
-    """Copy only the explicit release allowlist into an existing release root."""
-
-    copied: list[str] = []
-    for name in RELEASE_ENTRIES:
-        source = source_root / name
-        if not source.exists():
-            raise FileNotFoundError(f"required release entry is missing: {source}")
-        destination = release_root / name
-        if source.is_dir():
-            shutil.copytree(source, destination, ignore=_copy_ignore)
-        else:
-            shutil.copy2(source, destination)
-        copied.append(name)
-    return sorted(copied)
-
 
 def build_manifest(
     spec: dict[str, str],
     lock_path: Path,
     *,
     ts_commit: str,
-    copied_entries: Iterable[str],
     built_at: str | None = None,
 ) -> dict[str, Any]:
     """Build the machine-readable release manifest."""
@@ -168,7 +127,6 @@ def build_manifest(
         },
         "ts_commit": ts_commit,
         "built_at": built_at or datetime.now(timezone.utc).isoformat(),
-        "copied_entries": sorted(copied_entries),
     }
 
 
@@ -239,7 +197,7 @@ def remove_console_scripts(runtime_root: Path) -> None:
         shutil.rmtree(scripts_root, onexc=_remove_readonly)
 
 
-def verify_runtime(runtime_python: Path, *, release_root: Path) -> None:
+def verify_runtime(runtime_python: Path, *, project_root: Path) -> None:
     imports = (
         "streamlit, pandas, numpy, scipy, statsmodels, sklearn, matplotlib, "
         "dtaidistance, arch, Ts"
@@ -251,7 +209,7 @@ def verify_runtime(runtime_python: Path, *, release_root: Path) -> None:
             "-c",
             f"import {imports}; print('portable runtime imports OK')",
         ],
-        cwd=release_root,
+        cwd=project_root,
     )
 
 
@@ -261,7 +219,7 @@ def build(
     builder_python: Path = Path(sys.executable),
     opener: Callable[..., Any] = urlopen,
 ) -> Path:
-    """Build and verify dist/HTFA-win-x64."""
+    """Build and verify the project-root runtime directory."""
 
     project_root = project_root.resolve()
     spec = load_portable_spec(project_root)
@@ -271,13 +229,11 @@ def build(
         project_root / "build" / "portable",
         project_root / "build" / "portable",
     )
-    release_root = _reset_generated_directory(
+    runtime_root = _reset_generated_directory(
         project_root,
-        project_root / "dist" / "HTFA-win-x64",
-        project_root / "dist" / "HTFA-win-x64",
+        project_root / "runtime",
+        project_root / "runtime",
     )
-    runtime_root = release_root / "runtime"
-    runtime_root.mkdir()
 
     archive_path = build_root / "python-3.13.4-embed-amd64.zip"
     _download_file(spec["archive_url"], archive_path, opener=opener)
@@ -303,26 +259,24 @@ def build(
 
     pinned = load_pinned_metadata(project_root)
     install_ts(install_root=site_packages)
-    copied_entries = copy_release_files(project_root, release_root)
     manifest = build_manifest(
         spec,
         lock_path,
         ts_commit=pinned["commit"],
-        copied_entries=copied_entries,
     )
-    (release_root / "runtime-manifest.json").write_text(
+    (runtime_root / "runtime-manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    verify_runtime(runtime_python, release_root=release_root)
-    return release_root
+    verify_runtime(runtime_python, project_root=project_root)
+    return runtime_root
 
 
 def main(arguments: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.parse_args(arguments)
-    release_root = build()
-    print(f"Portable HTFA built at {release_root}")
+    runtime_root = build()
+    print(f"Portable HTFA runtime built at {runtime_root}")
     return 0
 
 
