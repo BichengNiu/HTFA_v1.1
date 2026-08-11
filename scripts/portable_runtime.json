@@ -1,0 +1,6 @@
+{
+  "python_version": "3.13.4",
+  "platform": "win_amd64",
+  "archive_url": "https://www.python.org/ftp/python/3.13.4/python-3.13.4-embed-amd64.zip",
+  "archive_sha256": "514ca14ec356ecb7749a7c0a1ef1eac9fd9c67d57af4812cb1f0822b0d3a85e8"
+}

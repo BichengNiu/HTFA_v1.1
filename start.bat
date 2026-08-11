@@ -12,6 +12,8 @@ if errorlevel 1 (
     goto :failed
 )
 
+set "PYTHONDONTWRITEBYTECODE=1"
+
 echo [1/4] Checking the bundled Python runtime...
 if not exist "runtime\python.exe" (
     echo [ERROR] Bundled runtime\python.exe was not found.
