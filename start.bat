@@ -47,18 +47,8 @@ echo [OK] Python caches cleared.
 echo.
 
 echo [3/5] Checking port 8501...
-set "HTFA_PORT_IN_USE=false"
-for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":8501" ^| findstr "LISTENING"') do (
-    set "HTFA_PORT_IN_USE=true"
-    echo [INFO] Stopping process %%P on port 8501...
-    taskkill /F /PID %%P >nul 2>&1
-)
-if "%HTFA_PORT_IN_USE%"=="true" (
-    timeout /t 2 /nobreak >nul
-    echo [OK] Port 8501 released.
-) else (
-    echo [OK] Port 8501 is available.
-)
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\free_port.ps1 -Port 8501 -WaitSeconds 15
+if errorlevel 1 goto :failed
 echo.
 
 echo [4/5] Configuring the runtime environment...
