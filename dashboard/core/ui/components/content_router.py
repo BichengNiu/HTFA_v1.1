@@ -309,6 +309,10 @@ def render_monitoring_analysis_content(sub_module: Optional[str]) -> Dict[str, A
         from dashboard.analysis.uae import render_uae_monitoring
         result = render_uae_monitoring(st)
         status = result.get('status', 'success')
+    elif sub_module == '阿联酋V2':
+        from dashboard.analysis.uae_v2 import render_uae_v2_monitoring
+        result = render_uae_v2_monitoring(st)
+        status = result.get('status', 'success')
     else:
         st.info("请选择一个子模块以开始监测分析")
         status = 'success'
@@ -509,7 +513,9 @@ def detect_navigation_level(main_module: str, sub_module: Optional[str]) -> str:
             return 'FUNCTION_ACTIVE'
 
         # 对于监测分析模块，如果已选择子模块，直接进入功能层
-        if main_module == '监测分析' and sub_module in {'工业', '阿联酋'}:
+        if main_module == '监测分析' and sub_module in {
+            '工业', '阿联酋', '阿联酋V2'
+        }:
             return 'FUNCTION_ACTIVE'
 
         return 'SUB_MODULE_ONLY'

@@ -15,6 +15,12 @@ from dashboard.core import get_current_main_module, get_current_sub_module, set_
 
 logger = logging.getLogger(__name__)
 
+# 尚未纳入细粒度权限配置的试运行子模块。
+# 用户只要能访问对应主模块，就可以在侧边栏进入这些页面。
+PERMISSION_NEUTRAL_SUBMODULES = {
+    "监测分析": {"阿联酋V2"},
+}
+
 
 def render_complete_sidebar(
     module_config: Dict[str, Any],
@@ -116,8 +122,17 @@ def render_complete_sidebar(
                         current_user, updated_main_module
                     )
 
+                    permission_neutral = PERMISSION_NEUTRAL_SUBMODULES.get(
+                        updated_main_module,
+                        set(),
+                    )
+
                     # 过滤子模块选项
-                    sub_module_options = [sub for sub in sub_module_options if sub in accessible_submodules]
+                    sub_module_options = [
+                        sub
+                        for sub in sub_module_options
+                        if sub in accessible_submodules or sub in permission_neutral
+                    ]
 
                 # 渲染子模块选择器
                 sub_module_result = render_sub_module_selector(
