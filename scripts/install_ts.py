@@ -14,30 +14,38 @@ if str(PROJECT_ROOT) not in sys.path:
 from scripts.ts_runtime import (
     install_ts_runtime,
     load_pinned_metadata,
-    materialize_git_runtime,
-    smoke_test_runtime,
+    materialize_github_runtime,
     temporary_work_directory,
 )
 
 
-def install(source_root: Path | None = None) -> Path:
+def install(
+    source_root: Path | None = None,
+    install_root: Path | None = None,
+) -> Path:
     """Install a local Ts tree or download the pinned upstream commit."""
 
     metadata = load_pinned_metadata(PROJECT_ROOT)
     commit = metadata["commit"]
     if source_root is not None:
         candidate_root = source_root.resolve()
-        smoke_test_runtime(candidate_root)
-        return install_ts_runtime(candidate_root, commit=commit).root / "Ts"
+        return install_ts_runtime(
+            candidate_root,
+            commit=commit,
+            install_root=install_root,
+        ).root / "Ts"
 
     with temporary_work_directory(
         Path(tempfile.gettempdir()),
         prefix=f"{commit[:12]}-",
     ) as temporary:
         candidate_root = temporary / "candidate"
-        materialize_git_runtime(commit, candidate_root)
-        smoke_test_runtime(candidate_root)
-        return install_ts_runtime(candidate_root, commit=commit).root / "Ts"
+        materialize_github_runtime(commit, candidate_root)
+        return install_ts_runtime(
+            candidate_root,
+            commit=commit,
+            install_root=install_root,
+        ).root / "Ts"
 
 
 def main(arguments: list[str] | None = None) -> int:
@@ -47,8 +55,13 @@ def main(arguments: list[str] | None = None) -> int:
         type=Path,
         help="Root containing Ts/; intended for migrating a local source tree.",
     )
+    parser.add_argument(
+        "--install-root",
+        type=Path,
+        help="Target site-packages directory; defaults to the active environment.",
+    )
     options = parser.parse_args(arguments)
-    installed_path = install(options.source_root)
+    installed_path = install(options.source_root, options.install_root)
     print(f"Ts installed at {installed_path}")
     return 0
 

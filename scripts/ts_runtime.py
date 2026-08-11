@@ -1,4 +1,4 @@
-"""Prepare and activate a validated Ts runtime for local HTFA startup."""
+"""Install the newest Ts main commit before launching HTFA."""
 
 from __future__ import annotations
 
@@ -9,21 +9,21 @@ import re
 import secrets
 import shutil
 import stat
-import subprocess
-import sys
 import sysconfig
 import tempfile
 import zipfile
 from collections.abc import Callable, Iterator
-from contextlib import AbstractContextManager, contextmanager
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, BinaryIO
+from urllib.request import Request, urlopen
 
 GITHUB_REPOSITORY = "BichengNiu/Ts"
 GITHUB_BRANCH = "main"
-GITHUB_REPOSITORY_URL = f"https://github.com/{GITHUB_REPOSITORY}.git"
+GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/commits/{GITHUB_BRANCH}"
+GITHUB_ARCHIVE_URL = f"https://codeload.github.com/{GITHUB_REPOSITORY}/zip/{{commit}}"
 RUNTIME_PACKAGES = (
     "TsMetrics",
     "TsModels",
@@ -32,27 +32,17 @@ RUNTIME_PACKAGES = (
     "TsTests",
     "TsUtils",
 )
-REQUIRED_INTERFACES = (
-    "TimeSeriesSummary",
-    "difference",
-    "plot_acf",
-    "plot_pacf",
-    "plot_series",
-    "ADFTest",
-    "KPSSTest",
-    "PhillipsPerronTest",
-    "ZivotAndrewsTest",
-)
 CHECK_TIMEOUT_SECONDS = 3
 DOWNLOAD_TIMEOUT_SECONDS = 30
 MAX_ARCHIVE_BYTES = 25 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 50 * 1024 * 1024
 COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 INSTALLED_METADATA_NAME = "HTFA_RUNTIME.json"
+USER_AGENT = "HTFA/1.1 Ts updater"
 
 
 class RuntimeUpdateError(RuntimeError):
-    """Raised when a candidate Ts runtime cannot be trusted or activated."""
+    """Raised when a Ts update cannot be downloaded or installed safely."""
 
 
 @dataclass(frozen=True)
@@ -70,19 +60,13 @@ def _timestamp() -> str:
 
 
 def installed_runtime_root() -> Path:
-    """Return the environment package root containing the installed Ts package."""
+    """Return the active interpreter's site-packages directory."""
 
     return Path(sysconfig.get_path("purelib")).resolve()
 
 
-def default_cache_root() -> Path:
-    """Return the Ts update cache inside the active Python environment."""
-
-    return installed_runtime_root() / ".htfa-ts-runtime"
-
-
 def load_pinned_metadata(project_root: Path) -> dict[str, str]:
-    """Load and validate the pinned bootstrap version metadata."""
+    """Load the fixed Ts commit bundled into a new runtime."""
 
     metadata_path = project_root / "scripts" / "ts_runtime.json"
     try:
@@ -91,11 +75,11 @@ def load_pinned_metadata(project_root: Path) -> dict[str, str]:
         raise RuntimeUpdateError(f"invalid pinned Ts metadata: {exc}") from exc
 
     expected_repository = f"https://github.com/{GITHUB_REPOSITORY}"
+    commit = str(metadata.get("commit", ""))
     if metadata.get("repository") != expected_repository:
         raise RuntimeUpdateError("pinned Ts repository does not match the allowlist")
     if metadata.get("branch") != GITHUB_BRANCH:
         raise RuntimeUpdateError("pinned Ts branch does not match the allowlist")
-    commit = str(metadata.get("commit", ""))
     if not COMMIT_PATTERN.fullmatch(commit):
         raise RuntimeUpdateError("pinned Ts commit is not a full SHA-1")
     return {
@@ -106,7 +90,7 @@ def load_pinned_metadata(project_root: Path) -> dict[str, str]:
 
 
 def load_installed_metadata(root: Path | None = None) -> dict[str, str]:
-    """Load validated metadata from the Ts package installed in the environment."""
+    """Load the commit metadata stored inside the current Ts package."""
 
     package_root = (root or installed_runtime_root()).resolve() / "Ts"
     metadata_path = package_root / INSTALLED_METADATA_NAME
@@ -130,140 +114,28 @@ def load_installed_metadata(root: Path | None = None) -> dict[str, str]:
     }
 
 
-def read_state(state_path: Path) -> dict[str, Any]:
-    """Read updater state; corrupt or absent state is treated as empty."""
-
-    try:
-        value = json.loads(state_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return value if isinstance(value, dict) else {}
-
-
-def write_state(state_path: Path, state: dict[str, Any]) -> None:
-    """Atomically write updater state in the cache filesystem."""
-
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            dir=state_path.parent,
-            prefix=f".{state_path.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as temporary:
-            json.dump(state, temporary, ensure_ascii=False, indent=2, sort_keys=True)
-            temporary.write("\n")
-            temporary.flush()
-            os.fsync(temporary.fileno())
-            temporary_path = Path(temporary.name)
-        os.replace(temporary_path, state_path)
-    finally:
-        if temporary_path is not None and temporary_path.exists():
-            temporary_path.unlink(missing_ok=True)
-
-
-class UpdateLock(AbstractContextManager[bool]):
-    """A non-blocking cross-platform file lock for cache writers."""
-
-    def __init__(self, path: Path):
-        self.path = path
-        self._handle: BinaryIO | None = None
-        self._acquired = False
-
-    def __enter__(self) -> bool:
-        try:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            self._handle = self.path.open("a+b")
-            self._handle.seek(0, os.SEEK_END)
-            if self._handle.tell() == 0:
-                self._handle.write(b"0")
-                self._handle.flush()
-            self._handle.seek(0)
-            if os.name == "nt":
-                import msvcrt
-
-                msvcrt.locking(self._handle.fileno(), msvcrt.LK_NBLCK, 1)
-            else:
-                import fcntl
-
-                fcntl.flock(self._handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            self._acquired = True
-        except (OSError, BlockingIOError):
-            if self._handle is not None:
-                self._handle.close()
-                self._handle = None
-        return self._acquired
-
-    def __exit__(self, exc_type, exc, traceback) -> None:
-        if self._handle is None:
-            return
-        try:
-            self._handle.seek(0)
-            if self._acquired and os.name == "nt":
-                import msvcrt
-
-                msvcrt.locking(self._handle.fileno(), msvcrt.LK_UNLCK, 1)
-            elif self._acquired:
-                import fcntl
-
-                fcntl.flock(self._handle.fileno(), fcntl.LOCK_UN)
-        finally:
-            self._handle.close()
-            self._handle = None
-            self._acquired = False
-
-
-def _git_environment() -> dict[str, str]:
-    environment = os.environ.copy()
-    environment["GIT_TERMINAL_PROMPT"] = "0"
-    environment["GCM_INTERACTIVE"] = "Never"
-    return environment
-
-
-def _run_git(
-    arguments: list[str],
-    *,
-    timeout: int,
-    runner: Callable[..., Any] = subprocess.run,
-) -> Any:
-    try:
-        completed = runner(
-            ["git", *arguments],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout,
-            check=False,
-            env=_git_environment(),
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise RuntimeUpdateError(f"Git is unavailable or timed out: {exc}") from exc
-    if completed.returncode != 0:
-        error = (completed.stderr or completed.stdout or "unknown Git error").strip()
-        raise RuntimeUpdateError(f"Git command failed: {error}")
-    return completed
-
-
 def fetch_head_commit(
     *,
-    runner: Callable[..., Any] = subprocess.run,
+    opener: Callable[..., Any] = urlopen,
     timeout: int = CHECK_TIMEOUT_SECONDS,
 ) -> str:
-    """Resolve private or public main HEAD through the user's Git credentials."""
+    """Return the public main HEAD through the GitHub HTTPS API."""
 
-    completed = _run_git(
-        ["ls-remote", GITHUB_REPOSITORY_URL, f"refs/heads/{GITHUB_BRANCH}"],
-        timeout=timeout,
-        runner=runner,
+    request = Request(
+        GITHUB_API_URL,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": USER_AGENT,
+        },
     )
-    fields = completed.stdout.strip().split()
-    commit = fields[0] if fields else ""
+    try:
+        with opener(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception as exc:
+        raise RuntimeUpdateError(f"GitHub HEAD request failed: {exc}") from exc
+    commit = str(payload.get("sha", "")) if isinstance(payload, dict) else ""
     if not COMMIT_PATTERN.fullmatch(commit):
-        raise RuntimeUpdateError("Git returned an invalid commit SHA-1")
+        raise RuntimeUpdateError("GitHub returned an invalid commit SHA-1")
     return commit
 
 
@@ -275,72 +147,64 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def materialize_git_runtime(
+def _download_archive(
+    commit: str,
+    archive_path: Path,
+    *,
+    opener: Callable[..., Any],
+    timeout: int,
+    max_bytes: int,
+) -> None:
+    request = Request(
+        GITHUB_ARCHIVE_URL.format(commit=commit),
+        headers={"User-Agent": USER_AGENT},
+    )
+    total = 0
+    try:
+        with opener(request, timeout=timeout) as response, archive_path.open("wb") as output:
+            while True:
+                chunk = response.read(64 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > max_bytes:
+                    raise RuntimeUpdateError("Ts archive exceeded the size limit")
+                output.write(chunk)
+    except RuntimeUpdateError:
+        raise
+    except Exception as exc:
+        raise RuntimeUpdateError(f"Ts archive download failed: {exc}") from exc
+    if total == 0:
+        raise RuntimeUpdateError("Ts archive download was empty")
+
+
+def materialize_github_runtime(
     commit: str,
     destination: Path,
     *,
-    runner: Callable[..., Any] = subprocess.run,
+    opener: Callable[..., Any] = urlopen,
     timeout: int = DOWNLOAD_TIMEOUT_SECONDS,
     max_bytes: int = MAX_ARCHIVE_BYTES,
 ) -> str:
-    """Fetch one private-repository commit and materialize allowlisted runtime files."""
+    """Download one immutable commit and extract the allowlisted Ts files."""
 
     if not COMMIT_PATTERN.fullmatch(commit):
-        raise RuntimeUpdateError("refusing to fetch an invalid commit")
+        raise RuntimeUpdateError("refusing to download an invalid commit")
     destination.parent.mkdir(parents=True, exist_ok=True)
-    repository = destination.parent / "source.git"
-    archive_path = destination.parent / "Ts.git.zip"
-    _run_git(["init", "--quiet", str(repository)], timeout=timeout, runner=runner)
-    _run_git(
-        ["-C", str(repository), "remote", "add", "origin", GITHUB_REPOSITORY_URL],
-        timeout=timeout,
-        runner=runner,
-    )
-    _run_git(
-        [
-            "-C",
-            str(repository),
-            "fetch",
-            "--quiet",
-            "--depth",
-            "1",
-            "origin",
-            commit,
-        ],
-        timeout=timeout,
-        runner=runner,
-    )
-    resolved = _run_git(
-        ["-C", str(repository), "rev-parse", "FETCH_HEAD"],
-        timeout=timeout,
-        runner=runner,
-    ).stdout.strip()
-    if resolved != commit:
-        raise RuntimeUpdateError(
-            f"fetched commit mismatch: expected {commit}, got {resolved}"
-        )
-    _run_git(
-        [
-            "-C",
-            str(repository),
-            "archive",
-            "--format=zip",
-            f"--prefix=Ts-{commit}/",
-            f"--output={archive_path}",
-            "FETCH_HEAD",
-        ],
-        timeout=timeout,
-        runner=runner,
-    )
+    archive_path = destination.parent / f"Ts-{commit}.zip"
     try:
-        archive_size = archive_path.stat().st_size
-    except OSError as exc:
-        raise RuntimeUpdateError(f"Git did not create the Ts archive: {exc}") from exc
-    if archive_size == 0 or archive_size > max_bytes:
-        raise RuntimeUpdateError("Ts archive exceeded the size limit")
-    archive_sha256 = _sha256_file(archive_path)
-    extract_runtime_archive(archive_path, destination)
-    return archive_sha256
+        _download_archive(
+            commit,
+            archive_path,
+            opener=opener,
+            timeout=timeout,
+            max_bytes=max_bytes,
+        )
+        archive_sha256 = _sha256_file(archive_path)
+        extract_runtime_archive(archive_path, destination)
+        return archive_sha256
+    finally:
+        archive_path.unlink(missing_ok=True)
 
 
 def _validate_zip_member(info: zipfile.ZipInfo) -> PurePosixPath:
@@ -360,7 +224,7 @@ def _validate_zip_member(info: zipfile.ZipInfo) -> PurePosixPath:
 
 
 def extract_runtime_archive(archive_path: Path, destination: Path) -> Path:
-    """Extract only the allowlisted Python runtime files from a Ts archive."""
+    """Extract only the Ts Python files needed by HTFA."""
 
     try:
         archive = zipfile.ZipFile(archive_path)
@@ -432,8 +296,6 @@ def _remove_tree(path: Path) -> None:
 
 
 def _make_unique_directory(parent: Path, prefix: str) -> Path:
-    """Create a private work directory without restrictive cloud-drive ACLs."""
-
     parent.mkdir(parents=True, exist_ok=True)
     for _ in range(100):
         candidate = parent / f"{prefix}{secrets.token_hex(4)}"
@@ -458,8 +320,6 @@ def temporary_work_directory(parent: Path, prefix: str) -> Iterator[Path]:
 
 
 def _make_tree_writable(path: Path) -> None:
-    """Remove copied read-only attributes without changing file contents."""
-
     for entry in [path, *path.rglob("*")]:
         mode = stat.S_IRUSR | stat.S_IWUSR
         if entry.is_dir():
@@ -468,7 +328,7 @@ def _make_tree_writable(path: Path) -> None:
 
 
 def installed_runtime_selection(root: Path | None = None) -> RuntimeSelection:
-    """Return the Ts runtime installed alongside the environment dependencies."""
+    """Return the current Ts package without importing it."""
 
     runtime_root = (root or installed_runtime_root()).resolve()
     if not _runtime_layout_is_valid(runtime_root):
@@ -480,7 +340,7 @@ def installed_runtime_selection(root: Path | None = None) -> RuntimeSelection:
         root=runtime_root,
         commit=metadata["commit"],
         source="installed",
-        detail="using Ts installed in the active Python environment",
+        detail="using the current Ts installed in this runtime",
     )
 
 
@@ -490,12 +350,12 @@ def install_ts_runtime(
     commit: str,
     install_root: Path | None = None,
 ) -> RuntimeSelection:
-    """Atomically install a validated Ts source tree into site-packages."""
+    """Atomically replace the current Ts package without importing it."""
 
     source_root = source_root.resolve()
     install_root = (install_root or installed_runtime_root()).resolve()
     if not COMMIT_PATTERN.fullmatch(commit):
-        raise RuntimeUpdateError("refusing to install an invalid Ts commit")
+        raise RuntimeUpdateError("refusing to install an invalid commit")
     if not _runtime_layout_is_valid(source_root):
         raise RuntimeUpdateError(f"invalid Ts runtime layout: {source_root}")
 
@@ -512,14 +372,15 @@ def install_ts_runtime(
             ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"),
         )
         _make_tree_writable(staged_package)
-        write_state(
-            staged_package / INSTALLED_METADATA_NAME,
-            {
-                "repository": f"https://github.com/{GITHUB_REPOSITORY}",
-                "branch": GITHUB_BRANCH,
-                "commit": commit,
-                "installed_at": _timestamp(),
-            },
+        metadata = {
+            "repository": f"https://github.com/{GITHUB_REPOSITORY}",
+            "branch": GITHUB_BRANCH,
+            "commit": commit,
+            "installed_at": _timestamp(),
+        }
+        (staged_package / INSTALLED_METADATA_NAME).write_text(
+            json.dumps(metadata, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
         )
         if target_package.exists():
             os.replace(target_package, backup_package)
@@ -539,255 +400,51 @@ def install_ts_runtime(
     return installed_runtime_selection(install_root)
 
 
-def smoke_test_runtime(
-    root: Path,
-    *,
-    python_executable: str = sys.executable,
-    timeout: int = 20,
-) -> None:
-    """Import the candidate in an isolated child process using the current Python."""
-
-    expected = (root / "Ts").resolve()
-    code = """
-from pathlib import Path
-import Ts
-from Ts import TimeSeriesSummary, difference
-from Ts.TsPlots import plot_acf, plot_pacf, plot_series
-from Ts.TsTests import ADFTest, KPSSTest, PhillipsPerronTest, ZivotAndrewsTest
-expected = Path.cwd().joinpath('Ts').resolve()
-actual = Path(Ts.__file__).resolve().parent
-assert actual == expected, f'wrong Ts import: {actual}'
-assert all(callable(item) for item in (
-    TimeSeriesSummary, difference, plot_acf, plot_pacf, plot_series,
-    ADFTest, KPSSTest, PhillipsPerronTest, ZivotAndrewsTest,
-))
-"""
-    environment = os.environ.copy()
-    environment.pop("PYTHONPATH", None)
-    environment["PYTHONNOUSERSITE"] = "1"
-    try:
-        completed = subprocess.run(
-            [python_executable, "-c", code],
-            cwd=root,
-            env=environment,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise RuntimeUpdateError(f"Ts candidate smoke test failed: {exc}") from exc
-    if completed.returncode != 0:
-        output = (completed.stderr or completed.stdout).strip()
-        raise RuntimeUpdateError(f"Ts candidate smoke test failed: {output}")
-    if not expected.is_dir():
-        raise RuntimeUpdateError("Ts candidate disappeared after its smoke test")
-
-
-def _read_version_metadata(version_root: Path) -> dict[str, Any] | None:
-    metadata = read_state(version_root / "metadata.json")
-    commit = str(metadata.get("commit", ""))
-    if (
-        version_root.name != commit
-        or not COMMIT_PATTERN.fullmatch(commit)
-        or not _runtime_layout_is_valid(version_root)
-    ):
-        return None
-    return metadata
-
-
-def _cached_selections(cache_root: Path) -> list[RuntimeSelection]:
-    versions_root = cache_root / "versions"
-    if not versions_root.is_dir():
-        return []
-    candidates: list[tuple[str, RuntimeSelection]] = []
-    for version_root in versions_root.iterdir():
-        if not version_root.is_dir():
-            continue
-        metadata = _read_version_metadata(version_root)
-        if metadata is None:
-            continue
-        verified_at = str(metadata.get("verified_at", ""))
-        selection = RuntimeSelection(
-            root=version_root,
-            commit=str(metadata["commit"]),
-            source="cached",
-            detail="using a previously verified Ts runtime",
-        )
-        candidates.append((verified_at, selection))
-    candidates.sort(key=lambda item: item[0], reverse=True)
-    return [selection for _, selection in candidates]
-
-
-def _fallback_selection(
-    cache_root: Path,
-    state: dict[str, Any],
-    install_root: Path | None = None,
-) -> RuntimeSelection:
-    cached = _cached_selections(cache_root)
-    active_commit = state.get("active_commit")
-    for selection in cached:
-        if selection.commit == active_commit:
-            return selection
-    if cached:
-        return cached[0]
-    return installed_runtime_selection(install_root)
-
-
-def _safe_write_state(state_path: Path, state: dict[str, Any]) -> None:
-    try:
-        write_state(state_path, state)
-    except OSError:
-        pass
-
-
-def _failure_state(
-    state: dict[str, Any],
-    fallback: RuntimeSelection,
-    error: Exception | str,
-) -> dict[str, Any]:
-    updated = dict(state)
-    updated.update(
-        {
-            "active_commit": fallback.commit,
-            "last_check_at": _timestamp(),
-            "last_error": str(error),
-        }
-    )
-    return updated
-
-
-def _prune_versions(cache_root: Path, active_commit: str, keep: int = 2) -> None:
-    candidates = _cached_selections(cache_root)
-    keep_commits = {active_commit}
-    for selection in candidates:
-        if len(keep_commits) >= keep:
-            break
-        keep_commits.add(selection.commit)
-    for selection in candidates:
-        if selection.commit not in keep_commits:
-            _remove_tree(selection.root)
-
-
 def prepare_ts_runtime(
     *,
     project_root: Path,
-    cache_root: Path | None = None,
+    install_root: Path | None = None,
     head_fetcher: Callable[[], str] | None = None,
     candidate_materializer: Callable[[str, Path], str] | None = None,
-    python_executable: str = sys.executable,
 ) -> RuntimeSelection:
-    """Select the latest validated runtime without risking HTFA availability."""
+    """Update from public main when possible; otherwise keep the current Ts."""
 
-    project_root = project_root.resolve()
-    installed = installed_runtime_selection()
-    cache_root = (cache_root or default_cache_root()).resolve()
-    state_path = cache_root / "state.json"
+    project_root.resolve()
+    installed = installed_runtime_selection(install_root)
+    fetch_head = head_fetcher or fetch_head_commit
+    materialize = candidate_materializer or materialize_github_runtime
+
     try:
-        cache_root.mkdir(parents=True, exist_ok=True)
-    except OSError as exc:
-        return replace(installed, detail=f"Ts cache is unavailable: {exc}")
+        head_commit = fetch_head()
+    except Exception as exc:
+        return replace(installed, detail=f"update check failed: {exc}")
+    if head_commit == installed.commit:
+        return replace(installed, detail="current Ts matches main HEAD")
 
-    state = read_state(state_path)
-    fallback = _fallback_selection(cache_root, state)
-
-    with UpdateLock(cache_root / "update.lock") as acquired:
-        if not acquired:
-            return replace(fallback, detail="another HTFA process is checking Ts")
-
-        try:
-            head_commit = (head_fetcher or fetch_head_commit)()
-        except Exception as exc:  # noqa: BLE001 - network failures must fall back
-            _safe_write_state(state_path, _failure_state(state, fallback, exc))
-            return replace(fallback, detail=str(exc))
-
-        cached_by_commit = {
-            selection.commit: selection for selection in _cached_selections(cache_root)
-        }
-        if head_commit in cached_by_commit:
-            selected = cached_by_commit[head_commit]
-            _safe_write_state(
-                state_path,
-                {
-                    **state,
-                    "active_commit": selected.commit,
-                    "last_check_at": _timestamp(),
-                    "last_error": None,
-                },
-            )
-            return replace(selected, detail="the cached Ts runtime matches main HEAD")
-
-        if head_commit == installed.commit:
-            _safe_write_state(
-                state_path,
-                {
-                    **state,
-                    "active_commit": installed.commit,
-                    "last_check_at": _timestamp(),
-                    "last_error": None,
-                },
-            )
-            return replace(installed, detail="the installed Ts runtime matches main HEAD")
-
-        staging_parent = cache_root / "staging"
-        staging_parent.mkdir(parents=True, exist_ok=True)
-        staging_root = _make_unique_directory(
-            staging_parent,
-            f"{head_commit[:12]}-",
-        )
-        try:
-            candidate_root = staging_root / "candidate"
-            materialize = candidate_materializer or materialize_git_runtime
-            archive_sha256 = materialize(head_commit, candidate_root)
-            smoke_test_runtime(
+    try:
+        with temporary_work_directory(
+            Path(tempfile.gettempdir()),
+            prefix=f"htfa-ts-{head_commit[:12]}-",
+        ) as temporary:
+            candidate_root = temporary / "candidate"
+            materialize(head_commit, candidate_root)
+            updated = install_ts_runtime(
                 candidate_root,
-                python_executable=python_executable,
-            )
-            verified_at = _timestamp()
-            write_state(
-                candidate_root / "metadata.json",
-                {
-                    "archive_sha256": archive_sha256,
-                    "commit": head_commit,
-                    "verified_at": verified_at,
-                },
-            )
-            versions_root = cache_root / "versions"
-            versions_root.mkdir(parents=True, exist_ok=True)
-            final_root = versions_root / head_commit
-            if final_root.exists():
-                shutil.rmtree(final_root)
-            os.replace(candidate_root, final_root)
-            selected = RuntimeSelection(
-                root=final_root,
                 commit=head_commit,
-                source="downloaded",
-                detail="downloaded and verified main HEAD",
+                install_root=install_root,
             )
-            write_state(
-                state_path,
-                {
-                    **state,
-                    "active_commit": head_commit,
-                    "archive_sha256": archive_sha256,
-                    "last_check_at": verified_at,
-                    "last_error": None,
-                },
-            )
-            _prune_versions(cache_root, head_commit)
-            return selected
-        except Exception as exc:  # noqa: BLE001 - candidate failures must fall back
-            _safe_write_state(state_path, _failure_state(state, fallback, exc))
-            return replace(fallback, detail=str(exc))
-        finally:
-            shutil.rmtree(staging_root, ignore_errors=True)
+        return replace(
+            updated,
+            source="downloaded",
+            detail="updated from main HEAD",
+        )
+    except Exception as exc:
+        return replace(installed, detail=f"update failed: {exc}")
 
 
 __all__ = [
     "RuntimeSelection",
     "RuntimeUpdateError",
-    "UpdateLock",
-    "default_cache_root",
     "extract_runtime_archive",
     "fetch_head_commit",
     "install_ts_runtime",
@@ -795,10 +452,7 @@ __all__ = [
     "installed_runtime_selection",
     "load_installed_metadata",
     "load_pinned_metadata",
-    "materialize_git_runtime",
+    "materialize_github_runtime",
     "prepare_ts_runtime",
-    "read_state",
-    "smoke_test_runtime",
     "temporary_work_directory",
-    "write_state",
 ]
