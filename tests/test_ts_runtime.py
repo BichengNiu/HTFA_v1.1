@@ -1,170 +1,152 @@
 import io
 import json
-import shutil
+import os
 import zipfile
 from pathlib import Path
 
 import pytest
-import Ts
 
 from scripts.ts_runtime import (
     RuntimeUpdateError,
-    UpdateLock,
     extract_runtime_archive,
     fetch_head_commit,
+    install_ts_runtime,
     prepare_ts_runtime,
-    read_state,
-    write_state,
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-TS_PACKAGE_ROOT = Path(Ts.__file__).resolve().parent
-VENDORED_COMMIT = "bec57a2610b38be3a8f78071d7e03850b53ca25e"
-REMOTE_COMMIT = "1" * 40
+CURRENT_COMMIT = "1" * 40
+REMOTE_COMMIT = "2" * 40
+RUNTIME_PACKAGES = (
+    "TsMetrics", "TsModels", "TsPlots", "TsSims", "TsTests", "TsUtils",
+)
+
+
+def _write_runtime(root: Path, *, broken_init: bool = False) -> None:
+    package_root = root / "Ts"
+    package_root.mkdir(parents=True)
+    source = "raise RuntimeError('broken main')\n" if broken_init else "VALUE = 1\n"
+    (package_root / "__init__.py").write_text(source, encoding="utf-8")
+    for package in RUNTIME_PACKAGES:
+        child = package_root / package
+        child.mkdir()
+        (child / "__init__.py").write_text("\n", encoding="utf-8")
+
+
+def _seed_installed(install_root: Path, commit: str = CURRENT_COMMIT) -> None:
+    _write_runtime(install_root)
+    metadata = {
+        "repository": "https://github.com/BichengNiu/Ts",
+        "branch": "main",
+        "commit": commit,
+    }
+    (install_root / "Ts" / "HTFA_RUNTIME.json").write_text(
+        json.dumps(metadata), encoding="utf-8"
+    )
+
+
+def _materializer(*, broken_init: bool = False, error: Exception | None = None):
+    def materialize(commit: str, destination: Path) -> str:
+        if error is not None:
+            raise error
+        assert commit == REMOTE_COMMIT
+        _write_runtime(destination, broken_init=broken_init)
+        return "a" * 64
+    return materialize
 
 
 def _runtime_zip(commit: str) -> bytes:
     output = io.BytesIO()
     prefix = f"Ts-{commit}"
     with zipfile.ZipFile(output, "w") as archive:
-        for source in TS_PACKAGE_ROOT.rglob("*.py"):
-            relative = source.relative_to(TS_PACKAGE_ROOT)
-            archive.writestr(
-                f"{prefix}/{relative.as_posix()}",
-                source.read_bytes(),
-            )
+        archive.writestr(f"{prefix}/__init__.py", "VALUE = 1\n")
+        for package in RUNTIME_PACKAGES:
+            archive.writestr(f"{prefix}/{package}/__init__.py", "\n")
     return output.getvalue()
 
 
-def _head_fetcher(commit: str):
-    def fetch() -> str:
-        return commit
+def test_offline_uses_current_installed_version(tmp_path):
+    install_root = tmp_path / "site-packages"
+    _seed_installed(install_root)
 
-    return fetch
+    def offline():
+        raise OSError("offline")
 
-
-def _offline_head_fetcher() -> str:
-    raise OSError("offline")
-
-
-def _candidate_materializer(*, broken_init: bool = False):
-    def materialize(commit: str, destination: Path) -> str:
-        shutil.copytree(
-            TS_PACKAGE_ROOT,
-            destination / "Ts",
-            ignore=shutil.ignore_patterns("__pycache__", "VENDORED.*"),
-        )
-        if broken_init:
-            (destination / "Ts" / "__init__.py").write_text(
-                "raise ImportError('candidate dependency missing')\n",
-                encoding="utf-8",
-            )
-        return commit * 2
-
-    return materialize
-
-
-def _seed_cached_version(cache_root: Path, commit: str, verified_at: str) -> None:
-    version_root = cache_root / "versions" / commit
-    shutil.copytree(
-        TS_PACKAGE_ROOT,
-        version_root / "Ts",
-        ignore=shutil.ignore_patterns("__pycache__", "VENDORED.*"),
-    )
-    write_state(
-        version_root / "metadata.json",
-        {
-            "archive_sha256": commit,
-            "commit": commit,
-            "verified_at": verified_at,
-        },
-    )
-
-
-def test_state_round_trip_is_json(tmp_path):
-    state_path = tmp_path / "state.json"
-    expected = {
-        "active_commit": REMOTE_COMMIT,
-        "last_check_at": "2026-08-03T00:00:00+00:00",
-        "last_error": None,
-    }
-
-    write_state(state_path, expected)
-
-    assert read_state(state_path) == expected
-    assert json.loads(state_path.read_text(encoding="utf-8")) == expected
-
-
-def test_offline_without_cache_uses_installed_version(tmp_path):
     selection = prepare_ts_runtime(
         project_root=PROJECT_ROOT,
-        cache_root=tmp_path,
-        head_fetcher=_offline_head_fetcher,
+        install_root=install_root,
+        head_fetcher=offline,
     )
 
-    assert selection.commit == VENDORED_COMMIT
-    assert selection.root == TS_PACKAGE_ROOT.parent
+    assert selection.commit == CURRENT_COMMIT
+    assert selection.root == install_root.resolve()
     assert selection.source == "installed"
     assert "offline" in selection.detail
 
 
-def test_corrupt_state_does_not_break_offline_fallback(tmp_path):
-    (tmp_path / "state.json").write_text("{broken", encoding="utf-8")
+def test_matching_main_head_skips_download(tmp_path):
+    install_root = tmp_path / "site-packages"
+    _seed_installed(install_root)
 
     selection = prepare_ts_runtime(
         project_root=PROJECT_ROOT,
-        cache_root=tmp_path,
-        head_fetcher=_offline_head_fetcher,
+        install_root=install_root,
+        head_fetcher=lambda: CURRENT_COMMIT,
+        candidate_materializer=lambda *_: pytest.fail("downloaded matching commit"),
     )
 
-    assert selection.commit == VENDORED_COMMIT
+    assert selection.commit == CURRENT_COMMIT
     assert selection.source == "installed"
+    assert "matches main HEAD" in selection.detail
 
 
-def test_valid_remote_version_is_downloaded_verified_and_reused(tmp_path):
-    first = prepare_ts_runtime(
+def test_new_main_head_replaces_current_ts_without_smoke_test(tmp_path):
+    install_root = tmp_path / "site-packages"
+    _seed_installed(install_root)
+
+    selection = prepare_ts_runtime(
         project_root=PROJECT_ROOT,
-        cache_root=tmp_path,
-        head_fetcher=_head_fetcher(REMOTE_COMMIT),
-        candidate_materializer=_candidate_materializer(),
+        install_root=install_root,
+        head_fetcher=lambda: REMOTE_COMMIT,
+        candidate_materializer=_materializer(broken_init=True),
     )
 
-    assert first.commit == REMOTE_COMMIT
-    assert first.source == "downloaded"
-    assert first.root == tmp_path / "versions" / REMOTE_COMMIT
-    assert (first.root / "Ts" / "TsTests" / "__init__.py").exists()
-
-    second = prepare_ts_runtime(
-        project_root=PROJECT_ROOT,
-        cache_root=tmp_path,
-        head_fetcher=_head_fetcher(REMOTE_COMMIT),
-        candidate_materializer=lambda *_: pytest.fail("downloaded twice"),
+    assert selection.commit == REMOTE_COMMIT
+    assert selection.source == "downloaded"
+    assert "broken main" in (install_root / "Ts" / "__init__.py").read_text(
+        encoding="utf-8"
     )
 
-    assert second.commit == REMOTE_COMMIT
-    assert second.source == "cached"
 
+def test_download_failure_keeps_current_ts(tmp_path):
+    install_root = tmp_path / "site-packages"
+    _seed_installed(install_root)
 
-def test_invalid_remote_version_keeps_last_good_version(tmp_path):
-    good = prepare_ts_runtime(
+    selection = prepare_ts_runtime(
         project_root=PROJECT_ROOT,
-        cache_root=tmp_path,
-        head_fetcher=_head_fetcher(REMOTE_COMMIT),
-        candidate_materializer=_candidate_materializer(),
-    )
-    broken_commit = "2" * 40
-
-    fallback = prepare_ts_runtime(
-        project_root=PROJECT_ROOT,
-        cache_root=tmp_path,
-        head_fetcher=_head_fetcher(broken_commit),
-        candidate_materializer=_candidate_materializer(broken_init=True),
+        install_root=install_root,
+        head_fetcher=lambda: REMOTE_COMMIT,
+        candidate_materializer=_materializer(error=OSError("download failed")),
     )
 
-    assert fallback.commit == good.commit
-    assert fallback.source == "cached"
-    assert "candidate dependency missing" in fallback.detail
-    assert read_state(tmp_path / "state.json")["active_commit"] == good.commit
+    assert selection.commit == CURRENT_COMMIT
+    assert selection.source == "installed"
+    assert "download failed" in selection.detail
+
+
+def test_head_response_requires_full_commit_sha():
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def read(self):
+            return b'{"sha":"short"}'
+
+    with pytest.raises(RuntimeUpdateError, match="invalid commit"):
+        fetch_head_commit(opener=lambda *args, **kwargs: Response())
 
 
 def test_extract_rejects_zip_path_traversal(tmp_path):
@@ -177,7 +159,7 @@ def test_extract_rejects_zip_path_traversal(tmp_path):
         extract_runtime_archive(archive_path, tmp_path / "candidate")
 
 
-def test_extract_accepts_git_generated_runtime_archive(tmp_path):
+def test_extract_accepts_allowlisted_ts_files(tmp_path):
     archive_path = tmp_path / "runtime.zip"
     archive_path.write_bytes(_runtime_zip(REMOTE_COMMIT))
 
@@ -186,55 +168,31 @@ def test_extract_accepts_git_generated_runtime_archive(tmp_path):
     assert (root / "Ts" / "TsUtils" / "__init__.py").exists()
 
 
-def test_git_head_parser_requires_a_full_commit():
-    class Completed:
-        returncode = 0
-        stdout = "short\trefs/heads/main\n"
-        stderr = ""
+def test_install_failure_restores_previous_ts(tmp_path, monkeypatch):
+    install_root = tmp_path / "site-packages"
+    candidate_root = tmp_path / "candidate"
+    _seed_installed(install_root)
+    _write_runtime(candidate_root, broken_init=True)
+    real_replace = os.replace
+    failed = False
 
-    with pytest.raises(RuntimeUpdateError, match="invalid commit"):
-        fetch_head_commit(runner=lambda *args, **kwargs: Completed())
+    def fail_once(source, destination):
+        nonlocal failed
+        if Path(destination) == install_root / "Ts" and not failed:
+            failed = True
+            raise OSError("replace failed")
+        return real_replace(source, destination)
 
+    monkeypatch.setattr(os, "replace", fail_once)
 
-def test_busy_update_lock_skips_network_and_uses_fallback(tmp_path):
-    head_calls = []
-
-    def fetch_head():
-        head_calls.append(True)
-        return REMOTE_COMMIT
-
-    with UpdateLock(tmp_path / "update.lock") as acquired:
-        assert acquired
-        selection = prepare_ts_runtime(
-            project_root=PROJECT_ROOT,
-            cache_root=tmp_path,
-            head_fetcher=fetch_head,
+    with pytest.raises(OSError, match="replace failed"):
+        install_ts_runtime(
+            candidate_root,
+            commit=REMOTE_COMMIT,
+            install_root=install_root,
         )
 
-    assert selection.source == "installed"
-    assert "another HTFA process" in selection.detail
-    assert head_calls == []
-
-
-def test_successful_update_retains_only_two_verified_online_versions(tmp_path):
-    oldest = "3" * 40
-    previous = "4" * 40
-    newest = "5" * 40
-    _seed_cached_version(tmp_path, oldest, "2026-08-01T00:00:00+00:00")
-    _seed_cached_version(tmp_path, previous, "2026-08-02T00:00:00+00:00")
-    write_state(tmp_path / "state.json", {"active_commit": previous})
-
-    selected = prepare_ts_runtime(
-        project_root=PROJECT_ROOT,
-        cache_root=tmp_path,
-        head_fetcher=_head_fetcher(newest),
-        candidate_materializer=_candidate_materializer(),
+    metadata = json.loads(
+        (install_root / "Ts" / "HTFA_RUNTIME.json").read_text(encoding="utf-8")
     )
-
-    remaining = {
-        path.name
-        for path in (tmp_path / "versions").iterdir()
-        if path.is_dir()
-    }
-    assert selected.commit == newest
-    assert remaining == {previous, newest}
+    assert metadata["commit"] == CURRENT_COMMIT
