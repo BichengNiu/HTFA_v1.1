@@ -275,7 +275,7 @@ def remove_console_scripts(runtime_root: Path) -> None:
 
 
 def verify_runtime(runtime_python: Path, *, project_root: Path) -> None:
-    """Verify imports, dependency consistency, and development tooling."""
+    """Verify imports and dependency consistency."""
 
     imports = (
         "streamlit, pandas, numpy, scipy, statsmodels, sklearn, matplotlib, "
@@ -295,7 +295,6 @@ def verify_runtime(runtime_python: Path, *, project_root: Path) -> None:
             f"{isolation}import {imports}; print('portable runtime imports OK')",
         ],
         [str(runtime_python), "-B", "-m", "pip", "check"],
-        [str(runtime_python), "-B", "-m", "pytest", "--version"],
     ]
     for command in commands:
         _run_checked(command, cwd=project_root)

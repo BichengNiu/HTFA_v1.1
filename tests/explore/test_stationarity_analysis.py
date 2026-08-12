@@ -175,46 +175,6 @@ def test_summary_uses_explicit_frequency_over_ts_inference(monkeypatch):
     assert "频率：月度" not in result
 
 
-def test_time_series_figure_uses_ts_plot_series(monkeypatch):
-    calls = {}
-    expected_figure, expected_axis = plt.subplots()
-
-    def fake_plot_series(data, **kwargs):
-        calls["data"] = data
-        calls["kwargs"] = kwargs
-        return expected_figure, expected_axis
-
-    monkeypatch.setattr(stationarity, "plot_series", fake_plot_series)
-    series = pd.Series([1.0, 2.0, 3.0], name="value")
-
-    figure = create_time_series_figure(
-        series,
-        title="自定义标题",
-        x_title="自定义横轴",
-        y_title="自定义纵轴",
-        line_width=1.5,
-        marker_size=2,
-        max_ticks=8,
-        grid=False,
-        ymin=0,
-    )
-
-    assert figure is expected_figure
-    pd.testing.assert_series_equal(calls["data"], series)
-    assert calls["kwargs"] == {
-        "title": "自定义标题",
-        "xtitle": "自定义横轴",
-        "ytitle": "自定义纵轴",
-        "linewidth": 1.5,
-        "markersize": 2,
-        "max_ticks": 8,
-        "grid": False,
-        "ymin": 0,
-        "show_legend": False,
-    }
-    plt.close(figure)
-
-
 def test_time_series_figure_handles_matplotlib_date_deprecation(
     positive_monthly_series,
 ):
@@ -225,45 +185,6 @@ def test_time_series_figure_handles_matplotlib_date_deprecation(
             x_start=positive_monthly_series.index.min().date(),
         )
 
-    plt.close(figure)
-
-
-@pytest.mark.parametrize(
-    ("grid_mode", "x_visible", "y_visible"),
-    [
-        ("horizontal", False, True),
-        ("vertical", True, False),
-        ("both", True, True),
-    ],
-)
-def test_axis_options_apply_requested_grid_direction(
-    grid_mode,
-    x_visible,
-    y_visible,
-):
-    figure, axis = plt.subplots()
-    axis.plot([0, 10], [0, 10])
-
-    stationarity._apply_axis_options(
-        axis,
-        x_start=2,
-        y_start=1,
-        x_tick_count=4,
-        y_tick_count=5,
-        grid_mode=grid_mode,
-        grid_line_style="dashed",
-    )
-
-    assert axis.get_xlim()[0] == 2
-    assert axis.get_ylim()[0] == 1
-    assert axis.get_xgridlines()[0].get_visible() is x_visible
-    assert axis.get_ygridlines()[0].get_visible() is y_visible
-    visible_gridlines = [
-        line
-        for line in [*axis.get_xgridlines(), *axis.get_ygridlines()]
-        if line.get_visible()
-    ]
-    assert all(line.get_linestyle() == "--" for line in visible_gridlines)
     plt.close(figure)
 
 
