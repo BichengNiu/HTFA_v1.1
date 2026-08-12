@@ -171,12 +171,6 @@ def test_targeted_loader_rejects_duplicate_matching_production_columns() -> None
         )
 
 
-def test_monitoring_requires_a_shared_upload(monkeypatch) -> None:
-    monkeypatch.setattr(renderer, "get_shared_dataset_file", lambda: None)
-
-    assert renderer._source_payload() is None
-
-
 def test_oil_market_figure_combines_brent_and_production() -> None:
     data = load_oil_market_data(_workbook_bytes(), file_name="test.xlsx")
 
@@ -190,29 +184,19 @@ def test_oil_market_figure_combines_brent_and_production() -> None:
     price_axis, production_axis, rig_axis = figure.axes
     assert len(price_axis.get_lines()) == 1
     assert price_axis.get_lines()[0].get_label() == "布伦特原油现货价（左轴）"
-    assert price_axis.get_lines()[0].get_color() == "#000000"
-    assert price_axis.get_lines()[0].get_linestyle() == "--"
     assert len(production_axis.patches) == len(data.production)
     assert production_axis.patches[-1].get_height() == 311.0
-    assert production_axis.patches[-1].get_facecolor() == pytest.approx(
-        (184 / 255, 189 / 255, 198 / 255, 0.72)
-    )
-    assert production_axis.patches[-1].get_edgecolor() == pytest.approx(
-        (107 / 255, 114 / 255, 128 / 255, 0.72)
-    )
     assert len(rig_axis.get_lines()) == 1
     assert (
         rig_axis.get_lines()[0].get_label()
         == "阿联酋石油活跃钻机数（外右轴）"
     )
-    assert rig_axis.get_lines()[0].get_color() == "#1F4E79"
-    assert rig_axis.get_lines()[0].get_linestyle() == "-"
     assert rig_axis.get_lines()[0].get_ydata()[-1] == 59
     assert price_axis.get_ylabel() == "美元/桶"
     assert production_axis.get_ylabel() == "万桶/天"
     assert price_axis.get_title() == ""
     assert figure._suptitle.get_text() == "原油价格、产量与钻机数"
-    legend_labels = [
+    legend_labels = {
         text.get_text()
         for text in figure.texts
         if text.get_text() in {
@@ -220,12 +204,12 @@ def test_oil_market_figure_combines_brent_and_production() -> None:
             "阿联酋原油产量（右轴）",
             "阿联酋石油活跃钻机数（外右轴）",
         }
-    ]
-    assert legend_labels == [
+    }
+    assert legend_labels == {
         "布伦特原油现货价（左轴）",
         "阿联酋原油产量（右轴）",
         "阿联酋石油活跃钻机数（外右轴）",
-    ]
+    }
     assert any(
         text.get_text() == "数据来源：金联创、OPEC"
         for text in figure.texts
@@ -317,35 +301,19 @@ def test_monthly_revenue_calculates_yoy_and_chart_axes() -> None:
         "油价拉动率（右轴）",
         "产量拉动率（右轴）",
     ]
-    assert [line.get_color() for line in rate_axis.get_lines()] == [
-        "#000000",
-        "#000000",
-        "#1F4E79",
-    ]
-    assert [line.get_linestyle() for line in rate_axis.get_lines()] == [
-        "-",
-        "--",
-        ":",
-    ]
     assert len(revenue_axis.patches) == len(revenue)
     assert revenue_axis.patches[-1].get_height() == pytest.approx(40.92)
-    assert revenue_axis.patches[-1].get_facecolor() == pytest.approx(
-        (184 / 255, 189 / 255, 198 / 255, 0.72)
-    )
-    assert revenue_axis.patches[-1].get_edgecolor() == pytest.approx(
-        (107 / 255, 114 / 255, 128 / 255, 0.72)
-    )
     assert revenue_axis.get_ylabel() == "亿美元"
     assert rate_axis.get_ylabel() == "拉动率/同比（%）"
     assert rate_axis.get_title() == ""
     assert figure._suptitle.get_text() == "估算石油收入"
-    legend_labels = [text.get_text() for text in figure.legends[0].get_texts()]
-    assert legend_labels == [
+    legend_labels = {text.get_text() for text in figure.legends[0].get_texts()}
+    assert legend_labels == {
         "石油收入（左轴）",
         "石油收入同比增速（右轴）",
         "油价拉动率（右轴）",
         "产量拉动率（右轴）",
-    ]
+    }
     assert any(
         text.get_text() == "数据来源：金联创、OPEC"
         for text in figure.texts

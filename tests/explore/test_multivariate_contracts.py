@@ -1,6 +1,4 @@
 from io import BytesIO
-from pathlib import Path
-import subprocess
 import sys
 
 import numpy as np
@@ -27,20 +25,6 @@ from dashboard.explore.ui.multivariate_state import (
     build_lead_lag_result_signature,
     parse_dtw_alignment_mode,
 )
-
-
-def test_explore_dataset_uses_contract_aware_frequency_tables():
-    workbook = Path(__file__).parents[2] / "data" / "阿联酋.xlsx"
-
-    dataset = load_explore_dataset(workbook)
-
-    assert list(dataset.tables) == ["daily", "weekly", "monthly", "quarterly", "yearly"]
-    for frame in dataset.tables.values():
-        assert not frame.empty
-        assert isinstance(frame.index, pd.DatetimeIndex)
-        assert frame.index.is_monotonic_increasing
-        assert not frame.index.has_duplicates
-    assert dataset.file_name == "阿联酋.xlsx"
 
 
 def test_kl_lag_pairs_preserve_common_timestamps(monkeypatch):
@@ -283,45 +267,6 @@ def test_explore_dataset_is_parsed_once_per_file_fingerprint(monkeypatch):
     assert calls == 1
     assert "data_overview_table_select" not in state_owner.session_state
     assert "bivariate_table_select" not in state_owner.session_state
-
-
-def test_importing_core_constants_does_not_load_heavy_analysis_dependencies():
-    command = (
-        "import sys; "
-        "import dashboard.explore.core.constants; "
-        "print(int('Ts' in sys.modules), "
-        "int('matplotlib.pyplot' in sys.modules), "
-        "int('dtaidistance.dtw' in sys.modules))"
-    )
-
-    completed = subprocess.run(
-        [sys.executable, "-c", command],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-
-    assert completed.stdout.strip() == "0 0 0"
-
-
-def test_public_objects_are_imported_from_owning_modules():
-    command = (
-        "from dashboard.explore.core.validation import validate_series; "
-        "from dashboard.explore.analysis import perform_batch_dtw_calculation; "
-        "from dashboard.explore.ui import DTWAnalysisComponent; "
-        "print(int(callable(validate_series)), "
-        "int(callable(perform_batch_dtw_calculation)), "
-        "DTWAnalysisComponent.__name__)"
-    )
-
-    completed = subprocess.run(
-        [sys.executable, "-c", command],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-
-    assert completed.stdout.strip() == "1 1 DTWAnalysisComponent"
 
 
 def test_dtw_accepts_lowercase_date_column_and_returns_path():

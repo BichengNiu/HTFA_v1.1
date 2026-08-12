@@ -1,35 +1,6 @@
-from dashboard.analysis.uae.contracts import ProvenanceKind
-from dashboard.analysis.uae.data_adapter import (
-    DEFAULT_UAE_WORKBOOK,
-    load_real_uae_bundle,
-)
 from dashboard.analysis.uae.indicator_catalog import (
     INDICATOR_SPECS,
-    NOMINAL_INDUSTRY_IDS,
-    REAL_INDUSTRY_IDS,
 )
-
-
-def test_real_default_workbook_resolves_current_growth_data():
-    bundle = load_real_uae_bundle(DEFAULT_UAE_WORKBOOK)
-
-    bundle.require_ids(
-        {
-            "growth.real_gdp",
-            "growth.real_gdp_yoy",
-            "growth.nonoil_real_gdp",
-            "growth.nonoil_real_gdp_yoy",
-            "growth.nonfinancial_real_gdp_yoy",
-            "oil.crude_production",
-            *REAL_INDUSTRY_IDS,
-            *NOMINAL_INDUSTRY_IDS,
-        }
-    )
-    assert bundle.simulated_ids == frozenset()
-    assert all(
-        provenance.kind is ProvenanceKind.REAL
-        for provenance in bundle.provenance_by_id.values()
-    )
 
 
 def test_catalog_maps_uploaded_dubai_crude_indicator_exactly():

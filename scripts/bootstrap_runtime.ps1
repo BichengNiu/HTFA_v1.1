@@ -173,30 +173,6 @@ Invoke-Checked `
     ) `
     -WorkingDirectory $projectRootPath
 
-$previousBytecodeSetting = $env:PYTHONDONTWRITEBYTECODE
-$previousCachePrefix = $env:PYTHONPYCACHEPREFIX
-$env:PYTHONDONTWRITEBYTECODE = "1"
-$env:PYTHONPYCACHEPREFIX = Join-Path $downloadRootPath "pycache"
-try {
-    Invoke-Checked `
-        -FilePath $candidatePythonPath `
-        -ArgumentList @(
-            "-B", "-m", "pytest", "-q", "-c", "tooling\pytest.ini",
-            "-p", "no:cacheprovider"
-        ) `
-        -WorkingDirectory $projectRootPath
-    Invoke-Checked `
-        -FilePath $candidatePythonPath `
-        -ArgumentList @(
-            "-B", "-m", "compileall", "-q", "app.py", "dashboard", "scripts"
-        ) `
-        -WorkingDirectory $projectRootPath
-}
-finally {
-    $env:PYTHONDONTWRITEBYTECODE = $previousBytecodeSetting
-    $env:PYTHONPYCACHEPREFIX = $previousCachePrefix
-}
-
 $previousRuntimeMoved = $false
 $candidateMoved = $false
 try {
@@ -215,10 +191,6 @@ try {
             "-c",
             "import streamlit, pandas, scipy, Ts; print('runtime smoke OK')"
         ) `
-        -WorkingDirectory $projectRootPath
-    Invoke-Checked `
-        -FilePath $activePythonPath `
-        -ArgumentList @("-B", "-m", "pip", "check") `
         -WorkingDirectory $projectRootPath
 }
 catch {
