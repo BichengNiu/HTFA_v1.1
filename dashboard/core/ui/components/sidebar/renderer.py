@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from typing import Any
 
 import streamlit as st
@@ -89,15 +89,4 @@ def render_complete_sidebar(
             render_shared_dataset_uploader(st)
 
 
-def filter_modules_by_permission(all_modules: Sequence[str]) -> list[str]:
-    """按应用已计算的主模块权限过滤选项。"""
-
-    if st.session_state.get("auth.debug_mode", False):
-        return list(all_modules)
-    if st.session_state.get("auth.current_user") is None:
-        return []
-    allowed = st.session_state.get("auth.user_accessible_modules", set())
-    return [module for module in all_modules if module in allowed]
-
-
-__all__ = ["filter_modules_by_permission", "render_complete_sidebar"]
+__all__ = ["render_complete_sidebar"]

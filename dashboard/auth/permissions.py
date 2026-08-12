@@ -4,7 +4,7 @@
 提供基于用户直接权限的访问控制功能
 """
 
-from typing import Dict, List
+from typing import List
 
 from dashboard.auth.models import User
 from dashboard.navigation_config import (
@@ -83,23 +83,6 @@ class PermissionManager:
         """
         return self.check_raw_permission(user, "user_management")
 
-    def filter_accessible_modules(self, user: User, modules: Dict) -> Dict:
-        """
-        过滤用户可访问的模块配置
-
-        Args:
-            user: 用户对象
-            modules: 原始模块配置
-
-        Returns:
-            过滤后的模块配置
-        """
-        return {
-            main_module: sub_modules
-            for main_module, sub_modules in modules.items()
-            if self.check_module_access(user, main_module)
-        }
-
     def check_granular_access(self, user: User, main_module: str,
                            sub_module: str = None, tab: str = None) -> bool:
         """
@@ -174,74 +157,3 @@ class PermissionManager:
                 accessible.append(sub_name)
 
         return accessible
-
-    def get_accessible_tabs(self, user: User, main_module: str, sub_module: str) -> List[str]:
-        """
-        获取用户在指定子模块下可访问的Tab列表
-
-        Args:
-            user: 用户对象
-            main_module: 主模块名称
-            sub_module: 子模块名称
-
-        Returns:
-            可访问的Tab名称列表
-        """
-        if not user or not user.is_active:
-            return []
-
-        main_config = GRANULAR_PERMISSION_MAP.get(main_module)
-        if not main_config or not main_config.get("sub_modules"):
-            return []
-
-        sub_config = main_config["sub_modules"].get(sub_module)
-        if not sub_config or not sub_config.get("tabs"):
-            return []
-
-        accessible = []
-        for tab_name in sub_config["tabs"].keys():
-            if self.check_granular_access(user, main_module, sub_module, tab_name):
-                accessible.append(tab_name)
-
-        return accessible
-
-    def get_user_permissions_tree(self, user: User) -> Dict:
-        """
-        获取用户权限的树形结构（用于UI显示）
-
-        Args:
-            user: 用户对象
-
-        Returns:
-            权限树字典
-        """
-        if not user or not user.is_active:
-            return {}
-
-        tree = {}
-        for main_name, main_config in GRANULAR_PERMISSION_MAP.items():
-            main_code = main_config["code"]
-            has_main = main_code in user.permissions
-
-            sub_tree = {}
-            if main_config.get("sub_modules"):
-                for sub_name, sub_config in main_config["sub_modules"].items():
-                    sub_code = sub_config["code"]
-                    has_sub = sub_code in user.permissions
-
-                    tab_tree = {}
-                    if sub_config.get("tabs"):
-                        for tab_name, tab_code in sub_config["tabs"].items():
-                            tab_tree[tab_name] = tab_code in user.permissions
-
-                    sub_tree[sub_name] = {
-                        "has_access": has_sub,
-                        "tabs": tab_tree
-                    }
-
-            tree[main_name] = {
-                "has_access": has_main,
-                "sub_modules": sub_tree
-            }
-
-        return tree
