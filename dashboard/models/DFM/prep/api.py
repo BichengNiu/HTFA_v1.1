@@ -14,11 +14,10 @@ DFM数据准备模块 - 简化API接口
 import pandas as pd
 from typing import Dict, Any, Optional, Union, Tuple
 from pathlib import Path
+from io import BytesIO
+import hashlib
 import logging
-import tempfile
-import os
 import threading
-import atexit
 from datetime import datetime
 
 from dashboard.models.DFM.prep.processor import DataPreparationProcessor
@@ -31,29 +30,6 @@ logger = logging.getLogger(__name__)
 # 线程安全的缓存机制
 _MAPPING_CACHE = {}
 _CACHE_LOCK = threading.Lock()
-
-# 临时文件跟踪（用于清理）
-_TEMP_FILES = set()
-_TEMP_FILES_LOCK = threading.Lock()
-
-
-def _cleanup_temp_files():
-    """清理所有临时文件（在程序退出时调用）"""
-    while True:
-        with _TEMP_FILES_LOCK:
-            if not _TEMP_FILES:
-                break
-            tmp_path = _TEMP_FILES.pop()
-        try:
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
-        except OSError as e:
-            logger.debug("清理临时文件失败 %s: %s", tmp_path, e)
-
-
-# 注册退出时清理
-atexit.register(_cleanup_temp_files)
-
 
 def load_mappings_once(
     excel_path: Union[str, Any],
@@ -89,11 +65,15 @@ def load_mappings_once(
         logger.info("步骤1/7: 加载映射表...")
 
         # 处理文件输入
-        file_path = _handle_file_input(excel_path)
+        excel_input = _handle_file_input(excel_path)
 
         # 检查缓存（线程安全）
         if use_cache:
-            cache_key = _get_cache_key(file_path)
+            cache_key = (
+                _get_cache_key(excel_input),
+                reference_sheet_name,
+                reference_column_name,
+            )
             with _CACHE_LOCK:
                 if cache_key in _MAPPING_CACHE:
                     logger.info("  从缓存加载映射表（命中）")
@@ -105,7 +85,7 @@ def load_mappings_once(
 
         # 加载映射表
         logger.info("  从Excel文件加载映射表...")
-        df = pd.read_excel(file_path, sheet_name=reference_sheet_name)
+        df = pd.read_excel(excel_input, sheet_name=reference_sheet_name)
 
         # 标准化列名
         df.columns = df.columns.str.strip()
@@ -172,7 +152,6 @@ def load_mappings_once(
 
         # 更新缓存（线程安全）
         if use_cache:
-            cache_key = _get_cache_key(file_path)
             with _CACHE_LOCK:
                 _MAPPING_CACHE[cache_key] = mappings
             logger.info("  映射表已缓存")
@@ -198,102 +177,6 @@ def load_mappings_once(
         logger.error(f"映射表为空: {e}")
         raise ValueError(f"映射表为空: {e}") from e
 
-
-def collect_time_ranges(
-    excel_path: Union[str, Any]
-) -> Dict[str, Any]:
-    """
-    步骤2: 统计所有数据的时间范围（新增功能）
-
-    遍历Excel文件中的所有工作表，统计每个工作表的时间范围，
-    并返回所有数据的并集时间范围。
-
-    Args:
-        excel_path: Excel文件路径或文件对象
-
-    Returns:
-        dict: {
-            'status': str,              # 'success' 或 'error'
-            'message': str,             # 处理结果消息
-            'time_range': {             # 时间范围信息（仅成功时）
-                'overall_start': str,   # 所有数据的最早日期
-                'overall_end': str,     # 所有数据的最晚日期
-                'sheet_ranges': {       # 每个工作表的时间范围
-                    '工业_日度': {'start': '2020-01-01', 'end': '2024-12-31'},
-                    ...
-                }
-            }
-        }
-    """
-    try:
-        logger.info("步骤2/7: 统计数据时间范围...")
-
-        # 处理文件输入
-        file_path = _handle_file_input(excel_path)
-
-        # 加载Excel文件（使用context manager确保资源释放）
-        sheet_ranges = {}
-        all_dates = []
-
-        with pd.ExcelFile(file_path) as excel_file:
-            for sheet_name in excel_file.sheet_names:
-                # 跳过映射表
-                if sheet_name == '指标字典':
-                    continue
-
-                # 读取第一列作为日期列
-                df = pd.read_excel(excel_file, sheet_name=sheet_name, usecols=[0])
-                if df.empty:
-                    continue
-
-                # 尝试解析为日期
-                dates = pd.to_datetime(df.iloc[:, 0], errors='coerce')
-                valid_dates = dates.dropna()
-
-                if not valid_dates.empty:
-                    sheet_start = valid_dates.min()
-                    sheet_end = valid_dates.max()
-
-                    sheet_ranges[sheet_name] = {
-                        'start': sheet_start.strftime('%Y-%m-%d'),
-                        'end': sheet_end.strftime('%Y-%m-%d'),
-                        'data_points': len(valid_dates)
-                    }
-
-                    all_dates.extend(valid_dates.tolist())
-
-                    logger.info("  %s: %s 至 %s", sheet_name, sheet_ranges[sheet_name]['start'], sheet_ranges[sheet_name]['end'])
-
-        if not all_dates:
-            raise ValueError("未能从任何工作表中提取有效日期")
-
-        # 计算并集时间范围
-        overall_start = min(all_dates)
-        overall_end = max(all_dates)
-
-        time_range = {
-            'overall_start': overall_start.strftime('%Y-%m-%d'),
-            'overall_end': overall_end.strftime('%Y-%m-%d'),
-            'total_sheets': len(sheet_ranges),
-            'sheet_ranges': sheet_ranges
-        }
-
-        logger.info(f"  所有数据时间范围: {time_range['overall_start']} 至 {time_range['overall_end']}")
-        logger.info(f"  共 {time_range['total_sheets']} 个工作表")
-
-        return {
-            'status': 'success',
-            'message': f'成功统计 {len(sheet_ranges)} 个工作表的时间范围',
-            'time_range': time_range
-        }
-
-    except Exception as e:
-        logger.error(f"统计时间范围失败: {e}", exc_info=True)
-        return {
-            'status': 'error',
-            'message': f'统计时间范围失败: {str(e)}',
-            'time_range': None
-        }
 
 
 def prepare_dfm_data_simple(
@@ -464,133 +347,49 @@ def prepare_dfm_data_simple(
         }
 
 
-def validate_preparation_parameters(
-    target_sheet_name: str,
-    data_start_date: str,
-    data_end_date: str,
-    target_freq: str
-) -> Dict[str, Any]:
-    """
-    验证数据准备参数
-
-    Args:
-        target_sheet_name: 目标工作表名称
-        data_start_date: 起始日期
-        data_end_date: 结束日期
-        target_freq: 目标频率
-
-    Returns:
-        dict: {
-            'status': str,
-            'message': str,
-            'is_valid': bool,
-            'errors': List[str]
-        }
-    """
-    errors = []
-
-    try:
-        # 验证必填参数
-        if not target_sheet_name:
-            errors.append("目标工作表名称不能为空")
-
-        # 验证日期格式
-        if data_start_date:
-            pd.to_datetime(data_start_date)  # Validate format
-        if data_end_date:
-            pd.to_datetime(data_end_date)  # Validate format
-
-        # 验证日期逻辑
-        if data_start_date and data_end_date:
-            start_dt = pd.to_datetime(data_start_date)
-            end_dt = pd.to_datetime(data_end_date)
-            if start_dt >= end_dt:
-                errors.append(f"起始日期 ({data_start_date}) 必须早于结束日期 ({data_end_date})")
-
-        # 验证频率
-        valid_freqs = ['W-FRI', 'W', 'D', 'M', 'Q', 'Y']
-        if target_freq not in valid_freqs:
-            errors.append(f"不支持的频率 '{target_freq}'，支持的频率: {', '.join(valid_freqs)}")
-
-        if errors:
-            return {
-                'status': 'error',
-                'message': '参数验证失败',
-                'is_valid': False,
-                'errors': errors
-            }
-
-        return {
-            'status': 'success',
-            'message': '参数验证通过',
-            'is_valid': True,
-            'errors': []
-        }
-
-    except Exception as e:
-        return {
-            'status': 'error',
-            'message': f'参数验证异常: {str(e)}',
-            'is_valid': False,
-            'errors': [str(e)]
-        }
-
 
 # 私有辅助函数
 
-def _handle_file_input(file_input: Union[str, Any]) -> str:
+def _handle_file_input(file_input: Union[str, Path, Any]) -> str | BytesIO:
     """
-    处理文件输入，统一转换为文件路径
+    处理文件输入；上传内容保留在内存中，路径输入保持为路径。
 
     Args:
         file_input: 文件路径（str）或文件对象
 
     Returns:
-        str: 文件路径
+        文件路径或独立的内存字节流
     """
     if isinstance(file_input, str):
-        # 已经是路径
         return file_input
-
-    elif hasattr(file_input, 'read'):
-        # 是文件对象，保存到临时文件
-        file_input.seek(0)  # 重置文件指针
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
-            tmp_file.write(file_input.read())
-            tmp_path = tmp_file.name
-            # 跟踪临时文件以便清理
-            with _TEMP_FILES_LOCK:
-                _TEMP_FILES.add(tmp_path)
-            logger.debug(f"文件对象已保存到临时文件: {tmp_path}")
-            return tmp_path
-
-    elif isinstance(file_input, Path):
-        # Path对象
+    if isinstance(file_input, Path):
         return str(file_input)
+    if hasattr(file_input, "getvalue"):
+        return BytesIO(file_input.getvalue())
+    if hasattr(file_input, "read"):
+        original_position = file_input.tell() if hasattr(file_input, "tell") else None
+        if hasattr(file_input, "seek"):
+            file_input.seek(0)
+        content = file_input.read()
+        if original_position is not None:
+            file_input.seek(original_position)
+        return BytesIO(content)
+    raise TypeError(f"不支持的文件输入类型: {type(file_input)}")
 
+
+def _get_cache_key(excel_input: str | BytesIO) -> str:
+    """以文件内容生成稳定缓存键。"""
+    digest = hashlib.sha256()
+    if isinstance(excel_input, str):
+        path = Path(excel_input).resolve()
+        if not path.is_file():
+            raise FileNotFoundError(f"文件不存在: {excel_input}")
+        with path.open("rb") as file_obj:
+            for chunk in iter(lambda: file_obj.read(1024 * 1024), b""):
+                digest.update(chunk)
     else:
-        raise TypeError(f"不支持的文件输入类型: {type(file_input)}")
-
-
-def _get_cache_key(file_path: str) -> str:
-    """
-    生成缓存键（基于文件修改时间）
-
-    Args:
-        file_path: 文件路径
-
-    Returns:
-        str: 缓存键
-
-    Raises:
-        FileNotFoundError: 文件不存在
-    """
-    # 路径验证：规范化路径防止路径遍历
-    real_path = os.path.realpath(file_path)
-    if not os.path.exists(real_path):
-        raise FileNotFoundError(f"文件不存在: {file_path}")
-    mtime = os.path.getmtime(real_path)
-    return f"{real_path}_{mtime}"
+        digest.update(excel_input.getvalue())
+    return digest.hexdigest()
 
 
 def _extract_mapping(
@@ -672,128 +471,7 @@ def _extract_numeric_mapping(
     return mapping
 
 
-def clear_mapping_cache():
-    """清除映射表缓存（线程安全）"""
-    with _CACHE_LOCK:
-        _MAPPING_CACHE.clear()
-    logger.info("映射表缓存已清除")
-
-
-def detect_file_info(
-    file_content: bytes
-) -> Dict[str, Any]:
-    """
-    检测Excel文件信息（日期范围和变量统计）
-
-    整合日期检测和变量统计功能，供UI层调用
-
-    Args:
-        file_content: Excel文件字节内容
-
-    Returns:
-        dict: {
-            'status': str,
-            'message': str,
-            'date_range': {
-                'start': date,
-                'end': date
-            },
-            'variable_count': int,
-            'freq_counts': Dict[str, int],
-            'variable_stats': pd.DataFrame
-        }
-    """
-    from dashboard.models.DFM.prep.services.stats_service import StatsService
-
-    try:
-        # 检测日期范围
-        start_date, end_date, var_count, freq_counts = StatsService.detect_date_range(file_content)
-
-        # 计算变量统计
-        var_stats = StatsService.compute_raw_stats(file_content)
-
-        return {
-            'status': 'success',
-            'message': f'检测到 {var_count} 个变量',
-            'date_range': {
-                'start': start_date,
-                'end': end_date
-            },
-            'variable_count': var_count,
-            'freq_counts': freq_counts,
-            'variable_stats': var_stats
-        }
-
-    except Exception as e:
-        logger.error(f"文件信息检测失败: {e}", exc_info=True)
-        return {
-            'status': 'error',
-            'message': f'文件信息检测失败: {str(e)}',
-            'date_range': None,
-            'variable_count': 0,
-            'freq_counts': {},
-            'variable_stats': None
-        }
-
-
-def generate_export_excel(
-    prepared_data: pd.DataFrame,
-    industry_map: Dict[str, str],
-    mappings: Dict[str, Any],
-    removed_vars_log: Optional[list] = None,
-    transform_details: Optional[Dict] = None
-) -> bytes:
-    """
-    生成导出Excel文件
-
-    Args:
-        prepared_data: 处理后的数据
-        industry_map: 行业映射
-        mappings: 完整映射字典
-        removed_vars_log: 被删除变量日志
-        transform_details: 变量转换详情
-
-    Returns:
-        bytes: Excel文件字节内容
-    """
-    from dashboard.models.DFM.prep.services.export_service import ExportService
-
-    return ExportService.generate_excel(
-        prepared_data=prepared_data,
-        industry_map=industry_map,
-        mappings=mappings,
-        removed_vars_log=removed_vars_log,
-        transform_details=transform_details
-    )
-
-
-def compute_variable_stats(
-    prepared_data: pd.DataFrame,
-    var_frequency_map: Optional[Dict[str, str]] = None
-) -> pd.DataFrame:
-    """
-    计算处理后数据的变量统计
-
-    Args:
-        prepared_data: 处理后的DataFrame
-        var_frequency_map: 变量频率映射
-
-    Returns:
-        DataFrame: 变量统计信息
-    """
-    from dashboard.models.DFM.prep.services.stats_service import StatsService
-
-    return StatsService.compute_processed_stats(prepared_data, var_frequency_map)
-
-
-# 导出的API函数
 __all__ = [
     'load_mappings_once',
-    'collect_time_ranges',
     'prepare_dfm_data_simple',
-    'validate_preparation_parameters',
-    'clear_mapping_cache',
-    'detect_file_info',
-    'generate_export_excel',
-    'compute_variable_stats'
 ]

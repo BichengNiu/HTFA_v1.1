@@ -15,8 +15,8 @@ from dashboard.core.ui.utils.shared_dataset import (
 from dashboard.explore.core.data_source import ExploreDataset, format_table_option
 from dashboard.explore.core.series_utils import clean_dataframe_columns
 from dashboard.explore.ui.dataset_context import get_explore_dataset
+from dashboard.explore.ui.dtw import DTWAnalysisComponent
 from dashboard.explore.ui.lead_lag import LeadLagAnalysisComponent
-from dashboard.explore.ui.unified_correlation import UnifiedCorrelationAnalysisComponent
 
 logger = logging.getLogger(__name__)
 TAB_NAMES = ("同步分析", "领先滞后分析")
@@ -77,20 +77,20 @@ def _publish_analysis_data(
     dataset: ExploreDataset,
     selected_table: str,
     analysis_data: pd.DataFrame,
-) -> None:
+) -> str:
     data_signature = (dataset.fingerprint, selected_table)
     if st.session_state.get("exploration.bivariate.data_signature") != data_signature:
         _clear_bivariate_results()
         st.session_state["exploration.bivariate.data_signature"] = data_signature
 
     data_name = f"{dataset.file_name}-{selected_table}"
-    for analysis_type in ("time_lag_corr", "lead_lag"):
-        st.session_state[f"exploration.{analysis_type}.upload_data"] = analysis_data
-        st.session_state[f"exploration.{analysis_type}.file_name"] = data_name
+    st.session_state["exploration.lead_lag.upload_data"] = analysis_data
+    st.session_state["exploration.lead_lag.file_name"] = data_name
     st.caption(
         f"当前数据：{dataset.file_name} · "
         f"{format_table_option(selected_table, dataset.tables)}"
     )
+    return data_name
 
 
 def render_bivariate_analysis_page() -> None:
@@ -112,22 +112,23 @@ def render_bivariate_analysis_page() -> None:
     if selection is None:
         return
     selected_table, analysis_data = selection
-    _publish_analysis_data(dataset, selected_table, analysis_data)
+    data_name = _publish_analysis_data(dataset, selected_table, analysis_data)
 
     tabs = st.tabs(visible_tabs)
     for index, tab_name in enumerate(visible_tabs):
         with tabs[index]:
             if tab_name == "同步分析":
-                _render_correlation_tab()
+                _render_correlation_tab(analysis_data, data_name)
             else:
                 _render_lead_lag_tab()
 
 
-def _render_correlation_tab():
+def _render_correlation_tab(data: pd.DataFrame, data_name: str) -> None:
     """渲染同步分析Tab"""
     with st.container():
-        correlation_component = UnifiedCorrelationAnalysisComponent()
-        correlation_component.render(st, tab_index=0)
+        st.markdown("---")
+        st.markdown("#### DTW分析")
+        DTWAnalysisComponent().render_analysis_interface(st, data, data_name)
 
 
 def _render_lead_lag_tab():
@@ -140,7 +141,6 @@ def _render_lead_lag_tab():
 def _clear_bivariate_results() -> None:
     """切换文件或频率表时清除依赖旧数据的结果。"""
     prefixes = (
-        "tools.analysis.time_lag_corr.",
         "tools.analysis.dtw.",
         "tools.analysis.lead_lag.",
     )

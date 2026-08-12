@@ -34,7 +34,7 @@ def test_explore_dataset_uses_contract_aware_frequency_tables():
 
     dataset = load_explore_dataset(workbook)
 
-    assert list(dataset.tables) == ["daily", "weekly", "monthly", "quarterly"]
+    assert list(dataset.tables) == ["daily", "weekly", "monthly", "quarterly", "yearly"]
     for frame in dataset.tables.values():
         assert not frame.empty
         assert isinstance(frame.index, pd.DatetimeIndex)
@@ -304,9 +304,9 @@ def test_importing_core_constants_does_not_load_heavy_analysis_dependencies():
     assert completed.stdout.strip() == "0 0 0"
 
 
-def test_lazy_package_facades_preserve_existing_public_exports():
+def test_public_objects_are_imported_from_owning_modules():
     command = (
-        "from dashboard.explore import validate_series; "
+        "from dashboard.explore.core.validation import validate_series; "
         "from dashboard.explore.analysis import perform_batch_dtw_calculation; "
         "from dashboard.explore.ui import DTWAnalysisComponent; "
         "print(int(callable(validate_series)), "

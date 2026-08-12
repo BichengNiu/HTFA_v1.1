@@ -6,27 +6,25 @@
 """
 
 import pandas as pd
-from pathlib import Path
 from typing import Tuple, List, Optional, Callable
 from dashboard.models.DFM.train.utils.logger import get_logger
-from dashboard.models.DFM.train.utils.file_io import read_data_file
 
 logger = get_logger(__name__)
 
 
 def load_and_validate_data(
-    data_path: str,
+    data: pd.DataFrame,
     selected_indicators: List[str],
     progress_callback: Optional[Callable] = None
 ) -> Tuple[pd.DataFrame, List[str]]:
     """
     加载和验证训练数据（经典DFM版本，无目标变量）
 
-    支持Excel和CSV格式，自动进行数据质量检查和清理。
+    对内存中的训练数据进行质量检查和清理。
     所有选中的指标平等参与因子提取。
 
     Args:
-        data_path: 数据文件路径 (支持 .xlsx, .xls, .csv)
+        data: 训练数据
         selected_indicators: 选中的指标列表（空列表表示使用所有变量）
         progress_callback: 进度回调函数 (message: str) -> None
 
@@ -37,18 +35,11 @@ def load_and_validate_data(
 
     Raises:
         ValueError: 如果文件格式不支持或有效变量不足
-        FileNotFoundError: 如果文件不存在
-
-    Examples:
-        >>> data, variables = load_and_validate_data(
-        ...     data_path='data/经济数据.xlsx',
-        ...     selected_indicators=['工业增加值', '消费', '投资']
-        ... )
-        >>> print(f"数据形状: {data.shape}, 变量数: {len(variables)}")
     """
-    logger.info(f"加载数据: {data_path}")
-
-    data = read_data_file(data_path, parse_dates=True, check_exists=True)
+    if not isinstance(data, pd.DataFrame) or data.empty:
+        raise ValueError("训练数据必须是非空DataFrame")
+    data = data.copy()
+    logger.info("加载内存训练数据: shape=%s", data.shape)
 
     # 确定观测变量
     if selected_indicators:

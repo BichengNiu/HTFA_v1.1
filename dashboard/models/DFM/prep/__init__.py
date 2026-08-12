@@ -24,12 +24,6 @@ __author__ = "DFM Data Preparation Team"
 from dashboard.models.DFM.prep.api import (
     prepare_dfm_data_simple,
     load_mappings_once,
-    collect_time_ranges,
-    validate_preparation_parameters,
-    clear_mapping_cache,
-    detect_file_info,
-    generate_export_excel,
-    compute_variable_stats
 )
 
 # 服务层导出
@@ -38,12 +32,6 @@ from dashboard.models.DFM.prep.services import StatsService, ExportService
 __all__ = [
     'prepare_dfm_data_simple',
     'load_mappings_once',
-    'collect_time_ranges',
-    'validate_preparation_parameters',
-    'clear_mapping_cache',
-    'detect_file_info',
-    'generate_export_excel',
-    'compute_variable_stats',
     'StatsService',
     'ExportService',
 ]

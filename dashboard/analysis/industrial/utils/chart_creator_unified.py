@@ -9,12 +9,10 @@ Unified Chart Creator Utility
 import pandas as pd
 import plotly.graph_objects as go
 from typing import List, Optional, Dict, Callable
-from dataclasses import dataclass, field
 import logging
 
 from dashboard.analysis.industrial.utils.time_filter import filter_data_by_time_range
 from dashboard.analysis.industrial.utils.chart_config import (
-    CHART_COLORS,
     get_chart_color,
     create_xaxis_config,
     create_yaxis_config,
@@ -24,35 +22,6 @@ from dashboard.analysis.industrial.utils.chart_config import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class TimeSeriesChartConfig:
-    """时间序列图表配置"""
-    title: str = ""
-    time_range: str = "全部"
-    custom_start_date: Optional[str] = None
-    custom_end_date: Optional[str] = None
-    var_name_mapping: Optional[Dict[str, str]] = None
-    y_axis_title: str = ""
-    height: int = 500
-    bottom_margin: int = 180
-    sort_variables: bool = False
-    sort_key_func: Optional[Callable] = None
-
-
-@dataclass
-class MixedChartConfig:
-    """混合图表配置"""
-    title: str = ""
-    time_range: str = "全部"
-    custom_start_date: Optional[str] = None
-    custom_end_date: Optional[str] = None
-    var_name_mapping: Optional[Dict[str, str]] = None
-    y_axis_title: str = ""
-    height: int = 600
-    bottom_margin: int = 120
-    barmode: str = 'relative'
 
 
 def clean_variable_name(var: str) -> str:
@@ -116,49 +85,6 @@ def get_date_range_from_data(
         return None, None
 
 
-def create_line_trace(
-    series: pd.Series,
-    display_name: str,
-    color: str,
-    line_width: float = 2.5,
-    marker_size: int = 6
-) -> go.Scatter:
-    """
-    创建线图trace
-
-    Args:
-        series: 数据序列
-        display_name: 显示名称
-        color: 线条颜色
-        line_width: 线条宽度
-        marker_size: 标记大小
-
-    Returns:
-        Plotly Scatter trace对象
-    """
-    # 转换为列表以确保Plotly兼容性
-    if isinstance(series.index, pd.DatetimeIndex):
-        x_data = series.index.tolist()
-    else:
-        try:
-            x_data = pd.to_datetime(series.index).tolist()
-        except:
-            x_data = series.index.tolist()
-
-    y_data = series.values.tolist()
-
-    return go.Scatter(
-        x=x_data,
-        y=y_data,
-        showlegend=True,
-        line=dict(color=color, width=line_width),
-        connectgaps=True,
-        mode='lines+markers',
-        marker=dict(size=marker_size),
-        name=display_name
-    )
-
-
 def create_time_series_chart(
     df: pd.DataFrame,
     variables: List[str],
@@ -172,36 +98,16 @@ def create_time_series_chart(
     bottom_margin: int = 180,
     sort_variables: bool = False,
     sort_key_func: Optional[Callable] = None,
-    config: Optional[TimeSeriesChartConfig] = None
 ) -> go.Figure:
     """
     创建统一的时间序列图表
 
-    支持两种调用方式：
-    1. 传统参数方式（向后兼容）
-    2. config 对象方式（推荐）
-
     Args:
         df: 数据DataFrame，索引为时间
         variables: 要绘制的变量列表
-        config: TimeSeriesChartConfig 配置对象（优先级高于单独参数）
-        其余参数见 TimeSeriesChartConfig
-
     Returns:
         Plotly Figure对象
     """
-    # 如果传入 config，用 config 的值覆盖默认参数
-    if config is not None:
-        title = config.title
-        time_range = config.time_range
-        custom_start_date = config.custom_start_date
-        custom_end_date = config.custom_end_date
-        var_name_mapping = config.var_name_mapping
-        y_axis_title = config.y_axis_title
-        height = config.height
-        bottom_margin = config.bottom_margin
-        sort_variables = config.sort_variables
-        sort_key_func = config.sort_key_func
     # 检查输入
     if df.empty or not variables:
         logger.warning("数据为空或变量列表为空")
@@ -285,148 +191,6 @@ def create_time_series_chart(
         title=title,
         height=height,
         margin={'l': 50, 'r': 50, 't': 40, 'b': bottom_margin}
-    )
-
-    # 应用配置（hovermode已在layout_config中设置）
-    fig.update_layout(
-        **layout_config,
-        xaxis=xaxis_config,
-        yaxis=yaxis_config
-    )
-
-    return fig
-
-
-def create_mixed_chart(
-    df: pd.DataFrame,
-    line_variables: List[str],
-    bar_variables: List[str],
-    title: str = "",
-    time_range: str = "全部",
-    custom_start_date: Optional[str] = None,
-    custom_end_date: Optional[str] = None,
-    var_name_mapping: Optional[Dict[str, str]] = None,
-    y_axis_title: str = "",
-    height: int = 600,
-    bottom_margin: int = 120,
-    barmode: str = 'relative',
-    config: Optional[MixedChartConfig] = None
-) -> go.Figure:
-    """
-    创建混合图表（线图 + 条形图）
-
-    支持两种调用方式：
-    1. 传统参数方式（向后兼容）
-    2. config 对象方式（推荐）
-
-    Args:
-        df: 数据DataFrame
-        line_variables: 线图变量列表
-        bar_variables: 条形图变量列表
-        config: MixedChartConfig 配置对象（优先级高于单独参数）
-        其余参数见 MixedChartConfig
-
-    Returns:
-        Plotly Figure对象
-    """
-    if config is not None:
-        title = config.title
-        time_range = config.time_range
-        custom_start_date = config.custom_start_date
-        custom_end_date = config.custom_end_date
-        var_name_mapping = config.var_name_mapping
-        y_axis_title = config.y_axis_title
-        height = config.height
-        bottom_margin = config.bottom_margin
-        barmode = config.barmode
-    # 检查输入
-    if df.empty:
-        return go.Figure()
-
-    # 应用时间过滤
-    filtered_df = filter_data_by_time_range(
-        df, time_range, custom_start_date, custom_end_date
-    )
-
-    if filtered_df.empty:
-        return go.Figure()
-
-    # 创建图表
-    fig = go.Figure()
-
-    # 颜色索引
-    color_index = 0
-
-    # 添加线图变量
-    for var in line_variables:
-        if var not in filtered_df.columns:
-            continue
-
-        series = pd.to_numeric(filtered_df[var], errors='coerce').dropna()
-        if series.empty:
-            continue
-
-        # 显示名称
-        display_name = var_name_mapping.get(var, var) if var_name_mapping else var
-
-        # 添加线图
-        fig.add_trace(go.Scatter(
-            x=series.index,
-            y=series,
-            mode='lines+markers',
-            name=display_name,
-            line=dict(width=2.5, color=get_chart_color(color_index)),
-            marker=dict(size=4),
-            connectgaps=False,
-            hovertemplate='%{fullData.name}: %{y:.2f}<extra></extra>'
-        ))
-        color_index += 1
-
-    # 添加条形图变量
-    for i, var in enumerate(bar_variables):
-        if var not in filtered_df.columns:
-            continue
-
-        series = pd.to_numeric(filtered_df[var], errors='coerce').dropna()
-        if series.empty:
-            continue
-
-        # 显示名称
-        display_name = var_name_mapping.get(var, var) if var_name_mapping else var
-
-        # 计算透明度
-        opacity = 0.9 - (i * 0.15)
-        opacity = max(0.5, opacity)
-
-        # 添加条形图
-        fig.add_trace(go.Bar(
-            x=series.index,
-            y=series,
-            name=display_name,
-            marker_color=get_chart_color(color_index),
-            opacity=opacity,
-            hovertemplate='%{fullData.name}: %{y:.2f}<extra></extra>'
-        ))
-        color_index += 1
-
-    # 获取日期范围
-    min_date = filtered_df.index.min() if not filtered_df.empty else None
-    max_date = filtered_df.index.max() if not filtered_df.empty else None
-
-    # 配置轴和布局
-    xaxis_config = create_xaxis_config(
-        dtick=DTICK_3_MONTHS,
-        min_date=min_date,
-        max_date=max_date
-    )
-
-    yaxis_config = create_yaxis_config(title=y_axis_title)
-
-    layout_config = create_standard_layout(
-        title=title,
-        height=height,
-        margin={'l': 50, 'r': 50, 't': 30, 'b': bottom_margin},
-        barmode=barmode
     )
 
     # 应用配置（hovermode已在layout_config中设置）

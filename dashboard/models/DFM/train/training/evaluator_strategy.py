@@ -22,6 +22,47 @@ from dashboard.models.DFM.train.core.models import EvaluationConfig
 logger = get_logger(__name__)
 
 
+def build_evaluation_config(
+    *,
+    full_data: pd.DataFrame,
+    variables: List[str],
+    k_factors: int,
+    settings: Dict,
+) -> EvaluationConfig:
+    """从统一设置字典构建串行和并行共用的评估配置。"""
+    required = (
+        "training_start",
+        "train_end",
+        "validation_start",
+        "validation_end",
+        "max_iterations",
+        "tolerance",
+        "training_weight",
+        "factor_selection_method",
+        "pca_threshold",
+        "kaiser_threshold",
+    )
+    missing = [key for key in required if key not in settings]
+    if missing:
+        raise ValueError(f"评估配置缺少必需参数: {missing}")
+    return EvaluationConfig(
+        full_data=full_data,
+        variables=variables,
+        k_factors=k_factors,
+        factor_selection_method=settings["factor_selection_method"],
+        pca_threshold=settings["pca_threshold"],
+        kaiser_threshold=settings["kaiser_threshold"],
+        training_start=settings["training_start"],
+        train_end=settings["train_end"],
+        max_iterations=settings["max_iterations"],
+        tolerance=settings["tolerance"],
+        validation_start=settings["validation_start"],
+        validation_end=settings["validation_end"],
+        training_weight=settings["training_weight"],
+        target_variable=settings.get("target_variable"),
+    )
+
+
 # ========== 可序列化的顶层评估函数 ==========
 
 def _evaluate_variable_selection_model(config: EvaluationConfig) -> float:
@@ -137,22 +178,33 @@ def create_variable_selection_evaluator(config: 'TrainingConfig') -> Callable:
         if 'k_factors' not in params:
             raise ValueError("params必须包含k_factors")
 
-        # 构建 EvaluationConfig
-        eval_config = EvaluationConfig(
+        eval_config = build_evaluation_config(
             full_data=full_data,
             variables=variables,
             k_factors=params['k_factors'],
-            factor_selection_method=params.get('factor_selection_method', config.factor_selection_method),
-            pca_threshold=params.get('pca_threshold', config.pca_threshold),
-            kaiser_threshold=params.get('kaiser_threshold', config.kaiser_threshold),
-            training_start=config.training_start,
-            train_end=config.train_end,
-            max_iterations=kwargs.get('max_iter', config.max_iterations),
-            tolerance=config.tolerance,
-            validation_start=params.get('validation_start', config.validation_start),
-            validation_end=params.get('validation_end', config.validation_end),
-            training_weight=params.get('training_weight', 0.5),
-            target_variable=params.get('target_variable', config.target_variable)
+            settings={
+                "factor_selection_method": params.get(
+                    "factor_selection_method", config.factor_selection_method
+                ),
+                "pca_threshold": params.get("pca_threshold", config.pca_threshold),
+                "kaiser_threshold": params.get(
+                    "kaiser_threshold", config.kaiser_threshold
+                ),
+                "training_start": config.training_start,
+                "train_end": config.train_end,
+                "max_iterations": kwargs.get("max_iter", config.max_iterations),
+                "tolerance": config.tolerance,
+                "validation_start": params.get(
+                    "validation_start", config.validation_start
+                ),
+                "validation_end": params.get(
+                    "validation_end", config.validation_end
+                ),
+                "training_weight": params.get("training_weight", 0.5),
+                "target_variable": params.get(
+                    "target_variable", config.target_variable
+                ),
+            },
         )
 
         # 调用可序列化的顶层函数
@@ -164,5 +216,6 @@ def create_variable_selection_evaluator(config: 'TrainingConfig') -> Callable:
 __all__ = [
     'create_variable_selection_evaluator',
     '_evaluate_variable_selection_model',
+    'build_evaluation_config',
     'EvaluationConfig',
 ]

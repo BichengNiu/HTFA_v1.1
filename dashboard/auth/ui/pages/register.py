@@ -9,8 +9,6 @@ from typing import Optional, Tuple
 import logging
 import re
 
-# 导入认证模块
-from dashboard.auth.authentication import AuthManager
 from dashboard.auth.security import SecurityUtils
 from dashboard.auth.models import User
 from dashboard.auth.database import AuthDatabase
@@ -19,10 +17,9 @@ from dashboard.auth.database import AuthDatabase
 class RegisterPage:
     """用户注册页面组件"""
     
-    def __init__(self):
+    def __init__(self, database: AuthDatabase):
         """初始化注册页面"""
-        self.auth_manager = AuthManager()
-        self.db = AuthDatabase()
+        self.db = database
         self.security_utils = SecurityUtils()
         self.logger = logging.getLogger(__name__)
     
@@ -470,12 +467,12 @@ class RegisterPage:
         """, unsafe_allow_html=True)
 
 
-def render_register_page() -> Optional[bool]:
+def render_register_page(database: AuthDatabase) -> Optional[bool]:
     """
     渲染用户注册页面的便捷函数
     
     Returns:
         是否注册成功
     """
-    register_page = RegisterPage()
+    register_page = RegisterPage(database)
     return register_page.render()

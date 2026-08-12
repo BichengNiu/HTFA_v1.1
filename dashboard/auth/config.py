@@ -34,8 +34,8 @@ class AuthConfig:
 
     @classmethod
     def is_debug_mode(cls) -> bool:
-        """检查是否处于调试模式"""
-        return DEFAULT_CONFIG.debug_mode
+        """从当前进程环境检查是否显式启用了调试模式。"""
+        return os.getenv('HTFA_DEBUG_MODE', 'false').strip().lower() == 'true'
 
 
 # 全局默认配置实例

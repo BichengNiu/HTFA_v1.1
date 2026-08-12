@@ -2,17 +2,18 @@
 
 ## Project Structure & Module Organization
 
-`app.py` is the Streamlit entry point and top-level router. Application code lives under `dashboard/`: `core/` provides initialization, navigation, and resource loading; `auth/` handles users and permissions; `analysis/industrial/` contains industrial dashboards; `models/DFM/` covers data preparation, training, and results; `explore/` contains time-series analysis; and `preview/` renders uploaded data. Reference documents are in `docs/`, while Excel, CSV, and SQLite runtime inputs are in `data/`. Keep domain logic close to its module and reusable UI or calculations in that module's `utils/`, `core/`, or `shared/` package.
+`app.py` is the Streamlit entry point and top-level router. Application code lives under `dashboard/`: `core/` provides initialization, navigation, and resource loading; `auth/` handles users and permissions; `analysis/industrial/` contains industrial dashboards; `models/DFM/` covers data preparation, training, and results; `explore/` contains time-series analysis; and `preview/` renders uploaded data. Versioned project documents are in `docs/`; local Excel, CSV, PDF, and SQLite inputs stay in the ignored `data/` tree, with only its `README.md` files committed. Reproducible source-update code belongs in `scripts/data_sources/`, and local binary research material belongs in `references-local/`. Developer and deployment configuration is grouped under `tooling/`; executable maintenance and Windows entry scripts live under `scripts/`. Keep domain logic close to its module and reusable UI or calculations in that module's `utils/`, `core/`, or `shared/` package.
 
 ## Build, Test, and Development Commands
 
-- `python -m venv .venv` creates the machine-local Python 3.13.4 development environment; never copy `.venv/` between computers.
-- `.venv\Scripts\python.exe -m pip install -r requirements.txt` installs the development dependencies into that environment.
-- `.venv\Scripts\python.exe scripts\install_ts.py` installs the pinned `Ts` runtime into that virtual environment; do not restore or commit a root-level `Ts/` copy.
-- `streamlit run app.py --server.port=8501` starts the local dashboard.
-- `start.bat` starts the Windows development environment, clears Python caches, and frees port 8501.
-- `docker compose up --build -d` builds and runs the containerized application.
-- `python -m compileall app.py dashboard` performs a quick syntax/import-layout check before review.
+- `scripts\windows\setup_runtime.bat` creates or safely rebuilds the single project-local CPython 3.13.4 runtime; no system Python or virtual environment is required.
+- `runtime\python.exe -m pip check` verifies the exact dependencies installed from `tooling\requirements\requirements-py313.lock`.
+- `runtime\python.exe scripts\install_ts.py` reinstalls the pinned `Ts` baseline into the unified runtime; do not restore or commit a root-level `Ts/` copy.
+- `runtime\python.exe -m pytest -q -c tooling\pytest.ini` runs the committed automated test suite.
+- `runtime\python.exe scripts\run_htfa.py --server.port=8501` starts the dashboard directly.
+- `scripts\windows\start.bat` clears Python caches, frees port 8501, checks Ts, and starts HTFA with the same runtime.
+- `docker compose -f tooling\docker\docker-compose.yml up --build -d` builds and runs the containerized application.
+- `runtime\python.exe -m compileall app.py dashboard scripts` performs a quick syntax/import-layout check before review.
 
 ## Coding Style & Naming Conventions
 
@@ -20,7 +21,7 @@ Use four-space indentation and follow PEP 8. Name modules, functions, and variab
 
 ## Testing Guidelines
 
-The repository currently has no committed automated test suite or coverage threshold. For new logic, add `pytest` tests under `tests/`, mirroring package paths and naming files `test_<module>.py`. Test calculations and validation independently from Streamlit UI. Before submitting, run the compile check and smoke-test affected pages with representative files from `data/`; document manual scenarios and results in the pull request.
+The repository has a committed `pytest` suite but no coverage threshold. For new logic, add tests under `tests/`, mirroring package paths and naming files `test_<module>.py`. Test calculations and validation independently from Streamlit UI. Before submitting, run the complete suite, the compile check, and smoke-test affected pages with representative files from `data/`; document manual scenarios and results in the pull request.
 
 ## Commit & Pull Request Guidelines
 
@@ -28,8 +29,8 @@ Recent commits use short Chinese summaries such as `优化` and `优化-可用`.
 
 ### Mandatory Pre-Push Cleanup
 
-Before every commit intended for a remote branch, and again immediately before pushing, remove all reproducible test artifacts and caches from the repository working tree. This includes `__pycache__/`, `*.pyc`, `*.pyo`, `.pytest_cache/`, `.ruff_cache/`, `.mypy_cache/`, coverage outputs, pytest temporary directories, test logs, smoke-test outputs, and other files created only by local validation. Inspect and resolve each target before deletion; never use a broad recursive cleanup against the repository root. Do not delete `.venv/`, `.git/`, files under `data/`, user-created logs or exports, or unrelated untracked/modified files. After cleanup, run `git status --short` and confirm that no generated test or cache artifacts remain before committing or pushing. Report what was cleaned and preserve every user change not explicitly in scope.
+Before every commit intended for a remote branch, and again immediately before pushing, remove all reproducible test artifacts and caches from the repository working tree. This includes `__pycache__/`, `*.pyc`, `*.pyo`, `.pytest_cache/`, `.ruff_cache/`, `.mypy_cache/`, coverage outputs, pytest temporary directories, test logs, smoke-test outputs, and other files created only by local validation. Inspect and resolve each target before deletion; never use a broad recursive cleanup against the repository root. Do not delete `runtime/`, `.git/`, files under `data/`, user-created logs or exports, or unrelated untracked/modified files. After cleanup, run `git status --short` and confirm that no generated test or cache artifacts remain before committing or pushing. Report what was cleaned and preserve every user change not explicitly in scope.
 
 ## Security & Data Handling
 
-Do not commit credentials, tokens, `.env` files, production user databases, or temporary spreadsheet exports. Keep `HTFA_DEBUG_MODE=true` limited to local development; verify authentication with debug mode disabled before deployment.
+Do not commit credentials, tokens, `.env` files, production user databases, raw source data, binary reference documents, or temporary spreadsheet exports. Keep local datasets under `data/` and binary research material under `references-local/`; commit only their documentation and reproducible acquisition or transformation code. Keep `HTFA_DEBUG_MODE=true` limited to local development; verify authentication with debug mode disabled before deployment.

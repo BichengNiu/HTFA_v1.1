@@ -6,8 +6,8 @@
 支持不同数据频率（日度、周度、旬度、月度）的上一期计算
 """
 
-from datetime import date, timedelta
-from typing import Optional, Dict
+from datetime import date
+from typing import Optional
 
 import pandas as pd
 
@@ -87,50 +87,6 @@ def get_frequency_label(freq_code: str) -> str:
     if freq_code not in SUPPORTED_FREQ_CODES:
         raise ValueError(f"不支持的频率代码: {freq_code}，有效值: {list(SUPPORTED_FREQ_CODES)}")
     return FREQUENCY_LABELS[freq_code]
-
-
-def calculate_train_end_date(
-    algorithm: str,
-    validation_start: date,
-    observation_start: date,
-    target_freq: str = 'W'
-) -> date:
-    """
-    根据算法类型和数据频率计算训练期结束日期
-
-    Args:
-        algorithm: 'classical' 或 'deep_learning'
-        validation_start: 验证期开始日期
-        observation_start: 观察期开始日期
-        target_freq: 目标变量频率代码
-
-    Returns:
-        训练期结束日期
-    """
-    if algorithm == 'deep_learning':
-        # DDFM: train_end = observation_start - 1期 - 1天
-        prev_period = get_previous_period_date(observation_start, target_freq, periods=1)
-        return prev_period - timedelta(days=1)
-    else:
-        # 经典DFM: train_end = validation_start - 1天
-        return validation_start - timedelta(days=1)
-
-
-def calculate_auto_validation_start(
-    observation_start: date,
-    target_freq: str = 'W'
-) -> date:
-    """
-    DDFM模式下自动计算验证期开始日期
-
-    Args:
-        observation_start: 观察期开始日期
-        target_freq: 目标变量频率代码
-
-    Returns:
-        验证期开始日期 (= observation_start - 1期)
-    """
-    return get_previous_period_date(observation_start, target_freq, periods=1)
 
 
 def validate_date_ranges(

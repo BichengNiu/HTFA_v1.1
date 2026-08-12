@@ -1,5 +1,8 @@
 # HTFA Windows 自包含运行时设计
 
+> **已被取代：** 当前方案见
+> `2026-08-11-unified-python-runtime-design.md`。本文仅保留为历史设计记录。
+
 ## 状态
 
 已确认。本文替代 `2026-08-03-ts-local-auto-update-design.md` 中关于本地 Python、
@@ -97,4 +100,3 @@ HTFA/
 7. 更新中断不会留下部分覆盖的 Ts。
 8. 使用发布版内置 Python 完成编译检查、自动化测试和 Streamlit 页面烟测。
 9. 发布包经过缓存清理、文件清单检查和跨目录复制验证。
-

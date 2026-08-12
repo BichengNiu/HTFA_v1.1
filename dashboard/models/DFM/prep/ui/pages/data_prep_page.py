@@ -19,18 +19,8 @@ from dashboard.models.DFM.prep.utils.html_helpers import render_tag_group
 logger = logging.getLogger(__name__)
 
 
-# ============================================================================
-# 状态管理辅助函数（委托给PrepStateManager）
-# ============================================================================
-
-def _get_state(key: str, default=None):
-    """获取状态值（委托给prep_state）"""
-    return prep_state.get(key, default)
-
-
-def _set_state(key: str, value):
-    """设置状态值（委托给prep_state）"""
-    prep_state.set(key, value)
+_get_state = prep_state.get
+_set_state = prep_state.set
 
 
 def _make_cache_key(prefix: str, uploaded_file) -> str:
@@ -957,7 +947,9 @@ def _apply_variable_transforms(st_obj, config_df):
         st_obj: Streamlit对象
         config_df: 配置DataFrame，包含 {变量名, 性质, 零值处理, 负值处理, 第一次处理, 第二次处理, 第三次处理}
     """
-    from dashboard.models.DFM.prep.services.ui_backend_service import UIBackendService
+    from dashboard.models.DFM.prep.services.ui_backend_service import (
+        transform_variables,
+    )
 
     if config_df is None or config_df.empty:
         st_obj.warning("没有选择任何转换操作")
@@ -1012,7 +1004,7 @@ def _apply_variable_transforms(st_obj, config_df):
     try:
         with st_obj.spinner("正在应用转换..."):
             # 调用后端服务（纯业务逻辑，UI层只负责调用和显示）
-            result = UIBackendService.transform_variables(
+            result = transform_variables(
                 base_data.copy(),
                 transform_config,
                 target_freq=target_freq,

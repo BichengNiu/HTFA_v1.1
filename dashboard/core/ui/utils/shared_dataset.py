@@ -26,6 +26,31 @@ def fingerprint_file(uploaded_file) -> str:
     return f"{uploaded_file.name}:{len(content)}:{digest}"
 
 
+def _parse_first_column_as_time(frame: pd.DataFrame) -> pd.DataFrame:
+    """仅当第一列的全部有效值都是日期时才转换该列。"""
+
+    if frame.empty or frame.shape[1] == 0:
+        return frame
+
+    first_column = frame.iloc[:, 0]
+    if pd.api.types.is_datetime64_any_dtype(first_column):
+        return frame
+    if pd.api.types.is_numeric_dtype(first_column):
+        return frame
+
+    nonblank = first_column.notna() & first_column.astype(str).str.strip().ne("")
+    if not nonblank.any():
+        return frame
+
+    parsed = pd.to_datetime(first_column, errors="coerce", format="mixed")
+    if not parsed.loc[nonblank].notna().all():
+        return frame
+
+    result = frame.copy()
+    result[result.columns[0]] = parsed
+    return result
+
+
 def load_shared_dataframe(uploaded_file) -> pd.DataFrame:
     """以通用时序表格式读取共享文件，第一列优先解析为时间列。"""
     content = uploaded_file.getvalue()
@@ -35,12 +60,14 @@ def load_shared_dataframe(uploaded_file) -> pd.DataFrame:
         last_error = None
         for encoding in ("utf-8", "gbk", "gb2312"):
             try:
-                return pd.read_csv(io.StringIO(content.decode(encoding)), parse_dates=[0])
+                frame = pd.read_csv(io.StringIO(content.decode(encoding)))
+                return _parse_first_column_as_time(frame)
             except UnicodeDecodeError as exc:
                 last_error = exc
         raise ValueError("无法解码 CSV 文件，请使用 UTF-8、GBK 或 GB2312 编码") from last_error
     if extension in {"xlsx", "xls"}:
-        return pd.read_excel(io.BytesIO(content), parse_dates=[0])
+        frame = pd.read_excel(io.BytesIO(content))
+        return _parse_first_column_as_time(frame)
     raise ValueError(f"不支持的文件格式：{extension}")
 
 
@@ -68,7 +95,6 @@ def _clear_dependent_analysis_state() -> None:
     """新文件进入后移除依赖旧数据的探索结果。"""
     prefixes = (
         "tools.analysis.",
-        "exploration.time_lag_corr.",
         "exploration.lead_lag.",
     )
     for key in list(st.session_state):

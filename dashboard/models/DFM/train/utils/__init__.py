@@ -21,9 +21,6 @@ from dashboard.models.DFM.train.utils.data_utils import load_and_validate_data
 # 格式化工具
 from dashboard.models.DFM.train.utils.formatting import format_training_summary, print_training_summary
 
-# 状态管理器
-from dashboard.models.DFM.train.utils.state_manager import StateManager
-
 __all__ = [
     # 日志
     'get_logger',
@@ -38,7 +35,4 @@ __all__ = [
     # 格式化
     'format_training_summary',
     'print_training_summary',
-
-    # 状态管理
-    'StateManager',
 ]

@@ -15,8 +15,9 @@ from typing import Dict, Any
 from dashboard.models.DFM.decomp import execute_news_analysis
 
 
-from dashboard.models.DFM.ui.base import create_dfm_state_helpers
-get_dfm_state, set_dfm_state = create_dfm_state_helpers('news_analysis')
+from dashboard.core.ui.utils.state_helpers import NamespacedStateManager
+
+news_analysis_state = NamespacedStateManager("news_analysis")
 
 
 def render_dfm_news_analysis_page(st_module: Any) -> Dict[str, Any]:
@@ -45,9 +46,9 @@ def render_dfm_news_analysis_page(st_module: Any) -> Dict[str, Any]:
             )
 
             if uploaded_model_file:
-                set_dfm_state("dfm_model_file_news", uploaded_model_file)
+                news_analysis_state.set("dfm_model_file_news", uploaded_model_file)
             else:
-                existing_model = get_dfm_state('dfm_model_file_news', None)
+                existing_model = news_analysis_state.get('dfm_model_file_news')
                 if existing_model is not None and hasattr(existing_model, 'name'):
                     st_module.info(f"当前文件: {existing_model.name}")
 
@@ -61,17 +62,17 @@ def render_dfm_news_analysis_page(st_module: Any) -> Dict[str, Any]:
             )
 
             if uploaded_metadata_file:
-                set_dfm_state("dfm_metadata_file_news", uploaded_metadata_file)
+                news_analysis_state.set("dfm_metadata_file_news", uploaded_metadata_file)
             else:
-                existing_metadata = get_dfm_state('dfm_metadata_file_news', None)
+                existing_metadata = news_analysis_state.get('dfm_metadata_file_news')
                 if existing_metadata is not None and hasattr(existing_metadata, 'name'):
                     st_module.info(f"当前文件: {existing_metadata.name}")
 
         st_module.markdown("---")
 
         # 检查文件是否已上传
-        model_file = get_dfm_state('dfm_model_file_news', None)
-        metadata_file = get_dfm_state('dfm_metadata_file_news', None)
+        model_file = news_analysis_state.get('dfm_model_file_news')
+        metadata_file = news_analysis_state.get('dfm_metadata_file_news')
 
         if model_file is None or metadata_file is None:
             missing = []
@@ -93,7 +94,7 @@ def render_dfm_news_analysis_page(st_module: Any) -> Dict[str, Any]:
                 _render_results(st_module, result)
         else:
             # 非按钮点击时，检查是否有已完成的分析结果
-            if get_dfm_state('news_analysis_completed', False):
+            if news_analysis_state.get('news_analysis_completed', False):
                 _render_results(st_module)
 
         return {'status': 'success', 'page': 'news_analysis'}
@@ -109,13 +110,13 @@ def _render_parameter_section(st_module):
     import io
 
     # 1. 尝试从session_state获取已选月份
-    current_target_month = get_dfm_state('news_target_month', None)
+    current_target_month = news_analysis_state.get('news_target_month')
 
     if current_target_month:
         default_value = datetime.strptime(current_target_month, '%Y-%m').replace(day=1)
     else:
         # 2. 从元数据获取最新数据月份 (observation_period_end是实际最新数据日期)
-        metadata_file = get_dfm_state('dfm_metadata_file_news', None)
+        metadata_file = news_analysis_state.get('dfm_metadata_file_news')
         metadata_file.seek(0)
         metadata = joblib.load(io.BytesIO(metadata_file.read()))
         metadata_file.seek(0)
@@ -131,7 +132,7 @@ def _render_parameter_section(st_module):
 
     # 更新状态并返回选择的月份
     selected_month = target_date.strftime('%Y-%m')
-    set_dfm_state('news_target_month', selected_month)
+    news_analysis_state.set('news_target_month', selected_month)
 
     return selected_month
 
@@ -158,9 +159,9 @@ def _execute_analysis(st_module, model_file, metadata_file, target_month):
                 }
 
                 # 保存结果到状态（用于页面刷新后恢复）
-                set_dfm_state('news_analysis_completed', True)
-                set_dfm_state('news_analysis_result', serializable_result)
-                set_dfm_state('news_target_month_executed', target_month)
+                news_analysis_state.set('news_analysis_completed', True)
+                news_analysis_state.set('news_analysis_result', serializable_result)
+                news_analysis_state.set('news_target_month_executed', target_month)
 
                 st_module.success("分析执行成功！")
                 return serializable_result
@@ -177,7 +178,7 @@ def _execute_analysis(st_module, model_file, metadata_file, target_month):
 def _render_results(st_module, result=None):
     """渲染分析结果"""
     if result is None:
-        result = get_dfm_state('news_analysis_result')
+        result = news_analysis_state.get('news_analysis_result')
 
     st_module.markdown("---")
     _render_summary_cards(st_module, result)
@@ -389,7 +390,7 @@ def _render_download_section(st_module, result):
         industry_df.to_excel(writer, sheet_name='按行业分解', index=False)
         variable_df.to_excel(writer, sheet_name='按指标分解', index=False)
 
-    target_month = get_dfm_state('news_target_month_executed', 'unknown')
+    target_month = news_analysis_state.get('news_target_month_executed', 'unknown')
     st_module.download_button(
         label="下载分析结果",
         data=output.getvalue(),

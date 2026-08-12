@@ -10,8 +10,6 @@ from typing import List, Tuple, Dict, Callable, Optional, Any
 
 import pandas as pd
 
-from dashboard.models.DFM.train.core.models import EvaluationConfig
-
 logger = logging.getLogger(__name__)
 
 
@@ -59,33 +57,16 @@ def evaluate_single_variable_removal(
             )
             return (var, None)
 
-        from dashboard.models.DFM.train.training.evaluator_strategy import _evaluate_variable_selection_model
+        from dashboard.models.DFM.train.training.evaluator_strategy import (
+            _evaluate_variable_selection_model,
+            build_evaluation_config,
+        )
 
-        # 验证必需的配置参数
-        required_keys = ['training_start', 'train_end', 'validation_start',
-                        'validation_end', 'max_iterations', 'tolerance',
-                        'training_weight', 'factor_selection_method',
-                        'pca_threshold', 'kaiser_threshold']
-        for key in required_keys:
-            if key not in evaluator_config:
-                raise ValueError(f"evaluator_config缺少必需参数: {key}")
-
-        # 构建 EvaluationConfig 并调用评估函数
-        eval_config = EvaluationConfig(
+        eval_config = build_evaluation_config(
             full_data=full_data,
             variables=temp_variables,
             k_factors=k_factors,
-            factor_selection_method=evaluator_config['factor_selection_method'],
-            pca_threshold=evaluator_config['pca_threshold'],
-            kaiser_threshold=evaluator_config['kaiser_threshold'],
-            training_start=evaluator_config['training_start'],
-            train_end=evaluator_config['train_end'],
-            max_iterations=evaluator_config['max_iterations'],
-            tolerance=evaluator_config['tolerance'],
-            validation_start=evaluator_config['validation_start'],
-            validation_end=evaluator_config['validation_end'],
-            training_weight=evaluator_config['training_weight'],
-            target_variable=evaluator_config.get('target_variable')
+            settings=evaluator_config,
         )
 
         score = _evaluate_variable_selection_model(eval_config)

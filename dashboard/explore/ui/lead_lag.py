@@ -53,8 +53,6 @@ class LeadLagAnalysisComponent(TimeSeriesAnalysisComponent):
             Any: 分析结果
         """
         try:
-            self.detect_tab_activation()
-
             # 直接获取数据，不显示数据状态信息
             data, _, data_name = self.get_module_data()
 

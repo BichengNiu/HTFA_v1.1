@@ -23,9 +23,10 @@ ENV/
 .gitignore
 .gitattributes
 
-# Docker
-Dockerfile
-docker-compose.yml
+# Docker orchestration and local-only tooling
+tooling/docker/docker-compose.yml
+tooling/pytest.ini
+tooling/requirements/requirements.txt
 .dockerignore
 
 # 文档

@@ -18,8 +18,6 @@ from dashboard.core.ui.utils.state_helpers import (
     set_preview_state,
 )
 from dashboard.core.ui.utils.shared_dataset import get_shared_dataset_file
-from dashboard.preview.shared.frequency_utils import get_all_frequency_names
-from dashboard.preview.shared.config import UNIFIED_FREQUENCY_CONFIGS
 
 logger = logging.getLogger(__name__)
 
@@ -325,41 +323,6 @@ class PreviewRenderer(BaseRenderer):
                 return True
 
         return False
-
-    def _render_data_status_panel(self):
-        """渲染数据状态面板"""
-        st.markdown("---")
-        st.markdown("**数据状态：**")
-
-        max_industries = 0
-        for freq_name in get_all_frequency_names(use_english=True):
-            config = UNIFIED_FREQUENCY_CONFIGS[freq_name]
-
-            # 获取DataFrame并统计指标
-            df = get_preview_state(
-                config['df_key'],
-                pd.DataFrame(),
-                namespace=self.state_namespace,
-            )
-            indicator_count = len(df.columns) if not df.empty else 0
-
-            # 显示指标数量
-            if indicator_count > 0:
-                st.markdown(f"{config['display_name']}指标：{indicator_count} 个")
-
-            # 同时统计行业数量
-            industry_count = len(
-                get_preview_state(
-                    config['industries_key'],
-                    [],
-                    namespace=self.state_namespace,
-                )
-            )
-            max_industries = max(max_industries, industry_count)
-
-        # 显示行业数量
-        if max_industries > 0:
-            st.markdown(f"涵盖行业：{max_industries} 个")
 
     def _render_overview_tab(self):
         """渲染数据概览Tab"""

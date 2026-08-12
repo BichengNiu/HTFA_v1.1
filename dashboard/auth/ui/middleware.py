@@ -11,33 +11,29 @@ from datetime import datetime
 
 # 导入认证相关模块
 from dashboard.auth.authentication import AuthManager
+from dashboard.auth.database import AuthDatabase
 from dashboard.auth.permissions import PermissionManager
-from dashboard.auth.models import User, UserSession
-
-# 导入持久化存储工具
-from dashboard.auth.ui.utils.storage import get_auth_storage_manager
+from dashboard.auth.models import User
 
 
 class AuthMiddleware:
     """认证中间件"""
 
-    def __init__(self):
+    def __init__(self, database: AuthDatabase | None = None):
         """初始化认证中间件"""
-        self.auth_manager = AuthManager()
+        database = database or AuthDatabase()
+        self.auth_manager = AuthManager(db=database)
         self.permission_manager = PermissionManager()
         self.logger = logging.getLogger(__name__)
 
     def check_authentication(self) -> tuple[bool, Optional[User]]:
         """
-        检查用户认证状态（带持久化存储恢复）
+        检查当前 Streamlit 会话中的用户认证状态。
 
         Returns:
             (是否已认证, 用户对象)
         """
         try:
-            # 首先尝试从持久化存储恢复认证状态
-            # self._try_restore_from_persistent_storage()  # 禁用自动恢复，每次启动都需要重新登录
-
             # 从session state获取会话ID
             session_id = st.session_state.get('auth.user_session_id')
             if not session_id:
@@ -56,9 +52,6 @@ class AuthMiddleware:
                 # 设置用户可访问模块
                 accessible_modules = self.permission_manager.get_accessible_modules(user)
                 st.session_state['auth.user_accessible_modules'] = set(accessible_modules)
-
-                # 更新持久化存储的活动时间
-                self._update_persistent_storage_activity()
 
                 return True, user
             else:
@@ -87,7 +80,7 @@ class AuthMiddleware:
             # 显示登录页面
             from dashboard.auth.ui.pages.login import render_login_page
 
-            login_result = render_login_page()
+            login_result = render_login_page(self.auth_manager)
             if login_result:
                 success, login_data = login_result
                 if success:
@@ -105,12 +98,6 @@ class AuthMiddleware:
                     # 设置用户可访问模块
                     accessible_modules = self.permission_manager.get_accessible_modules(user)
                     st.session_state['auth.user_accessible_modules'] = set(accessible_modules)
-
-                    # 保存到持久化存储
-                    try:
-                        self._save_auth_state_to_persistent_storage(session.session_id, user, remember_me)
-                    except Exception as e:
-                        self.logger.warning(f"保存到持久化存储失败，但不影响登录: {e}")
 
                     # 刷新页面以进入主应用
                     st.rerun()
@@ -199,7 +186,7 @@ class AuthMiddleware:
             return False
 
     def _clear_user_session(self):
-        """清除用户会话信息（包括持久化存储）"""
+        """清除当前 Streamlit 会话中的认证状态。"""
         # 清除session_state中的认证状态
         auth_keys = [
             'auth.current_user',
@@ -211,94 +198,6 @@ class AuthMiddleware:
         for key in auth_keys:
             if key in st.session_state:
                 del st.session_state[key]
-
-        # 清除持久化存储
-        try:
-            auth_mgr = get_auth_storage_manager()
-            auth_mgr.clear_auth_state()
-            self.logger.debug("已清除持久化存储中的认证状态")
-        except Exception as e:
-            self.logger.warning(f"清除持久化存储失败: {e}")
-
-    def _try_restore_from_persistent_storage(self) -> bool:
-        """
-        尝试从持久化存储恢复认证状态
-
-        Returns:
-            是否恢复成功
-        """
-        try:
-            # 如果session state中已有认证信息，跳过恢复
-            if st.session_state.get('auth.user_session_id') and st.session_state.get('auth.current_user'):
-                return True
-
-            # 尝试从持久化存储恢复
-            auth_mgr = get_auth_storage_manager()
-            restored_auth = auth_mgr.restore_auth_state_to_session()
-            if restored_auth:
-                self.logger.info(f"认证状态恢复成功: 用户 {restored_auth['user_info'].get('username', 'unknown')} "
-                               f"(来源: {restored_auth.get('restored_from', 'unknown')})")
-                return True
-            else:
-                self.logger.debug("未找到可恢复的认证状态")
-                return False
-
-        except Exception as e:
-            self.logger.error(f"从持久化存储恢复认证状态失败: {e}")
-            return False
-
-    def _update_persistent_storage_activity(self):
-        """更新持久化存储中的活动时间"""
-        try:
-            from dashboard.auth.ui.utils.storage import AuthStorageManager
-            # 获取当前的记住登录设置
-            remember_me = st.session_state.get('auth.remember_me', False)
-            storage_type = AuthStorageManager.get_storage_type(remember_me)
-
-            # 更新活动时间
-            current_time = int(datetime.now().timestamp() * 1000)
-            auth_mgr = get_auth_storage_manager()
-            if hasattr(auth_mgr, 'file_storage'):
-                auth_mgr.file_storage.set_item(
-                    auth_mgr.AUTH_KEYS['last_activity'],
-                    current_time,
-                    storage_type=storage_type
-                )
-
-            self.logger.debug(f"已更新持久化存储活动时间({storage_type})")
-
-        except Exception as e:
-            self.logger.warning(f"更新持久化存储活动时间失败: {e}")
-
-    def _save_auth_state_to_persistent_storage(self, session_id: str, user: User, remember_me: bool = False) -> bool:
-        """
-        保存认证状态到持久化存储
-
-        Args:
-            session_id: 会话ID
-            user: 用户对象
-            remember_me: 是否记住登录
-
-        Returns:
-            是否保存成功
-        """
-        try:
-            # 将用户对象转换为字典
-            user_info = user.to_dict()
-
-            # 保存到持久化存储
-            auth_mgr = get_auth_storage_manager()
-            success = auth_mgr.save_auth_state(session_id, user_info, remember_me)
-            if success:
-                self.logger.info(f"认证状态已保存到持久化存储: 用户 {user.username}, 记住登录: {remember_me}")
-            else:
-                self.logger.warning(f"保存认证状态到持久化存储失败")
-
-            return success
-
-        except Exception as e:
-            self.logger.error(f"保存认证状态到持久化存储异常: {e}")
-            return False
 
     def get_current_user(self) -> Optional[User]:
         """

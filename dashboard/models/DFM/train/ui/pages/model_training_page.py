@@ -10,29 +10,19 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
-import sys
 import re
 from datetime import datetime, timedelta, date
 from collections import defaultdict
 import traceback
 from typing import Dict, List, Optional, Any
 
-# 添加路径以导入状态管理辅助函数
-current_dir = os.path.dirname(os.path.abspath(__file__))
-dashboard_root = os.path.abspath(os.path.join(current_dir, '..', '..', '..'))
-if dashboard_root not in sys.path:
-    sys.path.insert(0, dashboard_root)
-
 import logging
 
 # 导入文本标准化工具（从共享工具库）
 from dashboard.models.DFM.utils.text_utils import normalize_text
 
-# 导入组件化训练状态管理
-from dashboard.models.DFM.train.ui.components.training_status import TrainingStatusComponent
-
 # 导入新增工具和组件
-from dashboard.models.DFM.train.utils import StateManager
+from dashboard.core.ui.utils.state_helpers import NamespacedStateManager
 from dashboard.models.DFM.train.ui.components.file_uploader_component import FileUploaderComponent
 from dashboard.models.DFM.train.config import UIConfig
 from dashboard.models.DFM.train.ui.utils.config_builder import TrainingConfigBuilder
@@ -52,29 +42,10 @@ logger = logging.getLogger(__name__)
 from dashboard.core.ui.utils.debug_helpers import debug_log
 
 # 创建全局状态管理器实例
-_state = StateManager('train_model')
-
-
-# 配置已移除，使用硬编码默认值
-class TrainModelConfig:
-    # 基于项目结构的路径设置
-    PROJECT_ROOT = os.path.abspath(os.path.join(current_dir, '..', '..', '..', '..'))
-
-    # UI默认配置值
-    TYPE_MAPPING_SHEET = '指标字典'
-    INDICATOR_COLUMN_NAME_IN_EXCEL = '指标名称'
-    INDUSTRY_COLUMN_NAME_IN_EXCEL = '行业'
-    TYPE_COLUMN_NAME_IN_EXCEL = '类型'
-
-config = TrainModelConfig()
+_state = NamespacedStateManager('train_model')
 
 # 导入DFM训练脚本
-_TRAIN_UI_IMPORT_ERROR_MESSAGE = None
-try:
-    from dashboard.models.DFM.train import DFMTrainer, TrainingConfig, TrainingResult
-except ImportError as e:
-    _TRAIN_UI_IMPORT_ERROR_MESSAGE = f"train模块导入失败: {e}"
-    raise ImportError(f"导入train模块失败: {e}") from e
+from dashboard.models.DFM.train import DFMTrainer, TrainingConfig, TrainingResult
 
 
 def _reset_training_state():
@@ -114,14 +85,6 @@ def render_dfm_model_training_page(st_instance):
     from datetime import datetime
     import time
 
-    if _TRAIN_UI_IMPORT_ERROR_MESSAGE:
-        if "train" in _TRAIN_UI_IMPORT_ERROR_MESSAGE:
-            st_instance.error(f"关键模块导入错误，模型训练功能不可用:\n{_TRAIN_UI_IMPORT_ERROR_MESSAGE}")
-            return  # 如果训练模块不可用，直接返回
-        else:
-            # 如果只是数据准备模块的导入问题，显示警告但继续
-            st_instance.warning("[WARNING] 数据准备模块导入警告，但映射数据传递已修复，功能应该正常")
-
     current_training_status = _state.get('dfm_training_status')
     current_model_results = _state.get('dfm_model_results_paths')
 
@@ -160,7 +123,7 @@ def render_dfm_model_training_page(st_instance):
     debug_log(f"UI状态检查 - 当前训练状态: {training_status}", "DEBUG")
 
     # 使用组件化的文件上传器
-    state_manager = StateManager('train_model')
+    state_manager = NamespacedStateManager('train_model')
     file_uploader = FileUploaderComponent(state_manager)
     input_df, var_industry_map, dfm_default_map, var_frequency_map, var_unit_map = file_uploader.render(st_instance)
 
@@ -976,7 +939,7 @@ def render_dfm_model_training_page(st_instance):
         else:
             try:
                 # 使用TrainingConfigBuilder构建配置
-                state_manager = StateManager('train_model')
+                state_manager = NamespacedStateManager('train_model')
                 config_builder = TrainingConfigBuilder(state_manager)
 
                 training_config = config_builder.build(
@@ -1089,6 +1052,4 @@ def render_dfm_model_training_page(st_instance):
                 _state.set('dfm_training_status', f'训练失败: {str(e)}')
                 _state.set('dfm_training_error', error_msg)
                 st_instance.error(f"[ERROR] {error_msg}")
-
-
 

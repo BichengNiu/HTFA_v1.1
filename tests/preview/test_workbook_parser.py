@@ -89,6 +89,31 @@ def test_parse_workbook_validates_fixed_metadata_rows():
         )
 
 
+def test_parse_workbook_accepts_reordered_unit_source_and_update_rows():
+    workbook_file = _build_workbook()
+    loaded_workbook = load_workbook(workbook_file)
+    daily = loaded_workbook["日度_Wind"]
+    daily_rows = [
+        [daily.cell(row=row, column=column).value for column in range(1, 3)]
+        for row in (4, 5, 6)
+    ]
+    for target_row, values in zip((4, 5, 6), daily_rows[1:] + daily_rows[:1]):
+        for column, value in enumerate(values, start=1):
+            daily.cell(row=target_row, column=column).value = value
+
+    output = BytesIO()
+    loaded_workbook.save(output)
+    output.seek(0)
+    output.name = "元数据换序.xlsx"
+
+    result = parse_preview_workbook(output, module_name="test")
+    metadata = result.indicator_metadata_map["指标A"]
+
+    assert metadata.unit == "点"
+    assert metadata.sheet_source == "交易所"
+    assert metadata.updated_at == "2026-07-25"
+
+
 def test_parse_workbook_rejects_value_with_blank_date():
     workbook_file = _build_workbook()
     loaded_workbook = load_workbook(workbook_file)

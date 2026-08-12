@@ -11,7 +11,7 @@ import numpy as np
 from typing import Dict, Any, List, Tuple, Optional
 import streamlit as st
 
-from dashboard.preview.shared.config import SUMMARY_CONFIGS
+from dashboard.preview.shared.config import FREQUENCY_CONFIGS
 from dashboard.preview.core.calculation_rules import uses_difference_calculation
 
 logger = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ def calculate_summary(
         return pd.DataFrame()
 
     df = df.sort_index()
-    config = SUMMARY_CONFIGS[frequency]
+    config = FREQUENCY_CONFIGS[frequency]
 
     if indicator_unit_map is None:
         indicator_unit_map = {}
@@ -82,12 +82,12 @@ def calculate_summary(
 
         # 4. 构建行数据
         row_data = {
-            config['indicator_name_column']: indicator,
+            config.indicator_name_column: indicator,
             '行业': indicator_industry,  # 添加行业列
             '单位': indicator_unit,  # 添加单位列,用于显示时格式化判断
             '类型': indicator_type,  # 添加类型列,用于显示时格式化判断
             '最新值': current_value,
-            config['date_column']: (
+            config.date_column: (
                 current_date.strftime('%Y-%m-%d') if frequency != 'yearly'
                 else current_date.year
             ),
@@ -101,11 +101,11 @@ def calculate_summary(
     summary_df = pd.DataFrame(summary_data)
     # 确保单位、行业和类型列在指标名称后面，顺序为：单位 -> 行业 -> 类型
     column_order_with_meta = []
-    for col in config['column_order']:
+    for col in config.column_order:
         if col in summary_df.columns:
             column_order_with_meta.append(col)
             # 在指标名称列后面插入单位、行业和类型
-            if col == config['indicator_name_column']:
+            if col == config.indicator_name_column:
                 if '单位' in summary_df.columns:
                     column_order_with_meta.append('单位')
                 if '行业' in summary_df.columns:

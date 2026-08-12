@@ -93,7 +93,7 @@ class DFMTrainer:
         try:
             # 步骤1: 加载和验证数据（无目标变量）
             data, variable_names = load_and_validate_data(
-                data_path=self.config.data_path,
+                data=self.config.data,
                 selected_indicators=self.config.selected_indicators,
                 progress_callback=progress_callback
             )

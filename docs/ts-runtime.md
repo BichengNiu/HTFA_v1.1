@@ -1,50 +1,80 @@
-# HTFA portable project runtime
+# HTFA unified Python runtime
 
-The project folder contains two Python environments with different purposes:
-
-- `.venv/` is only for development and can remain machine-local.
-- `runtime/` is the self-contained CPython 3.13.4 runtime used by `start.bat`.
-
-## Make the project folder portable
-
-Run once from the development computer:
-
-```powershell
-.venv\Scripts\python.exe scripts\build_portable.py
-```
-
-The builder downloads the official CPython 3.13.4 Windows embeddable archive, verifies its pinned SHA-256, installs the exact binary dependencies from `requirements-win-py313.lock`, installs the pinned bootstrap Ts, and writes directly into the current project:
+HTFA uses one project-local CPython 3.13.4 environment for development,
+testing, local startup, and Windows release:
 
 ```text
-HTFA_v1.1/
-|-- runtime/                 Python 3.13.4, dependencies, Ts, and manifest
-|-- dashboard/
-|-- scripts/
-|-- data/
-|-- .streamlit/
-|-- app.py
-`-- start.bat
+runtime/
+|-- python.exe
+|-- python313._pth
+|-- runtime-manifest.json
+`-- Lib/site-packages/       application packages, pip, pytest, and Ts
 ```
 
-Copy the whole `HTFA_v1.1` folder to any Windows x64 path and double-click its root `start.bat`. The target computer needs no installed Python, pip, Git or compiler. The copied `.venv/` and `.git/` directories are not used by startup and may be omitted to reduce copy size.
+The project does not create or use a separate virtual environment. All normal
+commands call `runtime\python.exe` and therefore import the same physical
+dependencies.
 
-The builder safely replaces only the root `runtime/` directory. `requirements-win-py313.lock` records exact dependency versions; `runtime/runtime-manifest.json` records the Python archive, dependency-lock hash, bootstrap Ts commit and build timestamp.
+## Create or rebuild runtime
 
-The pinned bootstrap Ts commit is `bec57a2610b38be3a8f78071d7e03850b53ca25e`.
+Run from the project root:
+
+```powershell
+scripts\windows\setup_runtime.bat
+```
+
+PowerShell downloads the pinned official CPython 3.13.4 embeddable archive and
+pip 26.1.2 wheel, verifies both SHA-256 values, and builds
+`build/runtime-candidate`. The candidate installs every exact entry from
+`tooling/requirements/requirements-py313.lock`, including pip and pytest, then installs the pinned
+Ts baseline.
+
+The candidate must pass imports, `pip check`, pytest, compileall, and a final
+smoke test before it replaces `runtime`. The existing runtime is renamed to a
+backup during the swap and restored if the final check fails. A failure before
+the swap leaves the active runtime unchanged.
+
+`tooling/requirements/requirements.txt` documents supported version ranges. It is not an install
+input. Windows runtime construction and Docker both install the exact versions
+from `tooling/requirements/requirements-py313.lock`.
+
+## Daily commands
+
+```powershell
+runtime\python.exe -m pip check
+runtime\python.exe -m pytest -q -c tooling\pytest.ini
+runtime\python.exe -m compileall app.py dashboard scripts
+runtime\python.exe scripts\run_htfa.py --server.port=8501
+```
+
+`scripts\windows\start.bat` uses the same runtime, clears project caches, frees port 8501,
+checks Ts, and starts Streamlit. If runtime is missing, it directs the user to
+run `scripts\windows\setup_runtime.bat`.
+
+## Portable delivery
+
+Copy the project folder with `runtime/` to another Windows x64 location and run
+`scripts\windows\start.bat`. The target computer needs no installed Python, pip, Git, or
+compiler. Do not include `.git/`, `build/`, test caches, credentials, or local
+exports in a release copy.
+
+`runtime/runtime-manifest.json` records the Python archive, pip wheel,
+dependency-lock hash, Ts baseline commit, and build timestamp. The pinned Ts
+baseline is `bec57a2610b38be3a8f78071d7e03850b53ca25e`.
 
 ## Ts update behavior
 
-Every `start.bat` run performs one short HTTPS request to the public `BichengNiu/Ts` repository:
+Every `scripts\windows\start.bat` run performs one bounded HTTPS check against the public
+`BichengNiu/Ts` repository. A different `main` commit is downloaded by immutable
+commit URL and atomically replaces only the Ts package. Network or replacement
+failure leaves the installed Ts unchanged and starts HTFA with it.
 
-1. Read the `main` HEAD commit through the GitHub API.
-2. If it matches the installed metadata, launch with the current Ts.
-3. If it differs, download the immutable commit ZIP, safely extract the allowlisted Ts files, atomically replace the current package, and launch with it.
-4. If the network check, download, extraction or replacement fails, leave the current Ts untouched and launch with it.
-
-The updater does not use system Git, credentials, pip, background tasks or version caches. It retains HTTPS, fixed-repository and fixed-commit URLs, archive size limits, ZIP path traversal protection and atomic replacement.
-
-By explicit project decision, a successfully downloaded `main` commit receives no interface validation, import validation or isolated smoke test before installation. A broken `main` commit can therefore break HTFA after download. Recovery is to fix `main` and start again, or replace the directory with a clean portable release.
+The updater does not use system Git, credentials, pip, background tasks, or
+version caches. By explicit project decision, a downloaded `main` commit is not
+interface-validated or smoke-tested before installation.
 
 ## Docker
 
-Docker remains an independent deployment target and currently uses the Python version declared in `Dockerfile`. The Windows portable build does not change the container runtime.
+Docker uses Python 3.13.4 and installs the same exact
+`tooling/requirements/requirements-py313.lock`. Platform-specific wheel files remain separate, but
+the Python and package versions match the Windows runtime.

@@ -16,7 +16,6 @@ from dashboard.analysis.uae.indicator_catalog import (
     INDICATOR_SPECS,
     UAE_SIGNATURE_IDS,
 )
-from dashboard.analysis.uae.simulation import merge_runtime_simulation
 from dashboard.preview.core.workbook_parser import parse_preview_workbook
 
 DEFAULT_UAE_WORKBOOK = Path("data") / "阿联酋.xlsx"
@@ -83,11 +82,3 @@ def load_real_uae_bundle(file_input: Any) -> UAEDataBundle:
         series_by_id=resolved,
         provenance_by_id=provenance,
     )
-
-
-def load_runtime_uae_bundle(
-    file_input: Any,
-) -> UAEDataBundle:
-    """加载真实数据，并仅为缺失指标补充运行时模拟序列。"""
-
-    return merge_runtime_simulation(load_real_uae_bundle(file_input))

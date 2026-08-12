@@ -18,10 +18,6 @@ _LAZY_EXPORTS = {
         "dashboard.explore.ui.structural_break",
         "StructuralBreakAnalysisComponent",
     ),
-    "CorrelationAnalysisComponent": (
-        "dashboard.explore.ui.correlation",
-        "CorrelationAnalysisComponent",
-    ),
     "DTWAnalysisComponent": (
         "dashboard.explore.ui.dtw",
         "DTWAnalysisComponent",
@@ -30,13 +26,9 @@ _LAZY_EXPORTS = {
         "dashboard.explore.ui.lead_lag",
         "LeadLagAnalysisComponent",
     ),
-    "UnifiedCorrelationAnalysisComponent": (
-        "dashboard.explore.ui.unified_correlation",
-        "UnifiedCorrelationAnalysisComponent",
-    ),
-    "DataExplorationWelcomePage": (
+    "render_data_exploration_welcome_page": (
         "dashboard.explore.ui.pages",
-        "DataExplorationWelcomePage",
+        "render_data_exploration_welcome_page",
     ),
     "render_univariate_analysis_page": (
         "dashboard.explore.ui.univariate_page",

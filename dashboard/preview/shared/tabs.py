@@ -12,9 +12,9 @@ from datetime import datetime
 import io
 
 from dashboard.preview.shared.config import (
+    FREQUENCY_CONFIGS,
     FREQUENCY_ORDER,
     UI_TEXT,
-    UNIFIED_FREQUENCY_CONFIGS,
 )
 from dashboard.preview.shared.calculators import calculate_summary
 from dashboard.preview.shared.plotting import plot_indicator
@@ -260,17 +260,6 @@ def render_indicator_details(indicator_details, st_module):
     )
 
 
-def _get_available_types_for_industries(selected_industries, all_indicators, indicator_maps):
-    """获取指定行业的可用类型（私有辅助函数）"""
-    available_types = set()
-    for indicator in all_indicators:
-        industry = indicator_maps['industry'].get(indicator, "未分类")
-        if industry in selected_industries:
-            ind_type = indicator_maps['type'].get(indicator, "未分类")
-            available_types.add(ind_type)
-    return sorted(list(available_types))
-
-
 def _group_indicators_by_industry_and_type(indicators, industry_map, type_map):
     """按行业和类型分组指标，并按数量降序排序
 
@@ -332,18 +321,18 @@ def display_time_series_tab(
         frequency: 数据频率 ('weekly'/'monthly'/'daily'/'ten_day'/'yearly')
     """
     # 1. 获取配置
-    config = UNIFIED_FREQUENCY_CONFIGS[frequency]
+    config = FREQUENCY_CONFIGS[frequency]
 
     # 2. 获取数据（直接从session_state获取）
-    df = get_preview_state(config['df_key'], namespace=state_namespace)
+    df = get_preview_state(config.df_key, namespace=state_namespace)
 
     if df is None or df.empty:
-        st_module.info(config['empty_message'])
+        st_module.info(config.empty_message)
         return
 
     # 3. 获取行业和映射数据（直接从session_state获取）
     industries = get_preview_state(
-        config['industries_key'],
+        config.industries_key,
         [],
         namespace=state_namespace,
     )
@@ -366,7 +355,7 @@ def display_time_series_tab(
             df=df,
             indicator_type_map=indicator_type_map,
             indicator_industry_map=indicator_industry_map,
-            key_prefix=f"{state_namespace}.{config['key_prefix']}"
+            key_prefix=f"{state_namespace}.{config.english_name}"
         )
 
     if not filtered_indicators:
@@ -374,10 +363,10 @@ def display_time_series_tab(
         return
 
     # 5. 显示摘要表
-    st_module.markdown(f"**{display_name} - {config['display_name']}数据摘要**")
+    st_module.markdown(f"**{display_name} - {config.display_name}数据摘要**")
 
     # 计算摘要（使用Streamlit内置缓存，自动处理缓存逻辑）
-    with st_module.spinner(f"正在计算 '{display_name}' 的{config['display_name']}摘要..."):
+    with st_module.spinner(f"正在计算 '{display_name}' 的{config.display_name}摘要..."):
         filtered_df = df[filtered_indicators]
         try:
             # 获取单位、类型和行业映射
@@ -395,7 +384,7 @@ def display_time_series_tab(
                 indicator_industry_map
             )
         except Exception as e:
-            st_module.error(f"计算{config['display_name']}摘要时出错 ({display_name}): {e}")
+            st_module.error(f"计算{config.display_name}摘要时出错 ({display_name}): {e}")
             summary_table = pd.DataFrame()
 
     # 显示摘要表
@@ -403,10 +392,10 @@ def display_time_series_tab(
         display_summary_table(
             st=st_module,
             summary_table=summary_table,
-            sort_column=config['summary_config']['sort_column'],
-            highlight_columns=config['summary_config']['highlight_columns'],
-            percentage_columns=config['summary_config']['percentage_columns'],
-            download_prefix=config['summary_config']['download_prefix']
+            sort_column=config.sort_column,
+            highlight_columns=config.highlight_columns,
+            percentage_columns=config.percentage_columns,
+            download_prefix=config.download_prefix,
         )
 
     # 6. 绑制图表（按行业和类型分组）
@@ -549,12 +538,12 @@ def display_overview_tab(st_module, *, state_namespace: str = "preview"):
     # 1. 获取数据并创建统一结构（直接从session_state获取）
     # 使用工具函数创建频率到DataFrame的字典
     all_data_dict = {
-        config['display_name']: get_preview_state(
-            config['df_key'],
+        config.display_name: get_preview_state(
+            config.df_key,
             pd.DataFrame(),
             namespace=state_namespace,
         )
-        for config in UNIFIED_FREQUENCY_CONFIGS.values()
+        for config in FREQUENCY_CONFIGS.values()
     }
 
     indicator_maps = {

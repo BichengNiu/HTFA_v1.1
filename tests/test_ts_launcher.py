@@ -63,7 +63,9 @@ def test_streamlit_arguments_use_the_project_app():
 
 
 def test_start_batch_uses_only_bundled_python():
-    batch = (PROJECT_ROOT / "start.bat").read_text(encoding="utf-8")
+    batch = (PROJECT_ROOT / "scripts" / "windows" / "start.bat").read_text(
+        encoding="utf-8"
+    )
     assert '"runtime\\python.exe" scripts\\run_htfa.py' in batch
     assert ".venv" not in batch
     system_python_lines = (
@@ -72,6 +74,30 @@ def test_start_batch_uses_only_bundled_python():
     )
     assert list(system_python_lines) == []
     assert "pip" not in batch
+    assert "scripts\\windows\\setup_runtime.bat" in batch
+
+
+def test_baker_hughes_refresh_uses_versioned_script(monkeypatch, tmp_path):
+    updater = (
+        tmp_path
+        / "scripts"
+        / "data_sources"
+        / "baker_hughes"
+        / "update_baker_hughes_monthly.py"
+    )
+    updater.parent.mkdir(parents=True)
+    updater.write_text("", encoding="utf-8")
+    calls = []
+
+    def runner(arguments, **kwargs):
+        calls.append((arguments, kwargs))
+        return subprocess.CompletedProcess(arguments, 0)
+
+    monkeypatch.setattr(run_htfa.sys, "platform", "win32")
+
+    assert run_htfa.refresh_baker_hughes_data(tmp_path, runner=runner) is True
+    assert calls[0][0] == [sys.executable, str(updater)]
+    assert calls[0][1]["cwd"] == tmp_path
 
 
 def test_launcher_checks_for_update_once_before_streamlit(monkeypatch):
@@ -81,7 +107,12 @@ def test_launcher_checks_for_update_once_before_streamlit(monkeypatch):
         source="installed",
         detail="test",
     )
-    calls = {"prepare": 0, "activate": 0, "streamlit": 0}
+    calls = {"refresh": 0, "prepare": 0, "activate": 0, "streamlit": 0}
+
+    def refresh(project_root):
+        calls["refresh"] += 1
+        assert project_root == PROJECT_ROOT
+        return True
 
     def prepare(**kwargs):
         calls["prepare"] += 1
@@ -101,7 +132,13 @@ def test_launcher_checks_for_update_once_before_streamlit(monkeypatch):
     result = run_htfa.main(
         ["--server.port=8501"],
         preparer=prepare,
+        data_refresher=refresh,
         streamlit_main=streamlit_main,
     )
     assert result == 0
-    assert calls == {"prepare": 1, "activate": 1, "streamlit": 1}
+    assert calls == {
+        "refresh": 1,
+        "prepare": 1,
+        "activate": 1,
+        "streamlit": 1,
+    }

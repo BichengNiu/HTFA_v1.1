@@ -5,9 +5,10 @@ from decimal import Decimal
 
 from openpyxl import Workbook
 
-from data.CBUAE.update_cbuae_monthly import (
+from scripts.data_sources.cbuae.update_cbuae_monthly import (
     Observation,
     _normalize_label,
+    _records_latest_first,
     add_missing_fallbacks,
     extract_wind_fallback,
     select_latest_vintages,
@@ -71,6 +72,24 @@ def test_add_missing_fallbacks_does_not_override_primary() -> None:
     assert [item.period for item in merged] == ["2019-12", "2020-01", "2020-02"]
     assert merged[1].values[0] == Decimal("1")
     assert added == ["2019-12", "2020-02"]
+
+
+def test_excel_records_are_serialized_latest_first() -> None:
+    """The managed CBUAE sheet must display the newest month first."""
+
+    records = _records_latest_first(
+        [
+            _observation("2020-01", "1", "2020-01"),
+            _observation("2020-03", "3", "2020-03"),
+            _observation("2020-02", "2", "2020-02"),
+        ]
+    )
+
+    assert [record["period"] for record in records] == [
+        "2020-03",
+        "2020-02",
+        "2020-01",
+    ]
 
 
 def test_extract_wind_fallback_reads_named_monthly_columns(tmp_path) -> None:

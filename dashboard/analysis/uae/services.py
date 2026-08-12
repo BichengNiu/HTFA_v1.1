@@ -15,7 +15,7 @@ from dashboard.analysis.uae.contracts import (
     ProvenanceKind,
     UAEDataBundle,
 )
-from dashboard.analysis.uae.data_adapter import load_runtime_uae_bundle
+from dashboard.analysis.uae.data_adapter import load_real_uae_bundle
 from dashboard.analysis.uae.diagnostics import build_diagnostic
 from dashboard.analysis.uae.growth import calculate_industry_diagnostics
 from dashboard.analysis.uae.indicator_catalog import (
@@ -141,6 +141,7 @@ def _build_price_volume_series(
             deflator_yoy.rename(f"{prefix}{deflator_label}"),
         ],
         axis=1,
+        sort=False,
     ).dropna()
 
 
@@ -388,6 +389,7 @@ def build_growth_panel(bundle: UAEDataBundle) -> MacroPanelResult:
             oil_production_yoy,
         ],
         axis=1,
+        sort=False,
     ).reindex(real_gdp.index).dropna()
     quarterly_industry_pull = pd.concat(
         [
@@ -1003,14 +1005,22 @@ def build_monitoring_dashboard(
 ) -> MonitoringDashboardResult:
     """基于显式传入的工作簿构建五个宏观主题结果。"""
 
-    bundle = load_runtime_uae_bundle(file_input)
-    panels = (
-        build_growth_panel(bundle),
-        build_inflation_panel(bundle),
-        build_labor_panel(bundle),
-        build_fiscal_external_panel(bundle),
-        build_monetary_panel(bundle),
-    )
+    bundle = load_real_uae_bundle(file_input)
+    builders = {
+        "growth": build_growth_panel,
+        "inflation": build_inflation_panel,
+        "labor": build_labor_panel,
+        "fiscal_external": build_fiscal_external_panel,
+        "monetary": build_monetary_panel,
+    }
+    panels = {}
+    unavailable = {}
+    for key, builder in builders.items():
+        try:
+            panels[key] = builder(bundle)
+        except ValueError as exc:
+            unavailable[key] = str(exc)
     return MonitoringDashboardResult(
-        panels={panel.key: panel for panel in panels}
+        panels=panels,
+        unavailable_panels=unavailable,
     )

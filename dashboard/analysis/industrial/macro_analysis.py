@@ -25,8 +25,6 @@ from dashboard.analysis.industrial.utils import (
     load_overall_industrial_data,
     filter_data_by_time_range,
     create_grouping_mappings,
-    # 新增：优化的加权计算
-    calculate_weighted_groups_optimized,
     # 新增：统一Fragment组件
     create_chart_with_time_selector_fragment,
     # 新增：统一下载工具
@@ -44,7 +42,7 @@ from dashboard.analysis.industrial.utils.weighted_calculation import (
     categorize_indicators
 )
 # 导入统一状态管理
-from dashboard.analysis.industrial.utils import IndustrialStateManager
+from dashboard.analysis.industrial.utils.state_manager import industrial_state
 from dashboard.core.ui.utils.debug_helpers import debug_log
 from dashboard.analysis.industrial.validation import validate_data_format, display_validation_result
 from dashboard.analysis.industrial.constants import (
@@ -96,12 +94,12 @@ def _compute_contributions(st_obj, df_macro, df_weights, target_columns, uploade
             df_macro_filtered, df_weights, df_overall_growth=df_overall_filtered
         )
 
-        IndustrialStateManager.set(STATE_KEY_CONTRIBUTION_EXPORT, contribution_results['export_groups'])
-        IndustrialStateManager.set(STATE_KEY_CONTRIBUTION_STREAM, contribution_results['stream_groups'])
-        IndustrialStateManager.set(STATE_KEY_CONTRIBUTION_INDUSTRY, contribution_results['industry_groups'])
-        IndustrialStateManager.set(STATE_KEY_CONTRIBUTION_INDIVIDUAL, contribution_results['individual'])
-        IndustrialStateManager.set(STATE_KEY_TOTAL_GROWTH, contribution_results['total_growth'])
-        IndustrialStateManager.set(STATE_KEY_VALIDATION_RESULT, contribution_results['validation'])
+        industrial_state.set(STATE_KEY_CONTRIBUTION_EXPORT, contribution_results['export_groups'])
+        industrial_state.set(STATE_KEY_CONTRIBUTION_STREAM, contribution_results['stream_groups'])
+        industrial_state.set(STATE_KEY_CONTRIBUTION_INDUSTRY, contribution_results['industry_groups'])
+        industrial_state.set(STATE_KEY_CONTRIBUTION_INDIVIDUAL, contribution_results['individual'])
+        industrial_state.set(STATE_KEY_TOTAL_GROWTH, contribution_results['total_growth'])
+        industrial_state.set(STATE_KEY_VALIDATION_RESULT, contribution_results['validation'])
 
         debug_log(f"拉动率计算完成，验证结果: {contribution_results['validation']['passed']}", "INFO")
 
@@ -114,14 +112,14 @@ def _compute_contributions(st_obj, df_macro, df_weights, target_columns, uploade
 
 def _clear_contribution_states():
     """清除拉动率状态"""
-    IndustrialStateManager.set(STATE_KEY_CONTRIBUTION_EXPORT, None)
-    IndustrialStateManager.set(STATE_KEY_CONTRIBUTION_STREAM, None)
-    IndustrialStateManager.set(STATE_KEY_CONTRIBUTION_INDUSTRY, None)
+    industrial_state.set(STATE_KEY_CONTRIBUTION_EXPORT, None)
+    industrial_state.set(STATE_KEY_CONTRIBUTION_STREAM, None)
+    industrial_state.set(STATE_KEY_CONTRIBUTION_INDUSTRY, None)
 
 
 def _render_contribution_chart(st_obj, state_key, prefix, chart_id, chart_title, grouping_label, df_weights):
     """渲染单个拉动率图表区块（三大产业/出口依赖/上中下游）"""
-    contribution_data = IndustrialStateManager.get(state_key)
+    contribution_data = industrial_state.get(state_key)
     if contribution_data is None or contribution_data.empty:
         st_obj.warning(f"{grouping_label}拉动率数据未计算")
         return
@@ -146,15 +144,15 @@ def _render_contribution_chart(st_obj, state_key, prefix, chart_id, chart_title,
         state_namespace="monitoring.industrial.macro",
         chart_title=None, chart_creator_func=_create_chart,
         chart_data=contribution_data, chart_variables=chart_vars,
-        get_state_func=IndustrialStateManager.get,
-        set_state_func=IndustrialStateManager.set,
+        get_state_func=industrial_state.get,
+        set_state_func=industrial_state.set,
         additional_chart_kwargs={'var_mapping': var_name_mapping},
         variable_selector_config={'options': chart_vars, 'name_mapping': var_name_mapping}
     )
 
     # 下载功能
     download_df = contribution_data[chart_vars].copy()
-    total_growth = IndustrialStateManager.get(STATE_KEY_TOTAL_GROWTH)
+    total_growth = industrial_state.get(STATE_KEY_TOTAL_GROWTH)
     if total_growth is not None:
         total_growth_aligned = total_growth.reindex(download_df.index)
         download_df.insert(0, '规模以上工业增加值:当月同比', total_growth_aligned)
@@ -191,9 +189,9 @@ def render_macro_operations_analysis_with_data(st_obj, df_macro: pd.DataFrame, d
         st_obj.error("数据未正确加载，无法进行分行业工业增加值同比增速分析")
         return
 
-    IndustrialStateManager.set(STATE_KEY_MACRO_DATA, df_macro)
-    IndustrialStateManager.set(STATE_KEY_WEIGHTS_DATA, df_weights)
-    IndustrialStateManager.set(STATE_KEY_FILE_NAME, 'shared_data')
+    industrial_state.set(STATE_KEY_MACRO_DATA, df_macro)
+    industrial_state.set(STATE_KEY_WEIGHTS_DATA, df_weights)
+    industrial_state.set(STATE_KEY_FILE_NAME, 'shared_data')
 
     column_names = df_macro.columns.tolist()
     target_columns = [col for col in column_names[1:] if pd.notna(col)] if len(column_names) > 1 else []
@@ -226,7 +224,7 @@ def render_macro_operations_analysis_with_data(st_obj, df_macro: pd.DataFrame, d
 
 def _render_individual_contribution_analysis(st_obj, df_weights):
     """渲染个体行业拉动率分析（月度变化+历史分析）"""
-    contribution_individual = IndustrialStateManager.get(STATE_KEY_CONTRIBUTION_INDIVIDUAL)
+    contribution_individual = industrial_state.get(STATE_KEY_CONTRIBUTION_INDIVIDUAL)
 
     if contribution_individual is None or contribution_individual.empty:
         st_obj.info("拉动率数据未计算，请确保已上传数据文件")
@@ -487,4 +485,3 @@ def _render_individual_contribution_analysis(st_obj, df_weights):
         column_ratio=(1, 3),
         type="primary"
     )
-
