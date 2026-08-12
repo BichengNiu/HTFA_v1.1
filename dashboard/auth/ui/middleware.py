@@ -5,7 +5,7 @@
 """
 
 import streamlit as st
-from typing import Optional, Dict, Any
+from typing import Optional
 import logging
 from datetime import datetime
 
@@ -107,58 +107,6 @@ class AuthMiddleware:
 
         return None
 
-    def check_permission(self, user: User, module_name: str) -> bool:
-        """
-        检查用户是否有访问指定模块的权限
-
-        Args:
-            user: 用户对象
-            module_name: 模块名称
-
-        Returns:
-            是否有权限
-        """
-        try:
-            return self.permission_manager.check_module_access(user, module_name)
-        except Exception as e:
-            self.logger.error(f"检查权限失败: {e}")
-            return False
-
-    def require_permission(self, user: User, module_name: str) -> bool:
-        """
-        要求用户具有指定模块的访问权限
-
-        Args:
-            user: 用户对象
-            module_name: 模块名称
-
-        Returns:
-            是否有权限
-        """
-        if not self.check_permission(user, module_name):
-            st.error(f"权限不足：您无权访问「{module_name}」模块")
-            st.info("如需访问权限，请联系系统管理员")
-            st.stop()
-            return False
-
-        return True
-
-    def filter_accessible_modules(self, user: User, module_config: Dict) -> Dict:
-        """
-        过滤用户可访问的模块配置
-
-        Args:
-            user: 用户对象
-            module_config: 模块配置字典
-
-        Returns:
-            过滤后的模块配置
-        """
-        try:
-            return self.permission_manager.filter_accessible_modules(user, module_config)
-        except Exception as e:
-            self.logger.error(f"过滤模块配置失败: {e}")
-            return module_config
 
     def logout(self) -> bool:
         """
@@ -199,24 +147,6 @@ class AuthMiddleware:
             if key in st.session_state:
                 del st.session_state[key]
 
-    def get_current_user(self) -> Optional[User]:
-        """
-        获取当前登录用户
-
-        Returns:
-            用户对象或None
-        """
-        return st.session_state.get('auth.current_user')
-
-    def is_authenticated(self) -> bool:
-        """
-        检查是否已认证
-
-        Returns:
-            是否已认证
-        """
-        is_auth, _ = self.check_authentication()
-        return is_auth
 
 
 def get_auth_middleware() -> AuthMiddleware:

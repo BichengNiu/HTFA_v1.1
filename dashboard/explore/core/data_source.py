@@ -10,7 +10,7 @@ from typing import Any
 
 import pandas as pd
 
-from dashboard.preview.modules.uae.loader import UAELoader
+from dashboard.preview.core.workbook_parser import parse_preview_workbook
 
 FREQUENCY_LABELS = {
     "daily": "日度数据",
@@ -67,7 +67,7 @@ def load_stationarity_data(
     if suffix not in {".xlsx", ".xls"}:
         raise ValueError("仅支持 CSV、XLSX 和 XLS 文件")
 
-    loaded = UAELoader().load_and_process_data([file_input])
+    loaded = parse_preview_workbook(file_input, module_name="uae")
     tables = {
         frequency: frame
         for frequency, frame in loaded.get_all_dataframes().items()

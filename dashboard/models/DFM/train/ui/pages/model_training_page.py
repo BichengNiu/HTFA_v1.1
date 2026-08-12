@@ -11,10 +11,8 @@ import pandas as pd
 import numpy as np
 import os
 import re
-from datetime import datetime, timedelta, date
+import time
 from collections import defaultdict
-import traceback
-from typing import Dict, List, Optional, Any
 
 import logging
 
@@ -31,10 +29,6 @@ from dashboard.models.DFM.train.ui.utils.date_helpers import (
     get_frequency_label,
     validate_date_ranges,
 )
-from dashboard.models.DFM.train.ui.utils.text_helpers import (
-    normalize_variable_name,
-)
-
 # 配置日志记录器
 logger = logging.getLogger(__name__)
 
@@ -45,7 +39,7 @@ from dashboard.core.ui.utils.debug_helpers import debug_log
 _state = NamespacedStateManager('train_model')
 
 # 导入DFM训练脚本
-from dashboard.models.DFM.train import DFMTrainer, TrainingConfig, TrainingResult
+from dashboard.models.DFM.train.training.trainer import DFMTrainer
 
 
 def _reset_training_state():
@@ -79,11 +73,7 @@ def _reset_training_state():
     debug_log("状态重置 - 已重置所有训练状态到初始值", "DEBUG")
 
 
-def render_dfm_model_training_page(st_instance):
-
-    # 确保datetime在函数开头就可用
-    from datetime import datetime
-    import time
+def _initialize_training_state(st_instance):
 
     current_training_status = _state.get('dfm_training_status')
     current_model_results = _state.get('dfm_model_results_paths')
@@ -122,14 +112,16 @@ def render_dfm_model_training_page(st_instance):
 
     debug_log(f"UI状态检查 - 当前训练状态: {training_status}", "DEBUG")
 
+
+def _load_training_inputs(st_instance):
     # 使用组件化的文件上传器
     state_manager = NamespacedStateManager('train_model')
     file_uploader = FileUploaderComponent(state_manager)
-    input_df, var_industry_map, dfm_default_map, var_frequency_map, var_unit_map = file_uploader.render(st_instance)
+    input_df, var_industry_map, dfm_default_map, _, _ = file_uploader.render(st_instance)
 
     # 如果文件验证失败，提前返回
     if input_df is None or not var_industry_map:
-        return
+        return None
 
     # 直接使用文件上传器加载的映射数据（已由FileUploaderComponent处理）
     # 完全解耦，不从其他模块的session_state读取数据
@@ -148,9 +140,6 @@ def render_dfm_model_training_page(st_instance):
     # ===== 计算日期默认值的辅助函数 =====
     def get_data_based_date_defaults():
         """基于实际数据计算日期默认值，优先使用数据准备页面设置的日期边界"""
-        from datetime import datetime
-        today = datetime.now().date()
-
         # 使用统一配置类
         static_defaults = UIConfig.get_date_defaults()
 
@@ -200,6 +189,17 @@ def render_dfm_model_training_page(st_instance):
             if _state.get('dfm_observation_start_date') is None:
                 _state.set('dfm_observation_start_date', UIConfig.DEFAULT_OBSERVATION_START)
 
+    return (
+        input_df,
+        dfm_default_map,
+        unique_industries,
+        var_to_indicators_map_by_industry,
+        data_df,
+        date_defaults,
+    )
+
+
+def _render_algorithm_settings(st_instance, data_df):
     # ===== 训练设置 =====
     st_instance.subheader("训练设置")
 
@@ -211,9 +211,6 @@ def render_dfm_model_training_page(st_instance):
     # 初始化前一次算法值（用于检测变化）
     if _state.get('_prev_dfm_algorithm') is None:
         _state.set('_prev_dfm_algorithm', current_algorithm)
-
-    # 深度学习模式标志
-    is_deep_learning_mode = (current_algorithm == 'deep_learning')
 
     # 根据算法类型动态调整布局
     # 统一使用3列布局：选择算法 | 目标变量 | RMSE计算方式
@@ -231,7 +228,6 @@ def render_dfm_model_training_page(st_instance):
             help="经典DFM使用EM算法，深度学习DFM使用神经网络自编码器"
         )
         _state.set('dfm_algorithm', algorithm_value)
-        current_algorithm = algorithm_value
 
     # 变量筛选方法：固定使用后向选择法（不显示UI）
     _state.set('dfm_variable_selection_method', 'backward')
@@ -298,6 +294,12 @@ def render_dfm_model_training_page(st_instance):
         )
         _state.set('dfm_rmse_alignment', rmse_alignment_value)
 
+    return algorithm_value
+
+
+def _render_period_settings(
+    st_instance, data_df, date_defaults, algorithm_value
+):
     # ===== 训练周期设置 =====
 
     # 经典DFM：使用默认周频率
@@ -305,7 +307,7 @@ def render_dfm_model_training_page(st_instance):
     freq_label = get_frequency_label(target_freq_code)
 
     # 判断是否为DDFM模式
-    is_ddfm_mode = (current_algorithm == 'deep_learning')
+    is_ddfm_mode = (algorithm_value == 'deep_learning')
 
     # 根据算法类型动态调整布局
     # DDFM：2列（训练期开始、观察期开始）
@@ -337,7 +339,7 @@ def render_dfm_model_training_page(st_instance):
             # DDFM内部用validation_start/end存储观察期范围
             _state.set('dfm_validation_start_date', observation_start_value)
             # DDFM：观察期结束为数据最后日期（不显示UI）
-            if has_data and isinstance(data_df.index, pd.DatetimeIndex):
+            if data_df is not None and isinstance(data_df.index, pd.DatetimeIndex):
                 observation_end_value = data_df.index.max().date()
                 _state.set('dfm_validation_end_date', observation_end_value)
         else:
@@ -364,23 +366,14 @@ def render_dfm_model_training_page(st_instance):
             validation_end_value = get_previous_period_date(observation_start_value, target_freq_code, periods=1)
             _state.set('dfm_validation_end_date', validation_end_value)
 
+    return target_freq_code
+
+
+def _render_advanced_options(st_instance, algorithm_value):
     # ===== 高级选项 (折叠) =====
     is_deep_learning = (algorithm_value == 'deep_learning')
 
-    # 初始化默认值（在高级选项外可用）
-    enable_var_selection = _state.get('dfm_enable_variable_selection', False)
-    strategy_value = _state.get('dfm_factor_selection_strategy', UIConfig.DEFAULT_FACTOR_STRATEGY)
-
     with st_instance.expander("高级选项", expanded=False):
-
-        # ===== 经典DFM因子策略（仅经典算法显示）=====
-        if not is_deep_learning:
-            pass  # 因子策略UI已移至下方三列布局
-        else:
-            # 深度学习模式：设置默认值（DDFM不支持变量选择）
-            enable_var_selection = False
-            strategy_value = 'fixed_number'
-
         # ===== DDFM专用参数（仅深度学习算法显示）=====
         if is_deep_learning:
             st_instance.markdown("**深度学习参数**")
@@ -597,6 +590,12 @@ def render_dfm_model_training_page(st_instance):
                 _state.set('dfm_factor_ar_order', ar_order_value)
 
 
+def _render_variable_selection(
+    st_instance,
+    unique_industries,
+    var_to_indicators_map_by_industry,
+    dfm_default_map,
+):
     # ===== 变量选择 =====
     st_instance.markdown("--- ")
 
@@ -607,7 +606,7 @@ def render_dfm_model_training_page(st_instance):
     # 直接进入预测变量选择
 
     # 根据映射文件选择预测变量默认配置
-    # dfm_default_map 已从 file_uploader.render() 加载（line 176）
+    # dfm_default_map 已从 file_uploader.render() 加载。
 
     # 过滤行业（不再需要排除目标变量）
     filtered_industries = unique_industries
@@ -703,8 +702,6 @@ def render_dfm_model_training_page(st_instance):
             col_idx = 0
 
             # 从预计算缓存获取默认映射（使用 file_uploader 返回的值）
-            # dfm_default_map 来自 line 176
-
             for industry_name in current_selected_industries:
                 # 使用预计算的有效指标缓存（DRY：不重复计算）
                 indicators_for_this_industry = industry_available_indicators.get(industry_name, [])
@@ -715,12 +712,7 @@ def render_dfm_model_training_page(st_instance):
                     col_idx += 1
                     continue
 
-                all_indicators_for_industry = var_to_indicators_map_by_industry.get(industry_name, [])
-
                 with cols[col_idx % num_cols]:
-                    # 只有在有指标被排除且仍有可用指标时才显示提示
-                    excluded_count = len(all_indicators_for_industry) - len(indicators_for_this_industry)
-
                     # 从状态管理器读取已选指标，或使用DFM默认选择
                     default_selection_for_industry = current_selection.get(industry_name, None)
 
@@ -806,7 +798,10 @@ def render_dfm_model_training_page(st_instance):
 
         _state.set('dfm_selected_industries', inferred_industries)
 
-    # 变量选择完成
+
+def _render_training_controls(
+    st_instance, input_df, target_freq_code, algorithm_value
+):
 
     # 显示变量选择汇总信息
     current_selected_indicators = _state.get('dfm_selected_indicators', [])
@@ -1053,3 +1048,33 @@ def render_dfm_model_training_page(st_instance):
                 _state.set('dfm_training_error', error_msg)
                 st_instance.error(f"[ERROR] {error_msg}")
 
+
+def render_dfm_model_training_page(st_instance):
+    _initialize_training_state(st_instance)
+    training_inputs = _load_training_inputs(st_instance)
+    if training_inputs is None:
+        return
+
+    (
+        input_df,
+        dfm_default_map,
+        unique_industries,
+        var_to_indicators_map_by_industry,
+        data_df,
+        date_defaults,
+    ) = training_inputs
+
+    algorithm_value = _render_algorithm_settings(st_instance, data_df)
+    target_freq_code = _render_period_settings(
+        st_instance, data_df, date_defaults, algorithm_value
+    )
+    _render_advanced_options(st_instance, algorithm_value)
+    _render_variable_selection(
+        st_instance,
+        unique_industries,
+        var_to_indicators_map_by_industry,
+        dfm_default_map,
+    )
+    _render_training_controls(
+        st_instance, input_df, target_freq_code, algorithm_value
+    )

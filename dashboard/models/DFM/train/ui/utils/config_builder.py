@@ -15,10 +15,9 @@ import unicodedata
 from datetime import timedelta
 from typing import Dict, List, Optional, Any
 
-from dashboard.models.DFM.train import TrainingConfig
+from dashboard.models.DFM.train.training.config import TrainingConfig
 from dashboard.models.DFM.train.ui.utils.date_helpers import (
     get_previous_period_date,
-    freq_code_to_pandas_freq,
     validate_date_ranges,
 )
 

@@ -3,7 +3,6 @@ Industrial Enterprise Operations Analysis Module
 工业企业经营分析模块（重构版）
 """
 
-import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from typing import Optional
@@ -16,7 +15,6 @@ logger = logging.getLogger(__name__)
 from dashboard.analysis.industrial.utils import (
     convert_cumulative_to_yoy,
     convert_margin_to_yoy_diff,
-    filter_data_by_time_range,
     load_enterprise_profit_data,
     create_excel_download_button
 )
@@ -131,282 +129,6 @@ def create_enterprise_indicators_chart(
 # ============================================================================
 
 
-def render_enterprise_operations_analysis_with_data(
-    st_obj,
-    df_macro: Optional[pd.DataFrame],
-    df_weights: Optional[pd.DataFrame],
-    uploaded_file=None
-):
-    """
-    使用预加载数据渲染企业经营分析（用于统一模块）
-
-    Args:
-        st_obj: Streamlit对象
-        df_macro: 宏观运行数据
-        df_weights: 权重数据
-        uploaded_file: 上传的Excel文件对象
-    """
-    # 如果没有传入上传的文件，尝试从统一状态管理器获取
-    if uploaded_file is None:
-        uploaded_file = st.session_state.get("analysis.industrial.unified_file_uploader")
-
-    if uploaded_file is None:
-        return
-
-    # 读取企业利润拆解数据
-    df_profit = load_enterprise_profit_data(uploaded_file)
-
-    if df_profit is None:
-        logger.error("无法加载企业利润数据")
-        st_obj.error("错误：无法加载企业利润数据")
-        return
-
-    # 处理营业收入利润率：累计值转换为年同比
-    profit_margin_col = None
-    for col in df_profit.columns:
-        if '营业收入利润率' in str(col):
-            profit_margin_col = col
-            break
-
-    if profit_margin_col:
-        yoy_data = convert_margin_to_yoy_diff(df_profit[profit_margin_col])
-        yoy_col_name = profit_margin_col.replace('累计值', '累计同比')
-        df_profit[yoy_col_name] = yoy_data
-
-    # 过滤掉所有1月和2月的数据
-    jan_feb_mask = df_profit.index.month.isin([1, 2])
-    df_profit = df_profit[~jan_feb_mask]
-
-    if len(df_profit) == 0:
-        logger.error("过滤1月2月后数据为空")
-        st_obj.error("错误：过滤1月2月后，数据为空！请检查上传的Excel文件。")
-        return
-
-    # 图表1：工业企业利润拆解
-    from dashboard.analysis.industrial.utils.fragment_components import create_chart_with_time_selector_fragment
-    from dashboard.analysis.industrial.constants import (
-        PROFIT_TOTAL_COLUMN,
-        CUMULATIVE_INDUSTRIAL_GROWTH_COLUMN,
-        PPI_COLUMN,
-        PROFIT_MARGIN_COLUMN_YOY
-    )
-
-    chart1_variables = [
-        PROFIT_TOTAL_COLUMN,
-        CUMULATIVE_INDUSTRIAL_GROWTH_COLUMN,
-        PPI_COLUMN,
-        PROFIT_MARGIN_COLUMN_YOY
-    ]
-
-    available_vars = [var for var in chart1_variables if var in df_profit.columns]
-
-    if not available_vars:
-        st_obj.error(f"错误：未找到任何必需的指标列！")
-        return
-
-    def create_chart1(df, variables, time_range, custom_start_date, custom_end_date):
-        return create_enterprise_indicators_chart(
-            df_data=df,
-            time_range=time_range,
-            custom_start_date=custom_start_date,
-            custom_end_date=custom_end_date
-        )
-
-    create_chart_with_time_selector_fragment(
-        st_obj=st_obj,
-        chart_id="enterprise_chart1",
-        state_namespace="monitoring.industrial.enterprise",
-        chart_title=None,
-        chart_creator_func=create_chart1,
-        chart_data=df_profit,
-        chart_variables=available_vars,
-        get_state_func=industrial_state.get,
-        set_state_func=industrial_state.set
-    )
-
-    # 添加数据下载功能
-    if not df_profit.empty:
-        create_excel_download_button(
-            st_obj=st_obj,
-            data=df_profit,
-            file_name="企业经营指标_全部数据.xlsx",
-            sheet_name='企业经营指标',
-            button_key="industrial_enterprise_operations_download_data_button",
-            column_ratio=(1, 3)
-        )
-
-    # 企业经营指标图表
-    st_obj.markdown("#### 企业经营指标")
-
-    from dashboard.analysis.industrial.utils import load_enterprise_operations_data, convert_cumulative_to_current
-
-    df_operations = load_enterprise_operations_data(uploaded_file)
-
-    if df_operations is not None and not df_operations.empty:
-        # 定义需要的列名
-        profit_cumulative_col = '中国:利润总额:规模以上工业企业:累计值'
-        revenue_cumulative_col = '中国:营业收入:规模以上工业企业:累计值'
-        assets_col = '中国:资产合计:规模以上工业企业'
-        equity_col = '中国:所有者权益合计:规模以上工业企业'
-
-        required_cols = [profit_cumulative_col, revenue_cumulative_col, assets_col, equity_col]
-        missing_cols = [col for col in required_cols if col not in df_operations.columns]
-
-        if missing_cols:
-            logger.warning(f"缺少必需列: {missing_cols}")
-            st_obj.warning(f"数据中缺少部分企业经营指标列，无法生成完整图表")
-        else:
-            # 转换累计值为当期值
-            df_operations['利润总额当期值'] = convert_cumulative_to_current(df_operations[profit_cumulative_col])
-            df_operations['营业收入当期值'] = convert_cumulative_to_current(df_operations[revenue_cumulative_col])
-
-            # 过滤掉1月和2月的数据
-            jan_feb_mask = df_operations.index.month.isin([1, 2])
-            df_operations_filtered = df_operations[~jan_feb_mask].copy()
-
-            # 计算4个指标
-            df_operations_filtered['ROE'] = (df_operations_filtered['利润总额当期值'] / df_operations_filtered[equity_col]) * 100
-            df_operations_filtered['利润率'] = (df_operations_filtered['利润总额当期值'] / df_operations_filtered['营业收入当期值']) * 100
-            df_operations_filtered['总资产周转率'] = df_operations_filtered['营业收入当期值'] / df_operations_filtered[assets_col]
-            df_operations_filtered['权益乘数'] = df_operations_filtered[assets_col] / df_operations_filtered[equity_col]
-
-            df_operations = df_operations_filtered
-
-            all_indicators = ['ROE', '利润率', '总资产周转率', '权益乘数']
-            default_indicators = ['ROE', '利润率', '总资产周转率']
-
-            selected_indicators = st_obj.multiselect(
-                "选择要显示的企业经营指标",
-                options=all_indicators,
-                default=default_indicators,
-                key="enterprise_operations_indicator_selector"
-            )
-
-            if not selected_indicators:
-                st_obj.warning("请至少选择一个指标")
-                return
-
-            def create_operations_chart(df, variables, time_range, custom_start_date, custom_end_date):
-                return create_enterprise_operations_indicators_chart(
-                    df_operations=df,
-                    time_range=time_range,
-                    custom_start_date=custom_start_date,
-                    custom_end_date=custom_end_date
-                )
-
-            create_chart_with_time_selector_fragment(
-                st_obj=st_obj,
-                chart_id="enterprise_operations_indicators",
-                state_namespace="monitoring.industrial.enterprise",
-                chart_title=None,
-                chart_creator_func=create_operations_chart,
-                chart_data=df_operations,
-                chart_variables=selected_indicators,
-                get_state_func=industrial_state.get,
-                set_state_func=industrial_state.set
-            )
-
-            # 添加数据下载功能
-            if not df_operations.empty:
-                download_df = df_operations[all_indicators].copy()
-                download_df = download_df.sort_index(ascending=False)
-                download_df = download_df.reset_index()
-                first_col = download_df.columns[0]
-                download_df.rename(columns={first_col: '时间'}, inplace=True)
-                download_df['时间'] = download_df['时间'].dt.strftime('%Y-%m')
-                download_columns = ['时间'] + all_indicators
-                download_df = download_df[download_columns]
-
-                create_excel_download_button(
-                    st_obj=st_obj,
-                    data=download_df,
-                    file_name="企业经营指标.xlsx",
-                    sheet_name='企业经营指标',
-                    button_key="enterprise_operations_indicators_download_button",
-                    column_ratio=(1, 3)
-                )
-    else:
-        logger.warning("未能加载企业经营数据")
-        st_obj.info("提示：数据模板中未找到'工业企业经营'sheet，跳过企业经营指标图表")
-
-    # 分割线
-    st_obj.markdown("---")
-
-    # 加载分行业利润数据
-    from dashboard.analysis.industrial.utils import load_industry_profit_data
-    from dashboard.analysis.industrial.utils.contribution_calculator import calculate_profit_contributions
-
-    df_industry_profit = load_industry_profit_data(uploaded_file)
-
-    if df_industry_profit is None:
-        logger.error("无法加载分行业利润数据")
-        st_obj.error("错误：无法加载分行业利润数据")
-        return
-
-    if df_weights is None:
-        st_obj.error("错误：缺少权重数据，无法进行利润拆解分析")
-        return
-
-    # 计算利润拉动率
-    try:
-        profit_contribution_result = calculate_profit_contributions(
-            df_industry_profit=df_industry_profit,
-            df_weights=df_weights
-        )
-
-        stream_contribution_df = profit_contribution_result['stream_groups']
-        total_growth_series = profit_contribution_result['total_growth']
-
-        def create_chart2(df, variables, time_range, custom_start_date, custom_end_date):
-            return create_profit_contribution_chart(
-                df_contribution=df,
-                total_growth=total_growth_series,
-                time_range=time_range,
-                custom_start_date=custom_start_date,
-                custom_end_date=custom_end_date
-            )
-
-        available_vars_chart2 = list(stream_contribution_df.columns)
-
-        if available_vars_chart2:
-            create_chart_with_time_selector_fragment(
-                st_obj=st_obj,
-                chart_id="enterprise_chart2",
-                state_namespace="monitoring.industrial.enterprise",
-                chart_title=None,
-                chart_creator_func=create_chart2,
-                chart_data=stream_contribution_df,
-                chart_variables=available_vars_chart2,
-                get_state_func=industrial_state.get,
-                set_state_func=industrial_state.set
-            )
-        else:
-            st_obj.warning("未找到上中下游拉动率数据")
-
-        # 添加拉动率数据下载功能
-        if not stream_contribution_df.empty:
-            download_df = stream_contribution_df.copy()
-            download_df.columns = [col.replace('上中下游_', '') for col in download_df.columns]
-            download_df.insert(0, '利润总额累计同比', total_growth_series)
-            download_df = download_df.sort_index(ascending=False)
-            download_df = download_df.reset_index()
-            first_col = download_df.columns[0]
-            download_df.rename(columns={first_col: '时间'}, inplace=True)
-            download_df['时间'] = download_df['时间'].dt.strftime('%Y-%m')
-
-            create_excel_download_button(
-                st_obj=st_obj,
-                data=download_df,
-                file_name="分行业利润拆解_拉动率数据.xlsx",
-                sheet_name='拉动率',
-                button_key="industrial_profit_contribution_download_button",
-                column_ratio=(1, 3)
-            )
-
-    except Exception as e:
-        logger.error(f"计算利润拉动率时发生错误: {e}", exc_info=True)
-        st_obj.error(f"计算利润拉动率失败：{str(e)}")
-        return
 
 
 def render_enterprise_profit_analysis_with_data(
@@ -424,9 +146,6 @@ def render_enterprise_profit_analysis_with_data(
         df_weights: 权重数据
         uploaded_file: 上传的Excel文件对象
     """
-    if uploaded_file is None:
-        uploaded_file = st.session_state.get("analysis.industrial.unified_file_uploader")
-
     if uploaded_file is None:
         st_obj.info("请先上传Excel数据文件以开始工业企业利润分析")
         return
@@ -605,9 +324,6 @@ def render_enterprise_efficiency_analysis_with_data(
         df_weights: 权重数据
         uploaded_file: 上传的Excel文件对象
     """
-    if uploaded_file is None:
-        uploaded_file = st.session_state.get("analysis.industrial.unified_file_uploader")
-
     if uploaded_file is None:
         st_obj.info("请先上传Excel数据文件以开始工业企业经营效率分析")
         return
