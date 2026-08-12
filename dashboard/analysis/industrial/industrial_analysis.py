@@ -20,41 +20,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 # 导入统一的数据加载函数
-from dashboard.analysis.industrial.utils import load_macro_data, load_weights_data
+from dashboard.analysis.industrial.utils.data_loader import load_macro_data, load_weights_data
 
-# UI组件导入已移除（不再需要文件上传组件）
-# 导入统一状态管理
-from dashboard.analysis.industrial.utils import IndustrialStateManager
-from dashboard.analysis.industrial.constants import (
-    STATE_NAMESPACE_INDUSTRIAL,
-    STATE_KEY_MACRO_TIME_RANGE_CHART1,
-    STATE_KEY_MACRO_TIME_RANGE_CHART2,
-    STATE_KEY_MACRO_TIME_RANGE_CHART3,
-    STATE_KEY_ENTERPRISE_TIME_RANGE_CHART1,
-    STATE_KEY_ENTERPRISE_TIME_RANGE_CHART2,
-    STATE_KEY_ENTERPRISE_TIME_RANGE_CHART3,
-    DEFAULT_TIME_RANGE
-)
 from dashboard.core.ui.utils.shared_dataset import get_shared_dataset_file, get_shared_dataset_name
-
-
-def initialize_industrial_states():
-    """
-    初始化工业分析模块的时间范围状态
-    """
-    # 初始化宏观分析图表的时间范围状态
-    for key in [STATE_KEY_MACRO_TIME_RANGE_CHART1,
-                STATE_KEY_MACRO_TIME_RANGE_CHART2,
-                STATE_KEY_MACRO_TIME_RANGE_CHART3]:
-        if IndustrialStateManager.get(key) is None:
-            IndustrialStateManager.set(key, DEFAULT_TIME_RANGE)
-
-    # 初始化企业分析图表的时间范围状态
-    for key in [STATE_KEY_ENTERPRISE_TIME_RANGE_CHART1,
-                STATE_KEY_ENTERPRISE_TIME_RANGE_CHART2,
-                STATE_KEY_ENTERPRISE_TIME_RANGE_CHART3]:
-        if IndustrialStateManager.get(key) is None:
-            IndustrialStateManager.set(key, DEFAULT_TIME_RANGE)
 
 
 def load_default_monitoring_data() -> Optional[str]:
@@ -108,15 +76,6 @@ def render_macro_operations_with_data(st_obj, df_macro: Optional[pd.DataFrame], 
         render_macro_operations_analysis_with_data(st_obj, df_macro, df_weights, uploaded_file)
     else:
         st_obj.info("数据加载失败，无法进行分析")
-
-
-def render_enterprise_operations_with_data(st_obj, df_macro: Optional[pd.DataFrame], df_weights: Optional[pd.DataFrame], uploaded_file=None):
-    """
-    使用共享数据渲染企业经营分析
-    """
-    # 调用企业经营分析，传入数据和上传的文件
-    from dashboard.analysis.industrial.enterprise_analysis import render_enterprise_operations_analysis_with_data
-    render_enterprise_operations_analysis_with_data(st_obj, df_macro, df_weights, uploaded_file)
 
 
 def render_enterprise_profit_with_data(st_obj, df_macro: Optional[pd.DataFrame], df_weights: Optional[pd.DataFrame], uploaded_file=None):

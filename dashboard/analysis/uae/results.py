@@ -49,9 +49,13 @@ class MonitoringDashboardResult:
     """总览和各详细结果系统。"""
 
     panels: Mapping[str, MacroPanelResult]
+    unavailable_panels: Mapping[str, str]
 
     def require_panel(self, key: str) -> MacroPanelResult:
         try:
             return self.panels[key]
         except KeyError as exc:
+            reason = self.unavailable_panels.get(key)
+            if reason:
+                raise ValueError(f"阿联酋监测页面数据不足: {reason}") from exc
             raise ValueError(f"未知的阿联酋监测页面: {key}") from exc

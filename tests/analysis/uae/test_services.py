@@ -1,13 +1,10 @@
 import pandas as pd
 import pytest
 
-from dashboard.analysis.uae.contracts import (
-    ConfidenceLevel,
-    ProvenanceKind,
-)
+from dashboard.analysis.uae.contracts import ProvenanceKind
 from dashboard.analysis.uae.data_adapter import (
     DEFAULT_UAE_WORKBOOK,
-    load_runtime_uae_bundle,
+    load_real_uae_bundle,
 )
 from dashboard.analysis.uae.indicator_catalog import INDUSTRY_NAMES
 from dashboard.analysis.uae.services import (
@@ -21,14 +18,14 @@ def dashboard_result():
     return build_monitoring_dashboard(DEFAULT_UAE_WORKBOOK)
 
 
-def test_dashboard_builds_all_detailed_macro_panels(dashboard_result):
-    assert tuple(dashboard_result.panels) == (
-        "growth",
+def test_dashboard_exposes_only_panels_supported_by_real_data(dashboard_result):
+    assert tuple(dashboard_result.panels) == ("growth",)
+    assert set(dashboard_result.unavailable_panels) == {
         "inflation",
         "labor",
         "fiscal_external",
         "monetary",
-    )
+    }
 
 
 def test_all_panels_expose_result_accounting_mechanism_and_limits(
@@ -44,21 +41,8 @@ def test_all_panels_expose_result_accounting_mechanism_and_limits(
         assert panel.methodology_notes
 
 
-def test_simulation_caps_mixed_or_simulated_headlines_at_low(
-    dashboard_result,
-):
-    for panel in dashboard_result.panels.values():
-        if not panel.headline.uses_simulated_data:
-            continue
-        assert panel.headline.confidence is ConfidenceLevel.LOW
-        assert any(
-            "模拟数据" in reason
-            for reason in panel.headline.confidence_reasons
-        )
-
-
 def test_growth_uses_real_results_without_legacy_bridge_or_residual():
-    bundle = load_runtime_uae_bundle(DEFAULT_UAE_WORKBOOK)
+    bundle = load_real_uae_bundle(DEFAULT_UAE_WORKBOOK)
     panel = build_growth_panel(bundle)
 
     assert panel.provenance["growth.real_gdp"].kind is ProvenanceKind.REAL
@@ -124,7 +108,7 @@ def test_growth_price_volume_charts_use_direct_real_yoy_and_deflator_yoy(
     real_label,
     deflator_label,
 ):
-    bundle = load_runtime_uae_bundle(DEFAULT_UAE_WORKBOOK)
+    bundle = load_real_uae_bundle(DEFAULT_UAE_WORKBOOK)
     panel = build_growth_panel(bundle)
     frame = panel.series_groups[group_title]
 
@@ -156,7 +140,7 @@ def test_growth_price_volume_charts_use_direct_real_yoy_and_deflator_yoy(
 
 
 def test_fixed_top_five_average_share_industry_pulls_reconcile_to_growth():
-    bundle = load_runtime_uae_bundle(DEFAULT_UAE_WORKBOOK)
+    bundle = load_real_uae_bundle(DEFAULT_UAE_WORKBOOK)
     panel = build_growth_panel(bundle)
     frame = panel.series_groups["非油实际GDP同比及行业拉动"]
     line = frame["【真实】非油GDP同比"]
@@ -199,7 +183,7 @@ def test_fixed_top_five_average_share_industry_pulls_reconcile_to_growth():
 
 
 def test_industry_price_volume_quadrant_uses_yoy_and_reconciled_real_shares():
-    bundle = load_runtime_uae_bundle(DEFAULT_UAE_WORKBOOK)
+    bundle = load_real_uae_bundle(DEFAULT_UAE_WORKBOOK)
     panel = build_growth_panel(bundle)
     frame = panel.series_groups["行业量价四象限图"]
 
@@ -242,7 +226,7 @@ def test_industry_price_volume_quadrant_uses_yoy_and_reconciled_real_shares():
 
 
 def test_growth_panel_exposes_real_industry_quality_diagnostics():
-    bundle = load_runtime_uae_bundle(DEFAULT_UAE_WORKBOOK)
+    bundle = load_real_uae_bundle(DEFAULT_UAE_WORKBOOK)
     panel = build_growth_panel(bundle)
 
     assert {
@@ -302,7 +286,7 @@ def test_growth_panel_exposes_real_industry_quality_diagnostics():
 
 
 def test_growth_panel_calculates_nonoil_pull_from_real_levels():
-    bundle = load_runtime_uae_bundle(DEFAULT_UAE_WORKBOOK)
+    bundle = load_real_uae_bundle(DEFAULT_UAE_WORKBOOK)
     panel = build_growth_panel(bundle)
     frame = panel.series_groups[
         "GDP部门拉动与石油产量同比"
@@ -363,17 +347,6 @@ def test_growth_panel_calculates_nonoil_pull_from_real_levels():
     assert quarters.min() == pd.Period("2013Q1")
     assert quarters.max() == pd.Period("2025Q4")
     assert panel.decomposition_tables == {}
-
-
-def test_fiscal_and_external_decompositions_remain_visible(
-    dashboard_result,
-):
-    panel = dashboard_result.require_panel("fiscal_external")
-
-    assert set(panel.decomposition_tables) == {
-        "一般政府财政拆解",
-        "经常账户拆解",
-    }
 
 
 def test_deterministic_narratives_avoid_causal_claims(dashboard_result):

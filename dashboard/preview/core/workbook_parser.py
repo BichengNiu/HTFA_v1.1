@@ -4,7 +4,7 @@
 - `指标字典` sheet 保存指标分类信息；
 - 指标字典是唯一白名单，数据sheet中的未登记指标会被忽略；
 - 指标原始数值中的0统一按缺失值处理，不进行插值；
-- 其他非空 sheet 的第2至第6行依次保存指标名称、频率、单位、来源、更新时间；
+- 其他非空 sheet 的第2、3行保存指标名称和频率，第4至第6行保存单位、来源、更新时间；
 - 第7行开始为日期和指标值。
 """
 
@@ -125,14 +125,36 @@ def _load_dictionary(excel_file: pd.ExcelFile) -> Dict[str, Dict[str, Any]]:
     return records
 
 
-def _validate_metadata_labels(raw: pd.DataFrame, sheet_name: str) -> None:
-    for row_number, expected_label in METADATA_ROW_LABELS.items():
+def _metadata_row_indices(raw: pd.DataFrame, sheet_name: str) -> dict[str, int]:
+    """校验元数据标签并返回标签对应的零基行号。"""
+
+    row_indices: dict[str, int] = {}
+    for row_number in (2, 3):
+        expected_label = METADATA_ROW_LABELS[row_number]
         actual_label = _optional_text(raw.iloc[row_number - 1, 0])
         if actual_label != expected_label:
             raise ValueError(
                 f"sheet“{sheet_name}”第{row_number}行首列必须为“{expected_label}”，"
                 f"实际为“{actual_label or '空'}”"
             )
+        row_indices[expected_label] = row_number - 1
+
+    tail_labels = {
+        row_number: _optional_text(raw.iloc[row_number - 1, 0])
+        for row_number in (4, 5, 6)
+    }
+    expected_tail = {METADATA_ROW_LABELS[row] for row in (4, 5, 6)}
+    actual_tail = {label for label in tail_labels.values() if label is not None}
+    if actual_tail != expected_tail or len(actual_tail) != len(tail_labels):
+        actual = "、".join(label or "空" for label in tail_labels.values())
+        raise ValueError(
+            f"sheet“{sheet_name}”第4至第6行首列必须各包含一次"
+            f"“单位、来源、更新时间”，实际为“{actual}”"
+        )
+    row_indices.update(
+        {label: row_number - 1 for row_number, label in tail_labels.items()}
+    )
+    return row_indices
 
 
 def _parse_data_sheet(
@@ -144,7 +166,7 @@ def _parse_data_sheet(
     seen_indicators: set[str],
     frequency_processor: Optional[FrequencyProcessor],
 ) -> tuple[Dict[str, list[pd.DataFrame]], Dict[str, IndicatorMetadata]]:
-    _validate_metadata_labels(raw, sheet_name)
+    metadata_rows = _metadata_row_indices(raw, sheet_name)
 
     indicator_columns = []
     for column_index in range(1, raw.shape[1]):
@@ -183,7 +205,7 @@ def _parse_data_sheet(
             raise ValueError(f"指标在多个sheet中重复出现: {indicator_name}")
 
         frequency_label = _required_text(
-            raw.iloc[2, column_index],
+            raw.iloc[metadata_rows["频率"], column_index],
             context=f"sheet“{sheet_name}”指标“{indicator_name}”的频率",
         )
         frequency = FREQUENCY_MAP.get(frequency_label)
@@ -193,14 +215,16 @@ def _parse_data_sheet(
             )
 
         unit = _required_text(
-            raw.iloc[3, column_index],
+            raw.iloc[metadata_rows["单位"], column_index],
             context=f"sheet“{sheet_name}”指标“{indicator_name}”的单位",
         )
         sheet_source = _required_text(
-            raw.iloc[4, column_index],
+            raw.iloc[metadata_rows["来源"], column_index],
             context=f"sheet“{sheet_name}”指标“{indicator_name}”的来源",
         )
-        updated_at = _format_updated_at(raw.iloc[5, column_index])
+        updated_at = _format_updated_at(
+            raw.iloc[metadata_rows["更新时间"], column_index]
+        )
 
         raw_values = data_block.iloc[:, column_index]
         numeric_values = pd.to_numeric(raw_values, errors="coerce")

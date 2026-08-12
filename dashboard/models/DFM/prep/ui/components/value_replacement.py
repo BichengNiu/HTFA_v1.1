@@ -402,8 +402,3 @@ def _render_replacement_history_inline(prepared_data: pd.DataFrame) -> Optional[
                 st.warning("没有可恢复的基准数据")
 
     return None
-
-
-def get_replacement_history() -> list:
-    """获取当前的替换历史（用于导出）"""
-    return prep_state.get(PrepStateKeys.VALUE_REPLACEMENT_HISTORY, [])

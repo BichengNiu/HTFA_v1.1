@@ -35,8 +35,9 @@ def is_valid_file_object(file_obj) -> bool:
             getattr(file_obj, 'name', '未知文件') != '未知文件')
 
 
-from dashboard.models.DFM.ui.base import create_dfm_state_helpers
-get_dfm_state, set_dfm_state = create_dfm_state_helpers('model_analysis')
+from dashboard.core.ui.utils.state_helpers import NamespacedStateManager
+
+model_analysis_state = NamespacedStateManager("model_analysis")
 
 # Import backend functions
 from dashboard.models.DFM.results.dfm_backend import (
@@ -46,15 +47,15 @@ from dashboard.models.DFM.results.dfm_backend import (
 
 # Import new components
 from dashboard.models.DFM.results.ui.pages.domain import DFMMetadataAccessor
-from dashboard.models.DFM.results.ui.pages.components import MetricsPanel
+from dashboard.models.DFM.results.ui.pages.components import render_all_metrics
 
 logger = logging.getLogger(__name__)
 
 
 def load_dfm_data() -> tuple[Optional[Any], Optional[Dict]]:
     """从 session_state 加载模型结果和元数据。"""
-    model_file = get_dfm_state('dfm_model_file_indep', None)
-    metadata_file = get_dfm_state('dfm_metadata_file_indep', None)
+    model_file = model_analysis_state.get('dfm_model_file_indep')
+    metadata_file = model_analysis_state.get('dfm_metadata_file_indep')
 
     model_results = None
     metadata = None
@@ -88,13 +89,13 @@ def load_dfm_data() -> tuple[Optional[Any], Optional[Dict]]:
 
 def _cleanup_invalid_file_states():
     """清理可能存在的无效文件状态"""
-    model_file = get_dfm_state('dfm_model_file_indep', None)
-    metadata_file = get_dfm_state('dfm_metadata_file_indep', None)
+    model_file = model_analysis_state.get('dfm_model_file_indep')
+    metadata_file = model_analysis_state.get('dfm_metadata_file_indep')
 
     if not is_valid_file_object(model_file):
-        set_dfm_state('dfm_model_file_indep', None)
+        model_analysis_state.set('dfm_model_file_indep', None)
     if not is_valid_file_object(metadata_file):
-        set_dfm_state('dfm_metadata_file_indep', None)
+        model_analysis_state.set('dfm_metadata_file_indep', None)
 
 
 def render_file_upload_section(st_instance):
@@ -118,9 +119,9 @@ def render_file_upload_section(st_instance):
         )
 
         if uploaded_model_file:
-            set_dfm_state("dfm_model_file_indep", uploaded_model_file)
+            model_analysis_state.set("dfm_model_file_indep", uploaded_model_file)
         else:
-            existing_model_file = get_dfm_state('dfm_model_file_indep', None)
+            existing_model_file = model_analysis_state.get('dfm_model_file_indep')
             if is_valid_file_object(existing_model_file):
                 st_instance.info(f"当前文件: {existing_model_file.name}")
 
@@ -133,15 +134,15 @@ def render_file_upload_section(st_instance):
         )
 
         if uploaded_metadata_file:
-            set_dfm_state("dfm_metadata_file_indep", uploaded_metadata_file)
+            model_analysis_state.set("dfm_metadata_file_indep", uploaded_metadata_file)
         else:
-            existing_metadata_file = get_dfm_state('dfm_metadata_file_indep', None)
+            existing_metadata_file = model_analysis_state.get('dfm_metadata_file_indep')
             if is_valid_file_object(existing_metadata_file):
                 st_instance.info(f"当前文件: {existing_metadata_file.name}")
 
     # 文件状态总结
-    model_file = get_dfm_state('dfm_model_file_indep', None)
-    metadata_file = get_dfm_state('dfm_metadata_file_indep', None)
+    model_file = model_analysis_state.get('dfm_model_file_indep')
+    metadata_file = model_analysis_state.get('dfm_metadata_file_indep')
 
     model_file_exists = is_valid_file_object(model_file)
     metadata_file_exists = is_valid_file_object(metadata_file)
@@ -845,8 +846,7 @@ def render_dfm_tab(st):
     if model is None or metadata is None or accessor is None:
         return
 
-    # 使用MetricsPanel显示所有指标
-    MetricsPanel.render_all_metrics(accessor)
+    render_all_metrics(accessor)
 
     # 判断是否为DDFM模型
     is_ddfm = accessor.is_ddfm

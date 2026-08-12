@@ -6,8 +6,9 @@
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Tuple
 from pathlib import Path
+import pandas as pd
 from dashboard.models.DFM.train.utils.parallel_config import ParallelConfig
 
 
@@ -20,7 +21,7 @@ class TrainingConfig:
     """
     # ========== 必填字段（无默认值） ==========
     # 核心配置
-    data_path: str
+    data: pd.DataFrame
 
     # 训练/验证期配置
     training_start: str  # 训练期开始日期
@@ -103,13 +104,8 @@ class TrainingConfig:
             self.output_dir = str(Path.cwd() / "dfm_output")
 
         # 验证必填字段
-        if not self.data_path:
-            raise ValueError("data_path不能为空")
-
-        # 验证数据文件存在
-        data_file = Path(self.data_path)
-        if not data_file.exists():
-            raise FileNotFoundError(f"数据文件不存在: {self.data_path}")
+        if not isinstance(self.data, pd.DataFrame) or self.data.empty:
+            raise ValueError("data必须是非空DataFrame")
 
         # 验证模型参数
         if self.k_factors <= 0:
@@ -220,29 +216,6 @@ class TrainingConfig:
                     "请设置enable_variable_selection=False"
                 )
 
-    @classmethod
-    def from_dict(cls, config_dict: Dict[str, Any]) -> 'TrainingConfig':
-        """从字典创建配置
-
-        Args:
-            config_dict: 配置字典
-
-        Returns:
-            TrainingConfig对象
-        """
-        # 直接使用字典的键值对创建配置对象
-        # dataclass会自动处理字段映射
-        return cls(**config_dict)
-
-    def to_dict(self) -> Dict[str, Any]:
-        """转换为字典
-
-        Returns:
-            配置字典
-        """
-        from dataclasses import asdict
-        return asdict(self)
-
     def validate(self) -> List[str]:
         """验证配置完整性
 
@@ -277,7 +250,7 @@ class TrainingConfig:
         """字符串表示"""
         base_repr = (
             f"TrainingConfig(\n"
-            f"  data_path={self.data_path},\n"
+            f"  data_shape={self.data.shape},\n"
             f"  indicators={len(self.selected_indicators)},\n"
             f"  algorithm={self.algorithm},\n"
         )

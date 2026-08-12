@@ -31,62 +31,6 @@ from dashboard.explore.preprocessing.standardization import standardize_array
 logger = logging.getLogger(__name__)
 
 
-def get_overlapping_series(
-    series_a: pd.Series,
-    series_b: pd.Series,
-    lag: int,
-    standardize_for_kl: bool = False,
-    standardization_method: str = 'zscore'
-) -> tuple[pd.Series | None, pd.Series | None]:
-    """
-    提取两个序列在给定滞后下的重叠部分
-
-    重构版本：优化类型转换，减少pandas↔numpy转换次数
-
-    Args:
-        series_a: 参考序列
-        series_b: 待滞后序列
-        lag: 滞后值（正值表示series_b领先）
-        standardize_for_kl: 是否标准化
-        standardization_method: 标准化方法
-
-    Returns:
-        Tuple[对齐后的series_a, 对齐后的series_b]
-    """
-    # 保存原始名称
-    name_a = series_a.name
-    name_b = series_b.name
-
-    # 一次性转换为numpy数组（减少转换次数）
-    arr_a = series_a.values
-    arr_b = series_b.values
-
-    # 使用统一的切片函数（零拷贝view）
-    slice_a, slice_b = get_lagged_slices(arr_a, arr_b, lag)
-
-    if slice_a is None or slice_b is None:
-        return None, None
-
-    # 移除NaN（直接在numpy层面处理，避免Series→DataFrame→Series转换）
-    valid_mask = ~(np.isnan(slice_a) | np.isnan(slice_b))
-    if np.sum(valid_mask) < 2:
-        return None, None
-
-    slice_a_clean = slice_a[valid_mask]
-    slice_b_clean = slice_b[valid_mask]
-
-    # 标准化（如果需要，直接在numpy层面处理）
-    if standardize_for_kl and standardization_method != 'none':
-        slice_a_clean = standardize_array(slice_a_clean, standardization_method)
-        slice_b_clean = standardize_array(slice_b_clean, standardization_method)
-
-    # 最后一次性转换回Series（只在最后转换一次）
-    out_a = pd.Series(slice_a_clean, name=name_a)
-    out_b = pd.Series(slice_b_clean, name=name_b)
-
-    return out_a, out_b
-
-
 def calculate_kl_divergence_optimized(
     series_target: pd.Series,
     series_candidate: pd.Series,

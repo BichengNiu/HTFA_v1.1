@@ -20,6 +20,7 @@ from dashboard.analysis.uae.charts import (
     build_price_volume_figure,
 )
 from dashboard.analysis.uae.contracts import ProvenanceKind
+from dashboard.analysis.uae.downloads import render_chart_download
 from dashboard.analysis.uae.results import MacroPanelResult
 from dashboard.analysis.uae.services import build_monitoring_dashboard
 from dashboard.core.ui.utils.shared_dataset import get_shared_dataset_file
@@ -31,6 +32,7 @@ TAB_CONFIG = (
     ("就业与收入", "labor"),
     ("财政与外部", "fiscal_external"),
     ("货币与金融", "monetary"),
+    ("石油财政", "oil_fiscal"),
 )
 
 GROWTH_OVERVIEW_GROUPS = (
@@ -218,8 +220,14 @@ def _render_panel(
             )
         st_obj.plotly_chart(
             figure,
-            use_container_width=True,
+            width="stretch",
             key=f"analysis.uae.{panel.key}.series.{group_title}",
+        )
+        render_chart_download(
+            st_obj,
+            frame,
+            title=group_title,
+            key=f"analysis.uae.{panel.key}.series.{group_title}.download",
         )
         _render_series_group_explanation(st_obj, group_title)
 
@@ -229,8 +237,14 @@ def _render_panel(
                 frame,
                 title=table_title,
             ),
-            use_container_width=True,
+            width="stretch",
             key=f"analysis.uae.{panel.key}.decomposition.{table_title}",
+        )
+        render_chart_download(
+            st_obj,
+            frame,
+            title=table_title,
+            key=f"analysis.uae.{panel.key}.decomposition.{table_title}.download",
         )
 
     with st_obj.expander("证据、来源与方法限制", expanded=False):
@@ -278,9 +292,9 @@ def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
 
     source_name = _source_name(file_input)
     st_obj.caption(f"当前上传数据来源：{source_name}")
-    st_obj.warning(
-        "数据说明：工作簿已有指标使用真实数据；缺失指标由程序在运行时模拟。"
-        "模拟序列不写回Excel，不代表官方统计、事实判断或预测。"
+    st_obj.caption(
+        "数据说明：页面只使用工作簿中可验证的真实序列；"
+        "指标不足的主题会明确标记为不可用，不生成模拟数据。"
     )
 
     try:
@@ -313,6 +327,15 @@ def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
                     dashboard.require_panel("growth"),
                     show_title=False,
                     series_group_titles=GROWTH_INDUSTRY_GROUPS,
+                )
+            elif view_key == "oil_fiscal":
+                from dashboard.analysis.uae.oil import render_oil_fiscal_panel
+
+                render_oil_fiscal_panel(st_obj)
+            elif view_key in dashboard.unavailable_panels:
+                st_obj.info(
+                    "当前工作簿不足以构建本主题："
+                    f"{dashboard.unavailable_panels[view_key]}"
                 )
             else:
                 _render_panel(st_obj, dashboard.require_panel(view_key))

@@ -8,10 +8,7 @@ Preview模块频率处理工具
 from typing import Dict, List, Set, Optional, Iterator, Any
 import pandas as pd
 
-from dashboard.preview.shared.config import (
-    UNIFIED_FREQUENCY_CONFIGS,
-    FREQUENCY_ORDER,
-)
+from dashboard.preview.shared.config import FREQUENCY_CONFIGS, FREQUENCY_ORDER
 
 
 def get_indicator_frequencies(indicator: str, all_data_dict: Dict[str, pd.DataFrame]) -> List[str]:
@@ -90,11 +87,11 @@ def iter_all_frequencies(use_english: bool = True) -> Iterator[str]:
         ['周度', '月度', '日度', '旬度', '年度']
     """
     if use_english:
-        for freq_name in UNIFIED_FREQUENCY_CONFIGS.keys():
+        for freq_name in FREQUENCY_CONFIGS:
             yield freq_name
     else:
-        for freq_name in UNIFIED_FREQUENCY_CONFIGS.keys():
-            yield UNIFIED_FREQUENCY_CONFIGS[freq_name]['display_name']
+        for config in FREQUENCY_CONFIGS.values():
+            yield config.display_name
 
 
 def create_empty_frequency_dict(default_value: Any = None, use_english: bool = True) -> Dict[str, Any]:
@@ -116,7 +113,7 @@ def create_empty_frequency_dict(default_value: Any = None, use_english: bool = T
     result = {}
 
     if use_english:
-        for freq_name in UNIFIED_FREQUENCY_CONFIGS.keys():
+        for freq_name in FREQUENCY_CONFIGS:
             # 为可变类型创建独立实例
             if isinstance(default_value, (list, set, dict)):
                 result[freq_name] = type(default_value)()
@@ -125,8 +122,8 @@ def create_empty_frequency_dict(default_value: Any = None, use_english: bool = T
             else:
                 result[freq_name] = default_value
     else:
-        for freq_name in UNIFIED_FREQUENCY_CONFIGS.keys():
-            display_name = UNIFIED_FREQUENCY_CONFIGS[freq_name]['display_name']
+        for config in FREQUENCY_CONFIGS.values():
+            display_name = config.display_name
             if isinstance(default_value, (list, set, dict)):
                 result[display_name] = type(default_value)()
             elif isinstance(default_value, pd.DataFrame):

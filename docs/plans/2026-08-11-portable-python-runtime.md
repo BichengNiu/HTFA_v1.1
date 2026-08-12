@@ -1,5 +1,8 @@
 # HTFA Windows Self-Contained Runtime Implementation Plan
 
+> **已被取代：** 不要执行本文步骤。当前实施方案见
+> `2026-08-11-unified-python-runtime.md`；本文仅保留为历史记录。
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 交付一个内置 CPython 3.13.4 和全部依赖的 Windows x64 HTFA 目录，并在每次 `start.bat` 启动时通过 HTTPS 将 Ts 更新到公开仓库 `main` 最新提交。
@@ -500,4 +503,3 @@ Do not commit `dist/`. Report its absolute path, size, manifest hashes, test cou
 - Full tests, compile, online update and Streamlit health checks pass.
 - Generated artifacts and caches are absent from Git status.
 - No UAE logic or project data changed.
-

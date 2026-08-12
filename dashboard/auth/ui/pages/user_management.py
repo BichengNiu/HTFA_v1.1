@@ -12,7 +12,6 @@ import logging
 import time
 
 # 导入认证相关模块
-from dashboard.auth.authentication import AuthManager
 from dashboard.auth.permissions import PermissionManager
 from dashboard.auth.models import User
 from dashboard.auth.security import SecurityUtils
@@ -22,11 +21,14 @@ from dashboard.auth.database import AuthDatabase
 class UserManagementPage:
     """用户管理页面组件"""
     
-    def __init__(self):
+    def __init__(
+        self,
+        database: AuthDatabase,
+        permission_manager: PermissionManager,
+    ):
         """初始化用户管理页面"""
-        self.auth_manager = AuthManager()
-        self.permission_manager = PermissionManager()
-        self.db = AuthDatabase()
+        self.permission_manager = permission_manager
+        self.db = database
         self.logger = logging.getLogger(__name__)
     
     def render(self, current_user: User) -> None:
@@ -670,5 +672,11 @@ def render_user_management_page(current_user: User) -> None:
     Args:
         current_user: 当前登录用户
     """
-    user_mgmt = UserManagementPage()
+    from dashboard.auth.ui.middleware import get_auth_middleware
+
+    middleware = get_auth_middleware()
+    user_mgmt = UserManagementPage(
+        middleware.auth_manager.db,
+        middleware.permission_manager,
+    )
     user_mgmt.render(current_user)

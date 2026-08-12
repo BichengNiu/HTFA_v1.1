@@ -18,7 +18,6 @@ import numpy as np
 import pandas as pd
 import joblib
 from dashboard.models.DFM.train.utils.logger import get_logger
-from dashboard.models.DFM.train.utils.file_io import read_data_file
 from dashboard.models.DFM.train.evaluation.metrics import _compute_rmse
 
 logger = get_logger(__name__)
@@ -283,32 +282,16 @@ class TrainingResultExporter:
                     factors_transposed = factors_data.T
                     factor_names = [f'Factor_{i+1}' for i in range(factors_transposed.shape[1])]
 
-                    # 尝试从数据文件获取日期索引
                     date_index = None
-                    if config.data_path:
-                        try:
-                            data = self._read_data_file(config.data_path)
-                            if data is not None:
-                                if isinstance(data.index, pd.DatetimeIndex):
-                                    date_index = data.index
-                                else:
-                                    date_index = pd.to_datetime(data.index)
-
-                                # 确保日期索引按升序排列（与训练时数据顺序一致）
-                                if not date_index.is_monotonic_increasing:
-                                    date_index = date_index.sort_values()
-
-                                # 确保长度匹配（严格校验）
-                                if len(date_index) != factors_transposed.shape[0]:
-                                    raise ValueError(
-                                        f"日期索引长度({len(date_index)})与因子数据长度({factors_transposed.shape[0]})不匹配。"
-                                        f"因子必须覆盖完整时间范围。"
-                                    )
-                        except ValueError:
-                            # 长度不匹配是严重错误，必须重新抛出
-                            raise
-                        except Exception as e:
-                            logger.warning(f"获取因子序列日期索引失败: {e}")
+                    if prepared_data is not None:
+                        date_index = pd.to_datetime(prepared_data.index)
+                        if not date_index.is_monotonic_increasing:
+                            date_index = date_index.sort_values()
+                        if len(date_index) != factors_transposed.shape[0]:
+                            raise ValueError(
+                                f"日期索引长度({len(date_index)})与因子数据长度"
+                                f"({factors_transposed.shape[0]})不匹配。因子必须覆盖完整时间范围。"
+                            )
 
                     metadata['factor_series'] = pd.DataFrame(
                         factors_transposed,
@@ -556,10 +539,6 @@ class TrainingResultExporter:
             return np.inf, np.inf
 
     # ========== 工具方法 ==========
-
-    def _read_data_file(self, file_path: str) -> pd.DataFrame:
-        """根据文件扩展名读取数据文件"""
-        return read_data_file(file_path, parse_dates=False, check_exists=False)
 
     def _extract_factor_loadings(self, result, config=None) -> pd.DataFrame:
         """提取因子载荷矩阵（H矩阵）"""

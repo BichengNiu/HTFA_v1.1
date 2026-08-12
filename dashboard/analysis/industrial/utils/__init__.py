@@ -53,12 +53,8 @@ from dashboard.analysis.industrial.utils.chart_config import (
 )
 from dashboard.analysis.industrial.utils.chart_creator_unified import (
     create_time_series_chart,
-    create_mixed_chart,
     clean_variable_name,
     get_date_range_from_data,
-    create_line_trace,
-    TimeSeriesChartConfig,
-    MixedChartConfig
 )
 from dashboard.analysis.industrial.utils.fragment_components import (
     render_time_range_selector,
@@ -73,10 +69,6 @@ from dashboard.analysis.industrial.utils.download_utils import (
     create_grouping_mappings,
     prepare_grouping_annotation_data
 )
-# 加权计算模块（优化版本）
-from dashboard.analysis.industrial.utils.weighted_calculation import calculate_weighted_groups_optimized
-# 统一状态管理
-from dashboard.analysis.industrial.utils.state_manager import IndustrialStateManager
 
 __all__ = [
     # 数据处理
@@ -120,10 +112,8 @@ __all__ = [
     'calculate_dtick_by_time_span',
     # 统一图表创建器
     'create_time_series_chart',
-    'create_mixed_chart',
     'clean_variable_name',
     'get_date_range_from_data',
-    'create_line_trace',
     # 统一Fragment组件
     'render_time_range_selector',
     'create_chart_with_time_selector_fragment',
@@ -135,8 +125,4 @@ __all__ = [
     'create_download_with_annotation',
     'create_grouping_mappings',
     'prepare_grouping_annotation_data',
-    # 优化的加权计算
-    'calculate_weighted_groups_optimized',
-    # 统一状态管理
-    'IndustrialStateManager',
 ]

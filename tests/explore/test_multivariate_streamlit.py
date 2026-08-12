@@ -27,13 +27,9 @@ def test_bivariate_page_uses_one_contract_dataset_for_both_analyses():
 
     assert not app.exception
     assert app.selectbox("bivariate_table_select").value == "table"
-    assert (
-        app.session_state["exploration.time_lag_corr.upload_data"]
-        is app.session_state["exploration.lead_lag.upload_data"]
-    )
-    assert (
-        app.session_state["exploration.time_lag_corr.file_name"]
-        == "bivariate.csv-table"
+    assert "exploration.time_lag_corr.upload_data" not in app.session_state
+    assert app.session_state["exploration.lead_lag.file_name"] == (
+        "bivariate.csv-table"
     )
     assert app.selectbox("lead_lag_target_var").value == "target"
 

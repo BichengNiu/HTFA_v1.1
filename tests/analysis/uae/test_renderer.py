@@ -18,6 +18,11 @@ from dashboard.analysis.uae.charts import (
     build_price_volume_figure,
 )
 from dashboard.analysis.uae.contracts import ProvenanceKind
+from dashboard.analysis.uae.downloads import (
+    chart_data_csv,
+    render_chart_download,
+    safe_download_name,
+)
 from dashboard.analysis.uae.renderer import (
     TAB_CONFIG,
     _metric_label,
@@ -35,6 +40,41 @@ def test_line_chart_contains_visible_series_legend():
 
     assert isinstance(figure, go.Figure)
     assert [trace.name for trace in figure.data] == ["真实GDP", "模拟CPI"]
+
+
+def test_chart_download_uses_excel_compatible_csv_and_safe_name():
+    frame = pd.DataFrame(
+        {"指标": [1.5]},
+        index=pd.period_range("2025Q1", periods=1, freq="Q"),
+    )
+
+    content = chart_data_csv(frame)
+
+    assert content.startswith(b"\xef\xbb\xbf")
+    assert "日期,指标" in content.decode("utf-8-sig")
+    assert safe_download_name("增长/价格:趋势") == "增长_价格_趋势.csv"
+
+
+def test_chart_download_button_uses_primary_style():
+    class _Recorder:
+        def __init__(self):
+            self.arguments = None
+
+        def download_button(self, label, **kwargs):
+            self.arguments = (label, kwargs)
+
+    recorder = _Recorder()
+    render_chart_download(
+        recorder,
+        pd.DataFrame({"指标": [1.0]}),
+        title="趋势",
+        key="trend.download",
+    )
+
+    assert recorder.arguments is not None
+    label, kwargs = recorder.arguments
+    assert label == "下载数据"
+    assert kwargs["type"] == "primary"
 
 
 def test_contribution_chart_uses_positive_and_negative_colors():
@@ -419,7 +459,7 @@ def test_metric_label_never_hides_simulated_provenance():
     assert _metric_label(metric) == "【模拟】总体CPI同比"
 
 
-def test_renderer_has_six_reading_tabs_and_no_raw_dataframe():
+def test_renderer_has_real_data_tabs_and_no_raw_dataframe():
     assert [label for label, _ in TAB_CONFIG] == [
         "宏观概览",
         "行业分析",
@@ -427,6 +467,7 @@ def test_renderer_has_six_reading_tabs_and_no_raw_dataframe():
         "就业与收入",
         "财政与外部",
         "货币与金融",
+        "石油财政",
     ]
     source = inspect.getsource(renderer_module)
     assert "诊断结论" not in source
@@ -485,7 +526,7 @@ render_uae_monitoring()
     assert "请先在侧边栏" in app.info[0].value
 
 
-def test_uploaded_uae_workbook_renders_six_tabs():
+def test_uploaded_uae_workbook_renders_real_data_tabs():
     app = AppTest.from_string(
         """
 from io import BytesIO
@@ -502,7 +543,7 @@ renderer.render_uae_monitoring()
     app.run(timeout=90)
 
     assert len(app.exception) == 0
-    assert len(app.tabs) == 6
+    assert len(app.tabs) == 7
     assert [tab.label for tab in app.tabs] == [
         "宏观概览",
         "行业分析",
@@ -510,6 +551,7 @@ renderer.render_uae_monitoring()
         "就业与收入",
         "财政与外部",
         "货币与金融",
+        "石油财政",
     ]
     assert len(app.tabs[0].subheader) == 0
     assert sum(

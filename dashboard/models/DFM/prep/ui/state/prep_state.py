@@ -5,17 +5,14 @@ DFM数据准备页面状态管理
 集中管理所有状态键和状态操作，避免状态键分散在代码各处
 """
 
-from dataclasses import dataclass
 from typing import Any, Optional, List
 import streamlit as st
 
 
-@dataclass(frozen=True)
 class PrepStateKeys:
     """
     数据准备页面状态键常量
 
-    使用frozen=True确保键值不可变
     所有键都以'data_prep.'命名空间前缀
     """
 

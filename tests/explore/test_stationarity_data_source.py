@@ -19,7 +19,7 @@ def _uae_workbook() -> Path:
 def test_uae_database_is_parsed_into_nonempty_frequency_tables():
     tables = load_stationarity_tables(_uae_workbook())
 
-    assert list(tables) == ["daily", "weekly", "monthly", "quarterly"]
+    assert list(tables) == ["daily", "weekly", "monthly", "quarterly", "yearly"]
     for frame in tables.values():
         assert not frame.empty
         assert isinstance(frame.index, pd.DatetimeIndex)

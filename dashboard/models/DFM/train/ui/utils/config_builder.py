@@ -12,7 +12,6 @@
 
 import pandas as pd
 import unicodedata
-import tempfile
 from datetime import timedelta
 from typing import Dict, List, Optional, Any
 
@@ -135,13 +134,10 @@ class TrainingConfigBuilder:
         if algorithm == 'deep_learning':
             ddfm_params = self._get_ddfm_params()
 
-        # 7. 保存DataFrame到临时文件
-        temp_data_path = self._save_dataframe_to_temp(input_df)
-
-        # 8. 构建TrainingConfig（经典DFM无监督模型）
+        # 7. 构建TrainingConfig（经典DFM无监督模型）
         config_kwargs = {
             # 核心配置
-            'data_path': temp_data_path,
+            'data': input_df.copy(),
             'selected_indicators': corrected_indicators,
 
             # 训练/验证期配置
@@ -317,28 +313,6 @@ class TrainingConfigBuilder:
 
         else:
             raise ValueError(f"未知的因子选择策略: {factor_strategy}")
-
-    def _save_dataframe_to_temp(self, input_df: pd.DataFrame) -> str:
-        """
-        保存DataFrame到临时文件
-
-        Args:
-            input_df: 输入DataFrame
-
-        Returns:
-            临时文件路径
-        """
-        temp_file = tempfile.NamedTemporaryFile(
-            mode='w',
-            suffix='.csv',
-            delete=False,
-            encoding='utf-8'
-        )
-        temp_data_path = temp_file.name
-        temp_file.close()
-        input_df.to_csv(temp_data_path)
-        print(f"[INFO] 临时数据文件: {temp_data_path}")
-        return temp_data_path
 
     def _get_ddfm_params(self) -> Dict[str, Any]:
         """

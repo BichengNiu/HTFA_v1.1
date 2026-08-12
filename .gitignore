@@ -1,52 +1,72 @@
+# Credentials and local secrets
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
 docs/github_token
+/config/
 
-# Python缓存文件
+# Python caches and environments
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-
-# 虚拟环境
 .venv/
 venv/
 env/
 ENV/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
 
-# IDE配置
+# IDE and notebook state
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.ipynb_checkpoints/
 
-# Jupyter Notebook
-.ipynb_checkpoints
+# Local data: keep only source documentation in Git
+/data/**
+!/data/**/
+!/data/**/README.md
 
-# 数据文件和临时文件
+# Binary reference material stays local
+/references-local/**
+!/references-local/README.md
+/docs/**/*.pdf
+/docs/**/*.doc
+/docs/**/*.docx
+/docs/**/*.ppt
+/docs/**/*.pptx
+/docs/**/*.xls
+/docs/**/*.xlsx
+/docs/**/*.wps
+
+# Databases, logs, temporary files, and generated outputs
+*.db
+*.sqlite
+*.sqlite3
 *.tmp
 *.temp
 *.log
 *.cache
-
-# 系统文件
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# Excel临时文件
 ~$*.xlsx
 ~$*.xls
 ~$*.doc*
 ~$*.ppt*
-
-# Playwright MCP
-.playwright-mcp/
-
-# 输出目录
 outputs/
+logs/
 temp/
 tmp/
 data/nul
+
+# Browser automation
+.playwright-mcp/
 
 # Windows portable build artifacts
 /build/

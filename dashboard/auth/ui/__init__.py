@@ -19,12 +19,6 @@ from dashboard.auth.ui.pages.user_management_module import (
     render_user_management_sub_module
 )
 
-# 导出存储管理器
-from dashboard.auth.ui.utils.storage import (
-    AuthStorageManager,
-    get_auth_storage_manager
-)
-
 __all__ = [
     # 中间件
     'AuthMiddleware',
@@ -36,8 +30,4 @@ __all__ = [
     'render_user_management_page',
     'UserManagementWelcomePage',
     'render_user_management_sub_module',
-
-    # 存储
-    'AuthStorageManager',
-    'get_auth_storage_manager',
 ]

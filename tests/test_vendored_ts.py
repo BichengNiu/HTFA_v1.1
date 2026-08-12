@@ -38,7 +38,9 @@ def test_installed_ts_exposes_htfa_interfaces():
 
 
 def test_requirements_do_not_install_ts_from_git():
-    requirements = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8")
+    requirements = (
+        PROJECT_ROOT / "tooling" / "requirements" / "requirements.txt"
+    ).read_text(encoding="utf-8")
 
     assert "BichengNiu/Ts" not in requirements
     assert "git+" not in requirements

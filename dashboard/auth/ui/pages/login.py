@@ -16,9 +16,9 @@ from dashboard.auth.security import SecurityUtils
 class LoginPage:
     """登录页面组件"""
 
-    def __init__(self):
+    def __init__(self, auth_manager: AuthManager):
         """初始化登录页面"""
-        self.auth_manager = AuthManager()
+        self.auth_manager = auth_manager
         self.logger = logging.getLogger(__name__)
 
     def render(self) -> Optional[Tuple[bool, dict]]:
@@ -32,7 +32,7 @@ class LoginPage:
         # 检查是否需要显示注册页面
         if st.session_state.get('show_register_page', False):
             from dashboard.auth.ui.pages.register import render_register_page
-            register_success = render_register_page()
+            register_success = render_register_page(self.auth_manager.db)
             if register_success:
                 # 注册成功后清除注册页面标识，返回登录页面
                 del st.session_state['show_register_page']
@@ -332,12 +332,14 @@ class LoginPage:
         """, unsafe_allow_html=True)
 
 
-def render_login_page() -> Optional[Tuple[bool, dict]]:
+def render_login_page(
+    auth_manager: AuthManager,
+) -> Optional[Tuple[bool, dict]]:
     """
     渲染登录页面的便捷函数
 
     Returns:
         (是否登录成功, 用户信息) 或 None
     """
-    login_page = LoginPage()
+    login_page = LoginPage(auth_manager)
     return login_page.render()

@@ -6,24 +6,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 HTFA（经济运行分析平台）是一个基于 Streamlit 的数据分析仪表板应用，用于经济数据的监测、分析和预测。
 
-**技术栈**: Python 3.14 + Streamlit + Pandas + Plotly/Altair + statsmodels
+**技术栈**: Python 3.13.4 + Streamlit + Pandas + Plotly/Altair + statsmodels
 **架构**: 模块化单体应用，垂直切分架构
 **部署**: Docker 容器化，端口 8501
 
 ## 常用命令
 
-```bash
-# 启动应用（开发模式）
-streamlit run app.py --server.port=8501
+```powershell
+# 首次创建或安全重建唯一运行时
+scripts\windows\setup_runtime.bat
 
-# 直接运行（会自动清理缓存和端口）
-python app.py
+# 启动应用
+runtime\python.exe scripts\run_htfa.py --server.port=8501
+
+# 完整测试与依赖检查
+runtime\python.exe -m pytest -q -c tooling\pytest.ini
+runtime\python.exe -m pip check
 
 # Docker 部署
-docker-compose up -d
-
-# 安装依赖
-pip install -r requirements.txt
+docker compose -f tooling\docker\docker-compose.yml up --build -d
 ```
 
 ## 核心架构
@@ -33,13 +34,14 @@ pip install -r requirements.txt
 ```
 HTFA/
 ├── app.py                    # 应用入口，页面配置和主路由
+├── tooling/                  # 依赖、pytest 与 Docker 配置
+├── scripts/                  # 维护脚本和 Windows 入口
+│   └── data_sources/         # 纳入版本控制的数据获取与转换代码
 ├── dashboard/                # Dashboard 模块
 │   ├── core/                 # 核心框架
 │   │   ├── backend/          # 后端服务
-│   │   │   ├── config/       # 配置管理
 │   │   │   ├── navigation/   # 导航状态管理
-│   │   │   ├── resource/     # 资源加载器
-│   │   │   └── initialization/   # 初始化器
+│   │   │   └── utils/        # 后端通用工具
 │   │   └── ui/               # UI 框架
 │   │       ├── components/   # 通用组件（sidebar, content_router, layout）
 │   │       └── utils/        # UI 工具（样式加载、状态管理、调试）
@@ -58,26 +60,23 @@ HTFA/
 │   │       ├── results/      # 结果分析
 │   │       └── decomp/       # 影响分解
 │   ├── explore/              # 数据探索模块
-│   │   ├── ui/               # 单变量/双变量分析页面
-│   │   └── metrics/          # 相关性计算
+│   │   ├── analysis/         # 统计分析规则
+│   │   ├── preprocessing/    # 频率对齐与标准化
+│   │   ├── metrics/          # 距离、相关性等指标
+│   │   └── ui/               # 单变量/双变量分析页面
 │   └── preview/              # 数据预览模块
 │       ├── core/             # 基础加载器和渲染器
 │       └── modules/          # 各领域预览模块
-├── data/                     # 数据文件
-├── logs/                     # 日志文件
-└── config/                   # 配置文件
+├── data/                     # 仅保存在本地的数据；Git 只跟踪 README
+├── references-local/         # 仅保存在本地的二进制参考资料
+├── logs/                     # 运行日志文件
+└── config/                   # 运行时配置文件
 ```
 
-### 模块配置（app.py:230-245）
+### 模块配置（dashboard/navigation_config.py）
 
 ```python
-MODULE_CONFIG = {
-    "数据预览": {"工业": None},
-    "监测分析": {"工业": ["工业增加值", "工业企业利润"]},
-    "模型分析": {"DFM 模型": ["数据准备", "模型训练", "模型分析", "新闻分析"]},
-    "数据探索": {"单变量分析": ["平稳性检验"], "多变量分析": ["相关分析", "领先滞后分析"]},
-    "用户管理": None
-}
+MODULE_CONFIG = ...  # 由 GRANULAR_PERMISSION_MAP 派生，禁止维护第二份导航树
 ```
 
 ### 关键设计模式
@@ -85,15 +84,15 @@ MODULE_CONFIG = {
 1. **导航状态管理**: 通过 `dashboard.core.backend.navigation` 管理主模块/子模块状态
    - `get_current_main_module()` / `set_current_main_module()`
    - `get_current_sub_module()` / `set_current_sub_module()`
-   - `is_transitioning()` / `set_transitioning()` 控制页面切换状态
-
-2. **内容路由**: `dashboard/core/ui/components/content_router.py` 根据导航状态路由到对应模块
+2. **内容路由**: `dashboard/core/ui/components/content_router.py` 根据导航层级直接分派页面；渲染函数不返回状态协议
 
 3. **权限控制**:
    - 调试模式（`HTFA_DEBUG_MODE=true`）跳过认证
    - 生产模式通过 `AuthManager` 和 `PermissionManager` 控制模块访问
 
-4. **UI 组件基类**: `dashboard.core.ui.components.base.UIComponent`
+4. **状态隔离**: 跨页面状态使用 `NamespacedStateManager` 或领域内状态管理器，键名保持模块命名空间
+
+5. **DFM 数据流**: 上传工作簿和训练 DataFrame 在内存中传递；不得为 UI/训练桥接创建长期临时 Excel/CSV 文件
 
 ## 环境变量
 
@@ -105,7 +104,9 @@ STREAMLIT_SERVER_PORT=8501
 
 ## 数据目录
 
-- `data/` - 数据文件（Excel、CSV）
+- `data/` - 本地数据文件（Excel、CSV、PDF、数据库），不推送 GitHub
+- `references-local/` - 本地论文、报告和办公文档，不推送 GitHub
+- `scripts/data_sources/` - 可复现的数据获取与转换代码，纳入版本控制
 - `logs/` - 日志文件
 - `config/` - 配置文件
 

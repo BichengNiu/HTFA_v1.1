@@ -4,101 +4,17 @@
 提供基于用户直接权限的访问控制功能
 """
 
-from typing import List, Dict, Optional, Set
-import logging
+from typing import Dict, List
 
-from dashboard.auth.database import AuthDatabase
 from dashboard.auth.models import User
-
-
-# 权限模块映射（旧版，保留兼容性）
-PERMISSION_MODULE_MAP = {
-    "数据预览": ["data_preview"],
-    "监测分析": ["monitoring_analysis"],
-    "模型分析": ["model_analysis"],
-    "数据探索": ["data_exploration"],
-    "用户管理": ["user_management"]
-}
-
-# 细粒度权限映射（三级结构：主模块 -> 子模块 -> Tab）
-GRANULAR_PERMISSION_MAP = {
-    "数据预览": {
-        "code": "data_preview",
-        "sub_modules": {
-            "工业": {
-                "code": "data_preview.industrial",
-                "tabs": None
-            },
-            "阿联酋": {
-                "code": "data_preview.uae",
-                "tabs": None
-            }
-        }
-    },
-    "监测分析": {
-        "code": "monitoring_analysis",
-        "sub_modules": {
-            "工业": {
-                "code": "monitoring_analysis.industrial",
-                "tabs": {
-                    "工业增加值分析": "monitoring_analysis.industrial.added_value",
-                    "工业企业利润分析": "monitoring_analysis.industrial.profit",
-                    "工业企业经营效率分析": "monitoring_analysis.industrial.efficiency"
-                }
-            },
-            "阿联酋": {
-                "code": "monitoring_analysis.uae",
-                "tabs": None
-            }
-        }
-    },
-    "模型分析": {
-        "code": "model_analysis",
-        "sub_modules": {
-            "DFM 模型": {
-                "code": "model_analysis.dfm",
-                "tabs": {
-                    "数据准备": "model_analysis.dfm.prep",
-                    "模型训练": "model_analysis.dfm.train",
-                    "模型分析": "model_analysis.dfm.analysis",
-                    "影响分解": "model_analysis.dfm.news"
-                }
-            }
-        }
-    },
-    "数据探索": {
-        "code": "data_exploration",
-        "sub_modules": {
-            "单变量分析": {
-                "code": "data_exploration.univariate",
-                "tabs": {
-                    "平稳性检验": "data_exploration.univariate.stationarity",
-                    "结构突变检验": "data_exploration.univariate.structural_break"
-                }
-            },
-            "多变量分析": {
-                "code": "data_exploration.bivariate",
-                "tabs": {
-                    "相关分析": "data_exploration.bivariate.correlation",
-                    "领先滞后分析": "data_exploration.bivariate.lead_lag"
-                }
-            }
-        }
-    },
-    "用户管理": {
-        "code": "user_management",
-        "sub_modules": None
-    }
-}
+from dashboard.navigation_config import (
+    GRANULAR_PERMISSION_MAP,
+    PERMISSION_MODULE_MAP,
+)
 
 
 class PermissionManager:
     """权限管理器 - 基于用户直接权限体系"""
-    
-    def __init__(self, db_path: str = None):
-        """初始化权限管理器"""
-        self.db = AuthDatabase(db_path)
-        self.logger = logging.getLogger(__name__)
     
     def check_raw_permission(self, user: User, permission: str) -> bool:
         """
@@ -133,6 +49,15 @@ class PermissionManager:
             return True
 
         return any(self.check_raw_permission(user, p) for p in required_permissions)
+
+    def can_access_application_module(self, user: User, module_name: str) -> bool:
+        """应用级主模块规则：管理员只进入用户管理，普通用户不能进入该模块。"""
+        is_admin = self.is_admin(user)
+        if module_name == "用户管理":
+            return is_admin
+        if is_admin:
+            return False
+        return self.check_module_access(user, module_name)
 
     def get_accessible_modules(self, user: User) -> List[str]:
         """

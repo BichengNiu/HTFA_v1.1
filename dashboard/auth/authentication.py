@@ -17,10 +17,16 @@ from dashboard.auth.config import AuthConfig, DEFAULT_CONFIG
 class AuthManager:
     """认证管理器"""
 
-    def __init__(self, db_path: str = None, config: AuthConfig = None):
+    def __init__(
+        self,
+        db_path: str = None,
+        config: AuthConfig = None,
+        *,
+        db: AuthDatabase | None = None,
+    ):
         """初始化认证管理器"""
         self.config = config or DEFAULT_CONFIG
-        self.db = AuthDatabase(db_path)
+        self.db = db or AuthDatabase(db_path)
         self.security = SecurityUtils(self.config)
         self.logger = logging.getLogger(__name__)
         self.audit_logger = logging.getLogger('security_audit')

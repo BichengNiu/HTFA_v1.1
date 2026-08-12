@@ -28,6 +28,7 @@ from dashboard.analysis.industrial.charts import (
     EfficiencyMetricsChart,
     EnterpriseIndicatorsChart
 )
+from dashboard.analysis.industrial.utils.state_manager import industrial_state
 
 
 # ============================================================================
@@ -182,10 +183,7 @@ def render_enterprise_operations_analysis_with_data(
         return
 
     # 图表1：工业企业利润拆解
-    from dashboard.analysis.industrial.utils import (
-        create_chart_with_time_selector_fragment,
-        IndustrialStateManager
-    )
+    from dashboard.analysis.industrial.utils.fragment_components import create_chart_with_time_selector_fragment
     from dashboard.analysis.industrial.constants import (
         PROFIT_TOTAL_COLUMN,
         CUMULATIVE_INDUSTRIAL_GROWTH_COLUMN,
@@ -222,8 +220,8 @@ def render_enterprise_operations_analysis_with_data(
         chart_creator_func=create_chart1,
         chart_data=df_profit,
         chart_variables=available_vars,
-        get_state_func=IndustrialStateManager.get,
-        set_state_func=IndustrialStateManager.set
+        get_state_func=industrial_state.get,
+        set_state_func=industrial_state.set
     )
 
     # 添加数据下载功能
@@ -304,8 +302,8 @@ def render_enterprise_operations_analysis_with_data(
                 chart_creator_func=create_operations_chart,
                 chart_data=df_operations,
                 chart_variables=selected_indicators,
-                get_state_func=IndustrialStateManager.get,
-                set_state_func=IndustrialStateManager.set
+                get_state_func=industrial_state.get,
+                set_state_func=industrial_state.set
             )
 
             # 添加数据下载功能
@@ -379,8 +377,8 @@ def render_enterprise_operations_analysis_with_data(
                 chart_creator_func=create_chart2,
                 chart_data=stream_contribution_df,
                 chart_variables=available_vars_chart2,
-                get_state_func=IndustrialStateManager.get,
-                set_state_func=IndustrialStateManager.set
+                get_state_func=industrial_state.get,
+                set_state_func=industrial_state.set
             )
         else:
             st_obj.warning("未找到上中下游拉动率数据")
@@ -463,10 +461,7 @@ def render_enterprise_profit_analysis_with_data(
         return
 
     # 图表1：工业企业利润拆解
-    from dashboard.analysis.industrial.utils import (
-        create_chart_with_time_selector_fragment,
-        IndustrialStateManager
-    )
+    from dashboard.analysis.industrial.utils.fragment_components import create_chart_with_time_selector_fragment
     from dashboard.analysis.industrial.constants import (
         PROFIT_TOTAL_COLUMN,
         CUMULATIVE_INDUSTRIAL_GROWTH_COLUMN,
@@ -503,8 +498,8 @@ def render_enterprise_profit_analysis_with_data(
         chart_creator_func=create_chart1,
         chart_data=df_profit,
         chart_variables=available_vars,
-        get_state_func=IndustrialStateManager.get,
-        set_state_func=IndustrialStateManager.set
+        get_state_func=industrial_state.get,
+        set_state_func=industrial_state.set
     )
 
     if not df_profit.empty:
@@ -564,8 +559,8 @@ def render_enterprise_profit_analysis_with_data(
                 chart_creator_func=create_chart2,
                 chart_data=stream_contribution_df,
                 chart_variables=available_vars_chart2,
-                get_state_func=IndustrialStateManager.get,
-                set_state_func=IndustrialStateManager.set
+                get_state_func=industrial_state.get,
+                set_state_func=industrial_state.set
             )
         else:
             st_obj.warning("未找到上中下游拉动率数据")
@@ -667,10 +662,7 @@ def render_enterprise_efficiency_analysis_with_data(
             custom_end_date=custom_end_date
         )
 
-    from dashboard.analysis.industrial.utils import (
-        create_chart_with_time_selector_fragment,
-        IndustrialStateManager
-    )
+    from dashboard.analysis.industrial.utils.fragment_components import create_chart_with_time_selector_fragment
 
     create_chart_with_time_selector_fragment(
         st_obj=st_obj,
@@ -680,8 +672,8 @@ def render_enterprise_efficiency_analysis_with_data(
         chart_creator_func=create_operations_chart,
         chart_data=df_operations,
         chart_variables=all_indicators,
-        get_state_func=IndustrialStateManager.get,
-        set_state_func=IndustrialStateManager.set
+        get_state_func=industrial_state.get,
+        set_state_func=industrial_state.set
     )
 
     # 添加数据下载功能
@@ -773,8 +765,8 @@ def render_enterprise_efficiency_analysis_with_data(
                 chart_creator_func=create_efficiency_metrics_chart,
                 chart_data=df_efficiency_metrics,
                 chart_variables=efficiency_indicators,
-                get_state_func=IndustrialStateManager.get,
-                set_state_func=IndustrialStateManager.set
+                get_state_func=industrial_state.get,
+                set_state_func=industrial_state.set
             )
 
             # 添加数据下载功能
