@@ -34,6 +34,11 @@ htmlcov/
 /data/**
 !/data/**/
 !/data/**/README.md
+!/data/UAE_PMI/download_uae_pmi.py
+!/data/UAE_PMI/process_uae_pmi.py
+!/data/capitalImports/*.py
+!/data/capitalImports/*.ps1
+!/data/foreignEmployer/*.py
 
 # Binary reference material stays local
 /references-local/**
