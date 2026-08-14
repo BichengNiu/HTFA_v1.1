@@ -271,7 +271,7 @@ def test_oil_market_figure_combines_brent_and_production() -> None:
     assert rig_axis.get_lines()[0].get_ydata()[-1] == 59
     assert price_axis.get_ylabel() == "美元/桶"
     assert production_axis.get_ylabel() == "万桶/天"
-    assert price_axis.get_title() == ""
+    assert price_axis.get_title() == "原油价格、产量与钻机数"
     assert figure._suptitle is None
     assert price_axis.get_xticklabels()[-1].get_text() == "12月"
     legend_labels = {
@@ -393,7 +393,7 @@ def test_monthly_revenue_calculates_yoy_and_chart_axes() -> None:
     assert revenue_axis.patches[-1].get_height() == pytest.approx(40.92)
     assert revenue_axis.get_ylabel() == "亿美元"
     assert rate_axis.get_ylabel() == "拉动率/同比（%）"
-    assert rate_axis.get_title() == ""
+    assert rate_axis.get_title() == "估算石油收入"
     assert figure._suptitle is None
     assert rate_axis.get_xticklabels()[-1].get_text() == "12月"
     legend_labels = {text.get_text() for text in figure.legends[0].get_texts()}
