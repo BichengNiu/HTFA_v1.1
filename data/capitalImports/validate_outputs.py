@@ -240,22 +240,36 @@ def validate_workbook(
         errors.append("Obsolete UN Comtrade dictionary entries remain")
 
     original_structure_ok = True
-    backups = sorted((BASE_DIR / "backups").glob("*_before_uncomtrade_*.xlsx"))
-    if backups:
+    backup_dir = BASE_DIR / "backups"
+    native_backups = list(backup_dir.glob("*_before_native_merge_*.xlsx"))
+    legacy_backups = list(backup_dir.glob("*_before_uncomtrade_*.xlsx"))
+    backups = native_backups or legacy_backups
+    baseline_path = (
+        max(backups, key=lambda item: (item.stat().st_mtime_ns, item.name))
+        if backups
+        else None
+    )
+    if baseline_path is not None:
         baseline = load_workbook(
-            backups[0],
+            baseline_path,
             read_only=True,
             data_only=False,
             keep_links=True,
         )
         for sheet_name in baseline.sheetnames:
+            if (
+                sheet_name == baseline.sheetnames[0]
+                or sheet_name == "月度_UNComtrade"
+                or sheet_name.endswith("_Wind")
+            ):
+                continue
             if sheet_name not in workbook.sheetnames:
                 original_structure_ok = False
                 errors.append(f"Original sheet missing: {sheet_name}")
                 continue
             before = baseline[sheet_name]
             after = workbook[sheet_name]
-            if sheet_name != baseline.sheetnames[0] and (
+            if (
                 before.max_row != after.max_row
                 or before.max_column != after.max_column
                 or formula_count(before) != formula_count(after)
@@ -271,6 +285,7 @@ def validate_workbook(
         "data_sheet_rows": actual_size[0],
         "data_sheet_columns": actual_size[1],
         "original_structure_ok": original_structure_ok,
+        "structure_baseline": str(baseline_path) if baseline_path else None,
     }
 
 

@@ -39,6 +39,9 @@ htmlcov/
 !/data/capitalImports/*.py
 !/data/capitalImports/*.ps1
 !/data/foreignEmployer/*.py
+!/data/steelPrice/*.py
+!/data/steelPrice/*.ps1
+!/data/steelPrice/README.md
 
 # Binary reference material stays local
 /references-local/**
