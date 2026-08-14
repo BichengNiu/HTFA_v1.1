@@ -139,10 +139,6 @@ def render_government_finance_section(
         with st_obj.spinner("正在读取 CBUAE 月度存款与信贷数据..."):
             data = _load_government_finance_cached(content, file_name)
         latest_date = latest_complete_month(data.values)
-        st_obj.caption(
-            f"截至 {latest_date:%Y-%m}；存贷图展示月同比（%），"
-            "劳工图以左右双轴柱展示两国人数。"
-        )
         try:
             with st_obj.spinner("正在读取外籍劳动力月度数据..."):
                 foreign_labor = _load_foreign_labor_cached(content, file_name)

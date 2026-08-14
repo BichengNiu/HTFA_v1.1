@@ -276,8 +276,10 @@ def build_foreign_labor_figure(
         fontfamily=CHINESE_FONT_FAMILY,
     )
     nepal_axis.xaxis.grid(False)
-    nepal_axis.grid(axis="y", color="#D1D5DB", linewidth=0.7, zorder=0)
-    bangladesh_axis.grid(False)
+    nepal_axis.grid(False)
+    # Draw the y-grid on the back (lower-zorder) axis so horizontal lines
+    # stay behind both bar sets instead of crossing over the twin bars.
+    bangladesh_axis.grid(axis="y", color="#D1D5DB", linewidth=0.7, zorder=0)
     for spine_name in ("top", "bottom", "left"):
         spine = nepal_axis.spines[spine_name]
         spine.set_visible(True)
