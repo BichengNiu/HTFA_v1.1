@@ -224,7 +224,11 @@ def build_oil_market_figure(
     )
     price_axis = _normalize_ts_axis(price_axis)
     price_axis.get_lines()[-1].set_linestyle("--")
-    price_axis.set_title("")
+    price_axis.set_title(
+        "原油价格、产量与钻机数",
+        fontsize=14,
+        pad=14,
+    )
     price_axis.xaxis.grid(False)
 
     production_axis = price_axis.twinx()
@@ -413,7 +417,11 @@ def build_oil_revenue_figure(
         rate_axis = _normalize_ts_axis(returned_axis)
         rate_axis.get_lines()[-1].set_linestyle(linestyle)
 
-    rate_axis.set_title("")
+    rate_axis.set_title(
+        "估算石油收入",
+        fontsize=14,
+        pad=14,
+    )
     rate_axis.xaxis.grid(False)
     revenue_axis = rate_axis.twinx()
     revenue_axis.bar(

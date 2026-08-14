@@ -248,6 +248,7 @@ def _render_charts(
             ),
             width="stretch",
             clear_figure=True,
+            bbox_inches=None,
         )
         render_chart_download(
             st_obj,
@@ -265,6 +266,7 @@ def _render_charts(
             ),
             width="stretch",
             clear_figure=True,
+            bbox_inches=None,
         )
         render_chart_download(
             st_obj,
@@ -292,16 +294,29 @@ def render_oil_fiscal_panel(st_obj: Any = st) -> dict[str, Any]:
         revenue = estimate_monthly_oil_revenue(data.prices, data.production)
         _render_revenue_metrics(st_obj, revenue)
         _render_charts(st_obj, data, revenue)
-        with st_obj.expander("估算口径与限制", expanded=False):
+        with st_obj.expander("石油收入估算口径与限制", expanded=False):
             st_obj.markdown(
                 "月度收入统一由布伦特原油现货月均价、原油日产量与"
                 "当月天数估算，"
                 "不等同于政府财政收入或国有企业现金流。"
             )
+        from dashboard.analysis.uae.government_finance import (
+            render_government_finance_section,
+        )
+
+        government_finance = render_government_finance_section(
+            st_obj,
+            content,
+            file_name,
+        )
     except (KeyError, TypeError, ValueError) as exc:
         st_obj.error(f"油价与产量数据加载失败：{exc}")
         return {"status": "error", "message": str(exc)}
-    return {"status": "success", "source": file_name}
+    return {
+        "status": "success",
+        "source": file_name,
+        "government_finance": government_finance,
+    }
 
 
 __all__ = ["render_oil_fiscal_panel"]
