@@ -19,6 +19,11 @@ from dashboard.analysis.uae.indicator_catalog import (
 from dashboard.preview.core.workbook_parser import parse_preview_workbook
 
 DEFAULT_UAE_WORKBOOK = Path("data") / "阿联酋.xlsx"
+UAE_ANALYSIS_INDICATOR_NAMES = frozenset(
+    alias
+    for spec in INDICATOR_SPECS
+    for alias in spec.aliases
+)
 
 
 def load_real_uae_bundle(file_input: Any) -> UAEDataBundle:
@@ -28,6 +33,7 @@ def load_real_uae_bundle(file_input: Any) -> UAEDataBundle:
         parsed = parse_preview_workbook(
             file_input,
             module_name="uae_monitoring",
+            indicator_allowlist=UAE_ANALYSIS_INDICATOR_NAMES,
         )
     except (OSError, TypeError, ValueError) as exc:
         raise ValueError(

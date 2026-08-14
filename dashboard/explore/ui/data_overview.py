@@ -5,6 +5,7 @@ from __future__ import annotations
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
 from dashboard.explore.analysis.stationarity import (
     create_correlogram_figure,
     create_time_series_figure,
@@ -91,7 +92,11 @@ def _render_correlogram(
             **{key: value for key, value in config.items() if key != "nlags"},
         )
         try:
-            st_obj.pyplot(figure, width="stretch", clear_figure=True)
+            st_obj.pyplot(
+                place_chart_legend_at_bottom(figure),
+                width="stretch",
+                clear_figure=True,
+            )
         finally:
             plt.close(figure)
         render_correlogram_config_expander(
@@ -181,7 +186,11 @@ def render_data_overview(st_obj, uploaded_file, *, dataset=None) -> None:
             with matplotlib_date_compatibility():
                 figure = create_time_series_figure(series, **config)
                 try:
-                    st_obj.pyplot(figure, width="stretch", clear_figure=True)
+                    st_obj.pyplot(
+                        place_chart_legend_at_bottom(figure),
+                        width="stretch",
+                        clear_figure=True,
+                    )
                 finally:
                     plt.close(figure)
             render_time_series_config_expander(

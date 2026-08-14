@@ -114,6 +114,23 @@ def test_parse_workbook_accepts_reordered_unit_source_and_update_rows():
     assert metadata.updated_at == "2026-07-25"
 
 
+def test_parse_workbook_accepts_blank_unit():
+    workbook_file = _build_workbook()
+    loaded_workbook = load_workbook(workbook_file)
+    daily = loaded_workbook["日度_Wind"]
+    daily.cell(row=4, column=2).value = None
+
+    output = BytesIO()
+    loaded_workbook.save(output)
+    output.seek(0)
+    output.name = "空单位.xlsx"
+
+    result = parse_preview_workbook(output, module_name="test")
+
+    assert result.indicator_metadata_map["指标A"].unit == ""
+    assert result.indicator_unit_map["指标A"] == ""
+
+
 def test_parse_workbook_rejects_value_with_blank_date():
     workbook_file = _build_workbook()
     loaded_workbook = load_workbook(workbook_file)
@@ -144,6 +161,35 @@ def test_parse_workbook_discards_indicators_not_registered_in_dictionary():
 
     assert result.get_dataframe("monthly").empty
     assert "指标B" not in result.indicator_metadata_map
+
+
+def test_parse_workbook_skips_non_protocol_sheet_without_registered_indicators():
+    workbook_file = _build_workbook()
+    loaded_workbook = load_workbook(workbook_file)
+    supplemental = loaded_workbook.create_sheet("月度_补充数据")
+    supplemental.append(["补充来源", None])
+    supplemental.append(["日期", "未登记指标"])
+    supplemental.append([pd.Timestamp("2026-07-31"), 1.0])
+
+    output = BytesIO()
+    loaded_workbook.save(output)
+    output.seek(0)
+    output.name = "含未登记补充数据.xlsx"
+
+    result = parse_preview_workbook(output, module_name="test")
+
+    assert set(result.indicator_metadata_map) == {"指标A", "指标B"}
+
+
+def test_parse_workbook_can_limit_parsing_to_an_indicator_allowlist():
+    result = parse_preview_workbook(
+        _build_workbook(),
+        module_name="test",
+        indicator_allowlist={"指标A"},
+    )
+
+    assert set(result.indicator_metadata_map) == {"指标A"}
+    assert result.get_dataframe("monthly").empty
 
 
 def test_parse_workbook_converts_zero_values_to_missing():

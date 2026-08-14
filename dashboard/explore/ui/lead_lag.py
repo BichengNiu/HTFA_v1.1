@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
 # 配置matplotlib中文字体
 matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans', 'Arial Unicode MS', 'sans-serif']
 matplotlib.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
@@ -362,7 +363,10 @@ class LeadLagAnalysisComponent(TimeSeriesAnalysisComponent):
                 ax.set_title(f'{results["target_var"]} vs {candidate_var} KL散度')
                 ax.grid(True, alpha=0.3)
                 plt.tight_layout()
-                st_obj.pyplot(fig, use_container_width=True)
+                st_obj.pyplot(
+                    place_chart_legend_at_bottom(fig),
+                    use_container_width=True,
+                )
                 plt.close()
 
         # 添加时间序列对比图
@@ -447,5 +451,8 @@ class LeadLagAnalysisComponent(TimeSeriesAnalysisComponent):
             plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha='right')
 
         plt.tight_layout()
-        st_obj.pyplot(fig, width='stretch')
+        st_obj.pyplot(
+            place_chart_legend_at_bottom(fig),
+            width='stretch',
+        )
         plt.close()

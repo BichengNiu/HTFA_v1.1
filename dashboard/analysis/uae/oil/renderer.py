@@ -9,20 +9,27 @@ import pandas as pd
 import streamlit as st
 
 from dashboard.analysis.uae.downloads import render_chart_download
+from dashboard.analysis.uae.oil.alignment import (
+    common_latest_month,
+    within_month_window,
+)
 from dashboard.analysis.uae.oil.charts import (
     build_oil_market_figure,
     build_oil_revenue_figure,
 )
 from dashboard.analysis.uae.oil.data import OilMarketData, load_oil_market_data
 from dashboard.analysis.uae.oil.revenue import (
-    MOM_COLUMN,
+    PRICE_CONTRIBUTION_COLUMN,
     PRICE_BENCHMARK_COLUMN,
+    PRODUCTION_CONTRIBUTION_COLUMN,
     REVENUE_COLUMN,
     YOY_COLUMN,
     YTD_COLUMN,
+    YTD_YOY_COLUMN,
     estimate_monthly_oil_revenue,
 )
 from dashboard.core.ui.utils.shared_dataset import get_shared_dataset_file
+from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
 
 
 def _source_payload() -> tuple[bytes, str] | None:
@@ -68,10 +75,9 @@ def _metric_delta(label: str, change: float | None) -> str | None:
 
 
 def _render_oil_metrics(st_obj: Any, data: OilMarketData) -> None:
-    st_obj.markdown("#### 油价与产量概览")
-    columns = st_obj.columns(5)
-    price_names = ("布伦特期货", "布伦特现货", "迪拜现货", "穆尔班现货")
-    for column, name in zip(columns[:4], price_names):
+    columns = st_obj.columns(4)
+    price_names = ("布伦特期货", "布伦特现货")
+    for column, name in zip(columns[:2], price_names):
         value, as_of, change = _latest_change(data.prices[name], days=30)
         metadata = data.metadata[name]
         with column:
@@ -88,10 +94,29 @@ def _render_oil_metrics(st_obj: Any, data: OilMarketData) -> None:
 
     value, as_of, change = _latest_change(data.production)
     metadata = data.metadata[data.production.name]
-    with columns[4]:
+    with columns[2]:
         st_obj.metric(
             "阿联酋原油产量",
             f"{value / 10_000:,.1f} 万桶/天",
+            delta=_metric_delta("环比", change),
+            delta_color="off",
+            help=(
+                f"截至 {as_of:%Y-%m}；月度；来源：{metadata.source}；"
+                f"源表更新：{metadata.updated_at}"
+            ),
+        )
+
+    if data.rig_count is None or data.rig_count.dropna().empty:
+        with columns[3]:
+            st_obj.metric("阿联酋石油活跃钻机数", "—")
+        return
+
+    value, as_of, change = _latest_change(data.rig_count)
+    metadata = data.metadata[data.rig_count.name]
+    with columns[3]:
+        st_obj.metric(
+            "阿联酋石油活跃钻机数",
+            f"{value:,.0f} 台",
             delta=_metric_delta("环比", change),
             delta_color="off",
             help=(
@@ -120,11 +145,14 @@ def _render_revenue_metrics(st_obj: Any, revenue: pd.DataFrame) -> None:
             f"{latest[YTD_COLUMN]:,.2f} 亿美元",
         )
     with columns[2]:
-        value = latest[MOM_COLUMN]
-        st_obj.metric("月度环比", f"{value:+.1f}%" if pd.notna(value) else "—")
-    with columns[3]:
         value = latest[YOY_COLUMN]
         st_obj.metric("月度同比", f"{value:+.1f}%" if pd.notna(value) else "—")
+    with columns[3]:
+        value = latest[YTD_YOY_COLUMN]
+        st_obj.metric(
+            "年度累计同比",
+            f"{value:+.1f}%" if pd.notna(value) else "—",
+        )
 
 
 def _render_charts(
@@ -132,7 +160,6 @@ def _render_charts(
     data: OilMarketData,
     revenue: pd.DataFrame,
 ) -> None:
-    cutoff = pd.Timestamp(revenue.index.max()) - pd.DateOffset(years=3)
     production_source = data.metadata[data.production.name].source
     rig_count_source = (
         None
@@ -154,12 +181,32 @@ def _render_charts(
         dict.fromkeys((data.metadata["布伦特现货"].source, production_source))
     )
     columns = st_obj.columns(2, gap="small")
-    market_prices = data.prices.loc[data.prices.index >= cutoff]
-    market_production = data.production.loc[data.production.index >= cutoff]
+    market_cutoff_series = [
+        ("布伦特现货", data.prices["布伦特现货"]),
+        (data.production.name, data.production),
+    ]
+    if data.rig_count is not None and not data.rig_count.dropna().empty:
+        market_cutoff_series.append((data.rig_count.name, data.rig_count))
+    market_last_month = common_latest_month(market_cutoff_series)
+    market_first_month = market_last_month - 36
+    market_prices = within_month_window(
+        data.prices,
+        first_month=market_first_month,
+        last_month=market_last_month,
+    )
+    market_production = within_month_window(
+        data.production,
+        first_month=market_first_month,
+        last_month=market_last_month,
+    )
     market_rig_count = (
         None
         if data.rig_count is None
-        else data.rig_count.loc[data.rig_count.index >= cutoff]
+        else within_month_window(
+            data.rig_count,
+            first_month=market_first_month,
+            last_month=market_last_month,
+        )
     )
     market_series = [
         market_prices["布伦特现货"].rename("布伦特原油现货价（美元/桶）"),
@@ -173,14 +220,31 @@ def _render_charts(
         market_series,
         axis=1,
     ).sort_index()
-    revenue_download = revenue.loc[revenue.index >= cutoff]
+    revenue_cutoff_series = [(REVENUE_COLUMN, revenue[REVENUE_COLUMN])]
+    revenue_cutoff_series.extend(
+        (column, revenue[column])
+        for column in (
+            YOY_COLUMN,
+            PRICE_CONTRIBUTION_COLUMN,
+            PRODUCTION_CONTRIBUTION_COLUMN,
+        )
+        if not revenue[column].dropna().empty
+    )
+    revenue_last_month = common_latest_month(revenue_cutoff_series)
+    revenue_download = within_month_window(
+        revenue,
+        first_month=revenue_last_month - 36,
+        last_month=revenue_last_month,
+    )
     with columns[0]:
         st_obj.pyplot(
-            build_oil_market_figure(
-                market_prices,
-                market_production,
-                market_sources,
-                market_rig_count,
+            place_chart_legend_at_bottom(
+                build_oil_market_figure(
+                    market_prices,
+                    market_production,
+                    market_sources,
+                    market_rig_count,
+                )
             ),
             width="stretch",
             clear_figure=True,
@@ -193,9 +257,11 @@ def _render_charts(
         )
     with columns[1]:
         st_obj.pyplot(
-            build_oil_revenue_figure(
-                revenue_download,
-                revenue_sources,
+            place_chart_legend_at_bottom(
+                build_oil_revenue_figure(
+                    revenue_download,
+                    revenue_sources,
+                )
             ),
             width="stretch",
             clear_figure=True,
@@ -224,7 +290,6 @@ def render_oil_fiscal_panel(st_obj: Any = st) -> dict[str, Any]:
             data = _load_oil_market_cached(content, file_name)
         _render_oil_metrics(st_obj, data)
         revenue = estimate_monthly_oil_revenue(data.prices, data.production)
-        st_obj.markdown("#### 估算石油收入")
         _render_revenue_metrics(st_obj, revenue)
         _render_charts(st_obj, data, revenue)
         with st_obj.expander("估算口径与限制", expanded=False):

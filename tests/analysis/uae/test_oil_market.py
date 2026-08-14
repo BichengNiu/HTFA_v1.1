@@ -11,6 +11,10 @@ import pytest
 
 from dashboard.analysis.uae.oil import charts as oil_charts
 from dashboard.analysis.uae.oil import renderer
+from dashboard.analysis.uae.oil.alignment import (
+    common_latest_month,
+    within_month_window,
+)
 from dashboard.analysis.uae.oil.charts import (
     build_oil_market_figure,
     build_oil_revenue_figure,
@@ -24,6 +28,7 @@ from dashboard.analysis.uae.oil.revenue import (
     REVENUE_COLUMN,
     YOY_COLUMN,
     YTD_COLUMN,
+    YTD_YOY_COLUMN,
     estimate_monthly_oil_revenue,
 )
 
@@ -37,6 +42,37 @@ def test_oil_panel_reports_missing_shared_workbook(monkeypatch) -> None:
     assert result["status"] == "no_data"
     st_obj.subheader.assert_called_once_with("石油生产与收入")
     st_obj.info.assert_called_once()
+
+
+def test_common_latest_month_uses_the_earliest_indicator_cutoff() -> None:
+    prices = pd.Series(
+        [70.0, 71.0],
+        index=pd.to_datetime(["2026-07-31", "2026-08-12"]),
+    )
+    production = pd.Series(
+        [3_000_000, 3_100_000],
+        index=pd.to_datetime(["2026-06-30", "2026-07-31"]),
+    )
+    rigs = pd.Series(
+        [58, 59],
+        index=pd.to_datetime(["2026-06-30", "2026-07-31"]),
+    )
+
+    cutoff = common_latest_month(
+        [
+            ("布伦特现货", prices),
+            ("阿联酋原油产量", production),
+            ("阿联酋石油活跃钻机数", rigs),
+        ]
+    )
+    aligned_prices = within_month_window(
+        prices,
+        first_month=cutoff - 36,
+        last_month=cutoff,
+    )
+
+    assert cutoff == pd.Period("2026-07", freq="M")
+    assert aligned_prices.index.max() == pd.Timestamp("2026-07-31")
 
 
 def _sheet_frame(
@@ -67,7 +103,7 @@ def _workbook_bytes(
     *,
     production_units: tuple[str, ...] = ("桶/天",),
 ) -> bytes:
-    daily_dates = pd.date_range("2025-01-01", periods=20, freq="D")
+    daily_dates = pd.date_range("2025-12-12", periods=20, freq="D")
     monthly_dates = pd.date_range("2025-01-31", periods=12, freq="ME")
     price_names = [
         "期货结算价(连续):布伦特原油",
@@ -171,6 +207,47 @@ def test_targeted_loader_rejects_duplicate_matching_production_columns() -> None
         )
 
 
+def test_oil_overview_metrics_show_requested_four_indicators() -> None:
+    data = load_oil_market_data(_workbook_bytes(), file_name="test.xlsx")
+    st_obj = MagicMock()
+    st_obj.columns.return_value = [MagicMock() for _ in range(4)]
+
+    renderer._render_oil_metrics(st_obj, data)
+
+    labels = [call.args[0] for call in st_obj.metric.call_args_list]
+    assert labels == [
+        "布伦特期货",
+        "布伦特现货",
+        "阿联酋原油产量",
+        "阿联酋石油活跃钻机数",
+    ]
+    st_obj.markdown.assert_not_called()
+
+
+def test_revenue_metrics_include_year_to_date_yoy() -> None:
+    dates = pd.date_range("2024-01-31", periods=13, freq="ME")
+    prices = pd.DataFrame({"布伦特现货": [100.0] * 12 + [110.0]}, index=dates)
+    production = pd.Series(
+        [1_000_000] * 12 + [1_200_000],
+        index=dates,
+        name="阿联酋原油产量",
+    )
+    revenue = estimate_monthly_oil_revenue(prices, production)
+    st_obj = MagicMock()
+    st_obj.columns.return_value = [MagicMock() for _ in range(4)]
+
+    renderer._render_revenue_metrics(st_obj, revenue)
+
+    labels = [call.args[0] for call in st_obj.metric.call_args_list]
+    assert labels == [
+        "最新月估算石油收入",
+        "2025 年累计收入",
+        "月度同比",
+        "年度累计同比",
+    ]
+    assert st_obj.metric.call_args_list[-1].args[1] == "+32.0%"
+
+
 def test_oil_market_figure_combines_brent_and_production() -> None:
     data = load_oil_market_data(_workbook_bytes(), file_name="test.xlsx")
 
@@ -195,7 +272,8 @@ def test_oil_market_figure_combines_brent_and_production() -> None:
     assert price_axis.get_ylabel() == "美元/桶"
     assert production_axis.get_ylabel() == "万桶/天"
     assert price_axis.get_title() == ""
-    assert figure._suptitle.get_text() == "原油价格、产量与钻机数"
+    assert figure._suptitle is None
+    assert price_axis.get_xticklabels()[-1].get_text() == "12月"
     legend_labels = {
         text.get_text()
         for text in figure.texts
@@ -209,6 +287,15 @@ def test_oil_market_figure_combines_brent_and_production() -> None:
         "布伦特原油现货价（左轴）",
         "阿联酋原油产量（右轴）",
         "阿联酋石油活跃钻机数（外右轴）",
+    }
+    assert all(
+        text.get_position()[1] < 0.2
+        for text in figure.texts
+        if text.get_text() in legend_labels
+    )
+    assert figure.subplotpars.bottom >= 0.30
+    assert {text.get_text().strip() for text in price_axis.texts} >= {
+        "2025年"
     }
     assert any(
         text.get_text() == "数据来源：金联创、OPEC"
@@ -295,6 +382,7 @@ def test_monthly_revenue_calculates_yoy_and_chart_axes() -> None:
         + revenue[PRODUCTION_CONTRIBUTION_COLUMN].iloc[-1]
     ) == pytest.approx(revenue[YOY_COLUMN].iloc[-1])
     assert revenue[YTD_COLUMN].iloc[-1] == pytest.approx(40.92)
+    assert revenue[YTD_YOY_COLUMN].iloc[-1] == pytest.approx(32.0)
     rate_axis, revenue_axis = figure.axes
     assert [line.get_label() for line in rate_axis.get_lines()] == [
         "石油收入同比增速（右轴）",
@@ -306,13 +394,21 @@ def test_monthly_revenue_calculates_yoy_and_chart_axes() -> None:
     assert revenue_axis.get_ylabel() == "亿美元"
     assert rate_axis.get_ylabel() == "拉动率/同比（%）"
     assert rate_axis.get_title() == ""
-    assert figure._suptitle.get_text() == "估算石油收入"
+    assert figure._suptitle is None
+    assert rate_axis.get_xticklabels()[-1].get_text() == "12月"
     legend_labels = {text.get_text() for text in figure.legends[0].get_texts()}
     assert legend_labels == {
         "石油收入（左轴）",
         "石油收入同比增速（右轴）",
         "油价拉动率（右轴）",
         "产量拉动率（右轴）",
+    }
+    assert figure.legends[0].get_bbox_to_anchor()._bbox.y0 < 0.2
+    assert figure.subplotpars.bottom >= 0.30
+    assert len(rate_axis.get_xticklabels()) <= 4
+    assert {text.get_text().strip() for text in rate_axis.texts} >= {
+        "2024年",
+        "2025年",
     }
     assert any(
         text.get_text() == "数据来源：金联创、OPEC"

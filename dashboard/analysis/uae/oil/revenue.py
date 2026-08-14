@@ -15,6 +15,7 @@ REVENUE_COLUMN = "月度石油收入"
 MOM_COLUMN = "环比"
 YOY_COLUMN = "同比"
 YTD_COLUMN = "本年度累计收入"
+YTD_YOY_COLUMN = "年度累计同比"
 PRICE_CONTRIBUTION_COLUMN = "价格拉动率"
 PRODUCTION_CONTRIBUTION_COLUMN = "产量拉动率"
 
@@ -88,6 +89,10 @@ def estimate_monthly_oil_revenue(
         * 100
     )
     result[YTD_COLUMN] = result[REVENUE_COLUMN].groupby(periods.year).cumsum()
+    result[YTD_YOY_COLUMN] = result[YTD_COLUMN].pct_change(
+        periods=12,
+        fill_method=None,
+    ) * 100
 
     result = result.dropna(subset=[REVENUE_COLUMN]).copy()
     if result.empty:
@@ -109,5 +114,6 @@ __all__ = [
     "REVENUE_COLUMN",
     "YOY_COLUMN",
     "YTD_COLUMN",
+    "YTD_YOY_COLUMN",
     "estimate_monthly_oil_revenue",
 ]
