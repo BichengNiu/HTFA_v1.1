@@ -11,6 +11,7 @@ import pandas as pd
 from typing import Tuple, Optional, List, Callable, Dict, Any
 
 from dashboard.analysis.industrial.utils.chart_config import TIME_RANGE_OPTIONS, get_time_range_index
+from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
 
 
 def render_time_range_selector(
@@ -188,7 +189,7 @@ def create_chart_with_time_selector_fragment(
                 fig = chart_creator_func(**chart_kwargs)
                 if fig:
                     st_obj.plotly_chart(
-                        fig,
+                        place_chart_legend_at_bottom(fig),
                         width='stretch',
                         key=f"{chart_id}_chart_fragment"
                     )

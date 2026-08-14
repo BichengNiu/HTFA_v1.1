@@ -13,6 +13,7 @@ from typing import Any, Optional, List
 import plotly.graph_objects as go
 import logging
 
+from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
 # 设置日志
 logger = logging.getLogger(__name__)
 
@@ -358,7 +359,10 @@ def _render_individual_contribution_analysis(st_obj, df_weights):
         fig_change.add_vline(x=0, line_dash="dash", line_color="gray", opacity=0.5)
 
         # 显示图表
-        st_obj.plotly_chart(fig_change, width='stretch')
+        st_obj.plotly_chart(
+            place_chart_legend_at_bottom(fig_change),
+            width='stretch',
+        )
 
         # 准备下载数据
         download_change_df = pd.DataFrame({
@@ -431,7 +435,10 @@ def _render_individual_contribution_analysis(st_obj, df_weights):
                 bottom_margin=150,
                 var_name_mapping=var_name_mapping  # 使用简化名称
             )
-            st_obj.plotly_chart(fig, width='stretch')
+            st_obj.plotly_chart(
+                place_chart_legend_at_bottom(fig),
+                width='stretch',
+            )
 
         else:  # 拉动率排名
             # 计算排名（按绝对值排名：ascending=False表示绝对值从大到小排序，绝对值最大排名1）
@@ -454,7 +461,10 @@ def _render_individual_contribution_analysis(st_obj, df_weights):
 
             # 排名图需要倒置Y轴（1在上，41在下）
             fig.update_yaxes(autorange='reversed')
-            st_obj.plotly_chart(fig, width='stretch')
+            st_obj.plotly_chart(
+                place_chart_legend_at_bottom(fig),
+                width='stretch',
+            )
     else:
         st_obj.info("请至少选择一个工业指标")
 

@@ -20,6 +20,7 @@ from dashboard.preview.shared.calculators import calculate_summary
 from dashboard.preview.shared.plotting import plot_indicator
 from dashboard.preview.shared.components import create_filter_ui, display_summary_table
 from dashboard.core.ui.utils.state_helpers import set_preview_state, get_preview_state
+from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
 from dashboard.preview.shared.frequency_utils import get_indicator_frequencies, filter_indicators_by_frequency
 
 
@@ -457,7 +458,10 @@ def display_time_series_tab(
                                     unit=unit,
                                     indicator_type=ind_type
                                 )
-                                st_module.plotly_chart(fig, width='stretch')
+                                st_module.plotly_chart(
+                                    place_chart_legend_at_bottom(fig),
+                                    width='stretch',
+                                )
                             except Exception as e:
                                 st_module.error(f"为指标 '{indicator}' 生成图表时出错: {e}")
                     col_idx += 1

@@ -36,6 +36,7 @@ def is_valid_file_object(file_obj) -> bool:
 
 
 from dashboard.core.ui.utils.state_helpers import NamespacedStateManager
+from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
 
 model_analysis_state = NamespacedStateManager("model_analysis")
 
@@ -547,7 +548,10 @@ def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor,
         margin=dict(t=100, b=100, l=50, r=50)
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(
+        place_chart_legend_at_bottom(fig),
+        use_container_width=True,
+    )
 
     # 下载按钮（按时间由近到远排列）
     if rmse_alignment == 'next':
@@ -726,7 +730,10 @@ def _render_factor_loadings(st, accessor: DFMMetadataAccessor) -> bool:
 
     heatmap_col1, heatmap_col2, heatmap_col3 = st.columns([1, 8, 1])
     with heatmap_col2:
-        st.plotly_chart(fig_heatmap, width='stretch')
+        st.plotly_chart(
+            place_chart_legend_at_bottom(fig_heatmap),
+            width='stretch',
+        )
 
     # Download button for factor loadings data
     factor_loadings_df_cn = factor_loadings_df.copy()
@@ -811,7 +818,10 @@ def _render_factor_timeseries(st, accessor: DFMMetadataAccessor) -> None:
 
                         fig_factor.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
 
-                        st.plotly_chart(fig_factor, width='stretch')
+                        st.plotly_chart(
+                            place_chart_legend_at_bottom(fig_factor),
+                            width='stretch',
+                        )
                     else:
                         st.warning(f"{factor_name_cn}数据为空，无法绘制图表。")
 

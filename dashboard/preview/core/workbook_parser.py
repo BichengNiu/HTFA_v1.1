@@ -14,7 +14,7 @@ from datetime import date, datetime
 from io import BytesIO
 from pathlib import Path
 import re
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Collection, Dict, Optional
 
 import pandas as pd
 
@@ -166,7 +166,10 @@ def _parse_data_sheet(
     seen_indicators: set[str],
     frequency_processor: Optional[FrequencyProcessor],
 ) -> tuple[Dict[str, list[pd.DataFrame]], Dict[str, IndicatorMetadata]]:
-    metadata_rows = _metadata_row_indices(raw, sheet_name)
+    frames = {frequency: [] for frequency in FREQUENCIES}
+    metadata_map: Dict[str, IndicatorMetadata] = {}
+    if raw.shape[0] < 2 or raw.shape[1] < 2:
+        return frames, metadata_map
 
     indicator_columns = []
     for column_index in range(1, raw.shape[1]):
@@ -175,10 +178,8 @@ def _parse_data_sheet(
             indicator_columns.append((column_index, name))
 
     if not indicator_columns:
-        raise ValueError(f"sheet“{sheet_name}”第2行没有指标名称")
+        return frames, metadata_map
 
-    frames = {frequency: [] for frequency in FREQUENCIES}
-    metadata_map: Dict[str, IndicatorMetadata] = {}
     indicator_columns = [
         (column_index, indicator_name)
         for column_index, indicator_name in indicator_columns
@@ -186,6 +187,13 @@ def _parse_data_sheet(
     ]
     if not indicator_columns:
         return frames, metadata_map
+
+    if raw.shape[0] < 7:
+        raise ValueError(
+            f"sheet“{sheet_name}”包含已登记指标，但不符合第2至第6行元数据协议"
+        )
+
+    metadata_rows = _metadata_row_indices(raw, sheet_name)
 
     data_block = raw.iloc[6:, :].dropna(how="all")
     if data_block.empty:
@@ -214,10 +222,7 @@ def _parse_data_sheet(
                 f"sheet“{sheet_name}”指标“{indicator_name}”使用了不支持的频率: {frequency_label}"
             )
 
-        unit = _required_text(
-            raw.iloc[metadata_rows["单位"], column_index],
-            context=f"sheet“{sheet_name}”指标“{indicator_name}”的单位",
-        )
+        unit = _optional_text(raw.iloc[metadata_rows["单位"], column_index]) or ""
         sheet_source = _required_text(
             raw.iloc[metadata_rows["来源"], column_index],
             context=f"sheet“{sheet_name}”指标“{indicator_name}”的来源",
@@ -268,13 +273,23 @@ def parse_preview_workbook(
     *,
     module_name: str,
     frequency_processor: Optional[FrequencyProcessor] = None,
+    indicator_allowlist: Optional[Collection[str]] = None,
 ) -> LoadedPreviewData:
-    """按正式协议解析单个经济数据库工作簿。"""
+    """按正式协议解析工作簿，可只校验和加载指定的白名单指标。"""
     file_buffer, file_name = _read_file(file_input)
     excel_file = pd.ExcelFile(file_buffer)
 
     try:
         dictionary = _load_dictionary(excel_file)
+        if indicator_allowlist is not None:
+            normalized_allowlist = {
+                normalize_indicator_name(name) for name in indicator_allowlist
+            }
+            dictionary = {
+                name: metadata
+                for name, metadata in dictionary.items()
+                if name in normalized_allowlist
+            }
         all_frames = {frequency: [] for frequency in FREQUENCIES}
         metadata_map: Dict[str, IndicatorMetadata] = {}
         seen_indicators: set[str] = set()
@@ -283,9 +298,6 @@ def parse_preview_workbook(
             raw = pd.read_excel(excel_file, sheet_name=sheet_name, header=None)
             if raw.dropna(how="all").empty:
                 continue
-            if raw.shape[0] < 7 or raw.shape[1] < 2:
-                raise ValueError(f"sheet“{sheet_name}”不为空，但不符合第2至第6行元数据协议")
-
             sheet_frames, sheet_metadata = _parse_data_sheet(
                 raw,
                 file_name=file_name,

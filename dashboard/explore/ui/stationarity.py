@@ -7,6 +7,7 @@ import logging
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
 from dashboard.explore.analysis.stationarity import (
     TABLE_FREQUENCIES,
     TEST_LABELS,
@@ -413,7 +414,7 @@ class StationarityAnalysisComponent(TimeSeriesAnalysisComponent):
                 )
                 try:
                     st_obj.pyplot(
-                        figure,
+                        place_chart_legend_at_bottom(figure),
                         width="stretch",
                         clear_figure=True,
                     )
@@ -489,7 +490,7 @@ class StationarityAnalysisComponent(TimeSeriesAnalysisComponent):
             )
             try:
                 st_obj.pyplot(
-                    figure,
+                    place_chart_legend_at_bottom(figure),
                     width="stretch",
                     clear_figure=True,
                 )

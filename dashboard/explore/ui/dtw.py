@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
+from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
 from dashboard.explore.analysis.dtw_batch import perform_batch_dtw_calculation
 from dashboard.explore.core.series_utils import fingerprint_dataframe
 from dashboard.explore.ui.base import TimeSeriesAnalysisComponent
@@ -661,7 +662,10 @@ class DTWAnalysisComponent(TimeSeriesAnalysisComponent):
             )
 
             # 显示图表
-            st_obj.plotly_chart(fig, width='stretch')
+            st_obj.plotly_chart(
+                place_chart_legend_at_bottom(fig),
+                width='stretch',
+            )
 
         except (TypeError, ValueError) as ve:
             # 用户友好的错误提示（不显示技术堆栈）

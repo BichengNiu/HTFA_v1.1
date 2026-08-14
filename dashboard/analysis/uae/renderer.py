@@ -24,6 +24,7 @@ from dashboard.analysis.uae.downloads import render_chart_download
 from dashboard.analysis.uae.results import MacroPanelResult
 from dashboard.analysis.uae.services import build_monitoring_dashboard
 from dashboard.core.ui.utils.shared_dataset import get_shared_dataset_file
+from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
 
 TAB_CONFIG = (
     ("宏观概览", "growth_overview"),
@@ -219,7 +220,7 @@ def _render_panel(
                 title=group_title,
             )
         st_obj.plotly_chart(
-            figure,
+            place_chart_legend_at_bottom(figure),
             width="stretch",
             key=f"analysis.uae.{panel.key}.series.{group_title}",
         )
@@ -233,9 +234,11 @@ def _render_panel(
 
     for table_title, frame in panel.decomposition_tables.items():
         st_obj.plotly_chart(
-            build_latest_contribution_figure(
-                frame,
-                title=table_title,
+            place_chart_legend_at_bottom(
+                build_latest_contribution_figure(
+                    frame,
+                    title=table_title,
+                )
             ),
             width="stretch",
             key=f"analysis.uae.{panel.key}.decomposition.{table_title}",

@@ -12,6 +12,7 @@ import pandas as pd
 from Ts.TsPlots import plot_series
 from Ts.TsPlots.style import apply_fonts
 
+from dashboard.analysis.uae.oil.alignment import common_latest_month, through_month
 from dashboard.analysis.uae.oil.revenue import (
     PRICE_CONTRIBUTION_COLUMN,
     PRODUCTION_CONTRIBUTION_COLUMN,
@@ -37,6 +38,8 @@ REVENUE_BAR_EDGE_COLOR = "#6B7280"
 CONTRIBUTION_COLORS = ("#000000", "#000000", "#1F4E79")
 CONTRIBUTION_LINESTYLES = ("-", "--", ":")
 CHINESE_FONT_FAMILY = ["SimHei", "Microsoft YaHei"]
+BOTTOM_LEGEND_Y = 0.115
+SOURCE_NOTE_Y = 0.025
 
 
 def _normalize_ts_axis(axis: Axes | np.ndarray) -> Axes:
@@ -60,7 +63,7 @@ def _add_source_note(figure: Figure, source_text: str) -> None:
 
     figure.text(
         0.04,
-        0.055,
+        SOURCE_NOTE_Y,
         _source_note(source_text),
         ha="left",
         va="bottom",
@@ -75,8 +78,79 @@ def _new_ts_figure_axis() -> tuple[Figure, Axes]:
     """Create a scalar axes so Ts cannot split a multi-series chart."""
 
     apply_fonts()
-    figure = Figure(figsize=(9.4, 5.5), dpi=120)
+    figure = Figure(figsize=(9.4, 6.2), dpi=120)
     return figure, figure.add_subplot(111)
+
+
+def _apply_strict_month_ticks(
+    axis: Axes,
+    index: pd.Index,
+) -> None:
+    """绘制月份刻度和年度范围线，只包含真实数据月份。"""
+
+    periods = (
+        pd.PeriodIndex(pd.DatetimeIndex(index), freq="M")
+        .unique()
+        .sort_values()
+    )
+    if periods.empty:
+        return
+    tick_periods = periods[periods.month % 3 == 0]
+    tick_dates = tick_periods.to_timestamp(how="end").normalize()
+    axis.set_xticks(tick_dates)
+    axis.set_xticklabels(
+        [f"{period.month}月" for period in tick_periods],
+        rotation=0,
+        ha="center",
+        fontsize=9,
+    )
+    axis.tick_params(axis="x", pad=5)
+
+    year_line_y = -0.18
+    cap_height = 0.018
+    xaxis_transform = axis.get_xaxis_transform()
+    for year in periods.year.unique():
+        year_periods = periods[periods.year == year]
+        start_date = year_periods[0].to_timestamp(how="end").normalize()
+        end_date = year_periods[-1].to_timestamp(how="end").normalize()
+        middle_date = start_date + (end_date - start_date) / 2
+        axis.hlines(
+            year_line_y,
+            start_date,
+            end_date,
+            color="#555555",
+            linewidth=0.8,
+            transform=xaxis_transform,
+            clip_on=False,
+        )
+        axis.vlines(
+            [start_date, end_date],
+            year_line_y - cap_height,
+            year_line_y + cap_height,
+            color="#555555",
+            linewidth=0.8,
+            transform=xaxis_transform,
+            clip_on=False,
+        )
+        axis.text(
+            middle_date,
+            year_line_y,
+            f" {year}年 ",
+            ha="center",
+            va="center",
+            fontsize=9,
+            color="#333333",
+            fontfamily=CHINESE_FONT_FAMILY,
+            backgroundcolor="white",
+            transform=xaxis_transform,
+            clip_on=False,
+        )
+    first_date = periods[0].to_timestamp(how="start").normalize()
+    last_date = periods[-1].to_timestamp(how="end").normalize()
+    axis.set_xlim(
+        first_date - pd.Timedelta(days=10),
+        last_date + pd.Timedelta(days=10),
+    )
 
 
 def _finish_dual_axis_figure(
@@ -87,11 +161,11 @@ def _finish_dual_axis_figure(
 ) -> None:
     """统一双轴图在 Streamlit 双栏中的尺寸和留白。"""
 
-    figure.set_size_inches(9.4, 5.5, forward=True)
+    figure.set_size_inches(9.4, 6.2, forward=True)
     figure.subplots_adjust(
         left=0.105,
         right=right,
-        bottom=0.22,
+        bottom=0.30,
         top=top,
     )
     for axis in figure.axes:
@@ -114,6 +188,23 @@ def build_oil_market_figure(
         MARKET_PRICE_LABEL
     )
     ten_thousand_bpd = production.dropna().sort_index().div(10_000)
+    rigs = (
+        None
+        if rig_count is None or rig_count.dropna().empty
+        else rig_count.dropna().sort_index()
+    )
+    cutoff_series = [
+        (MARKET_PRICE_LABEL, brent_spot),
+        (MARKET_PRODUCTION_LABEL, ten_thousand_bpd),
+    ]
+    if rigs is not None:
+        cutoff_series.append((MARKET_RIG_COUNT_LABEL, rigs))
+    last_month = common_latest_month(cutoff_series)
+    brent_spot = through_month(brent_spot, last_month)
+    ten_thousand_bpd = through_month(ten_thousand_bpd, last_month)
+    if rigs is not None:
+        rigs = through_month(rigs, last_month)
+
     figure, price_axis = _new_ts_figure_axis()
     figure, price_axis = plot_series(
         brent_spot,
@@ -134,14 +225,6 @@ def build_oil_market_figure(
     price_axis = _normalize_ts_axis(price_axis)
     price_axis.get_lines()[-1].set_linestyle("--")
     price_axis.set_title("")
-    figure.suptitle(
-        "原油价格、产量与钻机数",
-        x=0.5,
-        y=0.97,
-        fontsize=15,
-        fontweight="bold",
-        fontfamily=CHINESE_FONT_FAMILY,
-    )
     price_axis.xaxis.grid(False)
 
     production_axis = price_axis.twinx()
@@ -178,8 +261,7 @@ def build_oil_market_figure(
     price_axis.patch.set_visible(False)
 
     rig_axis: Axes | None = None
-    if rig_count is not None and not rig_count.dropna().empty:
-        rigs = rig_count.dropna().sort_index()
+    if rigs is not None:
         rig_axis = price_axis.twinx()
         rig_axis.spines["right"].set_position(("outward", 52))
         rig_axis.plot(
@@ -205,9 +287,14 @@ def build_oil_market_figure(
         rig_axis.spines["right"].set_color(RIG_COUNT_COLOR)
         rig_axis.set_zorder(3)
 
+    display_index = brent_spot.index.union(ten_thousand_bpd.index)
+    if rigs is not None:
+        display_index = display_index.union(rigs.index)
+    _apply_strict_month_ticks(price_axis, display_index)
+
     price_swatch = Line2D(
         [0.06, 0.10],
-        [0.865, 0.865],
+        [BOTTOM_LEGEND_Y, BOTTOM_LEGEND_Y],
         transform=figure.transFigure,
         color=PRICE_COLOR,
         linewidth=2.2,
@@ -215,7 +302,7 @@ def build_oil_market_figure(
         zorder=20,
     )
     production_swatch = Rectangle(
-        (0.405, 0.853),
+        (0.405, BOTTOM_LEGEND_Y - 0.012),
         0.035,
         0.024,
         transform=figure.transFigure,
@@ -228,7 +315,7 @@ def build_oil_market_figure(
     figure.add_artist(production_swatch)
     figure.text(
         0.11,
-        0.865,
+        BOTTOM_LEGEND_Y,
         MARKET_PRICE_LABEL,
         ha="left",
         va="center",
@@ -239,7 +326,7 @@ def build_oil_market_figure(
     )
     figure.text(
         0.45,
-        0.865,
+        BOTTOM_LEGEND_Y,
         MARKET_PRODUCTION_LABEL,
         ha="left",
         va="center",
@@ -251,7 +338,7 @@ def build_oil_market_figure(
     if rig_axis is not None:
         rig_swatch = Line2D(
             [0.72, 0.76],
-            [0.865, 0.865],
+            [BOTTOM_LEGEND_Y, BOTTOM_LEGEND_Y],
             transform=figure.transFigure,
             color=RIG_COUNT_COLOR,
             linewidth=2.2,
@@ -261,7 +348,7 @@ def build_oil_market_figure(
         figure.add_artist(rig_swatch)
         figure.text(
             0.77,
-            0.865,
+            BOTTOM_LEGEND_Y,
             MARKET_RIG_COUNT_LABEL,
             ha="left",
             va="center",
@@ -273,7 +360,7 @@ def build_oil_market_figure(
     price_axis.set_ylabel("美元/桶", fontsize=12)
     _finish_dual_axis_figure(
         figure,
-        top=0.80,
+        top=0.91,
         right=0.83 if rig_axis is not None else 0.895,
     )
     _add_source_note(figure, source_text)
@@ -291,6 +378,14 @@ def build_oil_revenue_figure(
         (PRICE_CONTRIBUTION_COLUMN, PRICE_CONTRIBUTION_LABEL),
         (PRODUCTION_CONTRIBUTION_COLUMN, PRODUCTION_CONTRIBUTION_LABEL),
     )
+    cutoff_series = [(REVENUE_LABEL, revenue[REVENUE_COLUMN])]
+    cutoff_series.extend(
+        (label, revenue[column])
+        for column, label in rate_specs
+        if not revenue[column].dropna().empty
+    )
+    last_month = common_latest_month(cutoff_series)
+    revenue = through_month(revenue, last_month)
     figure, rate_axis = _new_ts_figure_axis()
     for index, ((column, label), color, linestyle) in enumerate(
         zip(
@@ -319,14 +414,6 @@ def build_oil_revenue_figure(
         rate_axis.get_lines()[-1].set_linestyle(linestyle)
 
     rate_axis.set_title("")
-    figure.suptitle(
-        "估算石油收入",
-        x=0.5,
-        y=0.97,
-        fontsize=15,
-        fontweight="bold",
-        fontfamily=CHINESE_FONT_FAMILY,
-    )
     rate_axis.xaxis.grid(False)
     revenue_axis = rate_axis.twinx()
     revenue_axis.bar(
@@ -369,6 +456,7 @@ def build_oil_revenue_figure(
     rate_axis.set_zorder(2)
     revenue_axis.set_zorder(1)
     rate_axis.patch.set_visible(False)
+    _apply_strict_month_ticks(rate_axis, revenue.index)
 
     revenue_handle = Patch(
         facecolor=REVENUE_BAR_COLOR,
@@ -384,13 +472,13 @@ def build_oil_revenue_figure(
             PRICE_CONTRIBUTION_LABEL,
             PRODUCTION_CONTRIBUTION_LABEL,
         ],
-        loc="upper center",
-        bbox_to_anchor=(0.5, 0.90),
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.115),
         frameon=False,
         prop={"family": "SimHei", "size": 10},
         ncol=2,
     )
-    _finish_dual_axis_figure(figure, top=0.76)
+    _finish_dual_axis_figure(figure, top=0.90)
     _add_source_note(figure, source_text)
     return figure
 
