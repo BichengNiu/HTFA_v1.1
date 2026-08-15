@@ -413,7 +413,14 @@ def build_oil_revenue_figure(
         label=REVENUE_LABEL,
     )
     figure.legend(
-        handles=[*price_axis.get_lines(), revenue_handle],
+        handles=[
+            *[
+                line
+                for line in price_axis.get_lines()
+                if not line.get_label().startswith("_")
+            ],
+            revenue_handle,
+        ],
         labels=[REVENUE_PRICE_LABEL, REVENUE_LABEL],
         loc="lower center",
         bbox_to_anchor=(0.5, 0.115),
