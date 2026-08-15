@@ -7,8 +7,6 @@ DFM训练器 - 简化版（真正的轻量级协调器）
 """
 
 import time
-import numpy as np
-import pandas as pd
 from typing import Optional, Callable
 from dashboard.models.DFM.train.utils.logger import get_logger
 

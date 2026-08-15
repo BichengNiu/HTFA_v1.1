@@ -186,31 +186,6 @@ class AuthManager:
             self.logger.error(f"验证会话时发生错误: {e}")
             return False, None
     
-    def extend_session(self, session_id: str, hours: int = None) -> bool:
-        """
-        延长会话时间
-        
-        Args:
-            session_id: 会话ID
-            hours: 延长的小时数
-            
-        Returns:
-            是否延长成功
-        """
-        try:
-            # 使用config中的session_duration_hours作为默认值
-            if hours is None:
-                hours = self.config.session_duration_hours
-
-            session = self.db.get_session(session_id)
-            if session and not session.is_expired():
-                session.extend_session(hours)
-                return self.db.update_session(session)
-            return False
-        except Exception as e:
-            self.logger.error(f"延长会话时发生错误: {e}")
-            return False
-    
     def logout(self, session_id: str) -> bool:
         """
         用户登出
@@ -239,74 +214,3 @@ class AuthManager:
         except Exception as e:
             self.logger.error(f"登出时发生错误: {e}")
             return False
-    
-    def cleanup_expired_sessions(self) -> int:
-        """
-        清理过期会话
-        
-        Returns:
-            清理的会话数量
-        """
-        try:
-            count = self.db.cleanup_expired_sessions()
-            if count > 0:
-                self.logger.info(f"清理了 {count} 个过期会话")
-            return count
-        except Exception as e:
-            self.logger.error(f"清理过期会话时发生错误: {e}")
-            return 0
-    
-    def change_password(self, user_id: int, old_password: str, new_password: str) -> Tuple[bool, str]:
-        """
-        修改用户密码
-        
-        Args:
-            user_id: 用户ID
-            old_password: 旧密码
-            new_password: 新密码
-            
-        Returns:
-            (是否成功, 错误信息)
-        """
-        try:
-            # 获取用户
-            user = self.db.get_user_by_id(user_id)
-            if not user:
-                return False, "用户不存在"
-            
-            # 验证旧密码
-            if not self.security.verify_password(old_password, user.password_hash):
-                self.audit_logger.warning(f"安全事件 - 类型: 密码修改失败, 用户: {user.username}, 详情: 旧密码验证失败")
-                return False, "旧密码错误"
-
-            # 验证新密码强度
-            is_valid, message = self.security.validate_password_strength(new_password)
-            if not is_valid:
-                return False, message
-
-            # 更新密码
-            user.password_hash = self.security.hash_password(new_password)
-
-            if self.db.update_user(user):
-                self.audit_logger.warning(f"安全事件 - 类型: 密码修改, 用户: {user.username}, 详情: 密码修改成功")
-                self.logger.info(f"用户 {user.username} 密码修改成功")
-                return True, ""
-            else:
-                return False, "密码更新失败"
-                
-        except Exception as e:
-            self.logger.error(f"修改密码时发生错误: {e}")
-            return False, "系统错误，请稍后重试"
-    
-    def get_user_by_session(self, session_id: str) -> Optional[User]:
-        """
-        根据会话ID获取用户信息
-        
-        Args:
-            session_id: 会话ID
-            
-        Returns:
-            用户对象或None
-        """
-        is_valid, user = self.validate_session(session_id)
-        return user if is_valid else None

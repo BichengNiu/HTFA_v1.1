@@ -28,14 +28,6 @@ FREQUENCY_LABELS = {
     'M': '月',
 }
 
-# 频率代码到pandas频率字符串的映射
-FREQUENCY_PANDAS = {
-    'D': 'D',
-    'W': 'W-FRI',  # 周度默认周五
-    '10D': '10D',
-    'M': 'ME',     # 月末
-}
-
 # 所有支持的频率代码（统一来源）
 SUPPORTED_FREQ_CODES = frozenset(FREQUENCY_OFFSETS.keys())
 
@@ -126,34 +118,3 @@ def validate_date_ranges(
             )
 
     return None
-
-
-def is_ddfm_mode(algorithm: str) -> bool:
-    """
-    判断是否为DDFM模式
-
-    Args:
-        algorithm: 算法类型字符串
-
-    Returns:
-        True 如果是深度学习模式，否则 False
-    """
-    return algorithm == 'deep_learning'
-
-
-def freq_code_to_pandas_freq(freq_code: str) -> str:
-    """
-    将内部频率代码转换为pandas频率字符串
-
-    Args:
-        freq_code: 内部频率代码 ('D', 'W', '10D', 'M')
-
-    Returns:
-        pandas频率字符串
-
-    Raises:
-        ValueError: 当freq_code不在支持的频率列表中时
-    """
-    if freq_code not in FREQUENCY_PANDAS:
-        raise ValueError(f"不支持的频率代码: {freq_code}，有效值: {list(SUPPORTED_FREQ_CODES)}")
-    return FREQUENCY_PANDAS[freq_code]

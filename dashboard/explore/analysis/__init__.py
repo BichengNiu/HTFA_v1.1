@@ -39,21 +39,9 @@ _LAZY_EXPORTS = {
         "dashboard.explore.analysis.stationarity",
         "resolve_correlation_lags",
     ),
-    "run_adf_test": (
-        "dashboard.explore.analysis.stationarity",
-        "run_adf_test",
-    ),
-    "run_kpss_test": (
-        "dashboard.explore.analysis.stationarity",
-        "run_kpss_test",
-    ),
     "run_selected_stationarity_tests": (
         "dashboard.explore.analysis.stationarity",
         "run_selected_stationarity_tests",
-    ),
-    "run_stationarity_tests": (
-        "dashboard.explore.analysis.stationarity",
-        "run_stationarity_tests",
     ),
     "summarize_series": (
         "dashboard.explore.analysis.stationarity",

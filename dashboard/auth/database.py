@@ -7,7 +7,7 @@ import sqlite3
 import json
 import os
 import logging
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from datetime import datetime, date
 from dashboard.auth.models import User, UserSession
 
@@ -80,7 +80,10 @@ class AuthDatabase:
                         last_login TEXT,
                         is_active INTEGER DEFAULT 1,
                         failed_login_attempts INTEGER DEFAULT 0,
-                        locked_until TEXT
+                        locked_until TEXT,
+                        valid_from TEXT,
+                        valid_until TEXT,
+                        is_permanent INTEGER DEFAULT 0
                     )
                 ''')
 
@@ -301,18 +304,3 @@ class AuthDatabase:
         except Exception as e:
             self.logger.error(f"删除会话失败: {e}")
             return False
-    
-    def cleanup_expired_sessions(self) -> int:
-        """清理过期会话"""
-        try:
-            current_time = datetime.now().isoformat()
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    DELETE FROM user_sessions WHERE expires_at < ? OR is_active = 0
-                ''', (current_time,))
-                conn.commit()
-                return cursor.rowcount
-        except Exception as e:
-            self.logger.error(f"清理过期会话失败: {e}")
-            return 0

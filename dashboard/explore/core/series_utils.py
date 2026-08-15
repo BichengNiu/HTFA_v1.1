@@ -30,40 +30,6 @@ def fingerprint_dataframe(df: pd.DataFrame) -> str:
     return digest.hexdigest()
 
 
-def clean_numeric_series(
-    series: pd.Series,
-    remove_na: bool = True,
-    convert_to_numeric: bool = True
-) -> pd.Series:
-    """
-    清洗数值序列
-
-    Args:
-        series: 输入序列
-        remove_na: 是否移除NaN值
-        convert_to_numeric: 是否转换为数值类型
-
-    Returns:
-        清洗后的序列
-    """
-    result = series.copy()
-
-    # 转换为数值类型
-    if convert_to_numeric and not pd.api.types.is_numeric_dtype(result):
-        result = pd.to_numeric(result, errors='coerce')
-        logger.debug(f"序列 '{series.name}' 已转换为数值类型")
-
-    # 移除NaN
-    if remove_na:
-        n_before = len(result)
-        result = result.dropna()
-        n_after = len(result)
-        if n_before != n_after:
-            logger.debug(f"序列 '{series.name}' 移除了 {n_before - n_after} 个NaN值")
-
-    return result
-
-
 def clean_dataframe_columns(df: pd.DataFrame) -> pd.DataFrame:
     """
     清理DataFrame列名中的首尾空格
@@ -259,38 +225,3 @@ def get_lagged_slices(
         return None, None
 
     return slice1[:min_len], slice2[:min_len]
-
-
-def get_lagged_series_slices(
-    series1: pd.Series,
-    series2: pd.Series,
-    lag: int
-) -> tuple[pd.Series | None, pd.Series | None]:
-    """
-    获取两个pandas Series在给定滞后下的切片
-
-    这是get_lagged_slices的Series版本包装器
-
-    Args:
-        series1: 第一个序列
-        series2: 第二个序列
-        lag: 滞后值
-
-    Returns:
-        Tuple[series1的切片, series2的切片]
-    """
-    # 转换为numpy数组
-    arr1 = series1.values if isinstance(series1, pd.Series) else series1
-    arr2 = series2.values if isinstance(series2, pd.Series) else series2
-
-    # 使用统一的切片函数
-    slice1, slice2 = get_lagged_slices(arr1, arr2, lag)
-
-    if slice1 is None or slice2 is None:
-        return None, None
-
-    # 转换回Series（保留名称）
-    s1_result = pd.Series(slice1, name=series1.name if hasattr(series1, 'name') else None)
-    s2_result = pd.Series(slice2, name=series2.name if hasattr(series2, 'name') else None)
-
-    return s1_result, s2_result

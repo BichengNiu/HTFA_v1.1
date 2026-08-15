@@ -11,10 +11,10 @@
 """
 
 import pandas as pd
-import unicodedata
 from datetime import timedelta
 from typing import Dict, List, Optional, Any
 
+from dashboard.models.DFM.utils.text_utils import match_columns_case_insensitive
 from dashboard.models.DFM.train.training.config import TrainingConfig
 from dashboard.models.DFM.train.ui.utils.date_helpers import (
     get_previous_period_date,
@@ -123,7 +123,8 @@ class TrainingConfigBuilder:
         # 4. 获取变量选择配置
         var_selection_method = self._get_required('dfm_variable_selection_method')
         enable_var_selection = True  # 固定使用后向选择法
-        mapped_var_selection_method = self._map_variable_selection_method(var_selection_method)
+        # 方法名由 TrainingConfig.__post_init__ 统一校验（当前仅支持 'backward'）
+        mapped_var_selection_method = var_selection_method
 
         # 5. 获取因子选择配置
         factor_selection_method, factor_params = self._get_factor_selection_params()
@@ -218,28 +219,10 @@ class TrainingConfigBuilder:
         Returns:
             修正后的指标列表
         """
-        csv_columns = set(input_df.columns)
-
-        # 构建不区分大小写的列名映射
-        column_mapping = {}
-        for col in csv_columns:
-            normalized_col = unicodedata.normalize('NFKC', str(col)).strip().lower()
-            column_mapping[normalized_col] = col
-
-        # 检查并修正变量名
-        corrected_indicators = []
-        case_mismatches = []
-
-        for var in selected_indicators:
-            if var in csv_columns:
-                corrected_indicators.append(var)
-            else:
-                # 尝试不区分大小写匹配
-                normalized_var = unicodedata.normalize('NFKC', str(var)).strip().lower()
-                if normalized_var in column_mapping:
-                    actual_col = column_mapping[normalized_var]
-                    corrected_indicators.append(actual_col)
-                    case_mismatches.append((var, actual_col))
+        corrected_indicators, case_mismatches = match_columns_case_insensitive(
+            set(input_df.columns),
+            selected_indicators,
+        )
 
         if case_mismatches:
             print(f"[INFO] 检测到{len(case_mismatches)}个变量名大小写不匹配，已自动修正:")
@@ -253,26 +236,6 @@ class TrainingConfigBuilder:
             print(f"[INFO] 所有选择的变量({len(selected_indicators)}个)都已找到")
 
         return corrected_indicators
-
-    def _map_variable_selection_method(self, var_selection_method: str) -> str:
-        """
-        映射UI的变量选择方法到train模块的方法名
-
-        Args:
-            var_selection_method: UI方法名
-
-        Returns:
-            train模块方法名
-
-        Raises:
-            ValueError: 无效的变量选择方法
-        """
-        var_selection_method_map = {
-            'backward': 'backward'
-        }
-        if var_selection_method not in var_selection_method_map:
-            raise ValueError(f"无效的变量选择方法: {var_selection_method}，有效值: {list(var_selection_method_map.keys())}")
-        return var_selection_method_map[var_selection_method]
 
     def _get_factor_selection_params(self):
         """

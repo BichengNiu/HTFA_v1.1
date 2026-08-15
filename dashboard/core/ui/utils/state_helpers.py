@@ -56,6 +56,18 @@ def clear_state_by_prefix(prefix: str) -> bool:
         return False
 
 
+# 预览模块状态接口：复用命名空间管理器的键拼装逻辑
+_managers: dict[str, NamespacedStateManager] = {}
+
+
+def _manager(namespace: str) -> NamespacedStateManager:
+    manager = _managers.get(namespace)
+    if manager is None:
+        manager = NamespacedStateManager(namespace)
+        _managers[namespace] = manager
+    return manager
+
+
 def get_preview_state(
     key: str,
     default: Any = None,
@@ -63,8 +75,7 @@ def get_preview_state(
     namespace: str = "preview",
 ) -> Any:
     """获取预览模块状态，支持按子模块隔离命名空间。"""
-    full_key = f"{namespace}.{key}"
-    return st.session_state.get(full_key, default)
+    return _manager(namespace).get(key, default)
 
 
 def set_preview_state(
@@ -75,8 +86,7 @@ def set_preview_state(
 ) -> bool:
     """设置预览模块状态，支持按子模块隔离命名空间。"""
     try:
-        full_key = f"{namespace}.{key}"
-        st.session_state[full_key] = value
+        _manager(namespace).set(key, value)
         return True
     except Exception as e:
         logger.error(f"设置预览状态失败: {e}")

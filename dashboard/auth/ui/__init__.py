@@ -14,10 +14,6 @@ from dashboard.auth.ui.middleware import (
 from dashboard.auth.ui.pages.login import render_login_page
 from dashboard.auth.ui.pages.register import render_register_page
 from dashboard.auth.ui.pages.user_management import render_user_management_page
-from dashboard.auth.ui.pages.user_management_module import (
-    UserManagementWelcomePage,
-    render_user_management_sub_module
-)
 
 __all__ = [
     # 中间件
@@ -28,6 +24,4 @@ __all__ = [
     'render_login_page',
     'render_register_page',
     'render_user_management_page',
-    'UserManagementWelcomePage',
-    'render_user_management_sub_module',
 ]

@@ -66,7 +66,7 @@ def handle_ui_error(
             st_obj.text(f"时间: {error_info['timestamp']}")
             st_obj.code(traceback.format_exc(), language="python")
 
-    return {"success": True, "error_info": error_info}
+    return {"success": False, "error_info": error_info}
 
 
 __all__ = ["handle_ui_error"]

@@ -11,7 +11,7 @@ import logging
 from typing import List, Optional, Tuple
 from dataclasses import dataclass
 
-from ..utils.exceptions import ComputationError, ValidationError, decomp_error_handler
+from ..utils.exceptions import decomp_error_handler
 from .impact_analyzer import DataRelease
 
 logger = logging.getLogger(__name__)

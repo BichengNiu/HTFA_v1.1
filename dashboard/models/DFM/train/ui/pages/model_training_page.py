@@ -22,7 +22,7 @@ from dashboard.models.DFM.utils.text_utils import normalize_text
 # 导入新增工具和组件
 from dashboard.core.ui.utils.state_helpers import NamespacedStateManager
 from dashboard.models.DFM.train.ui.components.file_uploader_component import FileUploaderComponent
-from dashboard.models.DFM.train.config import UIConfig
+from dashboard.models.DFM.train.config.ui_config import UIConfig
 from dashboard.models.DFM.train.ui.utils.config_builder import TrainingConfigBuilder
 from dashboard.models.DFM.train.ui.utils.date_helpers import (
     get_previous_period_date,

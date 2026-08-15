@@ -6,7 +6,6 @@ import io
 from pathlib import Path
 from typing import Optional, Any
 import logging
-import hashlib
 
 from dashboard.preview.core.base_renderer import BaseRenderer
 from dashboard.preview.core.base_loader import BaseDataLoader
@@ -17,7 +16,10 @@ from dashboard.core.ui.utils.state_helpers import (
     get_preview_state,
     set_preview_state,
 )
-from dashboard.core.ui.utils.shared_dataset import get_shared_dataset_file
+from dashboard.core.ui.utils.shared_dataset import (
+    fingerprint_file,
+    get_shared_dataset_file,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +127,7 @@ class PreviewRenderer(BaseRenderer):
         if not uploaded_file:
             return False
 
-        current_fingerprint = self._file_fingerprint(uploaded_file)
+        current_fingerprint = fingerprint_file(uploaded_file)
         cached_fingerprint = get_preview_state(
             'data_loaded_file_fingerprint',
             namespace=self.state_namespace,
@@ -168,7 +170,7 @@ class PreviewRenderer(BaseRenderer):
             )
             set_preview_state(
                 'data_loaded_file_fingerprint',
-                self._file_fingerprint(uploaded_file),
+                fingerprint_file(uploaded_file),
                 namespace=self.state_namespace,
             )
 
@@ -178,18 +180,6 @@ class PreviewRenderer(BaseRenderer):
             logger.error(f"数据处理失败: {e}", exc_info=True)
             clear_preview_data(namespace=self.state_namespace)
             st.error(f"数据处理失败: {e}")
-
-    @staticmethod
-    def _file_fingerprint(uploaded_file) -> str:
-        """区分同名但内容不同的共享文件。"""
-        if hasattr(uploaded_file, "getvalue"):
-            content = uploaded_file.getvalue()
-        else:
-            position = uploaded_file.tell()
-            uploaded_file.seek(0)
-            content = uploaded_file.read()
-            uploaded_file.seek(position)
-        return f"{uploaded_file.name}:{len(content)}:{hashlib.sha256(content).hexdigest()}"
 
     def _save_to_state(self, preview_data: LoadedPreviewData):
         """保存数据到session_state
@@ -307,16 +297,7 @@ class PreviewRenderer(BaseRenderer):
         Returns:
             bool: 是否有数据
         """
-        keys_to_check = [
-            'daily',
-            'weekly',
-            'ten_day',
-            'monthly',
-            'quarterly',
-            'yearly',
-        ]
-
-        for key in keys_to_check:
+        for key in self.frequency_tabs.values():
             state_key = f'{key}_df'
             data = get_preview_state(state_key, namespace=self.state_namespace)
             if data is not None and not data.empty:

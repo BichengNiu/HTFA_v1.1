@@ -7,9 +7,12 @@
 
 from typing import Dict, List, Tuple, Optional
 import pandas as pd
-import numpy as np
 
 from dashboard.core.ui.utils.debug_helpers import debug_log
+from dashboard.analysis.industrial.constants import TOTAL_INDUSTRIAL_GROWTH_COLUMN
+from dashboard.analysis.industrial.utils.data_converter import convert_cumulative_to_yoy
+from .weight_calculator import build_weight_series
+from .weighted_calculation import build_weights_mapping, categorize_indicators
 
 
 def prepare_weights_series_for_contribution(
@@ -26,26 +29,10 @@ def prepare_weights_series_for_contribution(
     Returns:
         {指标名: 权重Series}
     """
-    from .weight_calculator import get_weight_for_year
-
-    weights_series_mapping = {}
-
-    for indicator, info in weights_mapping.items():
-        weights_row = info['weights_row']
-
-        weights_list = []
-        for timestamp in time_index:
-            year = timestamp.year
-            weight = get_weight_for_year(weights_row, year)
-            weights_list.append(weight)
-
-        weights_series_mapping[indicator] = pd.Series(
-            weights_list,
-            index=time_index,
-            name=indicator
-        )
-
-    return weights_series_mapping
+    return {
+        indicator: build_weight_series(info['weights_row'], time_index)
+        for indicator, info in weights_mapping.items()
+    }
 
 
 def calculate_individual_contributions(
@@ -160,14 +147,7 @@ def calculate_group_contributions(
                 for indicator in valid_indicators:
                     if indicator in weights_mapping:
                         weights_row = weights_mapping[indicator]['weights_row']
-                        weight_series = pd.Series(index=df_macro.index, dtype=float)
-
-                        for timestamp in df_macro.index:
-                            year = timestamp.year
-                            from .weight_calculator import get_weight_for_year
-                            weight = get_weight_for_year(weights_row, year)
-                            weight_series.loc[timestamp] = weight
-
+                        weight_series = build_weight_series(weights_row, df_macro.index)
                         total_weight_series += weight_series
 
                 # 对齐索引
@@ -281,9 +261,6 @@ def calculate_all_contributions(
             'validation': 验证结果
         }
     """
-    from .weighted_calculation import build_weights_mapping, categorize_indicators
-    from dashboard.analysis.industrial.constants import TOTAL_INDUSTRIAL_GROWTH_COLUMN
-
     debug_log("开始统一拉动率计算流程", "INFO")
 
     # 使用标准列名
@@ -372,8 +349,6 @@ def _convert_profit_to_yoy(df_industry_profit: pd.DataFrame) -> Tuple[pd.DataFra
     Returns:
         (profit_yoy_df, total_growth, jan_feb_mask)
     """
-    from dashboard.analysis.industrial.utils import convert_cumulative_to_yoy
-
     df_industry_profit = df_industry_profit.sort_index()
 
     profit_yoy_df = pd.DataFrame(index=df_industry_profit.index)
@@ -526,8 +501,6 @@ def calculate_profit_contributions(
             'validation': 验证结果字典
         }
     """
-    from .weighted_calculation import build_weights_mapping, categorize_indicators
-
     debug_log("开始计算工业企业利润拉动率", "INFO")
 
     # 步骤1-2: 转换累计同比 + 计算总体增速

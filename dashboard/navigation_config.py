@@ -62,7 +62,7 @@ GRANULAR_PERMISSION_MAP = {
 }
 
 PERMISSION_MODULE_MAP = {
-    name: [config["code"]]
+    name: config["code"]
     for name, config in GRANULAR_PERMISSION_MAP.items()
 }
 
@@ -82,63 +82,8 @@ MODULE_CONFIG = {
     for name, config in GRANULAR_PERMISSION_MAP.items()
 }
 
-MAIN_MODULES = {
-    "数据预览": {
-        "icon": "[DATA]",
-        "description": "查看和预览不同领域及国家的多频率经济数据",
-    },
-    "监测分析": {
-        "icon": "[CHART]",
-        "description": "对经济运行数据进行监测和分析",
-    },
-    "模型分析": {
-        "icon": "[MODEL]",
-        "description": "使用统计模型进行预测和分解分析",
-    },
-    "数据探索": {
-        "icon": "[EXPLORE]",
-        "description": "探索时间序列的统计特性和变量关系",
-    },
-    "用户管理": {
-        "icon": "[USER]",
-        "description": "管理用户及其访问权限",
-    },
-}
-for _name, _metadata in MAIN_MODULES.items():
-    sub_modules = GRANULAR_PERMISSION_MAP[_name].get("sub_modules") or {}
-    _metadata["sub_modules"] = list(sub_modules)
-
-SUB_MODULES = {
-    "工业": {
-        "icon": "[INDUSTRY]",
-        "description": "工业数据预览与运行分析",
-    },
-    "阿联酋": {
-        "icon": "[UAE]",
-        "description": "基于工作簿真实数据的阿联酋宏观与石油财政监测",
-    },
-    "DFM 模型": {
-        "icon": "[MODEL]",
-        "description": "动态因子模型的数据准备、训练、分析和影响分解",
-    },
-    "数据探索": {
-        "icon": "🔍",
-        "description": "探索时间序列的统计特性和内在规律",
-    },
-    "单变量分析": {
-        "icon": "📊",
-        "description": "分析单个变量的平稳性与结构突变特征",
-    },
-    "多变量分析": {
-        "icon": "🔗",
-        "description": "分析两个变量的相关性和领先滞后关系",
-    },
-}
-
 __all__ = [
     "GRANULAR_PERMISSION_MAP",
     "PERMISSION_MODULE_MAP",
     "MODULE_CONFIG",
-    "MAIN_MODULES",
-    "SUB_MODULES",
 ]

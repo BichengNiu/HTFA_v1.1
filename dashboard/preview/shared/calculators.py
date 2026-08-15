@@ -8,7 +8,7 @@ import logging
 
 import pandas as pd
 import numpy as np
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any
 import streamlit as st
 
 from dashboard.preview.shared.config import FREQUENCY_CONFIGS
@@ -223,9 +223,6 @@ def _calculate_growth_rates(
     # 判断是否使用差值计算
     # 规则：单位为"%"且类型不是"开工率"时,使用差值而不是比率
     use_difference = uses_difference_calculation(indicator_unit, indicator_type)
-
-    # 根据频率选择use_abs参数
-    use_abs = frequency != 'monthly'
 
     # 环比增长率 - 根据频率类型分别处理
     if frequency == 'daily':

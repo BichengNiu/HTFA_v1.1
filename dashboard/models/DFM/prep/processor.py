@@ -18,7 +18,7 @@ from datetime import datetime
 import logging
 
 from dashboard.models.DFM.prep.modules.data_aligner import (
-    DataAligner, generate_theoretical_index, align_to_theoretical_index
+    DataAligner, generate_theoretical_index
 )
 from dashboard.models.DFM.prep.modules.data_cleaner import DataCleaner, clean_dataframe
 from dashboard.models.DFM.prep.modules.config_constants import FREQ_ORDER
@@ -527,7 +527,6 @@ class DataPreparationProcessor:
         else:
             # 对齐模式：创建完整日期范围并对齐
             logger.info("  创建完整日期范围...")
-            all_indices = [part.index for part in all_parts if hasattr(part, 'index')]
             full_date_range = generate_theoretical_index(
                 start_date, end_date, self.data_aligner.target_freq
             )

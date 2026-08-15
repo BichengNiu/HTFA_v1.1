@@ -7,6 +7,7 @@
 
 import pandas as pd
 from typing import Tuple, List, Optional, Callable
+from dashboard.models.DFM.utils.text_utils import match_columns_case_insensitive
 from dashboard.models.DFM.train.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -45,31 +46,17 @@ def load_and_validate_data(
     if selected_indicators:
         logger.info(f"用户选择的指标数量: {len(selected_indicators)}")
 
-        # 构建不区分大小写的列名映射 (小写 -> 原始列名)
-        import unicodedata
-        column_mapping = {}
-        for col in data.columns:
-            normalized_col = unicodedata.normalize('NFKC', str(col)).strip().lower()
-            column_mapping[normalized_col] = col
-
         # 匹配变量（不区分大小写）
-        variable_names = []
-        missing_vars = []
+        variable_names, case_mismatches = match_columns_case_insensitive(
+            data.columns,
+            selected_indicators,
+        )
+        for var, actual_col in case_mismatches:
+            logger.info(f"变量名大小写匹配: '{var}' -> '{actual_col}'")
 
-        for var in selected_indicators:
-            # 先尝试精确匹配
-            if var in data.columns:
-                variable_names.append(var)
-            else:
-                # 尝试不区分大小写匹配
-                normalized_var = unicodedata.normalize('NFKC', str(var)).strip().lower()
-                if normalized_var in column_mapping:
-                    actual_col = column_mapping[normalized_var]
-                    variable_names.append(actual_col)
-                    logger.info(f"变量名大小写匹配: '{var}' -> '{actual_col}'")
-                else:
-                    missing_vars.append(var)
-
+        missing_vars = [
+            var for var in selected_indicators if var not in variable_names
+        ]
         if missing_vars:
             logger.warning(f"以下变量不在数据文件中，将被跳过: {missing_vars}")
 

@@ -7,10 +7,7 @@ from collections.abc import Callable
 
 import streamlit as st
 
-from dashboard.auth.ui.pages.user_management_module import (
-    UserManagementWelcomePage,
-    render_user_management_sub_module,
-)
+from dashboard.auth.ui.pages.user_management import render_user_management_page
 from dashboard.core import get_current_main_module, get_current_sub_module
 from dashboard.explore.ui.bivariate_page import render_bivariate_analysis_page
 from dashboard.explore.ui.pages import render_data_exploration_welcome_page
@@ -114,7 +111,7 @@ def detect_navigation_level(main_module: str, sub_module: str | None) -> str:
 
 def render_data_preview_content(sub_module: str | None) -> None:
     """渲染选中的数据预览领域。"""
-    from dashboard.preview.modules import PreviewModuleRegistry
+    from dashboard.preview.modules import create_preview_renderer
 
     module_id = PREVIEW_MODULE_MAPPING.get(sub_module or "")
     if module_id is None:
@@ -123,7 +120,7 @@ def render_data_preview_content(sub_module: str | None) -> None:
         else:
             st.info("请在左侧选择一个数据预览子模块")
         return
-    PreviewModuleRegistry.create_renderer(module_id).render()
+    create_preview_renderer(module_id).render()
 
 
 def render_monitoring_analysis_content(sub_module: str | None) -> None:
@@ -194,11 +191,9 @@ def render_data_exploration_content(sub_module: str | None) -> None:
 
 
 def render_user_management_content(sub_module: str | None) -> None:
-    """渲染用户管理主页或子页面。"""
-    if sub_module:
-        render_user_management_sub_module(sub_module)
-    else:
-        UserManagementWelcomePage.render()
+    """渲染用户管理主页。"""
+    current_user = st.session_state.get("auth.current_user")
+    render_user_management_page(current_user)
 
 
 def render_module_selection_guide(main_module: str, guide_type: str) -> None:

@@ -171,7 +171,6 @@ def estimate_covariance_matrices(
         Tuple[np.ndarray, np.ndarray, np.ndarray]: (B, Q, R)
     """
     n_time = observables.shape[0]
-    n_obs = observables.shape[1]
 
     x_smooth = smoothed_result.x_smoothed
 

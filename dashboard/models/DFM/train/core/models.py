@@ -8,7 +8,7 @@
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass, field
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Optional
 
 
 # ==================== 评估配置相关 ====================

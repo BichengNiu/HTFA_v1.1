@@ -406,18 +406,12 @@ class LeadLagAnalysisComponent(TimeSeriesAnalysisComponent):
             return
 
         # 应用标准化处理（如果启用KL散度标准化）
-        if results['standardize_for_kl']:
-            standardization_method = results['standardization_method']
-            if standardization_method != 'none':
-                target_series_plot = standardize_series(target_series_clean, standardization_method)
-                candidate_series_plot = standardize_series(candidate_series_clean, standardization_method)
-                y_label = f"标准化值 ({standardization_method})"
-                title_suffix = f" (已标准化 - {standardization_method})"
-            else:
-                target_series_plot = target_series_clean
-                candidate_series_plot = candidate_series_clean
-                y_label = "原始值"
-                title_suffix = " (原始值)"
+        standardization_method = results['standardization_method']
+        if results['standardize_for_kl'] and standardization_method != 'none':
+            target_series_plot = standardize_series(target_series_clean, standardization_method)
+            candidate_series_plot = standardize_series(candidate_series_clean, standardization_method)
+            y_label = f"标准化值 ({standardization_method})"
+            title_suffix = f" (已标准化 - {standardization_method})"
         else:
             target_series_plot = target_series_clean
             candidate_series_plot = candidate_series_clean

@@ -7,10 +7,7 @@
 
 import numpy as np
 import pandas as pd
-from typing import Any, Optional, Tuple, List, Union
-from datetime import datetime
-
-from .exceptions import ValidationError, DataFormatError
+from typing import Any, Tuple, List
 
 
 def validate_model_data(model: Any, metadata: Any) -> Tuple[bool, List[str]]:

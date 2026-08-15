@@ -6,7 +6,14 @@ import hashlib
 from datetime import date, datetime
 from typing import Any
 
+import matplotlib.pyplot as plt
 import pandas as pd
+
+from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
+from dashboard.explore.analysis.stationarity import (
+    create_correlogram_figure,
+    resolve_correlation_lags,
+)
 
 PACF_METHODS = ("ywm", "yw", "ols")
 GRID_MODE_OPTIONS = {
@@ -263,9 +270,72 @@ def render_correlogram_config_expander(
             _grid_line_style_select(st_obj, scope, applied)
 
 
+def render_correlogram_chart(
+    st_obj,
+    series: pd.Series,
+    *,
+    title_prefix: str,
+    include_acf: bool = True,
+    include_pacf: bool = True,
+    alpha: float = 0.05,
+    scope: str,
+) -> None:
+    """渲染 ACF/PACF 组合图及其配置控件（平稳性与数据概览共用）。"""
+    try:
+        nlags, maximum = resolve_correlation_lags(series)
+        st_obj.caption(
+            f"相关图使用 {series.notna().sum():,} 个有效观测，"
+            f"自动选择 {nlags} 阶滞后（PACF 最大允许 {maximum} 阶）。"
+        )
+        defaults = {
+            "acf_title": f"{title_prefix} · ACF",
+            "pacf_title": f"{title_prefix} · PACF",
+            "acf_x_title": "滞后期数",
+            "acf_y_title": "ACF值",
+            "pacf_x_title": "滞后期数",
+            "pacf_y_title": "PACF值",
+            "nlags": nlags,
+            "x_start": 0.0,
+            "y_start": None,
+            "max_ticks": 12,
+            "y_tick_count": 8,
+            "grid_mode": "both",
+            "grid_line_style": "solid",
+            "pacf_method": "ywm",
+        }
+        config = get_applied_config(st_obj, scope, defaults)
+        config["nlags"] = min(max(1, int(config["nlags"])), maximum)
+        figure = create_correlogram_figure(
+            series,
+            nlags=config["nlags"],
+            alpha=alpha,
+            title_prefix=title_prefix,
+            include_acf=include_acf,
+            include_pacf=include_pacf,
+            **{key: value for key, value in config.items() if key != "nlags"},
+        )
+        try:
+            st_obj.pyplot(
+                place_chart_legend_at_bottom(figure),
+                width="stretch",
+                clear_figure=True,
+            )
+        finally:
+            plt.close(figure)
+        render_correlogram_config_expander(
+            st_obj,
+            scope=scope,
+            defaults=defaults,
+            maximum_lags=maximum,
+        )
+    except Exception as exc:  # noqa: BLE001 - optional diagnostic chart boundary
+        st_obj.warning(f"ACF/PACF 无法绘制：{exc}")
+
+
 __all__ = [
     "chart_scope",
     "get_applied_config",
+    "render_correlogram_chart",
     "render_correlogram_config_expander",
     "render_time_series_config_expander",
 ]

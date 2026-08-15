@@ -76,6 +76,12 @@ def get_weight_for_year(df_weights_row: pd.Series, year: int) -> float:
     return df_weights_row[weight_col]
 
 
+def build_weight_series(weights_row: pd.Series, time_index: pd.DatetimeIndex) -> pd.Series:
+    """将单个指标行的年份权重展开为按时间索引对齐的权重序列。"""
+    weights_list = [get_weight_for_year(weights_row, timestamp.year) for timestamp in time_index]
+    return pd.Series(weights_list, index=time_index)
+
+
 def filter_data_from_2012(df: pd.DataFrame) -> pd.DataFrame:
     """
     过滤数据，只保留2012年及以后的数据

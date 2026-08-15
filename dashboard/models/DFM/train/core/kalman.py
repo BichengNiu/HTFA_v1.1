@@ -6,8 +6,7 @@
 """
 
 import numpy as np
-import pandas as pd
-from typing import Tuple, Optional
+from typing import Optional
 from dashboard.models.DFM.train.utils.logger import get_logger
 from dashboard.models.DFM.train.core.models import KalmanFilterResult, KalmanSmootherResult
 from dashboard.models.DFM.train.core.validation import validate_matrices

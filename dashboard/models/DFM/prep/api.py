@@ -12,7 +12,7 @@ DFM数据准备模块 - 简化API接口
 """
 
 import pandas as pd
-from typing import Dict, Any, Optional, Union, Tuple
+from typing import Dict, Any, Optional, Union
 from pathlib import Path
 from io import BytesIO
 import hashlib
@@ -21,7 +21,7 @@ import threading
 from datetime import datetime
 
 from dashboard.models.DFM.prep.processor import DataPreparationProcessor
-from dashboard.models.DFM.prep.config import PrepParallelConfig, create_default_prep_config
+from dashboard.models.DFM.prep.config import PrepParallelConfig
 from dashboard.models.DFM.utils.text_utils import normalize_text
 
 logger = logging.getLogger(__name__)

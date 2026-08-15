@@ -316,7 +316,6 @@ class DFMModel:
         params = self._initialize_em_params(
             obs_centered, initial_factors, initial_loadings, V, stds
         )
-        n_time = params['n_time']
         n_obs = params['n_obs']
         n_states = params['n_states']
         A, Q, R, B, U = params['A'], params['Q'], params['R'], params['B'], params['U']

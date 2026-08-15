@@ -33,6 +33,9 @@ from dashboard.explore.core.series_utils import (
     identify_time_column,
     prepare_time_index,
 )
+from dashboard.explore.core.validation import (
+    validate_real_series as _validate_numeric_series,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -189,26 +192,6 @@ SUMMARY_LABELS = {
     "Third quartile": "第三四分位数",
     "Maximum": "最大值",
 }
-
-
-def _validate_numeric_series(series: pd.Series) -> pd.Series:
-    """验证并返回浮点副本，不静默改变索引或缺失位置。"""
-    if not isinstance(series, pd.Series):
-        raise TypeError("分析对象必须是 pandas.Series")
-    if series.empty:
-        raise ValueError("序列不能为空")
-    if (
-        not pd.api.types.is_numeric_dtype(series.dtype)
-        or pd.api.types.is_bool_dtype(series.dtype)
-        or pd.api.types.is_complex_dtype(series.dtype)
-    ):
-        raise TypeError("序列必须是实数型变量")
-
-    converted = series.astype(float)
-    values = converted.to_numpy(dtype=float, na_value=np.nan)
-    if np.isinf(values).any():
-        raise ValueError("序列包含无穷值")
-    return converted
 
 
 def numeric_variable_names(data: pd.DataFrame) -> list[str]:
@@ -733,79 +716,6 @@ def run_selected_stationarity_tests(
     return pd.DataFrame(rows, columns=RESULT_COLUMNS)
 
 
-def run_stationarity_tests(
-    data: pd.DataFrame,
-    alpha: float = 0.05,
-) -> pd.DataFrame:
-    """兼容旧调用：对每个数值变量运行 ADF 与 KPSS。"""
-    rows = []
-    for variable in numeric_variable_names(data):
-        results = run_selected_stationarity_tests(
-            data[variable],
-            ["adf", "kpss"],
-            alpha=alpha,
-            trend="ct",
-        ).set_index("检验代码")
-        adf = results.loc["adf"]
-        kpss = results.loc["kpss"]
-        conclusions = {adf["平稳性解释"], kpss["平稳性解释"]}
-        if conclusions == {"支持平稳"}:
-            overall = "平稳"
-        elif conclusions == {"支持非平稳"}:
-            overall = "非平稳"
-        elif "无法判断" in conclusions:
-            overall = "无法判断"
-        else:
-            overall = "结论不一致"
-        rows.append(
-            {
-                "变量名": variable,
-                "有效值个数": int(data[variable].notna().sum()),
-                "ADF统计量": adf["统计量"],
-                "ADF检验P值": adf["P值"],
-                "ADF检验结果": adf["平稳性解释"],
-                "KPSS统计量": kpss["统计量"],
-                "KPSS检验P值": kpss["P值"],
-                "KPSS检验结果": kpss["平稳性解释"],
-                "综合结论": overall,
-            }
-        )
-    return pd.DataFrame(rows)
-
-
-def _legacy_single_test(
-    series: pd.Series,
-    test_key: str,
-    alpha: float,
-) -> tuple[float | None, str]:
-    row = run_selected_stationarity_tests(
-        series,
-        [test_key],
-        alpha=alpha,
-        trend="ct",
-    ).iloc[0]
-    if row["错误"]:
-        return None, f"计算失败({row['错误']})"
-    is_stationary = row["平稳性解释"] == "支持平稳"
-    return row["P值"], "是" if is_stationary else "否"
-
-
-def run_adf_test(
-    series: pd.Series,
-    alpha: float = 0.05,
-) -> tuple[float | None, str]:
-    """兼容旧调用的 ADF 二元结果。"""
-    return _legacy_single_test(series, "adf", alpha)
-
-
-def run_kpss_test(
-    series: pd.Series,
-    alpha: float = 0.05,
-) -> tuple[float | None, str]:
-    """兼容旧调用的 KPSS 二元结果。"""
-    return _legacy_single_test(series, "kpss", alpha)
-
-
 __all__ = [
     "RESULT_COLUMNS",
     "TABLE_FREQUENCIES",
@@ -823,10 +733,7 @@ __all__ = [
     "prepare_selected_series",
     "resolve_correlation_lags",
     "resolve_year_over_year_lag",
-    "run_adf_test",
-    "run_kpss_test",
     "run_selected_stationarity_tests",
-    "run_stationarity_tests",
     "summarize_series",
     "transform_series",
 ]

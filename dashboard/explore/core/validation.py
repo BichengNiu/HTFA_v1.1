@@ -25,6 +25,49 @@ class ValidationResult:
     metadata: dict | None = None
 
 
+def validate_real_series(
+    series: pd.Series,
+    *,
+    dropna: bool = False,
+) -> pd.Series:
+    """校验并返回实数型浮点 Series 副本。
+
+    统一的"实数数值序列"校验入口，供平稳性检验与结构突变检验共用。
+
+    Args:
+        series: 待校验的序列
+        dropna: 是否在返回前丢弃 NaN
+
+    Returns:
+        浮点副本（dropna=True 时不含 NaN）
+
+    Raises:
+        TypeError: 非 Series、或非实数数值型（含 bool/complex）
+        ValueError: 空序列、包含无穷值
+    """
+    if not isinstance(series, pd.Series):
+        raise TypeError("分析对象必须是 pandas.Series")
+    if series.empty:
+        raise ValueError("序列不能为空")
+    if (
+        not pd.api.types.is_numeric_dtype(series.dtype)
+        or pd.api.types.is_bool_dtype(series.dtype)
+        or pd.api.types.is_complex_dtype(series.dtype)
+    ):
+        raise TypeError("序列必须是实数型变量")
+
+    converted = series.astype(float)
+    if dropna:
+        converted = converted.dropna()
+        if converted.empty:
+            raise ValueError("序列不能为空")
+
+    values = converted.to_numpy(dtype=float, na_value=np.nan)
+    if np.isinf(values).any():
+        raise ValueError("序列包含无穷值")
+    return converted
+
+
 def validate_series(
     series: pd.Series,
     min_samples: int = MIN_SAMPLES_CORRELATION,
@@ -102,77 +145,6 @@ def validate_series(
         is_valid=True,
         cleaned_data=series_clean,
         metadata={'n_valid': n_valid, 'n_total': len(series)}
-    )
-
-
-def validate_series_pair(
-    series1: pd.Series,
-    series2: pd.Series,
-    min_samples: int = MIN_SAMPLES_CORRELATION,
-    series1_name: str | None = None,
-    series2_name: str | None = None
-) -> ValidationResult:
-    """
-    验证序列对的有效性
-
-    Args:
-        series1: 第一个序列
-        series2: 第二个序列
-        min_samples: 最小样本数要求
-        series1_name: 第一个序列名称
-        series2_name: 第二个序列名称
-
-    Returns:
-        ValidationResult: 验证结果，cleaned_data包含对齐后的两个序列
-    """
-    name1 = series1_name or series1.name or "序列1"
-    name2 = series2_name or series2.name or "序列2"
-
-    # 分别验证两个序列
-    result1 = validate_series(series1, min_samples=1, series_name=name1)
-    if not result1.is_valid:
-        return ValidationResult(
-            is_valid=False,
-            error_message=result1.error_message
-        )
-
-    result2 = validate_series(series2, min_samples=1, series_name=name2)
-    if not result2.is_valid:
-        return ValidationResult(
-            is_valid=False,
-            error_message=result2.error_message
-        )
-
-    # 对齐两个序列的索引
-    combined = pd.DataFrame({
-        'series1': result1.cleaned_data,
-        'series2': result2.cleaned_data
-    }).dropna()
-
-    # 检查对齐后的样本数
-    n_common = len(combined)
-    if n_common < min_samples:
-        logger.warning(f"序列对 '{name1}' 和 '{name2}' 对齐后样本数不足: {n_common} < {min_samples}")
-        return ValidationResult(
-            is_valid=False,
-            error_message=f"序列对对齐后{ERROR_MESSAGES['insufficient_data']} (需要 >= {min_samples}, 实际 {n_common})",
-            metadata={
-                'n_common': n_common,
-                'n_series1': len(result1.cleaned_data),
-                'n_series2': len(result2.cleaned_data)
-            }
-        )
-
-    # 验证通过
-    logger.debug(f"序列对 '{name1}' 和 '{name2}' 验证通过: {n_common} 个共同样本")
-    return ValidationResult(
-        is_valid=True,
-        cleaned_data=(combined['series1'], combined['series2']),
-        metadata={
-            'n_common': n_common,
-            'n_series1_original': len(series1),
-            'n_series2_original': len(series2)
-        }
     )
 
 

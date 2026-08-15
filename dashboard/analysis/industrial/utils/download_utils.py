@@ -7,7 +7,6 @@ Unified Excel Download Utility
 """
 
 import pandas as pd
-import streamlit as st
 from typing import Optional, Dict, Tuple, List
 import io
 import logging
@@ -204,8 +203,7 @@ def create_download_with_annotation(
     if annotation_data is not None and not annotation_data.empty:
         notes_content.extend([
             "",  # 空行分隔
-            "注：权重按年份动态选择",
-            "2012-2017年使用权重_2012，2018-2019年使用权重_2018，2020年及以后使用权重_2020",
+            "注：权重按年份动态选择（各年份使用不超过该年份的最新权重）",
             "权重根据对应年份投入产出表各行业增加值占比计算"
         ])
 
@@ -229,6 +227,7 @@ def create_grouping_mappings(df_weights: pd.DataFrame) -> Tuple[Dict[str, List[s
     从权重数据创建分组映射
 
     此函数用于数据下载功能的注释生成，从权重数据中提取出口依赖和上中下游分组。
+    分组逻辑与 weighted_calculation.categorize_indicators 共用同一实现。
 
     Args:
         df_weights: 权重数据DataFrame，需包含'指标名称'、'出口依赖'、'上中下游'列
@@ -238,32 +237,21 @@ def create_grouping_mappings(df_weights: pd.DataFrame) -> Tuple[Dict[str, List[s
             - export_groups: 出口依赖分组 {分组名: [指标列表]}
             - stream_groups: 上中下游分组 {分组名: [指标列表]}
     """
-    export_groups = {}
-    stream_groups = {}
+    from dashboard.analysis.industrial.utils.weighted_calculation import (
+        build_weights_mapping,
+        categorize_indicators,
+    )
 
-    if not df_weights.empty and '出口依赖' in df_weights.columns and '上中下游' in df_weights.columns:
-        # Group by export dependency
-        for export_type in df_weights['出口依赖'].unique():
-            if pd.notna(export_type):
-                group_data = df_weights[df_weights['出口依赖'] == export_type]
-                indicators = []
-                for _, row in group_data.iterrows():
-                    if pd.notna(row['指标名称']):
-                        indicators.append(row['指标名称'])
-                if indicators:
-                    export_groups[export_type] = indicators
+    required = {'指标名称', '出口依赖', '上中下游'}
+    if df_weights.empty or not required.issubset(df_weights.columns):
+        return {}, {}
 
-        # Group by upstream/downstream
-        for stream_type in df_weights['上中下游'].unique():
-            if pd.notna(stream_type):
-                group_data = df_weights[df_weights['上中下游'] == stream_type]
-                indicators = []
-                for _, row in group_data.iterrows():
-                    if pd.notna(row['指标名称']):
-                        indicators.append(row['指标名称'])
-                if indicators:
-                    stream_groups[stream_type] = indicators
+    target_columns = [name for name in df_weights['指标名称'].dropna().tolist() if name]
+    if not target_columns:
+        return {}, {}
 
+    weights_mapping = build_weights_mapping(df_weights, target_columns)
+    export_groups, stream_groups, _ = categorize_indicators(weights_mapping)
     return export_groups, stream_groups
 
 
@@ -275,7 +263,8 @@ def prepare_grouping_annotation_data(
     """
     准备分组注释数据
 
-    用于创建包含分组、指标名称、权重的注释表
+    用于创建包含分组、指标名称、权重的注释表。
+    权重列按 df_weights 中实际存在的 权重_YYYY 列动态生成。
 
     Args:
         df_weights: 权重数据DataFrame
@@ -283,7 +272,7 @@ def prepare_grouping_annotation_data(
         group_type: 分组类型（用于列名，如 "出口依赖" 或 "上中下游"）
 
     Returns:
-        注释数据DataFrame，包含列：分组、指标名称、权重_2012、权重_2018、权重_2020
+        注释数据DataFrame，包含列：分组、指标名称、以及各 权重_YYYY 列
     """
     try:
         if not groups:
@@ -296,6 +285,12 @@ def prepare_grouping_annotation_data(
             if pd.notna(indicator_name):
                 weights_mapping[indicator_name] = row
 
+        # 动态识别所有权重年份列
+        weight_columns = [
+            col for col in df_weights.columns
+            if str(col).startswith('权重_')
+        ]
+
         # 构建注释数据
         annotation_records = []
 
@@ -307,10 +302,9 @@ def prepare_grouping_annotation_data(
                     record = {
                         "分组": group_name,
                         "指标名称": indicator,
-                        "权重_2012": f"{weights_row.get('权重_2012', 0.0):.4f}",
-                        "权重_2018": f"{weights_row.get('权重_2018', 0.0):.4f}",
-                        "权重_2020": f"{weights_row.get('权重_2020', 0.0):.4f}"
                     }
+                    for col in weight_columns:
+                        record[col] = f"{weights_row.get(col, 0.0):.4f}"
 
                     annotation_records.append(record)
 

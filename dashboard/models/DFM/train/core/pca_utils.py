@@ -102,10 +102,7 @@ def select_num_factors(
     data_standardized = (data_subset - global_mean) / global_std
     logger.info(f"数据标准化完成. Shape: {data_standardized.shape}")
 
-    # 步骤2: 填充NaN
-    data_for_pca = data_standardized.fillna(0)
-
-    # 步骤3: 执行PCA分析（仅在训练期数据上拟合，避免数据泄露）
+    # 步骤2: 执行PCA分析（仅在训练期数据上拟合，避免数据泄露）
     logger.info(f"执行PCA分析 (method={method})...")
     pca = PCA()
 

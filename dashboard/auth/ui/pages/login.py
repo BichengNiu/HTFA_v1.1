@@ -11,6 +11,10 @@ import logging
 # 导入认证模块
 from dashboard.auth.authentication import AuthManager
 from dashboard.auth.security import SecurityUtils
+from dashboard.auth.ui.pages._shared import (
+    inject_base_auth_styles,
+    render_platform_header,
+)
 
 
 class LoginPage:
@@ -189,66 +193,18 @@ class LoginPage:
 
     def _render_platform_header(self):
         """渲染平台标题头部（与欢迎页面相同）"""
-        st.markdown("""
-        <div class="platform-header">
-            <h1 class="platform-title">经济运行分析平台</h1>
-            <hr class="platform-divider">
-            <p class="platform-subtitle">国家信息中心经济预测部政策仿真实验室</p>
-        </div>
-        """, unsafe_allow_html=True)
+        render_platform_header()
 
     def _inject_login_styles(self):
-        """注入登录页面的CSS样式"""
+        """注入登录页面的CSS样式（基础样式 + 登录表单专属样式）"""
+        inject_base_auth_styles()
         st.markdown("""
         <style>
-        /* 平台标题样式（与欢迎页面一致） */
-        .platform-header {
-            text-align: center;
-            margin: 2rem 0;
-        }
-
-        .platform-title {
-            font-size: 3rem;
-            color: #2c3e50;
-            margin-bottom: 1rem;
-            font-weight: 700;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
-        }
-
-        .platform-divider {
-            width: 60%;
-            margin: 1.5rem auto;
-            border: none;
-            border-top: 3px solid #3498db;
-            border-radius: 2px;
-        }
-
-        .platform-subtitle {
-            font-size: 1.2rem;
-            color: #7f8c8d;
-            margin-bottom: 2rem;
-            font-weight: 400;
-        }
-
         /* 登录表单样式（移除白色背景框） */
         .login-form {
             /* 移除所有背景和边框样式 */
             padding: 1rem 0;
             margin: 1rem 0;
-        }
-
-        /* 输入框样式 */
-        .stTextInput > div > div > input {
-            border-radius: 8px;
-            border: 2px solid #e1e8ed;
-            padding: 0.75rem;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-        }
-
-        .stTextInput > div > div > input:focus {
-            border-color: #3498db;
-            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
         }
 
         /* 按钮通用样式 */
@@ -290,39 +246,14 @@ class LoginPage:
             color: #666;
         }
 
-        /* 错误和成功消息样式 */
-        .stAlert {
-            border-radius: 8px;
-            margin: 1rem 0;
-        }
-
         /* 展开器样式 */
         .streamlit-expanderHeader {
             border-radius: 8px;
             background-color: #f8f9fa;
         }
 
-        /* 整体页面样式 */
-        .main .block-container {
-            padding-top: 2rem;
-            max-width: 1200px;
-        }
-
-        /* 隐藏默认的Streamlit样式元素 */
-        #MainMenu {visibility: hidden;}
-        footer {visibility: hidden;}
-        .stApp > header {visibility: hidden;}
-
         /* 响应式设计 */
         @media (max-width: 768px) {
-            .platform-title {
-                font-size: 2.5rem;
-            }
-
-            .platform-subtitle {
-                font-size: 1rem;
-            }
-
             .login-form {
                 padding: 1.5rem;
                 margin: 1rem 0;

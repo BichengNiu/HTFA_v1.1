@@ -10,9 +10,6 @@ from dataclasses import dataclass
 class AuthConfig:
     """认证系统统一配置类"""
 
-    # 调试模式 - 设为True时跳过认证
-    debug_mode: bool = os.getenv('HTFA_DEBUG_MODE', 'false').lower() == 'true'
-
     # 密码策略
     min_password_length: int = 8
     max_password_length: int = 128

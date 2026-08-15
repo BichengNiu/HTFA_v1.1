@@ -43,12 +43,12 @@ class PermissionManager:
         Returns:
             是否可以访问
         """
-        required_permissions = PERMISSION_MODULE_MAP.get(module_name, [])
+        required_permission = PERMISSION_MODULE_MAP.get(module_name)
 
-        if not required_permissions:
+        if not required_permission:
             return True
 
-        return any(self.check_raw_permission(user, p) for p in required_permissions)
+        return self.check_raw_permission(user, required_permission)
 
     def can_access_application_module(self, user: User, module_name: str) -> bool:
         """应用级主模块规则：管理员只进入用户管理，普通用户不能进入该模块。"""

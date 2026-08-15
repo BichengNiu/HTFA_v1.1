@@ -89,35 +89,3 @@ def standardize_series(series: pd.Series, method: str = 'zscore') -> pd.Series:
         return series.copy()
 
     return pd.Series(standardized_arr, index=series.index, name=series.name)
-
-
-def standardize_series_pair(
-    series1: pd.Series | np.ndarray,
-    series2: pd.Series | np.ndarray,
-    method: str = 'zscore'
-) -> tuple[np.ndarray, np.ndarray]:
-    """
-    标准化一对序列
-
-    Args:
-        series1: 第一个序列（Series或ndarray）
-        series2: 第二个序列（Series或ndarray）
-        method: 标准化方法 ('zscore', 'minmax', 'none')
-
-    Returns:
-        Tuple[标准化后的series1, 标准化后的series2]
-    """
-    if method == 'none':
-        s1 = series1.values if isinstance(series1, pd.Series) else series1
-        s2 = series2.values if isinstance(series2, pd.Series) else series2
-        return s1, s2
-
-    # 转换为numpy数组
-    s1_array = series1.values if isinstance(series1, pd.Series) else series1
-    s2_array = series2.values if isinstance(series2, pd.Series) else series2
-
-    # 分别标准化
-    s1_std = standardize_array(s1_array, method)
-    s2_std = standardize_array(s2_array, method)
-
-    return s1_std, s2_std

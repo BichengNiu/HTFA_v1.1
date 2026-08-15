@@ -13,7 +13,7 @@ DFM评估策略 - 函数式接口
 
 import numpy as np
 import pandas as pd
-from typing import List, Callable, Dict, Optional
+from typing import List, Callable, Dict
 from dashboard.models.DFM.train.utils.logger import get_logger
 from dashboard.models.DFM.train.training.model_ops import train_dfm_model, evaluate_model_fit
 from dashboard.models.DFM.train.core.pca_utils import compute_optimal_k_factors

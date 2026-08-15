@@ -8,7 +8,7 @@ Unified Chart Creator Utility
 
 import pandas as pd
 import plotly.graph_objects as go
-from typing import List, Optional, Dict, Callable
+from typing import List, Optional, Dict
 import logging
 
 from dashboard.analysis.industrial.utils.time_filter import filter_data_by_time_range
@@ -96,8 +96,6 @@ def create_time_series_chart(
     y_axis_title: str = "",
     height: int = 500,
     bottom_margin: int = 180,
-    sort_variables: bool = False,
-    sort_key_func: Optional[Callable] = None,
 ) -> go.Figure:
     """
     创建统一的时间序列图表
@@ -112,10 +110,6 @@ def create_time_series_chart(
     if df.empty or not variables:
         logger.warning("数据为空或变量列表为空")
         return go.Figure()
-
-    # 排序变量（如果需要）
-    if sort_variables and sort_key_func:
-        variables = sorted(variables, key=sort_key_func)
 
     # 应用时间过滤
     filtered_df = filter_data_by_time_range(

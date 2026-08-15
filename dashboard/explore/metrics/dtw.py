@@ -26,35 +26,6 @@ except ImportError:
     logger.error("请运行: pip install dtaidistance")
 
 
-def calculate_dtw_distance(
-    series1: np.ndarray,
-    series2: np.ndarray,
-    window_size: int | None = None,
-    use_window: bool = False
-) -> float | None:
-    """
-    计算两个序列之间的DTW距离
-
-    Args:
-        series1: 第一个序列（numpy数组）
-        series2: 第二个序列（numpy数组）
-        window_size: 窗口大小（Sakoe-Chiba约束）
-        use_window: 是否使用窗口约束
-
-    Returns:
-        DTW距离值，失败则返回None
-    """
-    if not DTW_AVAILABLE:
-        raise ImportError("dtaidistance库未安装，无法计算DTW距离")
-
-    if use_window and window_size is not None and window_size > 0:
-        distance = dtaidist_dtw.distance(series1, series2, window=window_size)
-    else:
-        distance = dtaidist_dtw.distance(series1, series2)
-
-    return float(distance)
-
-
 def calculate_dtw_path(
     series1: np.ndarray,
     series2: np.ndarray,

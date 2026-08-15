@@ -10,7 +10,6 @@ from dashboard.analysis.uae.foreign_labor import (
     FOREIGN_LABOR_SHEET,
     NEPAL_APPROVALS,
     NEPAL_LABEL,
-    SERIES_SPECS,
     build_foreign_labor_figure,
     latest_common_month,
     load_foreign_labor_data,

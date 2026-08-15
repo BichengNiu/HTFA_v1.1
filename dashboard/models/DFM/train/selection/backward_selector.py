@@ -6,7 +6,7 @@
 """
 import numpy as np
 import pandas as pd
-from typing import List, Dict, Tuple, Callable, Optional, Any
+from typing import List, Dict, Tuple, Callable, Optional
 from dashboard.models.DFM.train.utils.logger import get_logger
 from dashboard.models.DFM.train.core.models import SelectionResult
 from dashboard.models.DFM.train.evaluation.metrics import compare_model_scores
@@ -282,7 +282,7 @@ class BackwardSelector:
             evaluator_config=evaluator_config,
             n_jobs=self.parallel_config.get_effective_n_jobs(),
             backend=self.parallel_config.backend,
-            verbose=self.parallel_config.verbose,
+            verbose=0,
             progress_callback=progress_callback
         )
 

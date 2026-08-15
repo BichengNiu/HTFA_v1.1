@@ -7,7 +7,6 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime, timedelta, date
 from typing import List, Dict, Optional, Any
 import uuid
-import json
 
 @dataclass
 class User:
@@ -111,9 +110,3 @@ class UserSession:
     def is_expired(self) -> bool:
         """检查会话是否过期"""
         return datetime.now() > self.expires_at
-    
-    def extend_session(self, hours: int = 8):
-        """延长会话时间"""
-        now = datetime.now()
-        self.expires_at = now + timedelta(hours=hours)
-        self.last_accessed = now

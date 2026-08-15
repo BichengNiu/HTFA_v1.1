@@ -115,17 +115,6 @@ class DTWAnalysisComponent(TimeSeriesAnalysisComponent):
             st_obj.warning("DTW分析需要至少两个数值列")
             return None
 
-        # 直接调用自动模式参数渲染（现在包含所有参数）
-        return self.render_auto_mode_parameters(
-            st_obj,
-            data,
-            data_name,
-            numeric_cols,
-        )
-
-    def render_auto_mode_parameters(self, st_obj, data: pd.DataFrame, data_name: str, numeric_cols: list):
-        """渲染自动模式参数（新3列布局）"""
-
         # ========== 第一排：3列布局 ==========
         row1_col1, row1_col2, row1_col3 = st_obj.columns(3)
 

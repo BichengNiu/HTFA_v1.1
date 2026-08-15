@@ -216,22 +216,6 @@ class TrainingConfig:
                     "请设置enable_variable_selection=False"
                 )
 
-    def validate(self) -> List[str]:
-        """验证配置完整性
-
-        Returns:
-            错误信息列表,空列表表示验证通过
-        """
-        errors = []
-
-        try:
-            # 调用__post_init__进行验证
-            self.__post_init__()
-        except Exception as e:
-            errors.append(str(e))
-
-        return errors
-
     def get_parallel_config(self) -> ParallelConfig:
         """获取并行配置对象
 
@@ -242,7 +226,6 @@ class TrainingConfig:
             enabled=self.enable_parallel,
             n_jobs=self.n_jobs,
             backend=self.parallel_backend,
-            verbose=0,
             min_variables_for_parallel=self.min_variables_for_parallel
         )
 

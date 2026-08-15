@@ -9,7 +9,7 @@ Nowcast提取器
 import numpy as np
 import pandas as pd
 import logging
-from typing import Dict, Any, Optional
+from typing import Optional
 
 from ..utils.exceptions import ComputationError, DataFormatError
 from ..utils.helpers import get_month_date_range

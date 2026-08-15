@@ -38,25 +38,10 @@ SHEET_NAME_INDUSTRY_PROFIT = "分行业工业企业利润"
 # 指标名称映射
 # ============================================================================
 
-# 总体工业增加值变量名映射
-OVERALL_INDUSTRIAL_NAME_MAPPING = {
-    "规模以上工业增加值:当月同比": "工业",
-    "制造业:当月同比": "制造业",
-    "采矿业:当月同比": "采矿业",
-}
-
 
 # ============================================================================
 # 企业经营指标常量
 # ============================================================================
-
-# 必需的四个企业经营指标
-REQUIRED_ENTERPRISE_INDICATORS = [
-    PROFIT_TOTAL_COLUMN,
-    CUMULATIVE_INDUSTRIAL_GROWTH_COLUMN,
-    PPI_COLUMN,
-    PROFIT_MARGIN_COLUMN_YOY
-]
 
 # 企业指标图例名称映射
 ENTERPRISE_INDICATOR_LEGEND_MAPPING = {
@@ -83,45 +68,25 @@ LINE_CHART_INDICATORS = [
 # 权重数据列名
 # ============================================================================
 
-# 必需的权重列
-REQUIRED_WEIGHT_COLUMNS = ['指标名称', '出口依赖', '上中下游']
-
-# 权重年份列
-WEIGHT_YEAR_COLUMNS = ['权重_2012', '权重_2018', '权重_2020']
-
 
 # ============================================================================
 # 分组前缀
 # ============================================================================
-
-# 三大产业分组前缀
-INDUSTRY_PREFIX = "三大产业_"
 
 
 # ============================================================================
 # 时间范围选项
 # ============================================================================
 
-TIME_RANGE_OPTIONS = ["1年", "3年", "5年", "全部", "自定义"]
-DEFAULT_TIME_RANGE = "3年"
+# （时间范围选项统一由 utils/chart_config.py 提供）
 
 
 # ============================================================================
 # 图表配置常量
 # ============================================================================
 
-# 最小匹配指标数（用于企业经营分析）
-MIN_REQUIRED_INDICATORS = 3
-
-# 图表颜色列表
-CHART_COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
-
-# 图表高度配置
-CHART_ROW_HEIGHT_PIXELS = 20  # 每行数据的像素高度
-CHART_MIN_HEIGHT_PIXELS = 500  # 图表最小高度
-
-# 图例显示最大示例数
-MAX_EXAMPLE_INDICATORS = 5
+# 图表颜色列表（企业四指标图专用；通用 10 色调色板见 utils/chart_config.py 的 CHART_COLORS）
+ENTERPRISE_INDICATOR_COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
 
 
 # ============================================================================
@@ -144,16 +109,6 @@ STATE_KEY_CONTRIBUTION_INDUSTRY = "contribution_industry"
 STATE_KEY_CONTRIBUTION_INDIVIDUAL = "contribution_individual"
 STATE_KEY_TOTAL_GROWTH = "total_growth"
 STATE_KEY_VALIDATION_RESULT = "validation_result"
-
-# 状态键常量 - 时间范围（宏观分析）
-STATE_KEY_MACRO_TIME_RANGE_CHART1 = "macro.time_range.chart1"
-STATE_KEY_MACRO_TIME_RANGE_CHART2 = "macro.time_range.chart2"
-STATE_KEY_MACRO_TIME_RANGE_CHART3 = "macro.time_range.chart3"
-
-# 状态键常量 - 时间范围（企业分析）
-STATE_KEY_ENTERPRISE_TIME_RANGE_CHART1 = "enterprise.time_range.chart1"
-STATE_KEY_ENTERPRISE_TIME_RANGE_CHART2 = "enterprise.time_range.chart2"
-STATE_KEY_ENTERPRISE_TIME_RANGE_CHART3 = "enterprise.time_range.chart3"
 
 # 状态键常量 - 企业利润拆解数据
 STATE_KEY_PROFIT_CONTRIBUTION_STREAM = "profit_contribution_stream"

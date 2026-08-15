@@ -20,9 +20,6 @@ def get_month_date_range(target_date: pd.Timestamp) -> Tuple[pd.Timestamp, pd.Ti
     Returns:
         (month_start, month_end) 元组
     """
-    month_start = pd.Timestamp(year=target_date.year, month=target_date.month, day=1)
-    if target_date.month == 12:
-        month_end = pd.Timestamp(year=target_date.year + 1, month=1, day=1) - pd.Timedelta(days=1)
-    else:
-        month_end = pd.Timestamp(year=target_date.year, month=target_date.month + 1, day=1) - pd.Timedelta(days=1)
+    month_start = target_date.to_period('M').to_timestamp()
+    month_end = month_start + pd.offsets.MonthEnd(0)
     return month_start, month_end

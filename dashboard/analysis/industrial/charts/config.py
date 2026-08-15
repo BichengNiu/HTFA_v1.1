@@ -4,20 +4,14 @@ Chart Configuration
 """
 
 from dashboard.analysis.industrial.charts.base import ChartConfig
+from dashboard.analysis.industrial.utils.chart_config import CHART_COLORS
 
-# 颜色调色板
-COLOR_PALETTE = {
-    'blue': '#1f77b4',
-    'orange': '#ff7f0e',
-    'green': '#2ca02c',
-    'red': '#d62728',
-    'purple': '#9467bd',
-    'brown': '#8c564b',
-    'pink': '#e377c2',
-    'gray': '#7f7f7f',
-    'olive': '#bcbd22',
-    'cyan': '#17becf'
-}
+# 颜色调色板（单一数据源：utils/chart_config.CHART_COLORS）
+_PALETTE_KEYS = [
+    'blue', 'orange', 'green', 'red', 'purple',
+    'brown', 'pink', 'gray', 'olive', 'cyan',
+]
+COLOR_PALETTE = dict(zip(_PALETTE_KEYS, CHART_COLORS))
 
 # 上中下游颜色映射
 STREAM_COLORS = {
@@ -25,16 +19,6 @@ STREAM_COLORS = {
     '中游': COLOR_PALETTE['orange'],
     '下游': COLOR_PALETTE['green']
 }
-
-# 默认图表配置
-DEFAULT_CHART_CONFIG = ChartConfig(
-    title="",
-    height=600,
-    hovermode='x unified',
-    plot_bgcolor='white',
-    paper_bgcolor='white',
-    show_legend=True
-)
 
 # 利润拉动率图表配置
 PROFIT_CONTRIBUTION_CONFIG = ChartConfig(

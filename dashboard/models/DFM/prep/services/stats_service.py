@@ -5,10 +5,9 @@
 """
 
 import pandas as pd
-import numpy as np
 import math
 import io
-from typing import Dict, Any, Optional, Tuple, List
+from typing import Dict, Optional, Tuple
 from datetime import date
 import logging
 

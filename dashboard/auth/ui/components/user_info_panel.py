@@ -28,10 +28,11 @@ def render_user_info_panel(user: User, on_logout_callback=None):
         # 显示用户权限信息（转换为中文模块名称）
         if user.permissions:
             # 将权限代码转换为中文模块名称
-            accessible_modules = []
-            for module_name, required_perms in PERMISSION_MODULE_MAP.items():
-                if any(perm in user.permissions for perm in required_perms):
-                    accessible_modules.append(module_name)
+            accessible_modules = [
+                module_name
+                for module_name, code in PERMISSION_MODULE_MAP.items()
+                if code in user.permissions
+            ]
 
             if accessible_modules:
                 st.write(f"**权限：** {'、'.join(accessible_modules)}")

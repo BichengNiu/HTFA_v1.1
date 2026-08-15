@@ -402,7 +402,6 @@ class UserManagementPage:
             # 邮箱验证和更新
             if new_email != (user.email or ""):
                 if new_email:
-                    from dashboard.auth.security import SecurityUtils
                     is_valid, msg = SecurityUtils.validate_email(new_email)
                     if not is_valid:
                         st.error(f"邮箱格式错误: {msg}")
@@ -417,11 +416,9 @@ class UserManagementPage:
 
             # 手机号验证和更新
             if new_phone != (user.phone or ""):
-                if new_phone:
-                    import re
-                    if not re.match(r'^1[3-9]\d{9}$', new_phone):
-                        st.error("手机号格式错误，请输入11位数字")
-                        return False
+                if new_phone and not SecurityUtils.validate_phone(new_phone):
+                    st.error("手机号格式错误，请输入11位数字")
+                    return False
                 user.phone = new_phone if new_phone else None
                 changes.append("手机号")
 

@@ -6,10 +6,9 @@
 
 import streamlit as st
 import pandas as pd
-import unicodedata
-from typing import Tuple, Optional, Dict, Any
+from typing import Tuple, Optional, Dict
 
-from dashboard.models.DFM.train.ui.utils.text_helpers import normalize_variable_name
+from dashboard.models.DFM.utils.text_utils import normalize_variable_name
 
 
 class FileUploaderComponent:
@@ -40,9 +39,6 @@ class FileUploaderComponent:
             - var_unit_map: 变量到单位的映射字典
         """
         st_instance.markdown("#### 数据文件上传")
-
-        # 检查是否已有上传的文件
-        existing_excel = self.state.get('train_uploaded_excel_file', None)
 
         # Excel文件上传（推荐方式）
         uploaded_excel_file = st_instance.file_uploader(

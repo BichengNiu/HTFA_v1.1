@@ -8,7 +8,7 @@ Chart Configuration Utility
 - 图表布局配置在多处重复
 """
 
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 # ==================== 常量定义 ====================
 
@@ -226,23 +226,6 @@ def create_standard_layout(
         layout['barmode'] = barmode
 
     return layout
-
-
-def get_opacity_by_index(index: int, base: float = 0.9, step: float = 0.15, min_opacity: float = 0.5) -> float:
-    """
-    根据索引计算透明度（用于堆叠图表）
-
-    Args:
-        index: 索引
-        base: 基础透明度
-        step: 递减步长
-        min_opacity: 最小透明度
-
-    Returns:
-        透明度值
-    """
-    opacity = base - (index * step)
-    return max(min_opacity, opacity)
 
 
 def calculate_dtick_by_time_span(min_date, max_date, default: str = DTICK_6_MONTHS) -> str:

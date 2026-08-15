@@ -8,7 +8,7 @@
 import re
 import unicodedata
 import pandas as pd
-from typing import Union, Optional
+from typing import Union
 
 
 def normalize_text(text: Union[str, float, None], to_lower: bool = True) -> str:
@@ -133,7 +133,40 @@ def normalize_variable_name(variable_name: Union[str, float, None]) -> str:
     return text
 
 
+def match_columns_case_insensitive(
+    columns,
+    candidates: list[str],
+) -> tuple[list[str], list[tuple[str, str]]]:
+    """按 NFKC+去空格+小写 规则匹配候选列名（大小写不敏感）。
+
+    Args:
+        columns: DataFrame 的实际列名集合
+        candidates: 候选指标名列表
+
+    Returns:
+        (匹配到的实际列名列表, (候选名, 实际列名) 修正对列表)
+    """
+    column_mapping = {
+        normalize_variable_name(col): col
+        for col in columns
+    }
+
+    matched: list[str] = []
+    mismatches: list[tuple[str, str]] = []
+    for candidate in candidates:
+        if candidate in columns:
+            matched.append(candidate)
+            continue
+        actual = column_mapping.get(normalize_variable_name(candidate))
+        if actual is not None:
+            matched.append(actual)
+            mismatches.append((candidate, actual))
+
+    return matched, mismatches
+
+
 __all__ = [
+    'match_columns_case_insensitive',
     'normalize_text',
     'normalize_column_name',
     'normalize_variable_name',

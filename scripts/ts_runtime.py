@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
-from typing import Any, BinaryIO
+from typing import Any
 from urllib.request import Request, urlopen
 
 GITHUB_REPOSITORY = "BichengNiu/Ts"

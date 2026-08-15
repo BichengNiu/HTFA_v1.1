@@ -10,7 +10,7 @@
 """
 
 # 日志工具
-from dashboard.models.DFM.train.utils.logger import get_logger, setup_logging
+from dashboard.models.DFM.train.utils.logger import get_logger
 
 # 环境配置
 from dashboard.models.DFM.train.utils.environment import setup_training_environment
@@ -24,7 +24,6 @@ from dashboard.models.DFM.train.utils.formatting import format_training_summary,
 __all__ = [
     # 日志
     'get_logger',
-    'setup_logging',
 
     # 环境
     'setup_training_environment',

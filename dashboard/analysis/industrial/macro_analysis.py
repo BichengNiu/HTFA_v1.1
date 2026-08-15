@@ -7,9 +7,7 @@ Industrial Macro Operations Analysis Module
 __all__ = ['render_macro_operations_analysis_with_data']
 
 # 导入必要的模块
-import streamlit as st
 import pandas as pd
-from typing import Any, Optional, List
 import plotly.graph_objects as go
 import logging
 
@@ -19,12 +17,8 @@ logger = logging.getLogger(__name__)
 
 # 导入统一的工具函数
 from dashboard.analysis.industrial.utils import (
-    get_weight_for_year,
     filter_data_from_2012,
-    load_macro_data,
-    load_weights_data,
     load_overall_industrial_data,
-    filter_data_by_time_range,
     create_grouping_mappings,
     # 新增：统一Fragment组件
     create_chart_with_time_selector_fragment,
@@ -45,10 +39,8 @@ from dashboard.analysis.industrial.utils.weighted_calculation import (
 # 导入统一状态管理
 from dashboard.analysis.industrial.utils.state_manager import industrial_state
 from dashboard.core.ui.utils.debug_helpers import debug_log
-from dashboard.analysis.industrial.validation import validate_data_format, display_validation_result
 from dashboard.analysis.industrial.constants import (
     TOTAL_INDUSTRIAL_GROWTH_COLUMN,
-    STATE_NAMESPACE_INDUSTRIAL,
     STATE_KEY_MACRO_DATA,
     STATE_KEY_WEIGHTS_DATA,
     STATE_KEY_FILE_NAME,

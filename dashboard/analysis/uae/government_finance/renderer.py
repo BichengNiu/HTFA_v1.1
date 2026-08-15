@@ -116,9 +116,6 @@ def _render_foreign_labor_chart(
     data: ForeignLaborData,
 ) -> None:
     last_month = latest_foreign_labor_month(data.values)
-    latest_date = last_month.to_timestamp(
-        how="end"
-    ).normalize()
     display_values = within_month_window(
         common_observations(data.values),
         first_month=last_month - 36,

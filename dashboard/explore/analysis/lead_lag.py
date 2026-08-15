@@ -380,7 +380,8 @@ def get_detailed_lag_data_for_candidate(
     """
     获取单个候选变量的详细滞后数据（用于绘图）
 
-    重构版本：使用配置类简化参数
+    重构版本：使用配置类简化参数，复用 _coerce_lead_lag_config 与
+    _align_lead_lag_data，避免重复实现配置转换与频率对齐逻辑。
 
     Args:
         df_input: 输入DataFrame
@@ -391,48 +392,20 @@ def get_detailed_lag_data_for_candidate(
     Returns:
         KL散度DataFrame
 
-    Examples:
-        config = LeadLagAnalysisConfig(max_lags=12)
-        kl_df = get_detailed_lag_data_for_candidate(
-            df, 'target', 'candidate', config
-        )
+    Raises:
+        ValueError: 配置无效、频率对齐失败或变量不存在
     """
-    # 配置处理：支持字典或配置类
-    if isinstance(config, dict):
-        config = LeadLagAnalysisConfig(**config)
-    elif not isinstance(config, LeadLagAnalysisConfig):
-        raise TypeError(f"config必须是LeadLagAnalysisConfig或字典，收到: {type(config)}")
+    config = _coerce_lead_lag_config(config)
 
-    # 提取配置参数
-    max_lags = config.max_lags
-    std_for_kl = config.standardize_for_kl
-    std_method = config.standardization_method
-    enable_freq_align = config.enable_frequency_alignment
-    target_freq = config.target_frequency
-    agg_method = config.freq_agg_method
-    time_col = config.time_column
     # 频率对齐
-    df_aligned = df_input
-    if enable_freq_align:
-        try:
-            df_aligned, alignment_report = align_series_for_analysis(
-                df_input,
-                target_variable_name,
-                [candidate_variable_name],
-                enable_frequency_alignment=True,
-                target_frequency=target_freq,
-                agg_method=agg_method,
-                time_column=time_col
-            )
-            if alignment_report["status"] == "error":
-                raise ValueError(
-                    f"频率对齐失败: {alignment_report.get('error', '未知错误')}"
-                )
-        except Exception as e:
-            logger.error(f"频率对齐失败: {e}")
-            if isinstance(e, ValueError) and str(e).startswith("频率对齐失败:"):
-                raise
-            raise ValueError(f"频率对齐过程出错: {e!s}") from e
+    df_aligned, error, _ = _align_lead_lag_data(
+        df_input,
+        target_variable_name,
+        [candidate_variable_name],
+        config,
+    )
+    if error:
+        raise ValueError(error)
 
     # 验证变量存在
     if target_variable_name not in df_aligned.columns:
@@ -445,12 +418,10 @@ def get_detailed_lag_data_for_candidate(
     series_candidate = df_aligned[candidate_variable_name]
 
     # 计算KL散度（使用优化版本，自动分箱）
-    kl_divergence_df = calculate_kl_divergence_optimized(
+    return calculate_kl_divergence_optimized(
         series_target,
         series_candidate,
-        max_lags,
-        std_for_kl,
-        std_method
+        config.max_lags,
+        config.standardize_for_kl,
+        config.standardization_method,
     )
-
-    return kl_divergence_df

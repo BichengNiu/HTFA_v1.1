@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 from Ts.TsTests import ZivotAndrewsTest
 
 from dashboard.explore.core.constants import MIN_SAMPLES_ADF
+from dashboard.explore.core.validation import validate_real_series
 
 STRUCTURAL_BREAK_MODELS = {
     "intercept": "截距突变",
@@ -38,18 +38,11 @@ STRUCTURAL_BREAK_RESULT_COLUMNS = [
 
 
 def _prepare_series(series: pd.Series) -> pd.Series:
-    if not isinstance(series, pd.Series):
-        raise TypeError("分析对象必须是 pandas.Series")
-    if not pd.api.types.is_numeric_dtype(series.dtype):
-        raise TypeError("序列必须是数值型变量")
-    values = series.astype(float).dropna()
+    values = validate_real_series(series, dropna=True)
     if len(values) < MIN_SAMPLES_ADF:
         raise ValueError(
             f"结构突变检验至少需要 {MIN_SAMPLES_ADF} 个有效观测"
         )
-    numeric = values.to_numpy(dtype=float)
-    if not np.isfinite(numeric).all():
-        raise ValueError("序列包含无穷值")
     if values.nunique() <= 1:
         raise ValueError("常数序列无法进行结构突变检验")
     return values

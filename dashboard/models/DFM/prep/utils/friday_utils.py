@@ -11,7 +11,6 @@
 
 import pandas as pd
 from calendar import monthrange
-from typing import Tuple
 
 
 def get_nearest_friday(dt: pd.Timestamp) -> pd.Timestamp:

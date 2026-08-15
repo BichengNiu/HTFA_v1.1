@@ -18,23 +18,11 @@ MIN_SAMPLES_CORRELATION = 2
 # 原因：需要足够样本来构建有意义的概率分布
 MIN_SAMPLES_KL_DIVERGENCE = 10
 
-# 胜率计算所需的最小样本数
-# 原因：需要至少2个点才能计算变化方向
-MIN_SAMPLES_WIN_RATE = 2
-
 # ==================== KL散度相关常量 ====================
-
-# KL散度默认分箱数
-# 原因：10个分箱通常能够很好地近似连续分布
-DEFAULT_KL_BINS = 10
 
 # KL散度平滑参数
 # 原因：避免log(0)和除零错误
 DEFAULT_KL_SMOOTHING_ALPHA = 1e-9
-
-# KL散度每个分箱的最小点数
-# 原因：确保每个分箱有足够的样本
-MIN_POINTS_PER_BIN = 2
 
 # ==================== 时间序列相关常量 ====================
 
@@ -102,39 +90,8 @@ DEFAULT_AGG_METHOD = 'mean'
 # 默认标准化方法
 DEFAULT_STANDARDIZATION_METHOD = 'zscore'
 
-# 默认最大滞后阶数
-DEFAULT_MAX_LAGS = 12
-
 # 领先滞后分析结果显示的最大滞后范围
 MAX_DISPLAY_LAG_RANGE = 5
-
-# 默认DTW窗口大小
-DEFAULT_DTW_WINDOW = 10
-
-# ==================== UI相关常量 ====================
-
-# 标签页索引映射
-TAB_INDEX_MAPPING = {
-    0: "stationarity",      # 平稳性检验
-    1: "time_lag_corr"      # 相关性分析（包含DTW和领先滞后）
-}
-
-# 状态键名映射
-STATE_KEYS = {
-    "active_tab": "data_exploration_active_tab",
-    "tab_flags": {
-        "stationarity": "currently_in_stationarity_tab",
-        "time_lag_corr": "currently_in_time_lag_corr_tab",
-        "dtw": "currently_in_dtw_tab",
-        "lead_lag": "currently_in_lead_lag_tab"
-    },
-    "timestamps": {
-        "stationarity": "stationarity_tab_set_time",
-        "time_lag_corr": "time_lag_tab_set_time",
-        "dtw": "dtw_tab_set_time",
-        "lead_lag": "lead_lag_tab_set_time"
-    }
-}
 
 # ==================== 差分处理相关常量 ====================
 
@@ -149,9 +106,6 @@ SEASONAL_DIFF_MAP = {
     'Irregular': None,
     'Undetermined': None
 }
-
-# 差分处理选项
-DIFFERENCING_OPTIONS = ['不处理', '环比差分', '同比差分']
 
 # 频率中文显示映射
 FREQUENCY_DISPLAY_NAMES = {

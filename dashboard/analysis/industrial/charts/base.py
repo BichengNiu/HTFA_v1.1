@@ -3,12 +3,19 @@ Base Chart Creator
 图表创建抽象基类
 """
 
-from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import logging
+
+from dashboard.analysis.industrial.utils.chart_config import (
+    CHART_HEIGHT_STANDARD,
+    LEGEND_CONFIG_BOTTOM_CENTER,
+    create_xaxis_config,
+    create_yaxis_config,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -17,45 +24,30 @@ logger = logging.getLogger(__name__)
 class ChartConfig:
     """
     图表配置数据类
+
+    布局默认值统一取自 utils/chart_config.py，避免双轨配置漂移。
     """
     title: str = ""
-    height: int = 600
+    height: int = CHART_HEIGHT_STANDARD
     hovermode: str = 'x unified'
     plot_bgcolor: str = 'white'
     paper_bgcolor: str = 'white'
     show_legend: bool = True
-    legend_config: Dict[str, Any] = field(default_factory=lambda: {
-        'orientation': 'h',
-        'yanchor': 'top',
-        'y': -0.18,
-        'xanchor': 'center',
-        'x': 0.5,
-        'font': {'size': 14}
-    })
+    legend_config: Dict[str, Any] = field(
+        default_factory=lambda: dict(LEGEND_CONFIG_BOTTOM_CENTER)
+    )
     margin: Dict[str, int] = field(default_factory=lambda: {
         'l': 80, 'r': 50, 't': 50, 'b': 120
     })
-    xaxis_config: Dict[str, Any] = field(default_factory=lambda: {
-        'title': {'text': '', 'font': {'size': 16}},
-        'type': 'date',
-        'showgrid': True,
-        'gridwidth': 1,
-        'gridcolor': 'lightgray',
-        'dtick': 'M3',
-        'tickformat': '%Y-%m',
-        'hoverformat': '%Y-%m',
-        'tickfont': {'size': 14}
-    })
-    yaxis_config: Dict[str, Any] = field(default_factory=lambda: {
-        'title': {'text': '%', 'font': {'size': 16}},
-        'showgrid': True,
-        'gridwidth': 1,
-        'gridcolor': 'lightgray',
-        'tickfont': {'size': 14}
-    })
+    xaxis_config: Dict[str, Any] = field(
+        default_factory=lambda: create_xaxis_config()
+    )
+    yaxis_config: Dict[str, Any] = field(
+        default_factory=lambda: create_yaxis_config(title='%')
+    )
 
 
-class BaseChartCreator(ABC):
+class BaseChartCreator:
     """
     图表创建器抽象基类
 
@@ -75,7 +67,6 @@ class BaseChartCreator(ABC):
         self.config = config or ChartConfig()
         self.logger = logging.getLogger(self.__class__.__name__)
 
-    @abstractmethod
     def _prepare_data(
         self,
         df: pd.DataFrame,
@@ -84,7 +75,7 @@ class BaseChartCreator(ABC):
         custom_end_date: Optional[str]
     ) -> pd.DataFrame:
         """
-        准备图表数据（抽象方法，子类必须实现）
+        准备图表数据（模板方法钩子；使用模板 create() 的子类应覆写）
 
         Args:
             df: 原始数据
@@ -95,18 +86,19 @@ class BaseChartCreator(ABC):
         Returns:
             准备好的数据DataFrame
         """
-        pass
+        return df
 
-    @abstractmethod
     def _create_traces(self, fig: go.Figure, data: pd.DataFrame) -> None:
         """
-        创建图表traces（抽象方法，子类必须实现）
+        创建图表traces（模板方法钩子；使用模板 create() 的子类应覆写）
 
         Args:
             fig: Plotly Figure对象
             data: 准备好的数据
         """
-        pass
+        raise NotImplementedError(
+            "使用模板 create() 的子类必须实现 _create_traces"
+        )
 
     def create(
         self,
@@ -206,3 +198,138 @@ class BaseChartCreator(ABC):
         """
         from dashboard.analysis.industrial.utils import filter_data_by_time_range
         return filter_data_by_time_range(df, time_range, custom_start_date, custom_end_date)
+
+
+def create_subplot_chart(
+    chart_creator: "BaseChartCreator",
+    df: pd.DataFrame,
+    indicators: list,
+    *,
+    grid_key: str,
+    rows: int,
+    label: str,
+    time_range: str = "3年",
+    custom_start_date: Optional[str] = None,
+    custom_end_date: Optional[str] = None,
+) -> Optional[go.Figure]:
+    """按 rows×2 网格绘制指标子图（企业经营指标/效率指标共用）。
+
+    与原先 OperationsIndicatorsChart / EfficiencyMetricsChart 的 create()
+    行为一致，仅提取了共同的子图构建逻辑。
+    """
+    from dashboard.analysis.industrial.charts.config import (
+        SUBPLOT_MARGINS,
+        SUBPLOT_SPACING,
+    )
+
+    try:
+        # 准备数据
+        filtered_df = chart_creator._filter_by_time_range(
+            df, time_range, custom_start_date, custom_end_date
+        )
+
+        if filtered_df.empty:
+            chart_creator.logger.warning("过滤后数据为空")
+            return None
+
+        available_indicators = [
+            ind for ind in indicators if ind['name'] in filtered_df.columns
+        ]
+
+        if not available_indicators:
+            chart_creator.logger.warning(f"未找到任何{label}指标")
+            return None
+
+        # 创建 rows x 2 子图布局
+        spacing = SUBPLOT_SPACING[grid_key]
+        fig = make_subplots(
+            rows=rows, cols=2,
+            subplot_titles=[ind['title'] for ind in indicators],
+            vertical_spacing=spacing['vertical_spacing'],
+            horizontal_spacing=spacing['horizontal_spacing'],
+            specs=[[{"secondary_y": False}, {"secondary_y": False}]] * rows
+        )
+
+        # 为每个子图添加数据
+        for idx, indicator in enumerate(indicators):
+            row = idx // 2 + 1
+            col = idx % 2 + 1
+
+            if indicator['name'] in filtered_df.columns:
+                y_data = filtered_df[indicator['name']].dropna()
+
+                if not y_data.empty:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=y_data.index,
+                            y=y_data,
+                            mode='lines+markers',
+                            name=indicator['title'],
+                            line=dict(width=3, color=indicator['color']),
+                            marker=dict(size=7),
+                            showlegend=False,
+                            connectgaps=False,
+                            hovertemplate=(
+                                f'<b>{indicator["title"]}</b><br>' +
+                                '时间: %{x|%Y年%m月}<br>' +
+                                f'数值: %{{y:.2f}}{indicator["suffix"]}<extra></extra>'
+                            )
+                        ),
+                        row=row, col=col
+                    )
+
+                    # 更新y轴范围（添加10%边距）
+                    y_min = y_data.min()
+                    y_max = y_data.max()
+                    y_range = y_max - y_min
+                    margin = y_range * 0.1 if y_range > 0 else 0.1
+
+                    fig.update_yaxes(
+                        title_text=indicator['yaxis_title'],
+                        showgrid=True,
+                        gridwidth=1,
+                        gridcolor='rgba(128, 128, 128, 0.2)',
+                        tickfont=dict(size=11),
+                        title_font=dict(size=12),
+                        range=[y_min - margin, y_max + margin],
+                        row=row, col=col
+                    )
+
+        # 更新所有x轴
+        fig.update_xaxes(
+            title_text='',
+            showgrid=True,
+            gridwidth=1,
+            gridcolor='rgba(128, 128, 128, 0.2)',
+            dtick="M3",
+            tickformat='%Y-%m',
+            tickfont=dict(size=11)
+        )
+
+        # 更新整体布局
+        margins = SUBPLOT_MARGINS[grid_key]
+        fig.update_layout(
+            height=chart_creator.config.height,
+            hovermode=chart_creator.config.hovermode,
+            showlegend=False,
+            margin=dict(l=margins['left'], r=margins['right'],
+                       t=margins['top'], b=margins['bottom']),
+            plot_bgcolor=chart_creator.config.plot_bgcolor,
+            paper_bgcolor=chart_creator.config.paper_bgcolor,
+            title=dict(
+                text=chart_creator.config.title,
+                x=0,
+                xanchor='left',
+                font=dict(size=18)
+            )
+        )
+
+        # 更新子图标题样式
+        for annotation in fig['layout']['annotations']:
+            annotation['font'] = dict(size=14, color='#333')
+
+        return fig
+
+    except Exception as e:
+        chart_creator.logger.error(f"创建{label}指标图表时发生错误: {e}", exc_info=True)
+        return None

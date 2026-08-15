@@ -9,14 +9,13 @@ import plotly.graph_objects as go
 from dashboard.analysis.industrial.charts.base import BaseChartCreator
 from dashboard.analysis.industrial.charts.config import (
     ENTERPRISE_INDICATORS_CONFIG,
-    COLOR_PALETTE
 )
 from dashboard.analysis.industrial.constants import (
     PROFIT_TOTAL_COLUMN,
     CUMULATIVE_INDUSTRIAL_GROWTH_COLUMN,
     PPI_COLUMN,
     PROFIT_MARGIN_COLUMN_YOY,
-    CHART_COLORS,
+    ENTERPRISE_INDICATOR_COLORS,
     ENTERPRISE_INDICATOR_LEGEND_MAPPING,
     BAR_CHART_INDICATORS,
     LINE_CHART_INDICATORS
@@ -81,7 +80,7 @@ class EnterpriseIndicatorsChart(BaseChartCreator):
 
     def _create_traces(self, fig: go.Figure, data: pd.DataFrame) -> None:
         """创建图表traces"""
-        colors = CHART_COLORS
+        colors = ENTERPRISE_INDICATOR_COLORS
 
         # 先添加线图指标
         for i, column in enumerate(data.columns):

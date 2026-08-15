@@ -5,13 +5,17 @@
 """
 
 import streamlit as st
-from typing import Optional, Tuple
+from typing import Optional
 import logging
 import re
 
 from dashboard.auth.security import SecurityUtils
 from dashboard.auth.models import User
 from dashboard.auth.database import AuthDatabase
+from dashboard.auth.ui.pages._shared import (
+    inject_base_auth_styles,
+    render_platform_header,
+)
 
 
 class RegisterPage:
@@ -287,8 +291,7 @@ class RegisterPage:
     
     def _validate_phone(self, phone: str) -> bool:
         """验证手机号格式"""
-        # 简单的11位数字验证
-        return re.match(r'^1[3-9]\d{9}$', phone) is not None
+        return SecurityUtils.validate_phone(phone)
     
     def _validate_wechat(self, wechat: str) -> bool:
         """验证微信号格式"""
@@ -298,67 +301,19 @@ class RegisterPage:
     
     def _render_platform_header(self):
         """渲染平台标题头部"""
-        st.markdown("""
-        <div class="platform-header">
-            <h1 class="platform-title">经济运行分析平台</h1>
-            <hr class="platform-divider">
-            <p class="platform-subtitle">国家信息中心经济预测部政策仿真实验室</p>
-        </div>
-        """, unsafe_allow_html=True)
+        render_platform_header()
     
     def _inject_register_styles(self):
-        """注入注册页面的CSS样式"""
+        """注入注册页面的CSS样式（基础样式 + 注册表单专属样式）"""
+        inject_base_auth_styles()
         st.markdown("""
         <style>
-        /* 平台标题样式 */
-        .platform-header {
-            text-align: center;
-            margin: 2rem 0;
-        }
-        
-        .platform-title {
-            font-size: 3rem;
-            color: #2c3e50;
-            margin-bottom: 1rem;
-            font-weight: 700;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        .platform-divider {
-            width: 60%;
-            margin: 1.5rem auto;
-            border: none;
-            border-top: 3px solid #3498db;
-            border-radius: 2px;
-        }
-        
-        .platform-subtitle {
-            font-size: 1.2rem;
-            color: #7f8c8d;
-            margin-bottom: 2rem;
-            font-weight: 400;
-        }
-        
         /* 注册表单样式 */
         .register-form {
             padding: 1rem 0;
             margin: 1rem 0;
         }
-        
-        /* 输入框样式 */
-        .stTextInput > div > div > input {
-            border-radius: 8px;
-            border: 2px solid #e1e8ed;
-            padding: 0.75rem;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-        }
-        
-        .stTextInput > div > div > input:focus {
-            border-color: #3498db;
-            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
-        }
-        
+
         /* 按钮样式 */
         .stButton > button {
             border-radius: 8px;
@@ -369,29 +324,29 @@ class RegisterPage:
             margin-top: 1rem;
             color: white !important;
         }
-        
+
         .stButton > button[kind="primary"] {
             background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
             border: none;
             color: white !important;
         }
-        
+
         .stButton > button[kind="primary"]:hover {
             transform: translateY(-2px);
             box-shadow: 0 8px 25px rgba(52, 152, 219, 0.3);
             color: white !important;
         }
-        
+
         .stButton > button[kind="secondary"] {
             background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
             border: none;
             color: white !important;
         }
-        
+
         .stButton > button[kind="secondary"]:hover {
             color: white !important;
         }
-        
+
         /* 表单提交按钮的primary样式 - 使用更强的选择器 */
         .stFormSubmitButton > button[data-testid="stBaseButton-primaryFormSubmit"],
         .stFormSubmitButton > button[data-testid="stBaseButton-secondaryFormSubmit"],
@@ -408,7 +363,7 @@ class RegisterPage:
             margin-top: 1rem !important;
             box-shadow: none !important;
         }
-        
+
         .stFormSubmitButton > button[data-testid="stBaseButton-primaryFormSubmit"]:hover,
         .stFormSubmitButton > button[data-testid="stBaseButton-secondaryFormSubmit"]:hover,
         .stFormSubmitButton > button[kind="primary"]:hover,
@@ -419,7 +374,7 @@ class RegisterPage:
             color: white !important;
             border: none !important;
         }
-        
+
         /* 确保所有按钮类型的文字都是白色 - 更强的选择器 */
         .stButton > button[data-baseweb="button"],
         .stButton > button[data-baseweb="button"][kind="primary"],
@@ -429,39 +384,11 @@ class RegisterPage:
         .stFormSubmitButton > button[kind="secondary"] {
             color: white !important;
         }
-        
+
         /* 确保按钮悬停状态也是白色 */
         .stButton > button:hover,
         .stFormSubmitButton > button:hover {
             color: white !important;
-        }
-        
-        /* 错误和成功消息样式 */
-        .stAlert {
-            border-radius: 8px;
-            margin: 1rem 0;
-        }
-        
-        /* 整体页面样式 */
-        .main .block-container {
-            padding-top: 2rem;
-            max-width: 1200px;
-        }
-        
-        /* 隐藏默认的Streamlit样式元素 */
-        #MainMenu {visibility: hidden;}
-        footer {visibility: hidden;}
-        .stApp > header {visibility: hidden;}
-        
-        /* 响应式设计 */
-        @media (max-width: 768px) {
-            .platform-title {
-                font-size: 2.5rem;
-            }
-            
-            .platform-subtitle {
-                font-size: 1rem;
-            }
         }
         </style>
         """, unsafe_allow_html=True)

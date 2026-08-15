@@ -77,7 +77,7 @@ class StructuralBreakAnalysisComponent(StationarityAnalysisComponent):
         table_key: str,
     ) -> None:
         st_obj.markdown("---")
-        st_obj.markdown("### 2. 结构突变检验")
+        st_obj.markdown("### 结构突变检验")
         st_obj.caption(
             "Zivot–Andrews 检验在未知突变时点下检验单位根，"
             "原假设为“允许一个结构突变时序列仍存在单位根”。"

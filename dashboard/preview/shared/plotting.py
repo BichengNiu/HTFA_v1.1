@@ -5,9 +5,7 @@ Preview模块统一绘图组件
 """
 
 import pandas as pd
-import numpy as np
 import plotly.graph_objects as go
-from typing import Optional
 
 from dashboard.preview.shared.config import PLOT_CONFIGS, COLORS
 

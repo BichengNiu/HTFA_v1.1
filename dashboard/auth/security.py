@@ -108,6 +108,13 @@ class SecurityUtils:
         return True, "邮箱格式正确"
 
     @staticmethod
+    def validate_phone(phone: str) -> bool:
+        """验证手机号格式（11位数字，1开头）"""
+        if not phone:
+            return True  # 手机号可选
+        return re.match(r'^1[3-9]\d{9}$', phone) is not None
+
+    @staticmethod
     def sanitize_input(input_str: str) -> str:
         """清理用户输入，防止注入攻击"""
         if not input_str:
