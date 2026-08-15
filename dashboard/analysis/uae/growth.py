@@ -33,23 +33,9 @@ class IndustryDiagnosticsResult:
     """行业增长广度、集中度与持续性诊断。"""
 
     contribution_result: ContributionResult
-    growth_rates: pd.DataFrame
-    base_year_shares: pd.DataFrame
-    current_shares: pd.DataFrame
     breadth: pd.DataFrame
     concentration: pd.DataFrame
     persistence: pd.DataFrame
-
-
-@dataclass(frozen=True)
-class NominalRealBridge:
-    """名义增长、实际增长和价格变化的对数桥接。"""
-
-    deflator: pd.Series
-    nominal_log_growth: pd.Series
-    real_log_growth: pd.Series
-    deflator_log_growth: pd.Series
-    periods: int
 
 
 def _validate_series(series: pd.Series, label: str) -> None:
@@ -142,69 +128,6 @@ def calculate_growth_contributions(
     )
 
 
-def calculate_nominal_real_bridge(
-    nominal: pd.Series,
-    real: pd.Series,
-    *,
-    periods: int,
-) -> NominalRealBridge:
-    """以对数差分精确拆解名义增长为实际增长和价格变化。"""
-
-    if periods <= 0:
-        raise ValueError("比较期数必须为正整数")
-    _validate_series(nominal, nominal.name or "名义值")
-    _validate_series(real, real.name or "实际值")
-    aligned = pd.concat(
-        [nominal.rename("nominal"), real.rename("real")],
-        axis=1,
-        join="inner",
-    ).sort_index()
-    if aligned.empty:
-        raise ValueError("名义值与实际值没有共同观测期")
-    if (aligned.dropna() <= 0).any().any():
-        raise ValueError("名义值和实际值必须为正")
-
-    deflator = (aligned["nominal"] / aligned["real"] * 100).rename(
-        "deflator"
-    )
-    nominal_growth = (
-        100 * np.log(aligned["nominal"] / aligned["nominal"].shift(periods))
-    ).rename("nominal_log_growth")
-    real_growth = (
-        100 * np.log(aligned["real"] / aligned["real"].shift(periods))
-    ).rename("real_log_growth")
-    deflator_growth = (
-        100 * np.log(deflator / deflator.shift(periods))
-    ).rename("deflator_log_growth")
-    return NominalRealBridge(
-        deflator=deflator,
-        nominal_log_growth=nominal_growth,
-        real_log_growth=real_growth,
-        deflator_log_growth=deflator_growth,
-        periods=periods,
-    )
-
-
-def calculate_diffusion(
-    industries: pd.DataFrame,
-    *,
-    periods: int,
-) -> pd.Series:
-    """有效行业中实际增加值增长为正的行业占比。"""
-
-    if periods <= 0:
-        raise ValueError("比较期数必须为正整数")
-    if industries.index.has_duplicates:
-        raise ValueError("行业数据包含重复时期")
-    growth = industries.pct_change(
-        periods=periods,
-        fill_method=None,
-    )
-    valid = growth.notna().sum(axis=1)
-    positive = growth.gt(0).where(growth.notna()).sum(axis=1)
-    return (positive / valid.replace(0, np.nan)).rename("diffusion")
-
-
 def _quarter_period_index(index: pd.Index) -> pd.PeriodIndex:
     if isinstance(index, pd.PeriodIndex):
         periods = index.asfreq("Q")
@@ -265,6 +188,8 @@ def _breadth_pair(
 
 
 def _consecutive_positive_counts(growth: pd.DataFrame) -> pd.DataFrame:
+    """每列统计连续正增长季度数；缺失值中断计数并保留缺失。"""
+
     result = pd.DataFrame(
         np.nan,
         index=growth.index,
@@ -272,17 +197,11 @@ def _consecutive_positive_counts(growth: pd.DataFrame) -> pd.DataFrame:
         dtype=float,
     )
     for column in growth.columns:
-        count = 0
-        for period, value in growth[column].items():
-            if pd.isna(value):
-                count = 0
-                result.loc[period, column] = np.nan
-            elif value > 0:
-                count += 1
-                result.loc[period, column] = count
-            else:
-                count = 0
-                result.loc[period, column] = 0
+        series = growth[column]
+        positive = series.gt(0)
+        groups = (~positive).cumsum()
+        counts = positive.groupby(groups).cumsum()
+        result[column] = counts.where(positive, 0.0).mask(series.isna())
     return result
 
 
@@ -417,15 +336,17 @@ def calculate_industry_diagnostics(
         *,
         positive: bool,
     ) -> tuple[pd.Series, pd.Series]:
-        names = pd.Series(pd.NA, index=contributions.index, dtype="object")
-        values = pd.Series(np.nan, index=contributions.index, dtype=float)
-        for period, row in contributions.loc[complete_contributions].iterrows():
-            candidates = row[row.gt(0) if positive else row.lt(0)]
-            if candidates.empty:
-                continue
-            industry = candidates.idxmax() if positive else candidates.idxmin()
-            names.loc[period] = industry
-            values.loc[period] = float(candidates.loc[industry])
+        masked = contributions.where(
+            contributions.gt(0) if positive else contributions.lt(0)
+        )
+        valid = masked.notna().any(axis=1)
+        best = masked.loc[valid]
+        names = (
+            best.idxmax(axis=1) if positive else best.idxmin(axis=1)
+        ).reindex(contributions.index)
+        values = (
+            best.max(axis=1) if positive else best.min(axis=1)
+        ).reindex(contributions.index)
         direction = "正向" if positive else "负向"
         return (
             names.rename(f"最大{direction}贡献行业"),
@@ -552,9 +473,6 @@ def calculate_industry_diagnostics(
     ).set_index(["季度", "行业"])
     return IndustryDiagnosticsResult(
         contribution_result=contribution_result,
-        growth_rates=growth_rates,
-        base_year_shares=base_year_shares,
-        current_shares=current_shares,
         breadth=breadth,
         concentration=concentration,
         persistence=persistence,

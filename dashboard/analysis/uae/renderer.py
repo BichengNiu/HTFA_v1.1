@@ -29,10 +29,6 @@ from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
 TAB_CONFIG = (
     ("宏观概览", "growth_overview"),
     ("行业分析", "growth_industry"),
-    ("通货膨胀", "inflation"),
-    ("就业与收入", "labor"),
-    ("财政与外部", "fiscal_external"),
-    ("货币与金融", "monetary"),
     ("石油财政", "oil_fiscal"),
 )
 
@@ -88,6 +84,29 @@ INDUSTRY_CONCENTRATION_EXPLANATION = """
 - **空值边界**：任一行业贡献缺失，或全部行业均无变动时，该季度不绘制，避免用不完整分母或接近零的变动制造虚假高集中度。
 """.strip()
 
+SERIES_GROUP_FIGURE_BUILDERS = {
+    "行业量价四象限图": (
+        build_industry_price_volume_quadrant_figure,
+        None,
+    ),
+    "行业扩张广度指数": (
+        build_industry_breadth_figure,
+        INDUSTRY_BREADTH_DISPLAY_TITLE,
+    ),
+    "行业增长集中度": (
+        build_industry_concentration_figure,
+        "行业增长的方向与集中度",
+    ),
+    "行业增长持续性与状态矩阵": (
+        build_industry_state_matrix_figure,
+        None,
+    ),
+    "非油实际GDP同比及行业拉动": (
+        build_nonoil_industry_pull_figure,
+        None,
+    ),
+}
+
 SERIES_GROUP_EXPLANATIONS = {
     "GDP部门拉动与石油产量同比": GDP_SECTOR_PULL_EXPLANATION,
     "非油实际GDP同比及行业拉动": NONOIL_INDUSTRY_PULL_EXPLANATION,
@@ -118,31 +137,6 @@ def _source_name(file_input: Any) -> str:
     return Path(file_input).name
 
 
-def _metric_label(metric) -> str:
-    prefix = (
-        "【模拟】"
-        if metric.provenance_kind is ProvenanceKind.SIMULATED
-        else "【真实】"
-    )
-    return f"{prefix}{metric.label}"
-
-
-def _render_metrics(st_obj, panel: MacroPanelResult) -> None:
-    if not panel.metrics:
-        return
-    columns = st_obj.columns(len(panel.metrics))
-    for column, metric in zip(columns, panel.metrics):
-        with column:
-            st_obj.metric(
-                _metric_label(metric),
-                f"{metric.value:,.2f}{metric.unit}",
-                help=(
-                    f"观测期：{metric.period}"
-                    + (f"；{metric.help_text}" if metric.help_text else "")
-                ),
-            )
-
-
 def _ordered_series_groups(
     series_groups: Mapping[str, Any],
     series_group_titles: tuple[str, ...] | None,
@@ -162,13 +156,8 @@ def _render_panel(
     st_obj,
     panel: MacroPanelResult,
     *,
-    show_title: bool = True,
     series_group_titles: tuple[str, ...] | None = None,
 ) -> None:
-    if show_title:
-        st_obj.subheader(panel.title)
-    _render_metrics(st_obj, panel)
-
     for group_title, frame in _ordered_series_groups(
         panel.series_groups,
         series_group_titles,
@@ -181,31 +170,9 @@ def _render_panel(
                 frame,
                 title=group_title,
             )
-        elif group_title == "行业量价四象限图":
-            figure = build_industry_price_volume_quadrant_figure(
-                frame,
-                title=group_title,
-            )
-        elif group_title == "行业扩张广度指数":
-            figure = build_industry_breadth_figure(
-                frame,
-                title=INDUSTRY_BREADTH_DISPLAY_TITLE,
-            )
-        elif group_title == "行业增长集中度":
-            figure = build_industry_concentration_figure(
-                frame,
-                title="行业增长的方向与集中度",
-            )
-        elif group_title == "行业增长持续性与状态矩阵":
-            figure = build_industry_state_matrix_figure(
-                frame,
-                title=group_title,
-            )
-        elif group_title == "非油实际GDP同比及行业拉动":
-            figure = build_nonoil_industry_pull_figure(
-                frame,
-                title=group_title,
-            )
+        elif group_title in SERIES_GROUP_FIGURE_BUILDERS:
+            builder, display_title = SERIES_GROUP_FIGURE_BUILDERS[group_title]
+            figure = builder(frame, title=display_title or group_title)
         elif {
             "【真实】非石油经济部门拉动",
             "【真实】石油经济部门拉动",
@@ -276,6 +243,24 @@ def _render_panel(
             )
 
 
+def _render_growth_tab(
+    st_obj,
+    dashboard,
+    series_group_titles: tuple[str, ...],
+) -> None:
+    if dashboard.unavailable_panels:
+        st_obj.info(
+            "当前工作簿不足以构建宏观监测主题："
+            f"{dashboard.unavailable_panels['growth']}"
+        )
+        return
+    _render_panel(
+        st_obj,
+        dashboard.require_panel("growth"),
+        series_group_titles=series_group_titles,
+    )
+
+
 def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
     """渲染阿联酋监测；不写入或生成任何工作簿。"""
 
@@ -318,30 +303,21 @@ def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
     for tab, (_, view_key) in zip(tab_objects, TAB_CONFIG):
         with tab:
             if view_key == "growth_overview":
-                _render_panel(
+                _render_growth_tab(
                     st_obj,
-                    dashboard.require_panel("growth"),
-                    show_title=False,
-                    series_group_titles=GROWTH_OVERVIEW_GROUPS,
+                    dashboard,
+                    GROWTH_OVERVIEW_GROUPS,
                 )
             elif view_key == "growth_industry":
-                _render_panel(
+                _render_growth_tab(
                     st_obj,
-                    dashboard.require_panel("growth"),
-                    show_title=False,
-                    series_group_titles=GROWTH_INDUSTRY_GROUPS,
+                    dashboard,
+                    GROWTH_INDUSTRY_GROUPS,
                 )
-            elif view_key == "oil_fiscal":
+            else:
                 from dashboard.analysis.uae.oil import render_oil_fiscal_panel
 
                 render_oil_fiscal_panel(st_obj)
-            elif view_key in dashboard.unavailable_panels:
-                st_obj.info(
-                    "当前工作簿不足以构建本主题："
-                    f"{dashboard.unavailable_panels[view_key]}"
-                )
-            else:
-                _render_panel(st_obj, dashboard.require_panel(view_key))
     return {
         "status": "success",
         "source": source_name,

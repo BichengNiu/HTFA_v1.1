@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from dashboard.analysis.uae.oil import charts as oil_charts
 from dashboard.analysis.uae.oil import renderer
 from dashboard.analysis.uae.oil.alignment import (
     common_latest_month,
@@ -18,8 +17,10 @@ from dashboard.analysis.uae.oil.alignment import (
 from dashboard.analysis.uae.oil.charts import (
     build_oil_market_figure,
     build_oil_revenue_figure,
+    plot_series,
 )
 from dashboard.analysis.uae.oil.data import load_oil_market_data
+from dashboard.analysis.uae.plot_helpers import WAR_LINE_COLOR
 from dashboard.analysis.uae.oil.revenue import (
     DAYS_COLUMN,
     PRICE_CONTRIBUTION_COLUMN,
@@ -310,7 +311,7 @@ def test_oil_market_figure_marks_war_start_with_red_dashed_line() -> None:
 
     from matplotlib.colors import to_rgba
 
-    expected = to_rgba(oil_charts.WAR_LINE_COLOR)
+    expected = to_rgba(WAR_LINE_COLOR)
     production_axis = figure.axes[0]
     war_lines = [
         line
@@ -334,7 +335,7 @@ def test_oil_market_figure_skips_war_line_before_march_2026() -> None:
 
     from matplotlib.colors import to_rgba
 
-    expected = to_rgba(oil_charts.WAR_LINE_COLOR)
+    expected = to_rgba(WAR_LINE_COLOR)
     production_axis = figure.axes[0]
     assert not [
         line
@@ -344,15 +345,14 @@ def test_oil_market_figure_skips_war_line_before_march_2026() -> None:
 
 
 def test_oil_figures_accept_ts_ndarray_axes(monkeypatch) -> None:
-    original_plot_series = oil_charts.plot_series
+    original_plot_series = plot_series
 
     def plot_series_with_array_axis(*args, **kwargs):
         figure, axis = original_plot_series(*args, **kwargs)
         return figure, np.asarray([axis], dtype=object)
 
     monkeypatch.setattr(
-        oil_charts,
-        "plot_series",
+        "dashboard.analysis.uae.oil.charts.plot_series",
         plot_series_with_array_axis,
     )
     data = load_oil_market_data(_workbook_bytes(), file_name="test.xlsx")

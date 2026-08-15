@@ -73,7 +73,6 @@ def test_bundle_exposes_simulated_provenance():
     )
 
     assert bundle.is_simulated(indicator_id)
-    assert bundle.simulated_ids == frozenset({indicator_id})
 
 
 def test_diagnostic_detects_simulated_evidence():

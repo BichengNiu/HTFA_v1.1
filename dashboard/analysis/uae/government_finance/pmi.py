@@ -10,18 +10,18 @@ from matplotlib.figure import Figure
 from Ts.TsPlots import plot_series
 
 from dashboard.analysis.uae.oil.alignment import within_month_window
-from dashboard.analysis.uae.oil.charts import (
+from dashboard.analysis.uae.plot_helpers import (
     CHINESE_FONT_FAMILY,
-    _add_source_note,
-    _apply_strict_month_ticks,
-    _finish_dual_axis_figure,
-    _new_ts_figure_axis,
-    _normalize_ts_axis,
+    add_source_note,
+    apply_strict_month_ticks,
+    finish_dual_axis_figure,
+    new_ts_figure_axis,
+    normalize_ts_axis,
 )
-from dashboard.analysis.uae.oil.data import (
-    OilSeriesMetadata,
-    _parse_target_sheet,
-    _workbook_buffer,
+from dashboard.analysis.uae.sheet_reader import (
+    SheetSeriesMetadata,
+    parse_target_sheet,
+    workbook_buffer,
 )
 
 
@@ -38,7 +38,7 @@ class PmiData:
     """阿联酋非油私营部门月度 PMI 序列及来源信息。"""
 
     values: pd.DataFrame
-    metadata: dict[str, OilSeriesMetadata]
+    metadata: dict[str, SheetSeriesMetadata]
     source_name: str
 
 
@@ -49,10 +49,10 @@ def load_pmi_data(
 ) -> PmiData:
     """只读取 ``月度_LSEG`` 的单一 PMI 指标并校验元数据。"""
 
-    buffer, source_name = _workbook_buffer(file_input, file_name=file_name)
+    buffer, source_name = workbook_buffer(file_input, file_name=file_name)
     excel_file = pd.ExcelFile(buffer)
     try:
-        values, metadata = _parse_target_sheet(
+        values, metadata = parse_target_sheet(
             excel_file,
             sheet_name=PMI_SHEET,
             targets=((PMI_LABEL, PMI_INDICATOR),),
@@ -92,7 +92,7 @@ def build_pmi_figure(
     if display_values.dropna(how="all").empty:
         raise ValueError(f"{title}没有可绘制的有效数据")
 
-    figure, axis = _new_ts_figure_axis()
+    figure, axis = new_ts_figure_axis()
     figure, returned_axis = plot_series(
         display_values[PMI_LABEL].rename(PMI_LABEL),
         title=None,
@@ -108,7 +108,7 @@ def build_pmi_figure(
         grid=True,
         ax=axis,
     )
-    axis = _normalize_ts_axis(returned_axis)
+    axis = normalize_ts_axis(returned_axis)
 
     axis.set_title(title, fontsize=14, pad=14)
     axis.xaxis.grid(False)
@@ -117,7 +117,7 @@ def build_pmi_figure(
         spine.set_visible(True)
         spine.set_color("#6B7280")
         spine.set_linewidth(0.9)
-    _apply_strict_month_ticks(axis, display_values.index)
+    apply_strict_month_ticks(axis, display_values.index)
     figure.legend(
         handles=axis.get_lines()[:1],
         labels=[PMI_LABEL],
@@ -127,8 +127,8 @@ def build_pmi_figure(
         prop={"family": CHINESE_FONT_FAMILY[0], "size": 10},
         ncol=1,
     )
-    _finish_dual_axis_figure(figure, top=0.90)
-    _add_source_note(figure, source_text)
+    finish_dual_axis_figure(figure, top=0.90)
+    add_source_note(figure, source_text)
     return figure
 
 

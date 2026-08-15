@@ -124,13 +124,3 @@ class UAEDataBundle:
         """指标是否为模拟序列。"""
 
         return self.require_provenance(indicator_id).is_simulated
-
-    @property
-    def simulated_ids(self) -> frozenset[str]:
-        """返回全部模拟指标ID。"""
-
-        return frozenset(
-            indicator_id
-            for indicator_id, provenance in self.provenance_by_id.items()
-            if provenance.is_simulated
-        )

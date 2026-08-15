@@ -9,19 +9,19 @@ import pandas as pd
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch
 
-from dashboard.analysis.uae.oil.charts import (
-    CHINESE_FONT_FAMILY,
-    _add_source_note,
-    _apply_strict_month_ticks,
-    _finish_dual_axis_figure,
-    _new_ts_figure_axis,
-)
 from dashboard.analysis.uae.oil.alignment import within_month_window
-from dashboard.analysis.uae.oil.data import (
-    OilSeriesMetadata,
-    _format_updated_at,
-    _optional_text,
-    _workbook_buffer,
+from dashboard.analysis.uae.plot_helpers import (
+    CHINESE_FONT_FAMILY,
+    add_source_note,
+    apply_strict_month_ticks,
+    finish_dual_axis_figure,
+    new_ts_figure_axis,
+)
+from dashboard.analysis.uae.sheet_reader import (
+    SheetSeriesMetadata,
+    format_updated_at,
+    optional_text,
+    workbook_buffer,
 )
 from dashboard.preview.core.workbook_parser import normalize_indicator_name
 
@@ -50,7 +50,7 @@ class ForeignLaborData:
     """The two monthly labour-flow series displayed in the companion chart."""
 
     values: pd.DataFrame
-    metadata: dict[str, OilSeriesMetadata]
+    metadata: dict[str, SheetSeriesMetadata]
     source_name: str
 
 
@@ -61,7 +61,7 @@ def load_foreign_labor_data(
 ) -> ForeignLaborData:
     """Read the two official labour-flow series from the foreign-labour sheet."""
 
-    buffer, source_name = _workbook_buffer(file_input, file_name=file_name)
+    buffer, source_name = workbook_buffer(file_input, file_name=file_name)
     excel_file = pd.ExcelFile(buffer)
     try:
         values, metadata = _parse_foreign_labor_sheet(excel_file)
@@ -77,7 +77,7 @@ def load_foreign_labor_data(
 
 def _parse_foreign_labor_sheet(
     excel_file: pd.ExcelFile,
-) -> tuple[pd.DataFrame, dict[str, OilSeriesMetadata]]:
+) -> tuple[pd.DataFrame, dict[str, SheetSeriesMetadata]]:
     """Parse this sheet's documented date-first metadata layout strictly."""
 
     if FOREIGN_LABOR_SHEET not in excel_file.sheet_names:
@@ -88,7 +88,7 @@ def _parse_foreign_labor_sheet(
         raise ValueError(f"sheet“{FOREIGN_LABOR_SHEET}”不符合前六行元数据协议")
     expected_labels = {1: "日期", 2: "月", 3: "日期"}
     for row_index, expected in expected_labels.items():
-        actual = _optional_text(raw.iloc[row_index, 0])
+        actual = optional_text(raw.iloc[row_index, 0])
         if actual != expected:
             raise ValueError(
                 f"sheet“{FOREIGN_LABOR_SHEET}”第{row_index + 1}行首列应为“{expected}”，"
@@ -108,9 +108,9 @@ def _parse_foreign_labor_sheet(
         compatible = [
             column_index
             for column_index in columns
-            if _optional_text(raw.iloc[2, column_index]) in {"月", "月度"}
-            and _optional_text(raw.iloc[3, column_index]) == "人"
-            and _optional_text(raw.iloc[4, column_index])
+            if optional_text(raw.iloc[2, column_index]) in {"月", "月度"}
+            and optional_text(raw.iloc[3, column_index]) == "人"
+            and optional_text(raw.iloc[4, column_index])
         ]
         if len(compatible) != 1:
             if not columns:
@@ -129,7 +129,7 @@ def _parse_foreign_labor_sheet(
         raise ValueError(f"sheet“{FOREIGN_LABOR_SHEET}”包含重复日期")
 
     series_map: dict[str, pd.Series] = {}
-    metadata: dict[str, OilSeriesMetadata] = {}
+    metadata: dict[str, SheetSeriesMetadata] = {}
     for indicator_name, column_index in matching_columns.items():
         raw_values = data_block.iloc[:, column_index]
         numeric = pd.to_numeric(raw_values, errors="coerce")
@@ -152,13 +152,13 @@ def _parse_foreign_labor_sheet(
         if series.empty:
             raise ValueError(f"指标“{indicator_name}”没有非零有效观测")
         series_map[indicator_name] = series
-        metadata[indicator_name] = OilSeriesMetadata(
+        metadata[indicator_name] = SheetSeriesMetadata(
             display_name=indicator_name,
             indicator_name=indicator_name,
-            frequency=_optional_text(raw.iloc[2, column_index]),
-            unit=_optional_text(raw.iloc[3, column_index]),
-            source=_optional_text(raw.iloc[4, column_index]),
-            updated_at=_format_updated_at(raw.iloc[5, column_index]),
+            frequency=optional_text(raw.iloc[2, column_index]),
+            unit=optional_text(raw.iloc[3, column_index]),
+            source=optional_text(raw.iloc[4, column_index]),
+            updated_at=format_updated_at(raw.iloc[5, column_index]),
             sheet_name=FOREIGN_LABOR_SHEET,
         )
 
@@ -213,7 +213,7 @@ def build_foreign_labor_figure(
 
     display_values = _recent_common_observations(values)
 
-    figure, nepal_axis = _new_ts_figure_axis()
+    figure, nepal_axis = new_ts_figure_axis()
     bangladesh_axis = nepal_axis.twinx()
     axes = (nepal_axis, bangladesh_axis)
     # Two monthly bars occupy roughly the same footprint as the oil chart's
@@ -293,7 +293,7 @@ def build_foreign_labor_figure(
     bangladesh_axis.spines["top"].set_visible(False)
     bangladesh_axis.spines["bottom"].set_visible(False)
     bangladesh_axis.spines["left"].set_visible(False)
-    _apply_strict_month_ticks(nepal_axis, display_values.index)
+    apply_strict_month_ticks(nepal_axis, display_values.index)
     # Leave enough room for the paired bars at the first and last month.
     first_month = pd.Timestamp(display_values.index.min())
     last_month = pd.Timestamp(display_values.index.max())
@@ -310,8 +310,8 @@ def build_foreign_labor_figure(
         prop={"family": CHINESE_FONT_FAMILY[0], "size": 10},
         ncol=2,
     )
-    _finish_dual_axis_figure(figure, top=0.90, right=0.88)
-    _add_source_note(figure, source_text)
+    finish_dual_axis_figure(figure, top=0.90, right=0.88)
+    add_source_note(figure, source_text)
     return figure
 
 

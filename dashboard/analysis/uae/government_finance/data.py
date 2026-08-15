@@ -7,10 +7,10 @@ from typing import Any
 
 import pandas as pd
 
-from dashboard.analysis.uae.oil.data import (
-    OilSeriesMetadata,
-    _parse_target_sheet,
-    _workbook_buffer,
+from dashboard.analysis.uae.sheet_reader import (
+    SheetSeriesMetadata,
+    parse_target_sheet,
+    workbook_buffer,
 )
 
 
@@ -35,7 +35,7 @@ class GovernmentFinanceData:
     """政府及政府控股企业存款与信贷的最小月度数据集。"""
 
     values: pd.DataFrame
-    metadata: dict[str, OilSeriesMetadata]
+    metadata: dict[str, SheetSeriesMetadata]
     source_name: str
 
 
@@ -46,10 +46,10 @@ def load_government_finance_data(
 ) -> GovernmentFinanceData:
     """只读取 ``月度_CBUAE`` 的四个目标指标并校验元数据。"""
 
-    buffer, source_name = _workbook_buffer(file_input, file_name=file_name)
+    buffer, source_name = workbook_buffer(file_input, file_name=file_name)
     excel_file = pd.ExcelFile(buffer)
     try:
-        values, metadata = _parse_target_sheet(
+        values, metadata = parse_target_sheet(
             excel_file,
             sheet_name=CBUAE_SHEET,
             targets=CBUAE_INDICATORS,

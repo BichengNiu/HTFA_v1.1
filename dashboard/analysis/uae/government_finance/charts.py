@@ -12,13 +12,13 @@ from dashboard.analysis.uae.government_finance.data import (
     calculate_calendar_yoy,
     combine_government_and_state_capital,
 )
-from dashboard.analysis.uae.oil.charts import (
+from dashboard.analysis.uae.plot_helpers import (
     CHINESE_FONT_FAMILY,
-    _add_source_note,
-    _apply_strict_month_ticks,
-    _finish_dual_axis_figure,
-    _new_ts_figure_axis,
-    _normalize_ts_axis,
+    WAR_LINE_COLOR,
+    WAR_START_DATE,
+    add_source_note,
+    finish_dual_axis_figure,
+    normalize_ts_axis,
 )
 
 
@@ -60,35 +60,37 @@ def build_government_finance_yoy_figure(
     display_mask = periods >= last_month - 36
     yoy = yoy.loc[display_mask]
 
-    figure, axis = _new_ts_figure_axis()
-    for index, (column, label, color, linestyle) in enumerate(YOY_SERIES):
-        figure, returned_axis = plot_series(
-            yoy[column].rename(label),
-            title=None,
-            xtitle="",
-            ytitle="同比（%）",
-            colors=[color],
-            linewidth=2.2,
-            markersize=0,
-            max_ticks=8,
-            freq="month",
-            show_legend=False,
-            note=None,
-            grid=index == len(YOY_SERIES) - 1,
-            ax=axis,
-        )
-        axis = _normalize_ts_axis(returned_axis)
-        axis.get_lines()[-1].set_linestyle(linestyle)
-
-    axis.set_title(title, fontsize=14, pad=14)
-    axis.xaxis.grid(False)
+    frame = pd.DataFrame({spec[1]: yoy[spec[0]] for spec in YOY_SERIES})
+    figure, returned_axis = plot_series(
+        frame,
+        facet=False,
+        title=title,
+        xtitle="",
+        ytitle="同比（%）",
+        colors=[spec[2] for spec in YOY_SERIES],
+        linewidth=2.2,
+        markersize=0,
+        max_ticks=8,
+        freq="month",
+        year_ruler=True,
+        vlines=WAR_START_DATE,
+        vline_color=WAR_LINE_COLOR,
+        vline_linestyle="--",
+        vline_linewidth=1.5,
+        show_legend=False,
+        note=None,
+        grid=True,
+        title_loc="center",
+        title_pad=14,
+    )
+    axis = normalize_ts_axis(returned_axis)
+    axis.title.set_fontweight("normal")
     axis.axhline(0, color="#6B7280", linewidth=0.8, zorder=0)
     axis.set_ylabel("同比（%）", fontsize=12)
     for spine in axis.spines.values():
         spine.set_visible(True)
         spine.set_color("#6B7280")
         spine.set_linewidth(0.9)
-    _apply_strict_month_ticks(axis, yoy.index)
     figure.legend(
         handles=axis.get_lines()[: len(YOY_SERIES)],
         labels=[spec[1] for spec in YOY_SERIES],
@@ -98,8 +100,8 @@ def build_government_finance_yoy_figure(
         prop={"family": CHINESE_FONT_FAMILY[0], "size": 10},
         ncol=len(YOY_SERIES),
     )
-    _finish_dual_axis_figure(figure, top=0.90)
-    _add_source_note(figure, source_text)
+    finish_dual_axis_figure(figure, top=0.90)
+    add_source_note(figure, source_text)
     return figure
 
 

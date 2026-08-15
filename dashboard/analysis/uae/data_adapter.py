@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -18,7 +17,6 @@ from dashboard.analysis.uae.indicator_catalog import (
 )
 from dashboard.preview.core.workbook_parser import parse_preview_workbook
 
-DEFAULT_UAE_WORKBOOK = Path("data") / "阿联酋.xlsx"
 UAE_ANALYSIS_INDICATOR_NAMES = frozenset(
     alias
     for spec in INDICATOR_SPECS

@@ -3,10 +3,8 @@ import pandas as pd
 import pytest
 
 from dashboard.analysis.uae.growth import (
-    calculate_diffusion,
     calculate_growth_contributions,
     calculate_industry_diagnostics,
-    calculate_nominal_real_bridge,
     validate_additivity,
 )
 
@@ -65,32 +63,6 @@ def test_additivity_reports_residual_instead_of_hiding_it():
     assert not result.within_tolerance.iloc[-1]
 
 
-def test_nominal_real_bridge_is_log_additive():
-    nominal = quarterly([100, 110], "nominal")
-    real = quarterly([100, 105], "real")
-
-    result = calculate_nominal_real_bridge(nominal, real, periods=1)
-
-    assert (
-        result.real_log_growth + result.deflator_log_growth
-    ).iloc[-1] == pytest.approx(result.nominal_log_growth.iloc[-1])
-
-
-def test_diffusion_excludes_missing_industries_from_denominator():
-    industries = pd.DataFrame(
-        {
-            "a": [100, 105],
-            "b": [100, 95],
-            "c": [100, float("nan")],
-        },
-        index=pd.period_range("2024Q1", periods=2, freq="Q"),
-    )
-
-    result = calculate_diffusion(industries, periods=1)
-
-    assert result.iloc[-1] == pytest.approx(0.5)
-
-
 def test_contribution_rejects_nonpositive_lagged_total():
     total = quarterly([0, 100], "total")
     component = quarterly([0, 100], "component")
@@ -147,15 +119,23 @@ def test_industry_diagnostics_calculates_unweighted_and_weighted_breadth():
         persistence_window=4,
     )
 
-    positive = result.growth_rates.gt(0).where(
-        result.growth_rates.notna()
+    growth_rates = pd.DataFrame(components).pct_change(
+        periods=1,
+        fill_method=None,
+    ).mul(100)
+    base_year_shares = pd.DataFrame(components).shift(1).div(
+        total.shift(1),
+        axis=0,
+    )
+    positive = growth_rates.gt(0).where(
+        growth_rates.notna()
     )
     complete = positive.notna().all(axis=1)
     expected_unweighted = (
         positive.astype(float).mean(axis=1).mul(100).where(complete)
     ).rename("不加权｜正增长行业比例")
     expected_weighted = (
-        result.base_year_shares.mul(positive.astype(float))
+        base_year_shares.mul(positive.astype(float))
         .sum(axis=1, min_count=len(components))
         .mul(100)
         .where(complete)
@@ -170,12 +150,12 @@ def test_industry_diagnostics_calculates_unweighted_and_weighted_breadth():
     )
 
     prior_history = (
-        result.growth_rates.shift(1)
+        growth_rates.shift(1)
         .expanding(min_periods=3)
         .mean()
     )
-    above_history = result.growth_rates.gt(prior_history).where(
-        result.growth_rates.notna() & prior_history.notna()
+    above_history = growth_rates.gt(prior_history).where(
+        growth_rates.notna() & prior_history.notna()
     )
     expected_history_breadth = (
         above_history.astype(float)
@@ -365,7 +345,9 @@ def test_industry_diagnostics_builds_all_four_persistence_states():
         0, 4
     ).all()
     expected_prior_four = (
-        result.growth_rates["high_accelerating"]
+        pd.DataFrame(components)["high_accelerating"]
+        .pct_change(periods=1, fill_method=None)
+        .mul(100)
         .shift(1)
         .rolling(4, min_periods=4)
         .mean()

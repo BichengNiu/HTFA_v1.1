@@ -2,22 +2,25 @@
 
 from __future__ import annotations
 
-from matplotlib.axes import Axes
-from matplotlib.dates import date2num
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 from matplotlib.patches import Rectangle
-import numpy as np
 import pandas as pd
-import re
 from Ts.TsPlots import plot_series
-from Ts.TsPlots.style import apply_fonts
 
 from dashboard.analysis.uae.oil.alignment import common_latest_month, through_month
 from dashboard.analysis.uae.oil.revenue import (
     PRICE_COLUMN,
     REVENUE_COLUMN,
+)
+from dashboard.analysis.uae.plot_helpers import (
+    CHINESE_FONT_FAMILY,
+    WAR_LINE_COLOR,
+    WAR_START_DATE,
+    add_source_note,
+    finish_dual_axis_figure,
+    normalize_ts_axis,
 )
 
 
@@ -32,180 +35,15 @@ BAR_COLOR = "#B8BDC6"
 BAR_EDGE_COLOR = "#6B7280"
 REVENUE_BAR_COLOR = "#B8BDC6"
 REVENUE_BAR_EDGE_COLOR = "#6B7280"
-CHINESE_FONT_FAMILY = ["Microsoft YaHei", "SimHei"]
 BOTTOM_LEGEND_Y = 0.115
-SOURCE_NOTE_Y = 0.025
-WAR_START_DATE = pd.Timestamp("2026-03-01")
-WAR_LINE_COLOR = "#C0392B"
 
 
-def _normalize_ts_axis(axis: Axes | np.ndarray) -> Axes:
-    """Return the first scalar axes from supported Ts return shapes."""
+def _restore_visible_spines(figure: Figure) -> None:
+    """Ts 的 style_axes 隐藏上/右脊线；本项目双轴图保持四边可见。"""
 
-    if isinstance(axis, Axes):
-        return axis
-    if isinstance(axis, np.ndarray):
-        for candidate in axis.flat:
-            if isinstance(candidate, Axes):
-                return candidate
-    raise TypeError("Ts plot_series did not return a Matplotlib Axes object")
-
-
-SOURCE_DISPLAY_NAMES = {
-    "OPEC": "欧佩克",
-    "Baker Hughes": "贝克休斯",
-    "CBUAE": "阿联酋央行",
-    "S&P Global / Trading Economics（公开样本）": "S&P Global",
-    "Nepal DoFE": "尼泊尔外国就业局",
-    "尼泊尔 DoFE monthly final labour approval": "尼泊尔外国就业局",
-    "Bangladesh BMET": "孟加拉国人力就业培训局",
-    "孟加拉国 BMET/OEP Country Clearance": "孟加拉国人力就业培训局",
-}
-
-
-def _source_note(source_text: str) -> str:
-    names = [
-        SOURCE_DISPLAY_NAMES.get(part.strip(), part.strip())
-        for part in re.split(r"[、；]", source_text)
-        if part.strip()
-    ]
-    return f"数据来源：{'、'.join(names)}"
-
-
-def _add_source_note(figure: Figure, source_text: str) -> None:
-    """Place the source consistently inside the lower-left figure margin."""
-
-    figure.text(
-        0.04,
-        SOURCE_NOTE_Y,
-        _source_note(source_text),
-        ha="left",
-        va="bottom",
-        fontsize=9.5,
-        color="#222222",
-        fontfamily=CHINESE_FONT_FAMILY,
-        clip_on=False,
-    )
-
-
-def _new_ts_figure_axis() -> tuple[Figure, Axes]:
-    """Create a scalar axes so Ts cannot split a multi-series chart."""
-
-    apply_fonts()
-    figure = Figure(figsize=(9.4, 6.2), dpi=120)
-    return figure, figure.add_subplot(111)
-
-
-def _apply_strict_month_ticks(
-    axis: Axes,
-    index: pd.Index,
-) -> None:
-    """绘制月份刻度和年度范围线，只包含真实数据月份。"""
-
-    periods = (
-        pd.PeriodIndex(pd.DatetimeIndex(index), freq="M")
-        .unique()
-        .sort_values()
-    )
-    if periods.empty:
-        return
-    tick_periods = periods[periods.month % 3 == 0]
-    tick_dates = tick_periods.to_timestamp(how="end").normalize()
-    axis.set_xticks(tick_dates)
-    axis.set_xticklabels(
-        [f"{period.month}月" for period in tick_periods],
-        rotation=0,
-        ha="center",
-        fontsize=9,
-    )
-    axis.tick_params(axis="x", pad=5)
-
-    year_line_y = -0.18
-    cap_height = 0.018
-    xaxis_transform = axis.get_xaxis_transform()
-    for year in periods.year.unique():
-        year_periods = periods[periods.year == year]
-        start_date = year_periods[0].to_timestamp(how="end").normalize()
-        end_date = year_periods[-1].to_timestamp(how="end").normalize()
-        middle_date = start_date + (end_date - start_date) / 2
-        axis.hlines(
-            year_line_y,
-            start_date,
-            end_date,
-            color="#555555",
-            linewidth=0.8,
-            transform=xaxis_transform,
-            clip_on=False,
-        )
-        axis.vlines(
-            [start_date, end_date],
-            year_line_y - cap_height,
-            year_line_y + cap_height,
-            color="#555555",
-            linewidth=0.8,
-            transform=xaxis_transform,
-            clip_on=False,
-        )
-        axis.text(
-            middle_date,
-            year_line_y,
-            f" {year}年 ",
-            ha="center",
-            va="center",
-            fontsize=9,
-            color="#333333",
-            fontfamily=CHINESE_FONT_FAMILY,
-            backgroundcolor="white",
-            transform=xaxis_transform,
-            clip_on=False,
-        )
-    first_date = periods[0].to_timestamp(how="start").normalize()
-    last_date = periods[-1].to_timestamp(how="end").normalize()
-    axis.set_xlim(
-        first_date - pd.Timedelta(days=10),
-        last_date + pd.Timedelta(days=10),
-    )
-    _add_war_line(axis)
-
-
-def _add_war_line(axis: Axes) -> None:
-    """2026 年 3 月美伊战争起始位置绘制红色虚线竖线。"""
-
-    if axis.get_xlim()[1] < date2num(WAR_START_DATE):
-        return
-    axis.axvline(
-        date2num(WAR_START_DATE),
-        color=WAR_LINE_COLOR,
-        linewidth=1.5,
-        linestyle="--",
-        zorder=5,
-    )
-
-
-def _finish_dual_axis_figure(
-    figure: Figure,
-    *,
-    top: float,
-    right: float = 0.895,
-) -> None:
-    """统一双轴图在 Streamlit 双栏中的尺寸和留白。"""
-
-    figure.set_size_inches(9.4, 6.2, forward=True)
-    figure.subplots_adjust(
-        left=0.105,
-        right=right,
-        bottom=0.30,
-        top=top,
-    )
     for axis in figure.axes:
-        axis.tick_params(axis="both", labelsize=10.5)
-        axis.title.set_fontfamily(CHINESE_FONT_FAMILY)
-        axis.xaxis.label.set_fontfamily(CHINESE_FONT_FAMILY)
-        axis.yaxis.label.set_fontfamily(CHINESE_FONT_FAMILY)
-        axis.xaxis.label.set_size(12)
-        axis.yaxis.label.set_size(12)
-        for label in (*axis.get_xticklabels(), *axis.get_yticklabels()):
-            label.set_fontfamily(CHINESE_FONT_FAMILY)
+        for spine in axis.spines.values():
+            spine.set_visible(True)
 
 
 def build_oil_market_figure(
@@ -229,62 +67,51 @@ def build_oil_market_figure(
     if rigs is not None:
         rigs = through_month(rigs, last_month)
 
-    figure, production_axis = _new_ts_figure_axis()
-    production_axis.bar(
-        ten_thousand_bpd.index,
-        ten_thousand_bpd,
-        width=20,
-        color=BAR_COLOR,
-        edgecolor=BAR_EDGE_COLOR,
-        linewidth=0.6,
-        alpha=0.72,
-        zorder=1,
+    frame = pd.DataFrame({MARKET_PRODUCTION_LABEL: ten_thousand_bpd})
+    axis_groups = {MARKET_PRODUCTION_LABEL: "left"}
+    colors = [BAR_COLOR]
+    if rigs is not None:
+        frame[MARKET_RIG_COUNT_LABEL] = rigs
+        axis_groups[MARKET_RIG_COUNT_LABEL] = "right"
+        colors.append(RIG_COUNT_COLOR)
+    figure, returned_axis = plot_series(
+        frame,
+        facet=False,
+        axis_groups=axis_groups,
+        title="原油产量及活动钻机数",
+        xtitle="",
+        ytitle="万桶/天",
+        colors=colors,
+        linewidth=2.2,
+        markersize=0,
+        max_ticks=8,
+        freq="month",
+        year_ruler=True,
+        bar_series=[MARKET_PRODUCTION_LABEL],
+        bar_edge_color=BAR_EDGE_COLOR,
+        bar_edge_linewidth=0.6,
+        bar_alpha=0.72,
+        vlines=WAR_START_DATE,
+        vline_color=WAR_LINE_COLOR,
+        vline_linestyle="--",
+        vline_linewidth=1.5,
+        show_legend=False,
+        note=None,
+        grid=True,
+        title_loc="center",
+        title_pad=14,
     )
-    production_axis.set_ylabel("万桶/天", fontsize=12)
-    production_axis.set_ylim(bottom=0)
-    production_axis.grid(axis="y", color="#D1D5DB", linewidth=0.7, zorder=0)
-    production_axis.set_title(
-        "原油产量及活动钻机数",
-        fontsize=14,
-        pad=14,
-    )
-    production_axis.xaxis.grid(False)
-    production_axis.tick_params(
-        axis="y",
-        left=True,
-        labelleft=True,
-        right=False,
-        labelright=False,
-    )
+    production_axis = normalize_ts_axis(returned_axis)
+    production_axis.title.set_fontweight("normal")
 
     rig_axis: Axes | None = None
     if rigs is not None:
-        rig_axis = production_axis.twinx()
-        rig_axis.plot(
-            rigs.index,
-            rigs,
-            color=RIG_COUNT_COLOR,
-            linewidth=2.2,
-            linestyle="-",
-            label=MARKET_RIG_COUNT_LABEL,
-            zorder=4,
-        )
+        rig_axis = production_axis.right_ax
+        rig_axis.get_lines()[0].set_linestyle("-")
         rig_axis.set_ylabel("活跃钻机数（台）", fontsize=12)
-        rig_axis.grid(False)
         rig_axis.patch.set_visible(False)
-        rig_axis.tick_params(
-            axis="y",
-            left=False,
-            labelleft=False,
-            right=True,
-            labelright=True,
-        )
         rig_axis.set_zorder(3)
-
-    display_index = ten_thousand_bpd.index
-    if rigs is not None:
-        display_index = display_index.union(rigs.index)
-    _apply_strict_month_ticks(production_axis, display_index)
+    _restore_visible_spines(figure)
 
     production_swatch = Rectangle(
         (0.22, BOTTOM_LEGEND_Y - 0.012),
@@ -330,8 +157,8 @@ def build_oil_market_figure(
             clip_on=False,
             zorder=21,
         )
-    _finish_dual_axis_figure(figure, top=0.91)
-    _add_source_note(figure, source_text)
+    finish_dual_axis_figure(figure, top=0.91)
+    add_source_note(figure, source_text)
     return figure
 
 
@@ -346,66 +173,51 @@ def build_oil_revenue_figure(
     )
     revenue = through_month(revenue, last_month)
     price = revenue[PRICE_COLUMN].rename(REVENUE_PRICE_LABEL)
+    frame = pd.DataFrame(
+        {REVENUE_PRICE_LABEL: price, REVENUE_LABEL: revenue[REVENUE_COLUMN]}
+    )
 
-    figure, price_axis = _new_ts_figure_axis()
     figure, returned_axis = plot_series(
-        price,
-        title=None,
+        frame,
+        facet=False,
+        axis_groups={
+            REVENUE_PRICE_LABEL: "left",
+            REVENUE_LABEL: "right",
+        },
+        title="石油价格与阿联酋石油收入",
         xtitle="",
         ytitle="美元/桶",
-        colors=[PRICE_COLOR],
+        colors=[PRICE_COLOR, REVENUE_BAR_COLOR],
         linewidth=2.2,
         markersize=0,
         max_ticks=8,
         freq="month",
+        year_ruler=True,
+        bar_series=[REVENUE_LABEL],
+        bar_edge_color=REVENUE_BAR_EDGE_COLOR,
+        bar_edge_linewidth=0.6,
+        bar_alpha=0.72,
+        vlines=WAR_START_DATE,
+        vline_color=WAR_LINE_COLOR,
+        vline_linestyle="--",
+        vline_linewidth=1.5,
         show_legend=False,
-        title_loc="center",
         note=None,
         grid=True,
-        ax=price_axis,
+        title_loc="center",
+        title_pad=14,
     )
-    price_axis = _normalize_ts_axis(returned_axis)
+    price_axis = normalize_ts_axis(returned_axis)
+    revenue_axis = price_axis.right_ax
     price_axis.get_lines()[-1].set_linestyle("--")
-    price_axis.set_title(
-        "石油价格与阿联酋石油收入",
-        fontsize=14,
-        pad=14,
-    )
-    price_axis.xaxis.grid(False)
-    price_axis.tick_params(
-        axis="y",
-        left=True,
-        labelleft=True,
-        right=False,
-        labelright=False,
-    )
+    price_axis.title.set_fontweight("normal")
 
-    revenue_axis = price_axis.twinx()
-    revenue_axis.bar(
-        revenue.index,
-        revenue[REVENUE_COLUMN],
-        width=20,
-        color=REVENUE_BAR_COLOR,
-        edgecolor=REVENUE_BAR_EDGE_COLOR,
-        linewidth=0.6,
-        alpha=0.72,
-        zorder=1,
-    )
     revenue_axis.set_ylabel("亿美元", fontsize=12)
-    revenue_axis.set_ylim(bottom=0)
-    revenue_axis.grid(False)
     revenue_axis.patch.set_visible(False)
-    revenue_axis.tick_params(
-        axis="y",
-        left=False,
-        labelleft=False,
-        right=True,
-        labelright=True,
-    )
     price_axis.set_zorder(2)
     revenue_axis.set_zorder(1)
     price_axis.patch.set_visible(False)
-    _apply_strict_month_ticks(price_axis, revenue.index)
+    _restore_visible_spines(figure)
 
     revenue_handle = Patch(
         facecolor=REVENUE_BAR_COLOR,
@@ -428,8 +240,8 @@ def build_oil_revenue_figure(
         prop={"family": CHINESE_FONT_FAMILY[0], "size": 10},
         ncol=2,
     )
-    _finish_dual_axis_figure(figure, top=0.90)
-    _add_source_note(figure, source_text)
+    finish_dual_axis_figure(figure, top=0.90)
+    add_source_note(figure, source_text)
     return figure
 
 

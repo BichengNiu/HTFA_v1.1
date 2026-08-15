@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import NamedTuple
 
 
 @dataclass(frozen=True)
@@ -13,6 +14,13 @@ class IndicatorSpec:
     aliases: tuple[str, ...]
     display_name: str
     coverage: str = "阿联酋全国"
+
+
+class IndustryName(NamedTuple):
+    """行业的工作簿指标名与展示名。"""
+
+    workbook_name: str
+    display_name: str
 
 
 BASE_INDICATOR_SPECS = (
@@ -112,58 +120,58 @@ BASE_INDICATOR_SPECS = (
 
 
 INDUSTRY_NAMES = {
-    "agriculture_forestry_fishing": (
+    "agriculture_forestry_fishing": IndustryName(
         "农业、林业和渔业",
         "农业、林业和渔业",
     ),
-    "manufacturing": ("制造业", "制造业"),
-    "utilities_waste": (
+    "manufacturing": IndustryName("制造业", "制造业"),
+    "utilities_waste": IndustryName(
         "电力、煤气、供水及废物管理",
         "电力、煤气、供水及废物管理",
     ),
-    "construction": ("建筑业", "建筑业"),
-    "wholesale_retail": (
+    "construction": IndustryName("建筑业", "建筑业"),
+    "wholesale_retail": IndustryName(
         "批发零售业、汽车及摩托车修理",
         "批发零售与机动车维修",
     ),
-    "transport_storage": ("运输和仓储", "运输和仓储"),
-    "accommodation_food": ("住宿和餐饮服务业", "住宿和餐饮"),
-    "information_communication": ("信息和通信", "信息和通信"),
-    "finance_insurance": ("金融保险业", "金融保险"),
-    "real_estate": ("房地产业", "房地产业"),
-    "professional_scientific": ("专业、科技活动", "专业和科技活动"),
-    "public_admin_defense": (
+    "transport_storage": IndustryName("运输和仓储", "运输和仓储"),
+    "accommodation_food": IndustryName("住宿和餐饮服务业", "住宿和餐饮"),
+    "information_communication": IndustryName("信息和通信", "信息和通信"),
+    "finance_insurance": IndustryName("金融保险业", "金融保险"),
+    "real_estate": IndustryName("房地产业", "房地产业"),
+    "professional_scientific": IndustryName("专业、科技活动", "专业和科技活动"),
+    "public_admin_defense": IndustryName(
         "公共行政和国防、强制性社会保障",
         "公共行政、国防与社保",
     ),
-    "education": ("教育类", "教育"),
-    "health_social_work": (
+    "education": IndustryName("教育类", "教育"),
+    "health_social_work": IndustryName(
         "人类健康和社会工作活动",
         "健康和社会工作",
     ),
-    "arts_other_services": (
+    "arts_other_services": IndustryName(
         "艺术、娱乐及其他服务活动",
         "艺术、娱乐及其他服务",
     ),
-    "household_employers": ("家庭作为雇主的活动", "家庭雇主活动"),
+    "household_employers": IndustryName("家庭作为雇主的活动", "家庭雇主活动"),
 }
 
 
 REAL_INDUSTRY_INDICATOR_SPECS = tuple(
     IndicatorSpec(
         f"industry.{industry_id}.real",
-        (f"阿联酋: GDP: 不变价: {workbook_name}",),
-        f"{display_name}实际增加值",
+        (f"阿联酋: GDP: 不变价: {name.workbook_name}",),
+        f"{name.display_name}实际增加值",
     )
-    for industry_id, (workbook_name, display_name) in INDUSTRY_NAMES.items()
+    for industry_id, name in INDUSTRY_NAMES.items()
 )
 NOMINAL_INDUSTRY_INDICATOR_SPECS = tuple(
     IndicatorSpec(
         f"industry.{industry_id}.nominal",
-        (f"阿联酋: GDP: 现价: {workbook_name}",),
-        f"{display_name}现价增加值",
+        (f"阿联酋: GDP: 现价: {name.workbook_name}",),
+        f"{name.display_name}现价增加值",
     )
-    for industry_id, (workbook_name, display_name) in INDUSTRY_NAMES.items()
+    for industry_id, name in INDUSTRY_NAMES.items()
 )
 INDUSTRY_INDICATOR_SPECS = (
     REAL_INDUSTRY_INDICATOR_SPECS

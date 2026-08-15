@@ -110,7 +110,7 @@ def test_chart_uses_the_latest_common_month_and_two_requested_lines() -> None:
 def _war_line_on(axis) -> bool:
     from matplotlib.colors import to_rgba
 
-    from dashboard.analysis.uae.oil.charts import WAR_LINE_COLOR
+    from dashboard.analysis.uae.plot_helpers import WAR_LINE_COLOR
 
     expected = to_rgba(WAR_LINE_COLOR)
     return any(

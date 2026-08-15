@@ -10,12 +10,12 @@ from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from scipy.signal import savgol_filter
 
-from dashboard.analysis.uae.oil.charts import (
+from dashboard.analysis.uae.plot_helpers import (
     CHINESE_FONT_FAMILY,
-    _add_source_note,
-    _apply_strict_month_ticks,
-    _finish_dual_axis_figure,
-    _new_ts_figure_axis,
+    add_source_note,
+    apply_strict_month_ticks,
+    finish_dual_axis_figure,
+    new_ts_figure_axis,
 )
 
 SMOOTH_WINDOW = 7
@@ -107,7 +107,7 @@ def build_search_index_figure(
     if display_values.dropna(how="all").empty:
         raise ValueError(f"{title}没有可绘制的有效数据")
 
-    figure, axis = _new_ts_figure_axis()
+    figure, axis = new_ts_figure_axis()
     for column, label, color, linestyle in SEARCH_SERIES:
         axis.plot(
             _standardize_series(_smooth_series(display_values[column])),
@@ -140,7 +140,7 @@ def build_search_index_figure(
         spine.set_color("#6B7280")
         spine.set_linewidth(0.9)
     axis.spines["left"].set_color("#000000")
-    _apply_strict_month_ticks(axis, display_values.index)
+    apply_strict_month_ticks(axis, display_values.index)
 
     handles = [
         Line2D([0], [0], color=color, linewidth=2.2, linestyle=linestyle, label=label)
@@ -155,8 +155,8 @@ def build_search_index_figure(
         prop={"family": CHINESE_FONT_FAMILY[0], "size": 10},
         ncol=len(handles),
     )
-    _finish_dual_axis_figure(figure, top=0.90)
-    _add_source_note(figure, source_text)
+    finish_dual_axis_figure(figure, top=0.90)
+    add_source_note(figure, source_text)
     return figure
 
 

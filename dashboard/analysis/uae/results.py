@@ -10,20 +10,7 @@ import pandas as pd
 from dashboard.analysis.uae.contracts import (
     DataProvenance,
     DiagnosticResult,
-    ProvenanceKind,
 )
-
-
-@dataclass(frozen=True)
-class MetricSnapshot:
-    """页面顶部的一个结果指标。"""
-
-    label: str
-    value: float
-    unit: str
-    period: str
-    provenance_kind: ProvenanceKind
-    help_text: str = ""
 
 
 @dataclass(frozen=True)
@@ -33,7 +20,6 @@ class MacroPanelResult:
     key: str
     title: str
     headline: DiagnosticResult
-    metrics: tuple[MetricSnapshot, ...]
     series_groups: Mapping[str, pd.DataFrame]
     decomposition_tables: Mapping[str, pd.DataFrame]
     provenance: Mapping[str, DataProvenance]

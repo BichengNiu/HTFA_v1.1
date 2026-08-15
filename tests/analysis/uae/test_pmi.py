@@ -1,4 +1,4 @@
-"""Tests for the steel-price and PMI panels."""
+"""Tests for the PMI and search-index panels."""
 
 from io import BytesIO
 
@@ -19,54 +19,8 @@ from dashboard.analysis.uae.government_finance.search_index import (
     build_search_index_figure,
     display_search_index_values,
 )
-from dashboard.analysis.uae.government_finance.steel import (
-    EN_BEAMS_INDICATOR,
-    REBAR_INDICATOR,
-    build_steel_figure,
-    display_steel_values,
-    interpolate_steel_values,
-    load_steel_data,
-)
 
-STEEL_SHEET = "月度_MEsteel"
 PMI_SHEET = "月度_LSEG"
-
-
-def _steel_workbook_bytes() -> bytes:
-    dates = pd.date_range("2025-01-31", periods=8, freq="ME")
-    frame = pd.DataFrame(
-        {
-            "日期": dates,
-            REBAR_INDICATOR: [600, 610, None, 630, 640, None, 660, 670],
-            EN_BEAMS_INDICATOR: [900, 910, 920, None, 940, 950, None, None],
-        }
-    )
-    metadata = pd.DataFrame(
-        [
-            ["MEsteel", None, None, None, None],
-            ["指标名称", REBAR_INDICATOR, EN_BEAMS_INDICATOR, None, None],
-            ["频率", "月", "月", None, None],
-            ["单位", "美元/吨", "美元/吨", None, None],
-            ["来源", "MEsteel（CFR/CPT UAE）", "MEsteel（CFR/CPT UAE）", None, None],
-            ["更新时间", "2026-08-13", "2026-08-13", None, None],
-        ]
-    )
-    rows = pd.concat(
-        [
-            metadata,
-            frame.rename(columns={"日期": 0}).set_axis(range(3), axis=1),
-        ],
-        ignore_index=True,
-    )
-    buffer = BytesIO()
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        rows.to_excel(
-            writer,
-            sheet_name=STEEL_SHEET,
-            header=False,
-            index=False,
-        )
-    return buffer.getvalue()
 
 
 def _pmi_workbook_bytes() -> bytes:
@@ -98,58 +52,6 @@ def _pmi_workbook_bytes() -> bytes:
             index=False,
         )
     return buffer.getvalue()
-
-
-def test_steel_loader_reads_rebar_and_en_beams() -> None:
-    data = load_steel_data(_steel_workbook_bytes(), file_name="test.xlsx")
-
-    assert data.values.columns.tolist() == ["螺纹钢", "EN及UB/UC型钢梁和槽钢"]
-    assert data.values.index.min() == pd.Timestamp("2025-01-31")
-    assert data.values.index.max() == pd.Timestamp("2025-08-31")
-    assert {item.source for item in data.metadata.values()} == {
-        "MEsteel（CFR/CPT UAE）"
-    }
-
-
-def test_steel_polynomial_interpolation_fills_internal_and_trailing_gaps() -> None:
-    data = load_steel_data(_steel_workbook_bytes(), file_name="test.xlsx")
-
-    interpolated = interpolate_steel_values(data.values)
-
-    assert not interpolated.isna().any().any()
-    rebar = interpolated["螺纹钢"]
-    assert rebar.loc["2025-03-31"] > 610
-    assert rebar.loc["2025-03-31"] < 630
-    assert rebar.loc["2025-06-30"] > 640
-    assert rebar.loc["2025-06-30"] < 660
-    assert rebar.loc["2025-08-31"] > 660
-    assert interpolated["EN及UB/UC型钢梁和槽钢"].loc["2025-04-30"] > 910
-    assert interpolated["EN及UB/UC型钢梁和槽钢"].loc["2025-04-30"] < 940
-
-
-def test_steel_display_frame_is_fully_interpolated() -> None:
-    data = load_steel_data(_steel_workbook_bytes(), file_name="test.xlsx")
-
-    display = display_steel_values(data.values)
-
-    assert not display.isna().any().any()
-    assert display.index.max() == pd.Timestamp("2025-08-31")
-
-
-def test_steel_figure_plots_two_lines_on_one_axis() -> None:
-    data = load_steel_data(_steel_workbook_bytes(), file_name="test.xlsx")
-
-    figure = build_steel_figure(
-        data.values,
-        title="阿联酋钢材进口报价",
-        source_text="MEsteel",
-    )
-
-    assert len(figure.axes) == 1
-    lines = figure.axes[0].get_lines()
-    assert [line.get_label() for line in lines] == ["螺纹钢", "EN及UB/UC型钢梁和槽钢"]
-    assert figure.axes[0].get_ylabel() == "美元/吨"
-    assert any(text.get_text() == "数据来源：MEsteel" for text in figure.texts)
 
 
 def test_pmi_loader_reads_headline_index() -> None:
