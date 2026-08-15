@@ -152,7 +152,7 @@ def _render_search_index_chart(
     st_obj: Any,
     values: pd.DataFrame,
 ) -> None:
-    title = "阿联酋工作与签证谷歌搜索热度"
+    title = "阿联酋工作谷歌搜索热度"
     display_values = display_search_index_values(values)
     st_obj.pyplot(
         place_chart_legend_at_bottom(

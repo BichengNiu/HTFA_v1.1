@@ -17,6 +17,7 @@ from dashboard.analysis.uae.plot_helpers import (
     WAR_LINE_COLOR,
     WAR_START_DATE,
     add_source_note,
+    annotate_war,
     finish_dual_axis_figure,
     normalize_ts_axis,
 )
@@ -91,6 +92,7 @@ def build_government_finance_yoy_figure(
         spine.set_visible(True)
         spine.set_color("#6B7280")
         spine.set_linewidth(0.9)
+    annotate_war(axis)
     figure.legend(
         handles=axis.get_lines()[: len(YOY_SERIES)],
         labels=[spec[1] for spec in YOY_SERIES],

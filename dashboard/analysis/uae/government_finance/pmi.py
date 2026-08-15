@@ -13,6 +13,7 @@ from dashboard.analysis.uae.oil.alignment import within_month_window
 from dashboard.analysis.uae.plot_helpers import (
     CHINESE_FONT_FAMILY,
     add_source_note,
+    annotate_war,
     apply_strict_month_ticks,
     finish_dual_axis_figure,
     new_ts_figure_axis,
@@ -111,13 +112,13 @@ def build_pmi_figure(
     axis = normalize_ts_axis(returned_axis)
 
     axis.set_title(title, fontsize=14, pad=14)
-    axis.xaxis.grid(False)
     axis.set_ylabel("点", fontsize=12)
     for spine in axis.spines.values():
         spine.set_visible(True)
         spine.set_color("#6B7280")
         spine.set_linewidth(0.9)
     apply_strict_month_ticks(axis, display_values.index)
+    annotate_war(axis)
     figure.legend(
         handles=axis.get_lines()[:1],
         labels=[PMI_LABEL],

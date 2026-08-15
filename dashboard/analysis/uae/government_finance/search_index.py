@@ -8,11 +8,13 @@ import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
+from Ts.TsPlots.style import style_axes
 from scipy.signal import savgol_filter
 
 from dashboard.analysis.uae.plot_helpers import (
     CHINESE_FONT_FAMILY,
     add_source_note,
+    annotate_war,
     apply_strict_month_ticks,
     finish_dual_axis_figure,
     new_ts_figure_axis,
@@ -26,16 +28,13 @@ SEARCH_CSV_RELATIVE = "data/employment/工作搜索热度.csv"
 TIME_COLUMN = "Time"
 WORK_DUBAI_COLUMN = "work in dubai"
 WORK_UAE_COLUMN = "work in uae"
-VISA_UAE_COLUMN = "visa uae"
 
 WORK_DUBAI_LABEL = "搜索“在迪拜工作”"
 WORK_UAE_LABEL = "搜索“在阿联酋工作”"
-VISA_UAE_LABEL = "搜索“阿联酋签证”"
 
 SEARCH_SERIES = (
     (WORK_DUBAI_COLUMN, WORK_DUBAI_LABEL, "#000000", "-"),
     (WORK_UAE_COLUMN, WORK_UAE_LABEL, "#1F4E79", "--"),
-    (VISA_UAE_COLUMN, VISA_UAE_LABEL, "#6B7280", "-."),
 )
 
 START_YEAR = 2023
@@ -58,7 +57,7 @@ def load_search_index_data() -> pd.DataFrame:
     frame = pd.read_csv(path)
     frame[TIME_COLUMN] = pd.to_datetime(frame[TIME_COLUMN])
     values = frame.set_index(TIME_COLUMN)[
-        [WORK_DUBAI_COLUMN, WORK_UAE_COLUMN, VISA_UAE_COLUMN]
+        [WORK_DUBAI_COLUMN, WORK_UAE_COLUMN]
     ].sort_index()
     values.index = pd.DatetimeIndex(values.index).normalize()
     return values
@@ -101,7 +100,7 @@ def build_search_index_figure(
     title: str,
     source_text: str,
 ) -> Figure:
-    """三个关键词搜索热度经 Z-score 标准化后在同一坐标轴展示。"""
+    """两个工作搜索关键词经 Z-score 标准化后在同一坐标轴展示。"""
 
     display_values = display_search_index_values(values)
     if display_values.dropna(how="all").empty:
@@ -119,7 +118,7 @@ def build_search_index_figure(
         )
     axis.axhline(0, color="#9CA3AF", linewidth=0.8, linestyle=":", zorder=1)
     axis.set_ylabel("标准化搜索指数", fontsize=12)
-    axis.grid(axis="y", color="#D1D5DB", linewidth=0.7, zorder=0)
+    style_axes(axis, grid=True)
     axis.tick_params(
         axis="y",
         left=True,
@@ -133,7 +132,6 @@ def build_search_index_figure(
         pad=14,
         fontfamily=CHINESE_FONT_FAMILY,
     )
-    axis.xaxis.grid(False)
     for spine_name in ("top", "bottom", "left", "right"):
         spine = axis.spines[spine_name]
         spine.set_visible(True)
@@ -141,6 +139,7 @@ def build_search_index_figure(
         spine.set_linewidth(0.9)
     axis.spines["left"].set_color("#000000")
     apply_strict_month_ticks(axis, display_values.index)
+    annotate_war(axis)
 
     handles = [
         Line2D([0], [0], color=color, linewidth=2.2, linestyle=linestyle, label=label)
@@ -168,8 +167,6 @@ __all__ = [
     "SOURCE_TEXT",
     "START_YEAR",
     "TIME_COLUMN",
-    "VISA_UAE_COLUMN",
-    "VISA_UAE_LABEL",
     "WORK_DUBAI_COLUMN",
     "WORK_DUBAI_LABEL",
     "WORK_UAE_COLUMN",

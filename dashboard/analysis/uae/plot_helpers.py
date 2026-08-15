@@ -12,6 +12,7 @@ import pandas as pd
 from matplotlib.axes import Axes
 from matplotlib.dates import date2num
 from matplotlib.figure import Figure
+from matplotlib.transforms import blended_transform_factory
 import numpy as np
 from Ts.TsPlots.style import apply_fonts
 
@@ -91,6 +92,27 @@ def _add_war_line(axis: Axes) -> None:
         linewidth=1.5,
         linestyle="--",
         zorder=5,
+    )
+
+
+def annotate_war(axis: Axes) -> None:
+    """在战争时期的水平中间、图形上边框之上标注“<- 战争 ->”红色文字。"""
+
+    x_max = axis.get_xlim()[1]
+    if x_max < date2num(WAR_START_DATE):
+        return
+    axis.text(
+        (date2num(WAR_START_DATE) + x_max) / 2,
+        1.02,
+        "<- 战争 ->",
+        transform=blended_transform_factory(axis.transData, axis.transAxes),
+        ha="center",
+        va="bottom",
+        color=WAR_LINE_COLOR,
+        fontsize=9,
+        fontfamily=CHINESE_FONT_FAMILY,
+        clip_on=False,
+        zorder=10,
     )
 
 
@@ -190,6 +212,8 @@ def finish_dual_axis_figure(
         axis.yaxis.label.set_size(12)
         for label in (*axis.get_xticklabels(), *axis.get_yticklabels()):
             label.set_fontfamily(CHINESE_FONT_FAMILY)
+        for text in axis.texts:
+            text.set_fontfamily(CHINESE_FONT_FAMILY)
 
 
 __all__ = [
@@ -199,6 +223,7 @@ __all__ = [
     "WAR_LINE_COLOR",
     "WAR_START_DATE",
     "add_source_note",
+    "annotate_war",
     "apply_strict_month_ticks",
     "finish_dual_axis_figure",
     "new_ts_figure_axis",

@@ -321,6 +321,10 @@ def test_oil_market_figure_marks_war_start_with_red_dashed_line() -> None:
     assert war_lines
     assert all(line.get_linestyle() == "--" for line in war_lines)
     assert figure.subplotpars.bottom >= 0.30
+    assert any(
+        text.get_text() == "<- 战争 ->"
+        for text in production_axis.texts
+    )
 
 
 def test_oil_market_figure_skips_war_line_before_march_2026() -> None:
@@ -342,6 +346,10 @@ def test_oil_market_figure_skips_war_line_before_march_2026() -> None:
         for line in production_axis.get_lines()
         if tuple(to_rgba(line.get_color())) == expected
     ]
+    assert not any(
+        text.get_text() == "<- 战争 ->"
+        for text in production_axis.texts
+    )
 
 
 def test_oil_figures_accept_ts_ndarray_axes(monkeypatch) -> None:

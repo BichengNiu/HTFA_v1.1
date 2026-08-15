@@ -8,11 +8,13 @@ from typing import Any
 import pandas as pd
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch
+from Ts.TsPlots.style import style_axes
 
 from dashboard.analysis.uae.oil.alignment import within_month_window
 from dashboard.analysis.uae.plot_helpers import (
     CHINESE_FONT_FAMILY,
     add_source_note,
+    annotate_war,
     apply_strict_month_ticks,
     finish_dual_axis_figure,
     new_ts_figure_axis,
@@ -275,11 +277,9 @@ def build_foreign_labor_figure(
         pad=14,
         fontfamily=CHINESE_FONT_FAMILY,
     )
-    nepal_axis.xaxis.grid(False)
-    nepal_axis.grid(False)
-    # Draw the y-grid on the back (lower-zorder) axis so horizontal lines
-    # stay behind both bar sets instead of crossing over the twin bars.
-    bangladesh_axis.grid(axis="y", color="#D1D5DB", linewidth=0.7, zorder=0)
+    # 主轴使用 Ts 统一网格样式；右轴不画网格，避免穿过双柱。
+    style_axes(nepal_axis, grid=True)
+    bangladesh_axis.grid(False)
     for spine_name in ("top", "bottom", "left"):
         spine = nepal_axis.spines[spine_name]
         spine.set_visible(True)
@@ -294,6 +294,7 @@ def build_foreign_labor_figure(
     bangladesh_axis.spines["bottom"].set_visible(False)
     bangladesh_axis.spines["left"].set_visible(False)
     apply_strict_month_ticks(nepal_axis, display_values.index)
+    annotate_war(nepal_axis)
     # Leave enough room for the paired bars at the first and last month.
     first_month = pd.Timestamp(display_values.index.min())
     last_month = pd.Timestamp(display_values.index.max())

@@ -19,6 +19,7 @@ from dashboard.analysis.uae.plot_helpers import (
     WAR_LINE_COLOR,
     WAR_START_DATE,
     add_source_note,
+    annotate_war,
     finish_dual_axis_figure,
     normalize_ts_axis,
 )
@@ -111,6 +112,7 @@ def build_oil_market_figure(
         rig_axis.set_ylabel("活跃钻机数（台）", fontsize=12)
         rig_axis.patch.set_visible(False)
         rig_axis.set_zorder(3)
+    annotate_war(production_axis)
     _restore_visible_spines(figure)
 
     production_swatch = Rectangle(
@@ -217,6 +219,7 @@ def build_oil_revenue_figure(
     price_axis.set_zorder(2)
     revenue_axis.set_zorder(1)
     price_axis.patch.set_visible(False)
+    annotate_war(price_axis)
     _restore_visible_spines(figure)
 
     revenue_handle = Patch(

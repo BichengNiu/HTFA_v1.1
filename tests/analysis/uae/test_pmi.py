@@ -13,7 +13,6 @@ from dashboard.analysis.uae.government_finance.pmi import (
 )
 from dashboard.analysis.uae.government_finance.search_index import (
     START_YEAR,
-    VISA_UAE_COLUMN,
     WORK_DUBAI_COLUMN,
     WORK_UAE_COLUMN,
     build_search_index_figure,
@@ -93,7 +92,6 @@ def _search_index_frame() -> pd.DataFrame:
         {
             WORK_DUBAI_COLUMN: range(20),
             WORK_UAE_COLUMN: [5 + index * 0.5 for index in range(20)],
-            VISA_UAE_COLUMN: range(50, 70),
         },
         index=pd.DatetimeIndex(dates),
     )
@@ -113,7 +111,7 @@ def test_search_index_figure_standardizes_series_on_one_axis() -> None:
 
     figure = build_search_index_figure(
         values,
-        title="阿联酋工作与签证谷歌搜索热度",
+        title="阿联酋工作谷歌搜索热度",
         source_text="Google 趋势",
     )
 
@@ -127,7 +125,6 @@ def test_search_index_figure_standardizes_series_on_one_axis() -> None:
     assert [line.get_label() for line in lines] == [
         "搜索“在迪拜工作”",
         "搜索“在阿联酋工作”",
-        "搜索“阿联酋签证”",
     ]
     for line in lines:
         ydata = pd.Series(line.get_ydata(), dtype=float).dropna()
