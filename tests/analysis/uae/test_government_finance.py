@@ -154,7 +154,7 @@ def test_yoy_chart_combines_two_state_capital_series_without_absolute_bars() -> 
     assert {text.get_text() for text in figure.legends[0].get_texts()} == {
         spec[1] for spec in YOY_SERIES
     }
-    assert any(text.get_text() == "数据来源：CBUAE" for text in figure.texts)
+    assert any(text.get_text() == "数据来源：阿联酋央行" for text in figure.texts)
 
 
 def test_yoy_chart_calculates_yoy_before_applying_three_year_window() -> None:

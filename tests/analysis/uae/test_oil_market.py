@@ -293,9 +293,54 @@ def test_oil_market_figure_combines_production_and_rigs() -> None:
         "2025年"
     }
     assert any(
-        text.get_text() == "数据来源：OPEC、Baker Hughes"
+        text.get_text() == "数据来源：欧佩克、贝克休斯"
         for text in figure.texts
     )
+
+
+def test_oil_market_figure_marks_war_start_with_red_dashed_line() -> None:
+    dates = pd.date_range("2025-12-31", periods=6, freq="ME")
+    production = pd.Series(
+        [3_000_000] * 6,
+        index=dates,
+        name="阿联酋原油产量",
+    )
+
+    figure = build_oil_market_figure(production, "OPEC")
+
+    from matplotlib.colors import to_rgba
+
+    expected = to_rgba(oil_charts.WAR_LINE_COLOR)
+    production_axis = figure.axes[0]
+    war_lines = [
+        line
+        for line in production_axis.get_lines()
+        if tuple(to_rgba(line.get_color())) == expected
+    ]
+    assert war_lines
+    assert all(line.get_linestyle() == "--" for line in war_lines)
+    assert figure.subplotpars.bottom >= 0.30
+
+
+def test_oil_market_figure_skips_war_line_before_march_2026() -> None:
+    dates = pd.date_range("2025-01-31", periods=12, freq="ME")
+    production = pd.Series(
+        [3_000_000] * 12,
+        index=dates,
+        name="阿联酋原油产量",
+    )
+
+    figure = build_oil_market_figure(production, "OPEC")
+
+    from matplotlib.colors import to_rgba
+
+    expected = to_rgba(oil_charts.WAR_LINE_COLOR)
+    production_axis = figure.axes[0]
+    assert not [
+        line
+        for line in production_axis.get_lines()
+        if tuple(to_rgba(line.get_color())) == expected
+    ]
 
 
 def test_oil_figures_accept_ts_ndarray_axes(monkeypatch) -> None:
@@ -401,6 +446,6 @@ def test_monthly_revenue_calculates_yoy_and_chart_axes() -> None:
         "2025年",
     }
     assert any(
-        text.get_text() == "数据来源：金联创、OPEC"
+        text.get_text() == "数据来源：金联创、欧佩克"
         for text in figure.texts
     )

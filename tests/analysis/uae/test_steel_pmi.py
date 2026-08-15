@@ -190,7 +190,7 @@ def _search_index_frame() -> pd.DataFrame:
     return pd.DataFrame(
         {
             WORK_DUBAI_COLUMN: range(20),
-            WORK_UAE_COLUMN: [5] * 20,
+            WORK_UAE_COLUMN: [5 + index * 0.5 for index in range(20)],
             VISA_UAE_COLUMN: range(50, 70),
         },
         index=pd.DatetimeIndex(dates),
@@ -206,7 +206,7 @@ def test_search_index_display_filters_to_start_year() -> None:
     assert display.index.max() == values.index.max()
 
 
-def test_search_index_figure_uses_two_axes_with_specified_series() -> None:
+def test_search_index_figure_standardizes_series_on_one_axis() -> None:
     values = _search_index_frame()
 
     figure = build_search_index_figure(
@@ -215,13 +215,21 @@ def test_search_index_figure_uses_two_axes_with_specified_series() -> None:
         source_text="Google 趋势",
     )
 
-    assert len(figure.axes) == 2
-    left_axis, right_axis = figure.axes
-    assert [line.get_label() for line in left_axis.get_lines()] == [
-        "搜索“在迪拜工作”（左轴）",
-        "搜索“在阿联酋工作”（左轴）",
+    assert len(figure.axes) == 1
+    axis = figure.axes[0]
+    lines = [
+        line
+        for line in axis.get_lines()
+        if not line.get_label().startswith("_")
     ]
-    assert [line.get_label() for line in right_axis.get_lines()] == [
-        "搜索“阿联酋签证”（右轴）"
+    assert [line.get_label() for line in lines] == [
+        "搜索“在迪拜工作”",
+        "搜索“在阿联酋工作”",
+        "搜索“阿联酋签证”",
     ]
+    for line in lines:
+        ydata = pd.Series(line.get_ydata(), dtype=float).dropna()
+        assert ydata.mean() == pytest.approx(0.0, abs=1e-9)
+        assert ydata.std() == pytest.approx(1.0)
+    assert axis.get_ylabel() == "标准化搜索指数"
     assert any(text.get_text() == "数据来源：Google 趋势" for text in figure.texts)

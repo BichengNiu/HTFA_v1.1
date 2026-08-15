@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from matplotlib.axes import Axes
+from matplotlib.dates import date2num
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 from matplotlib.patches import Rectangle
 import numpy as np
 import pandas as pd
+import re
 from Ts.TsPlots import plot_series
 from Ts.TsPlots.style import apply_fonts
 
@@ -33,6 +35,8 @@ REVENUE_BAR_EDGE_COLOR = "#6B7280"
 CHINESE_FONT_FAMILY = ["Microsoft YaHei", "SimHei"]
 BOTTOM_LEGEND_Y = 0.115
 SOURCE_NOTE_Y = 0.025
+WAR_START_DATE = pd.Timestamp("2026-03-01")
+WAR_LINE_COLOR = "#C0392B"
 
 
 def _normalize_ts_axis(axis: Axes | np.ndarray) -> Axes:
@@ -47,8 +51,25 @@ def _normalize_ts_axis(axis: Axes | np.ndarray) -> Axes:
     raise TypeError("Ts plot_series did not return a Matplotlib Axes object")
 
 
+SOURCE_DISPLAY_NAMES = {
+    "OPEC": "欧佩克",
+    "Baker Hughes": "贝克休斯",
+    "CBUAE": "阿联酋央行",
+    "S&P Global / Trading Economics（公开样本）": "S&P Global",
+    "Nepal DoFE": "尼泊尔外国就业局",
+    "尼泊尔 DoFE monthly final labour approval": "尼泊尔外国就业局",
+    "Bangladesh BMET": "孟加拉国人力就业培训局",
+    "孟加拉国 BMET/OEP Country Clearance": "孟加拉国人力就业培训局",
+}
+
+
 def _source_note(source_text: str) -> str:
-    return f"数据来源：{source_text}"
+    names = [
+        SOURCE_DISPLAY_NAMES.get(part.strip(), part.strip())
+        for part in re.split(r"[、；]", source_text)
+        if part.strip()
+    ]
+    return f"数据来源：{'、'.join(names)}"
 
 
 def _add_source_note(figure: Figure, source_text: str) -> None:
@@ -144,6 +165,21 @@ def _apply_strict_month_ticks(
         first_date - pd.Timedelta(days=10),
         last_date + pd.Timedelta(days=10),
     )
+    _add_war_line(axis)
+
+
+def _add_war_line(axis: Axes) -> None:
+    """2026 年 3 月美伊战争起始位置绘制红色虚线竖线。"""
+
+    if axis.get_xlim()[1] < date2num(WAR_START_DATE):
+        return
+    axis.axvline(
+        date2num(WAR_START_DATE),
+        color=WAR_LINE_COLOR,
+        linewidth=1.5,
+        linestyle="--",
+        zorder=5,
+    )
 
 
 def _finish_dual_axis_figure(
@@ -166,6 +202,8 @@ def _finish_dual_axis_figure(
         axis.title.set_fontfamily(CHINESE_FONT_FAMILY)
         axis.xaxis.label.set_fontfamily(CHINESE_FONT_FAMILY)
         axis.yaxis.label.set_fontfamily(CHINESE_FONT_FAMILY)
+        axis.xaxis.label.set_size(12)
+        axis.yaxis.label.set_size(12)
         for label in (*axis.get_xticklabels(), *axis.get_yticklabels()):
             label.set_fontfamily(CHINESE_FONT_FAMILY)
 

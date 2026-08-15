@@ -33,7 +33,9 @@ def _workbook_bytes() -> bytes:
             ["日期", NEPAL_APPROVALS, BANGLADESH_CLEARANCES],
             ["月", "月", "月"],
             ["日期", "人", "人"],
-            ["各国官方劳工输出登记/部署/审批数据", "Nepal DoFE", "Bangladesh BMET"],
+            ["各国官方劳工输出登记/部署/审批数据",
+             "尼泊尔 DoFE monthly final labour approval",
+             "孟加拉国 BMET/OEP Country Clearance"],
             ["更新时间", "2026-08-14", "2026-08-14"],
         ]
     )
@@ -65,8 +67,8 @@ def test_loader_reads_the_two_requested_monthly_labour_series() -> None:
     assert data.values.index.max() == pd.Timestamp("2026-07-31")
     assert data.values.loc["2026-07-31", BANGLADESH_CLEARANCES] != 0
     assert set(item.source for item in data.metadata.values()) == {
-        "Nepal DoFE",
-        "Bangladesh BMET",
+        "尼泊尔 DoFE monthly final labour approval",
+        "孟加拉国 BMET/OEP Country Clearance",
     }
 
 
@@ -77,7 +79,8 @@ def test_chart_uses_the_latest_common_month_and_two_requested_lines() -> None:
     figure = build_foreign_labor_figure(
         data.values,
         title="尼泊尔批准（含再入境）与孟加拉出境许可",
-        source_text="Nepal DoFE；Bangladesh BMET",
+        source_text="尼泊尔 DoFE monthly final labour approval；"
+        "孟加拉国 BMET/OEP Country Clearance",
     )
 
     nepal_axis, bangladesh_axis = figure.axes
@@ -97,6 +100,24 @@ def test_chart_uses_the_latest_common_month_and_two_requested_lines() -> None:
     assert nepal_axis.spines["bottom"].get_visible()
     assert nepal_axis.spines["left"].get_visible()
     assert bangladesh_axis.spines["right"].get_visible()
+    assert any(
+        text.get_text() == "数据来源：尼泊尔外国就业局、孟加拉国人力就业培训局"
+        for text in figure.texts
+    )
+    assert _war_line_on(nepal_axis)
+
+
+def _war_line_on(axis) -> bool:
+    from matplotlib.colors import to_rgba
+
+    from dashboard.analysis.uae.oil.charts import WAR_LINE_COLOR
+
+    expected = to_rgba(WAR_LINE_COLOR)
+    return any(
+        tuple(to_rgba(line.get_color())) == expected
+        and line.get_linestyle() == "--"
+        for line in axis.get_lines()
+    )
 
 
 def test_chart_limits_dense_monthly_bars_to_the_latest_three_years() -> None:
