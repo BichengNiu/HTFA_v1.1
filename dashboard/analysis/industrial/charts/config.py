@@ -28,6 +28,7 @@ PROFIT_CONTRIBUTION_CONFIG = ChartConfig(
     plot_bgcolor='white',
     paper_bgcolor='white',
     show_legend=True,
+    barmode='relative',
     legend_config={
         'orientation': 'h',
         'yanchor': 'top',
@@ -65,7 +66,8 @@ ENTERPRISE_INDICATORS_CONFIG = ChartConfig(
     hovermode='x unified',
     plot_bgcolor='white',
     paper_bgcolor='white',
-    show_legend=True
+    show_legend=True,
+    barmode='relative'
 )
 
 # 企业经营指标定义
@@ -85,15 +87,3 @@ EFFICIENCY_INDICATORS = [
     {'name': '产成品周转天数', 'title': '产成品周转天数:累计同比', 'color': COLOR_PALETTE['purple'], 'suffix': '%', 'yaxis_title': '%'},
     {'name': '应收账款平均回收期', 'title': '应收账款平均回收期:累计同比', 'color': COLOR_PALETTE['brown'], 'suffix': '%', 'yaxis_title': '%'}
 ]
-
-# 子图间距配置
-SUBPLOT_SPACING = {
-    '2x2': {'vertical_spacing': 0.12, 'horizontal_spacing': 0.1},
-    '3x2': {'vertical_spacing': 0.12, 'horizontal_spacing': 0.1}
-}
-
-# 子图边距配置
-SUBPLOT_MARGINS = {
-    '2x2': {'top': 80, 'bottom': 60, 'left': 60, 'right': 60},
-    '3x2': {'top': 80, 'bottom': 60, 'left': 60, 'right': 60}
-}

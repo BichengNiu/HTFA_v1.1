@@ -34,10 +34,3 @@ def set_current_sub_module(sub_module_name: str | None) -> None:
     """更新当前子模块。"""
 
     st.session_state[SUB_MODULE_KEY] = sub_module_name
-
-
-def reset_navigation() -> None:
-    """清空当前导航选择。"""
-
-    st.session_state[MAIN_MODULE_KEY] = None
-    st.session_state[SUB_MODULE_KEY] = None

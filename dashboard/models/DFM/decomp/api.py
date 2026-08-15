@@ -15,7 +15,6 @@ from datetime import datetime
 import traceback
 
 from .core.model_loader import ModelLoader, SavedNowcastData
-from .core.nowcast_extractor import NowcastExtractor
 from .core.impact_analyzer import ImpactAnalyzer, DataRelease
 from .core.news_impact_calculator import NewsImpactCalculator, NewsContribution
 from .core.prior_predictor import ObservationPriorPredictor
@@ -149,8 +148,7 @@ def execute_news_analysis(
 
         # 阶段2: 初始化分析器
         logger.info("阶段2: 初始化分析器")
-        nowcast_extractor = NowcastExtractor(saved_nowcast_data)
-        impact_analyzer = ImpactAnalyzer(nowcast_extractor)
+        impact_analyzer = ImpactAnalyzer(saved_nowcast_data)
         news_calculator = NewsImpactCalculator(impact_analyzer)
 
         # 阶段2.5: 创建先验预测器

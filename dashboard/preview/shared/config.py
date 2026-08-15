@@ -80,8 +80,6 @@ FREQUENCY_CONFIGS = {
     ),
 }
 
-FREQUENCY_ORDER = ["日度", "周度", "旬度", "月度", "季度", "年度"]
-
 COLORS = {
     "current_year": "red",
     "previous_year": "blue",

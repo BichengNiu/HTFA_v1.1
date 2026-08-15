@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
@@ -73,6 +75,22 @@ def workbook_buffer(
         raise TypeError("数据源必须是 Excel 路径或二进制文件")
     name = file_name or getattr(file_input, "name", "阿联酋.xlsx")
     return BytesIO(content), Path(str(name)).name
+
+
+@contextmanager
+def open_uae_workbook(
+    file_input: Any,
+    *,
+    file_name: str | None = None,
+) -> Iterator[tuple[pd.ExcelFile, str]]:
+    """打开 UAE 工作簿，并在退出时关闭 ExcelFile。"""
+
+    buffer, source_name = workbook_buffer(file_input, file_name=file_name)
+    excel_file = pd.ExcelFile(buffer)
+    try:
+        yield excel_file, source_name
+    finally:
+        excel_file.close()
 
 
 def validate_sheet(raw: pd.DataFrame, sheet_name: str) -> None:

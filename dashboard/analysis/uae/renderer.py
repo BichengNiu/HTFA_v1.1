@@ -115,12 +115,6 @@ SERIES_GROUP_EXPLANATIONS = {
 }
 
 
-def _select_data_source() -> Any:
-    """仅返回当前会话已经上传的共享工作簿。"""
-
-    return get_shared_dataset_file()
-
-
 def _render_series_group_explanation(st_obj, group_title: str) -> None:
     """在配置的行业图下渲染简明的指标口径说明。"""
 
@@ -265,7 +259,7 @@ def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
     """渲染阿联酋监测；不写入或生成任何工作簿。"""
 
     st_obj.title("阿联酋经济监测")
-    file_input = _select_data_source()
+    file_input = get_shared_dataset_file()
     if file_input is None:
         message = (
             "请先在侧边栏“共享数据集”上传阿联酋工作簿。"

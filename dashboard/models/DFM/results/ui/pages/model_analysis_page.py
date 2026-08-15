@@ -727,7 +727,7 @@ def _render_factor_loadings(st, accessor: DFMMetadataAccessor) -> bool:
         xaxis=dict(side='top', tickangle=-45)
     )
 
-    heatmap_col1, heatmap_col2, heatmap_col3 = st.columns([1, 8, 1])
+    _, heatmap_col2, _ = st.columns([1, 8, 1])
     with heatmap_col2:
         st.plotly_chart(
             place_chart_legend_at_bottom(fig_heatmap),
@@ -800,7 +800,7 @@ def _render_factor_timeseries(st, accessor: DFMMetadataAccessor) -> None:
                             line=dict(width=2),
                             marker=dict(size=4),
                             hovertemplate=(
-                                f"日期: %{{x|%Y/%m/%d}}<br>" +
+                                "日期: %{x|%Y/%m/%d}<br>" +
                                 f"{factor_name_cn}: %{{y:.4f}}<extra></extra>"
                             )
                         ))

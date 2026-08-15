@@ -274,21 +274,13 @@ def test_oil_market_figure_combines_production_and_rigs() -> None:
     assert production_axis.get_xticklabels()[-1].get_text() == "12月"
     legend_labels = {
         text.get_text()
-        for text in figure.texts
-        if text.get_text() in {
-            "阿联酋原油产量（左轴）",
-            "阿联酋石油活跃钻机数（右轴）",
-        }
+        for text in figure.legends[0].get_texts()
     }
     assert legend_labels == {
         "阿联酋原油产量（左轴）",
         "阿联酋石油活跃钻机数（右轴）",
     }
-    assert all(
-        text.get_position()[1] < 0.2
-        for text in figure.texts
-        if text.get_text() in legend_labels
-    )
+    assert figure.legends[0].get_bbox_to_anchor()._bbox.y0 < 0.2
     assert figure.subplotpars.bottom >= 0.30
     assert {text.get_text().strip() for text in production_axis.texts} >= {
         "2025年"

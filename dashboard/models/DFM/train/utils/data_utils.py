@@ -6,7 +6,7 @@
 """
 
 import pandas as pd
-from typing import Tuple, List, Optional, Callable
+from typing import Tuple, List
 from dashboard.models.DFM.utils.text_utils import match_columns_case_insensitive
 from dashboard.models.DFM.train.utils.logger import get_logger
 
@@ -16,7 +16,6 @@ logger = get_logger(__name__)
 def load_and_validate_data(
     data: pd.DataFrame,
     selected_indicators: List[str],
-    progress_callback: Optional[Callable] = None
 ) -> Tuple[pd.DataFrame, List[str]]:
     """
     加载和验证训练数据（经典DFM版本，无目标变量）
@@ -27,7 +26,6 @@ def load_and_validate_data(
     Args:
         data: 训练数据
         selected_indicators: 选中的指标列表（空列表表示使用所有变量）
-        progress_callback: 进度回调函数 (message: str) -> None
 
     Returns:
         (data, variable_names):
@@ -66,7 +64,7 @@ def load_and_validate_data(
 
     # 数据质量检查和清理 - 已禁用自动过滤
     # 注意: 不再自动移除有效数据点少的变量，保留用户选择的所有变量
-    logger.info(f"跳过数据质量自动过滤，保留所有用户选择的变量")
+    logger.info("跳过数据质量自动过滤，保留所有用户选择的变量")
 
     # 验证是否还有足够的变量
     if len(variable_names) < 1:

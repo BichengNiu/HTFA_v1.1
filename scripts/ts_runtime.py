@@ -139,7 +139,7 @@ def fetch_head_commit(
     return commit
 
 
-def _sha256_file(path: Path) -> str:
+def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as source:
         for chunk in iter(lambda: source.read(64 * 1024), b""):
@@ -200,7 +200,7 @@ def materialize_github_runtime(
             timeout=timeout,
             max_bytes=max_bytes,
         )
-        archive_sha256 = _sha256_file(archive_path)
+        archive_sha256 = sha256_file(archive_path)
         extract_runtime_archive(archive_path, destination)
         return archive_sha256
     finally:
@@ -454,5 +454,6 @@ __all__ = [
     "load_pinned_metadata",
     "materialize_github_runtime",
     "prepare_ts_runtime",
+    "sha256_file",
     "temporary_work_directory",
 ]

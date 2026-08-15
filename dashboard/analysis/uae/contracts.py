@@ -23,9 +23,6 @@ class EvidenceClass(str, Enum):
     """诊断证据类型。"""
 
     ACCOUNTING = "核算事实"
-    MECHANISM = "机制证据"
-    LEADING = "领先信号"
-    MODEL = "模型估计"
 
 
 class ConfidenceLevel(str, Enum):

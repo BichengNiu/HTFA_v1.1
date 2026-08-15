@@ -583,13 +583,9 @@ def _clean_for_inference(series: pd.Series) -> pd.Series:
     return values
 
 
-def _maximum_test_lags(nobs: int) -> int:
-    return min(8, max(1, nobs // 5))
-
-
 def _build_test(test_key: str, values: pd.Series, trend: str):
     """将统一界面参数映射到各个 ``TsTests`` 构造器。"""
-    max_lags = _maximum_test_lags(len(values))
+    max_lags = min(8, max(1, len(values) // 5))
     if test_key == "adf":
         if len(values) < 20:
             return ADFTest(values, trend=trend, lags=0)

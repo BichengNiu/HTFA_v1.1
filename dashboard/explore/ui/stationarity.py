@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import logging
 
-import matplotlib.pyplot as plt
 import pandas as pd
 
-from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
+from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
 from dashboard.explore.analysis.stationarity import (
     TABLE_FREQUENCIES,
     TEST_LABELS,
@@ -113,39 +112,13 @@ class StationarityAnalysisComponent(TimeSeriesAnalysisComponent):
             for suffix in self._DEPENDENT_WIDGET_SUFFIXES
         )
 
-    def render_analysis_interface(
-        self,
-        st_obj,
-        data: pd.DataFrame,
-        data_name: str,
-    ):
-        """兼容基类入口：将外部 DataFrame 视为单表数据。"""
-        if self.analysis_type != "stationarity":
-            return self._render_variable_workflow(
-                st_obj,
-                data,
-                table_key="table",
-                data_name=data_name,
-            )
-        selection_columns = st_obj.columns(3)
-        return self._render_variable_workflow(
-            st_obj,
-            data,
-            table_key="table",
-            data_name=data_name,
-            variable_container=selection_columns[1],
-            preprocessing_container=selection_columns[2],
-        )
-
     def render(
         self,
         st_obj,
-        tab_index: int = 0,
         uploaded_file=None,
         dataset: ExploreDataset | None = None,
     ):
         """使用侧边栏共享数据集渲染单变量分析流程。"""
-        del tab_index  # 兼容统一组件调用签名；此页面不依赖标签索引。
         if self.analysis_type == "stationarity":
             st_obj.markdown("### 选择数据")
 
@@ -410,14 +383,7 @@ class StationarityAnalysisComponent(TimeSeriesAnalysisComponent):
                     processed,
                     **config,
                 )
-                try:
-                    st_obj.pyplot(
-                        place_chart_legend_at_bottom(figure),
-                        width="stretch",
-                        clear_figure=True,
-                    )
-                finally:
-                    plt.close(figure)
+                render_pyplot_figure(st_obj, figure)
             render_time_series_config_expander(
                 st_obj,
                 scope=time_scope,

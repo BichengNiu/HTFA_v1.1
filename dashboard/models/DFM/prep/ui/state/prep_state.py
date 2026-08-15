@@ -207,41 +207,6 @@ class PrepStateManager:
         for key in transform_keys:
             self.set(key, None)
 
-    def clear_all(self) -> None:
-        """清空所有数据准备相关状态"""
-        self.clear_results()
-        self.clear_params()
-        self.clear_transform_config()
-
-        # 清空文件和检测相关
-        file_keys = [
-            PrepStateKeys.TRAINING_DATA_FILE,
-            PrepStateKeys.UPLOADED_FILE_PATH,
-            PrepStateKeys.FILE_BYTES,
-            PrepStateKeys.FILE_PROCESSED,
-            PrepStateKeys.DATE_DETECTION_NEEDED,
-            PrepStateKeys.DETECTED_START_DATE,
-            PrepStateKeys.DETECTED_END_DATE,
-            PrepStateKeys.DETECTED_VARIABLE_COUNT,
-            PrepStateKeys.DETECTED_FREQ_COUNTS,
-        ]
-        for key in file_keys:
-            self.set(key, None)
-
-    def get_cache_key(self, prefix: str, file_name: str, file_size: int) -> str:
-        """
-        生成缓存键
-
-        Args:
-            prefix: 缓存前缀（如'date_range', 'var_stats'）
-            file_name: 文件名
-            file_size: 文件大小
-
-        Returns:
-            缓存键字符串
-        """
-        return f"{prefix}_{file_name}_{file_size}"
-
     def clear_old_cache(self, prefix: str, current_cache_key: str) -> int:
         """
         清理旧缓存（保留当前缓存键）

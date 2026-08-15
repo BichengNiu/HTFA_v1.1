@@ -38,7 +38,6 @@ def render_univariate_analysis_page():
         stationarity_component = StationarityAnalysisComponent()
         stationarity_component.render(
             st,
-            tab_index=1,
             uploaded_file=uploaded_file,
             dataset=dataset,
         )
@@ -47,7 +46,6 @@ def render_univariate_analysis_page():
         structural_break_component = StructuralBreakAnalysisComponent()
         structural_break_component.render(
             st,
-            tab_index=2,
             uploaded_file=uploaded_file,
             dataset=dataset,
         )

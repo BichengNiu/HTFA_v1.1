@@ -1,7 +1,15 @@
 from pathlib import Path
 
 import pandas as pd
+import plotly.graph_objects as go
 
+from dashboard.analysis.industrial.charts.config import (
+    ENTERPRISE_INDICATORS_CONFIG,
+    PROFIT_CONTRIBUTION_CONFIG,
+)
+from dashboard.analysis.industrial.charts.enterprise_indicators_chart import (
+    EnterpriseIndicatorsChart,
+)
 from dashboard.analysis.industrial.utils.chart_creator_unified import (
     create_time_series_chart,
 )
@@ -25,3 +33,13 @@ def test_industrial_module_has_no_retired_combined_page_or_upload_state():
 
     assert "render_enterprise_operations_analysis_with_data" not in source
     assert "analysis.industrial.unified_file_uploader" not in source
+
+
+def test_relative_barmode_is_declared_in_config_not_subclass_overrides():
+    assert ENTERPRISE_INDICATORS_CONFIG.barmode == "relative"
+    assert PROFIT_CONTRIBUTION_CONFIG.barmode == "relative"
+
+    figure = go.Figure()
+    EnterpriseIndicatorsChart()._apply_layout(figure, pd.DataFrame())
+
+    assert figure.layout.barmode == "relative"

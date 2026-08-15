@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import shutil
 import stat
@@ -20,21 +19,9 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts.install_ts import install as install_ts
-from scripts.ts_runtime import load_pinned_metadata
+from scripts.ts_runtime import load_pinned_metadata, sha256_file
 
-SPEC_PATH = PROJECT_ROOT / "scripts" / "portable_runtime.json"
-LOCK_PATH = PROJECT_ROOT / "tooling" / "requirements" / "requirements-py313.lock"
-BUILD_ROOT = PROJECT_ROOT / "build" / "portable"
 CANDIDATE_ROOT = PROJECT_ROOT / "build" / "runtime-candidate"
-ACTIVE_RUNTIME_ROOT = PROJECT_ROOT / "runtime"
-
-
-def _sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as source:
-        for chunk in iter(lambda: source.read(64 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def load_portable_spec(project_root: Path = PROJECT_ROOT) -> dict[str, str]:
@@ -119,18 +106,6 @@ def _remove_readonly(
     function(path)
 
 
-def _reset_generated_directory(
-    project_root: Path,
-    target: Path,
-    expected: Path,
-) -> Path:
-    target = assert_safe_generated_target(project_root, target, expected)
-    if target.exists():
-        shutil.rmtree(target, onexc=_remove_readonly)
-    target.mkdir(parents=True)
-    return target
-
-
 def write_embedded_path_file(runtime_root: Path) -> Path:
     """Enable the standard library and bundled site-packages."""
 
@@ -198,7 +173,7 @@ def build_manifest(
         },
         "dependency_lock": {
             "file": lock_path.name,
-            "sha256": _sha256_file(lock_path),
+            "sha256": sha256_file(lock_path),
         },
         "ts_commit": ts_commit,
         "built_at": built_at or datetime.now(timezone.utc).isoformat(),
@@ -321,7 +296,7 @@ def build(
         pip_wheel,
         pip_version=spec["pip_version"],
     )
-    if _sha256_file(pip_wheel) != spec["pip_wheel_sha256"]:
+    if sha256_file(pip_wheel) != spec["pip_wheel_sha256"]:
         raise RuntimeError("pip bootstrap wheel SHA-256 mismatch")
 
     lock_path = (

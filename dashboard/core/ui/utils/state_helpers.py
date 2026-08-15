@@ -36,12 +36,6 @@ class NamespacedStateManager:
         full_key = f"{self.namespace}.{key}"
         return full_key in st.session_state
 
-    def clear_namespace(self) -> None:
-        prefix = f'{self.namespace}.'
-        keys_to_delete = [k for k in st.session_state.keys() if k.startswith(prefix)]
-        for k in keys_to_delete:
-            del st.session_state[k]
-
 
 def clear_state_by_prefix(prefix: str) -> bool:
     """根据前缀清理状态"""

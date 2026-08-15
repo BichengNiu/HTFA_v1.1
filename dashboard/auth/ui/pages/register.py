@@ -257,10 +257,10 @@ class RegisterPage:
                 id=0,  # 将由数据库自动分配
                 username=username,
                 password_hash=hashed_password,
-                email=email if email else None,
-                wechat=wechat if wechat else None,
-                phone=phone if phone else None,
-                organization=organization if organization else None,
+                email=email or None,
+                wechat=wechat or None,
+                phone=phone or None,
+                organization=organization or None,
                 permissions=[],  # 新用户默认没有任何权限，需要管理员分配
                 created_at=datetime.now(),
                 is_active=True,  # 新注册用户默认激活

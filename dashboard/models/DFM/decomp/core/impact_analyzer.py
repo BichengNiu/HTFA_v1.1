@@ -9,13 +9,13 @@
 import numpy as np
 import pandas as pd
 import logging
-from typing import Dict, Any, List, Optional, Tuple
+from typing import List, Optional, Tuple
 from dataclasses import dataclass
 
 from ..utils.exceptions import ComputationError, ValidationError, decomp_error_handler
 from ..utils.constants import CONFIDENCE_INTERVAL_Z_SCORE, DEFAULT_MEASUREMENT_ERROR
 from ..utils.helpers import get_month_date_range
-from .nowcast_extractor import NowcastExtractor
+from .model_loader import SavedNowcastData
 
 logger = logging.getLogger(__name__)
 
@@ -36,23 +36,14 @@ class ImpactResult:
     """单次影响计算结果"""
     release: DataRelease
     impact_on_target: float
-    contribution_percentage: float
     kalman_weight: float
     confidence_interval: Optional[Tuple[float, float]] = None
-    calculation_details: Optional[Dict[str, Any]] = None
 
 
 @dataclass
 class SequentialImpactResult:
-    """时序影响分析结果"""
-    target_date: pd.Timestamp
-    baseline_value: float
-    final_value: float
-    total_impact: float
-    cumulative_impacts: pd.Series
+    """时序影响分析结果（调用方仅消费单次影响列表）。"""
     individual_impacts: List[ImpactResult]
-    positive_impact_sum: float
-    negative_impact_sum: float
 
 
 class ImpactAnalyzer:
@@ -69,19 +60,19 @@ class ImpactAnalyzer:
     - v_i: 第i个变量的新息（观测值 - 期望值）
     """
 
-    def __init__(self, nowcast_extractor: NowcastExtractor):
+    def __init__(self, nowcast_data: SavedNowcastData):
         """
         初始化影响分析器
 
         Args:
-            nowcast_extractor: Nowcast提取器实例
+            nowcast_data: 已保存的nowcast数据
         """
-        self.extractor = nowcast_extractor
+        self.data = nowcast_data
 
         # 验证数据完整性
-        if self.extractor.data.kalman_gains_history is None:
+        if self.data.kalman_gains_history is None:
             logger.warning("卡尔曼增益历史不可用，影响分析功能受限")
-        if self.extractor.data.variable_index_map is None:
+        if self.data.variable_index_map is None:
             logger.warning("变量索引映射不可用，可能无法正确识别变量")
 
     def calculate_single_release_impact(self, release: DataRelease) -> ImpactResult:
@@ -108,7 +99,7 @@ class ImpactAnalyzer:
             logger.debug(f"innovation={release.observed_value - release.expected_value:.4f}")
 
             # 检查数据完整性
-            if self.extractor.data.kalman_gains_history is None:
+            if self.data.kalman_gains_history is None:
                 raise ComputationError(
                     "影响分解功能需要卡尔曼增益历史数据。\n"
                     "当前模型是使用旧版本训练模块生成的。\n"
@@ -145,39 +136,16 @@ class ImpactAnalyzer:
             logger.debug(f"影响计算: standardized={impact_standardized:.4f}, "
                   f"std={target_std:.4f}, original={impact_on_target:.4f}")
 
-            # 9. 贡献百分比在NewsImpactCalculator中基于总影响计算
-            contribution_percentage = 0.0
-
-            # 10. 计算置信区间
+            # 计算置信区间
             confidence_interval = self._calculate_confidence_interval(
                 impact_on_target, release.measurement_error
             )
 
-            # 11. 构建详细的计算信息
-            calculation_details = {
-                'innovation': float(innovation),
-                'variable_index': int(variable_index),
-                'kalman_gain_vector': K_col.tolist(),
-                'factor_loading_vector': lambda_y.tolist(),
-                'factor_state_change': delta_f.tolist(),
-                'effective_kalman_weight': float(effective_kalman_weight),
-                'calculation_formula': 'Δy = λ_y\' × K_t[:, i] × v_i',
-                'formula_explanation': {
-                    'lambda_y': 'Target variable factor loadings (n_factors,)',
-                    'K_t_col': 'Kalman gain vector for variable i (n_factors,)',
-                    'v_i': 'Innovation (observed - expected)',
-                    'delta_f': 'Factor state change K_t[:, i] * v_i',
-                    'impact': 'Final impact λ_y\' × delta_f'
-                }
-            }
-
             result = ImpactResult(
                 release=release,
                 impact_on_target=impact_on_target,
-                contribution_percentage=contribution_percentage,
                 kalman_weight=effective_kalman_weight,
                 confidence_interval=confidence_interval,
-                calculation_details=calculation_details
             )
 
             logger.debug(f"单次影响计算: {release.variable_name} = {impact_on_target:.4f} "
@@ -203,65 +171,14 @@ class ImpactAnalyzer:
             ComputationError: 分析失败时抛出
         """
         with decomp_error_handler("时序影响分析"):
-            # 按时间排序数据发布
-            sorted_releases = sorted(releases, key=lambda x: x.timestamp)
-
-            # 获取基准值
-            baseline_value = self.extractor.compute_baseline_prediction(target_date)
-
-            # 计算各次发布的影响
-            individual_impacts = []
-            cumulative_values = []
-
-            current_value = baseline_value
-            cumulative_impact = 0.0
-
-            # 计算目标月份的日期范围
+            # 只处理目标月份范围内的数据发布，并保持发布顺序
             target_month_start, target_month_end = get_month_date_range(target_date)
-
-            for release in sorted_releases:
-                # 只处理目标月份范围内的数据发布
-                if release.timestamp < target_month_start or release.timestamp > target_month_end:
-                    continue
-
-                impact_result = self.calculate_single_release_impact(release)
-                individual_impacts.append(impact_result)
-
-                # 更新累积影响
-                cumulative_impact += impact_result.impact_on_target
-                current_value = baseline_value + cumulative_impact
-                cumulative_values.append({
-                    'timestamp': release.timestamp,
-                    'cumulative_impact': cumulative_impact,
-                    'current_value': current_value,
-                    'individual_impact': impact_result.impact_on_target
-                })
-
-            # 创建累积影响序列
-            if cumulative_values:
-                cumulative_df = pd.DataFrame(cumulative_values)
-                cumulative_df.set_index('timestamp', inplace=True)
-                cumulative_series = cumulative_df['cumulative_impact']
-            else:
-                cumulative_series = pd.Series([], dtype=float)
-
-            # 计算正负影响总和
-            positive_impact_sum = sum(imp.impact_on_target for imp in individual_impacts if imp.impact_on_target > 0)
-            negative_impact_sum = sum(imp.impact_on_target for imp in individual_impacts if imp.impact_on_target < 0)
-
-            result = SequentialImpactResult(
-                target_date=target_date,
-                baseline_value=baseline_value,
-                final_value=current_value,
-                total_impact=cumulative_impact,
-                cumulative_impacts=cumulative_series,
-                individual_impacts=individual_impacts,
-                positive_impact_sum=positive_impact_sum,
-                negative_impact_sum=negative_impact_sum
-            )
-
-            logger.info(f"时序影响分析完成: 总影响 = {cumulative_impact:.4f}")
-            return result
+            individual_impacts = [
+                self.calculate_single_release_impact(release)
+                for release in sorted(releases, key=lambda item: item.timestamp)
+                if target_month_start <= release.timestamp <= target_month_end
+            ]
+            return SequentialImpactResult(individual_impacts=individual_impacts)
 
     def _get_target_variable_loading(self) -> np.ndarray:
         """
@@ -273,13 +190,13 @@ class ImpactAnalyzer:
         Raises:
             ValidationError: 数据不可用时抛出
         """
-        if self.extractor.data.target_factor_loading is None:
+        if self.data.target_factor_loading is None:
             raise ValidationError(
                 "目标变量因子载荷不可用。\n"
                 "请使用新版本训练模块重新训练模型以支持影响分解功能。"
             )
 
-        return self.extractor.data.target_factor_loading
+        return self.data.target_factor_loading
 
     def _get_kalman_gain_at_time(self, timestamp: pd.Timestamp) -> np.ndarray:
         """
@@ -294,14 +211,14 @@ class ImpactAnalyzer:
         Raises:
             ComputationError: 无法找到有效的卡尔曼增益时抛出
         """
-        if self.extractor.data.kalman_gains_history is None:
+        if self.data.kalman_gains_history is None:
             raise ComputationError("卡尔曼增益历史不可用")
 
-        if self.extractor.data.nowcast_series is None:
+        if self.data.nowcast_series is None:
             raise ComputationError("nowcast时间序列不可用")
 
         # 找到时间戳对应的索引
-        nowcast_series = self.extractor.data.nowcast_series
+        nowcast_series = self.data.nowcast_series
         available_dates = nowcast_series.index[nowcast_series.index <= timestamp]
 
         if len(available_dates) == 0:
@@ -311,10 +228,10 @@ class ImpactAnalyzer:
         closest_date_index = len(available_dates) - 1
 
         # 边界检查
-        if closest_date_index >= len(self.extractor.data.kalman_gains_history):
-            closest_date_index = len(self.extractor.data.kalman_gains_history) - 1
+        if closest_date_index >= len(self.data.kalman_gains_history):
+            closest_date_index = len(self.data.kalman_gains_history) - 1
 
-        K_t = self.extractor.data.kalman_gains_history[closest_date_index]
+        K_t = self.data.kalman_gains_history[closest_date_index]
 
         # 卡尔曼增益为None时直接报错（不使用fallback）
         if K_t is None:
@@ -326,13 +243,13 @@ class ImpactAnalyzer:
         # K_t的原始形状是(n_states, n_obs)，其中n_states = n_factors * max_lags
         # 影响分析只需要前n_factors行（当前因子的增益）
         # 从target_factor_loading获取n_factors
-        if self.extractor.data.target_factor_loading is None:
+        if self.data.target_factor_loading is None:
             raise ComputationError(
                 "目标变量因子载荷不可用，无法确定因子数量。\n"
                 "请使用新版本训练模块重新训练模型。"
             )
 
-        n_factors = len(self.extractor.data.target_factor_loading)
+        n_factors = len(self.data.target_factor_loading)
 
         if K_t.shape[0] > n_factors:
             # 只取前n_factors行
@@ -355,23 +272,23 @@ class ImpactAnalyzer:
         Raises:
             ValidationError: 变量不在映射中时抛出
         """
-        if self.extractor.data.variable_index_map is None:
+        if self.data.variable_index_map is None:
             raise ValidationError(
                 "变量索引映射不可用。\n"
                 "这可能是因为模型元数据不完整。\n"
                 "请确保模型包含完整的变量列表信息。"
             )
 
-        if variable_name not in self.extractor.data.variable_index_map:
+        if variable_name not in self.data.variable_index_map:
             # 提供详细的错误信息
-            available_vars = list(self.extractor.data.variable_index_map.keys())
+            available_vars = list(self.data.variable_index_map.keys())
             raise ValidationError(
                 f"变量 '{variable_name}' 不在变量映射中。\n"
                 f"可用变量数: {len(available_vars)}\n"
                 f"前5个可用变量: {available_vars[:5]}"
             )
 
-        return self.extractor.data.variable_index_map[variable_name]
+        return self.data.variable_index_map[variable_name]
 
     def _calculate_confidence_interval(
         self,
@@ -399,7 +316,7 @@ class ImpactAnalyzer:
         Raises:
             ValidationError: 数据不可用或无效时抛出
         """
-        target_std = self.extractor.data.target_std_original
+        target_std = self.data.target_std_original
 
         if target_std is None:
             raise ValidationError(

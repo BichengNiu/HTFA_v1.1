@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 import pandas as pd
-from dashboard.models.DFM.train.utils.parallel_config import ParallelConfig
+from dashboard.models.DFM.utils.parallel_config import ParallelConfig
 
 
 @dataclass

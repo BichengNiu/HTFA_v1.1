@@ -9,8 +9,8 @@ import pandas as pd
 
 from dashboard.analysis.uae.sheet_reader import (
     SheetSeriesMetadata,
+    open_uae_workbook,
     parse_target_sheet,
-    workbook_buffer,
 )
 
 
@@ -46,9 +46,10 @@ def load_government_finance_data(
 ) -> GovernmentFinanceData:
     """只读取 ``月度_CBUAE`` 的四个目标指标并校验元数据。"""
 
-    buffer, source_name = workbook_buffer(file_input, file_name=file_name)
-    excel_file = pd.ExcelFile(buffer)
-    try:
+    with open_uae_workbook(file_input, file_name=file_name) as (
+        excel_file,
+        source_name,
+    ):
         values, metadata = parse_target_sheet(
             excel_file,
             sheet_name=CBUAE_SHEET,
@@ -56,8 +57,6 @@ def load_government_finance_data(
             allowed_frequencies={"月", "月度"},
             expected_unit="百万迪拉姆",
         )
-    finally:
-        excel_file.close()
 
     return GovernmentFinanceData(
         values=values,

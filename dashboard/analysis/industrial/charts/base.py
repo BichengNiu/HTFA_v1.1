@@ -33,6 +33,7 @@ class ChartConfig:
     plot_bgcolor: str = 'white'
     paper_bgcolor: str = 'white'
     show_legend: bool = True
+    barmode: str | None = None
     legend_config: Dict[str, Any] = field(
         default_factory=lambda: dict(LEGEND_CONFIG_BOTTOM_CENTER)
     )
@@ -174,6 +175,8 @@ class BaseChartCreator:
 
         if self.config.show_legend:
             layout_config['legend'] = self.config.legend_config
+        if self.config.barmode:
+            layout_config['barmode'] = self.config.barmode
 
         fig.update_layout(**layout_config)
 
@@ -200,6 +203,19 @@ class BaseChartCreator:
         return filter_data_by_time_range(df, time_range, custom_start_date, custom_end_date)
 
 
+# 子图间距配置（仅 create_subplot_chart 使用，保持在本模块避免与 config 循环依赖）
+SUBPLOT_SPACING = {
+    '2x2': {'vertical_spacing': 0.12, 'horizontal_spacing': 0.1},
+    '3x2': {'vertical_spacing': 0.12, 'horizontal_spacing': 0.1}
+}
+
+# 子图边距配置
+SUBPLOT_MARGINS = {
+    '2x2': {'top': 80, 'bottom': 60, 'left': 60, 'right': 60},
+    '3x2': {'top': 80, 'bottom': 60, 'left': 60, 'right': 60}
+}
+
+
 def create_subplot_chart(
     chart_creator: "BaseChartCreator",
     df: pd.DataFrame,
@@ -217,11 +233,6 @@ def create_subplot_chart(
     与原先 OperationsIndicatorsChart / EfficiencyMetricsChart 的 create()
     行为一致，仅提取了共同的子图构建逻辑。
     """
-    from dashboard.analysis.industrial.charts.config import (
-        SUBPLOT_MARGINS,
-        SUBPLOT_SPACING,
-    )
-
     try:
         # 准备数据
         filtered_df = chart_creator._filter_by_time_range(

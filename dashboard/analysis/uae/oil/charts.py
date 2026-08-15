@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
-from matplotlib.patches import Rectangle
 import pandas as pd
 from Ts.TsPlots import plot_series
 
@@ -15,8 +15,8 @@ from dashboard.analysis.uae.oil.revenue import (
     REVENUE_COLUMN,
 )
 from dashboard.analysis.uae.plot_helpers import (
-    CHINESE_FONT_FAMILY,
     WAR_LINE_COLOR,
+    add_bottom_legend,
     WAR_START_DATE,
     add_source_note,
     annotate_war,
@@ -115,51 +115,37 @@ def build_oil_market_figure(
     annotate_war(production_axis)
     _restore_visible_spines(figure)
 
-    production_swatch = Rectangle(
-        (0.22, BOTTOM_LEGEND_Y - 0.012),
-        0.035,
-        0.024,
-        transform=figure.transFigure,
-        facecolor=BAR_COLOR,
-        edgecolor=BAR_EDGE_COLOR,
-        linewidth=0.8,
-        zorder=20,
-    )
-    figure.add_artist(production_swatch)
-    figure.text(
-        0.265,
-        BOTTOM_LEGEND_Y,
-        MARKET_PRODUCTION_LABEL,
-        ha="left",
-        va="center",
-        fontsize=10.5,
-        fontfamily=CHINESE_FONT_FAMILY,
-        clip_on=False,
-        zorder=21,
-    )
+    legend_handles = [
+        Patch(
+            facecolor=BAR_COLOR,
+            edgecolor=BAR_EDGE_COLOR,
+            label=MARKET_PRODUCTION_LABEL,
+        )
+    ]
+    legend_labels = [MARKET_PRODUCTION_LABEL]
     if rig_axis is not None:
-        rig_swatch = Line2D(
-            [0.56, 0.60],
-            [BOTTOM_LEGEND_Y, BOTTOM_LEGEND_Y],
-            transform=figure.transFigure,
-            color=RIG_COUNT_COLOR,
-            linewidth=2.2,
-            linestyle="-",
-            zorder=20,
+        legend_handles.append(
+            Line2D(
+                [0],
+                [0],
+                color=RIG_COUNT_COLOR,
+                linewidth=2.2,
+                linestyle="-",
+                label=MARKET_RIG_COUNT_LABEL,
+            )
         )
-        figure.add_artist(rig_swatch)
-        figure.text(
-            0.61,
-            BOTTOM_LEGEND_Y,
-            MARKET_RIG_COUNT_LABEL,
-            ha="left",
-            va="center",
-            fontsize=10.5,
-            fontfamily=CHINESE_FONT_FAMILY,
-            clip_on=False,
-            zorder=21,
-        )
-    finish_dual_axis_figure(figure, top=0.91)
+        legend_labels.append(MARKET_RIG_COUNT_LABEL)
+    add_bottom_legend(
+        figure,
+        legend_handles,
+        legend_labels,
+        ncol=len(legend_labels),
+        y=BOTTOM_LEGEND_Y,
+    )
+    finish_dual_axis_figure(figure, top=0.90)
+    # 与石油收入图保持一致：图例占用的底部留白也按 0.32 处理，
+    # 避免两张并排图在 Streamlit 中纵向绘图区高度不一致。
+    figure.subplots_adjust(bottom=0.32)
     add_source_note(figure, source_text)
     return figure
 
@@ -227,8 +213,9 @@ def build_oil_revenue_figure(
         edgecolor=REVENUE_BAR_EDGE_COLOR,
         label=REVENUE_LABEL,
     )
-    figure.legend(
-        handles=[
+    add_bottom_legend(
+        figure,
+        [
             *[
                 line
                 for line in price_axis.get_lines()
@@ -236,14 +223,12 @@ def build_oil_revenue_figure(
             ],
             revenue_handle,
         ],
-        labels=[REVENUE_PRICE_LABEL, REVENUE_LABEL],
-        loc="lower center",
-        bbox_to_anchor=(0.5, 0.115),
-        frameon=False,
-        prop={"family": CHINESE_FONT_FAMILY[0], "size": 10},
+        [REVENUE_PRICE_LABEL, REVENUE_LABEL],
         ncol=2,
     )
     finish_dual_axis_figure(figure, top=0.90)
+    # 与原油产量图保持同一底部留白，避免两张并排图纵向绘图区高度不一致。
+    figure.subplots_adjust(bottom=0.32)
     add_source_note(figure, source_text)
     return figure
 

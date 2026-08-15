@@ -1,41 +1,10 @@
-# -*- coding: utf-8 -*-
-"""
-权限树构建工具
-用于从模块配置自动构建权限树结构，提供权限管理界面使用
-"""
+"""权限代码显示名工具。"""
 
-from typing import List
-
-from dashboard.auth.permissions import GRANULAR_PERMISSION_MAP
+from dashboard.navigation_config import GRANULAR_PERMISSION_MAP
 
 
 class PermissionTreeBuilder:
-    """权限树构建器"""
-
-    @staticmethod
-    def get_all_permissions() -> List[str]:
-        """
-        获取所有权限代码列表
-
-        Returns:
-            所有权限代码的列表
-        """
-        permissions = []
-
-        for main_name, main_config in GRANULAR_PERMISSION_MAP.items():
-            # 添加主模块权限
-            permissions.append(main_config["code"])
-
-            # 添加子模块和Tab权限
-            if main_config.get("sub_modules"):
-                for sub_name, sub_config in main_config["sub_modules"].items():
-                    permissions.append(sub_config["code"])
-
-                    if sub_config.get("tabs"):
-                        for tab_name, tab_code in sub_config["tabs"].items():
-                            permissions.append(tab_code)
-
-        return permissions
+    """权限代码显示名构建器。"""
 
     @staticmethod
     def get_permission_display_name(permission_code: str) -> str:

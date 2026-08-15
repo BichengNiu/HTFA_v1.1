@@ -350,13 +350,13 @@ class UserManagementPage:
                 with col_start:
                     valid_from = st.date_input(
                         "生效日期",
-                        value=selected_user.valid_from if selected_user.valid_from else None,
+                        value=selected_user.valid_from or None,
                         key=f"valid_from_{selected_user.id}"
                     )
                 with col_end:
                     valid_until = st.date_input(
                         "过期日期",
-                        value=selected_user.valid_until if selected_user.valid_until else None,
+                        value=selected_user.valid_until or None,
                         key=f"valid_until_{selected_user.id}"
                     )
             
@@ -406,12 +406,12 @@ class UserManagementPage:
                     if not is_valid:
                         st.error(f"邮箱格式错误: {msg}")
                         return False
-                user.email = new_email if new_email else None
+                user.email = new_email or None
                 changes.append("邮箱")
 
             # 微信号更新
             if new_wechat != (user.wechat or ""):
-                user.wechat = new_wechat if new_wechat else None
+                user.wechat = new_wechat or None
                 changes.append("微信号")
 
             # 手机号验证和更新
@@ -419,12 +419,12 @@ class UserManagementPage:
                 if new_phone and not SecurityUtils.validate_phone(new_phone):
                     st.error("手机号格式错误，请输入11位数字")
                     return False
-                user.phone = new_phone if new_phone else None
+                user.phone = new_phone or None
                 changes.append("手机号")
 
             # 单位名称更新
             if new_organization != (user.organization or ""):
-                user.organization = new_organization if new_organization else None
+                user.organization = new_organization or None
                 changes.append("单位名称")
 
             # 权限更新

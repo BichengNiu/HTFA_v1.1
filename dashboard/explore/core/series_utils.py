@@ -62,7 +62,7 @@ def identify_time_column(df: pd.DataFrame, exclude_columns: list[str] | None = N
 
     # 方法1：检查索引是否为DatetimeIndex
     if isinstance(df.index, pd.DatetimeIndex):
-        index_name = df.index.name if df.index.name else "时间索引"
+        index_name = df.index.name or "时间索引"
         logger.info(f"识别到DatetimeIndex: '{index_name}'")
         return index_name
 
@@ -118,7 +118,7 @@ def prepare_time_index(
 
     # 如果已经是DatetimeIndex，直接返回
     if isinstance(df_work.index, pd.DatetimeIndex):
-        index_name = df_work.index.name if df_work.index.name else "时间索引"
+        index_name = df_work.index.name or "时间索引"
         return df_work, index_name
 
     # 识别或验证时间列

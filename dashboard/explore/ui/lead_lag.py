@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
+from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
 # 配置matplotlib中文字体
 matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans', 'Arial Unicode MS', 'sans-serif']
 matplotlib.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
@@ -42,20 +42,19 @@ class LeadLagAnalysisComponent(TimeSeriesAnalysisComponent):
     def __init__(self):
         super().__init__("lead_lag", "领先滞后分析")
 
-    def render(self, st_obj, **_kwargs) -> Any:
+    def render(self, st_obj) -> Any:
         """
         重写渲染方法，跳过数据状态显示
 
         Args:
             st_obj: Streamlit对象
-            **_kwargs: 保留给统一组件调用协议的其他参数
 
         Returns:
             Any: 分析结果
         """
         try:
             # 直接获取数据，不显示数据状态信息
-            data, _, data_name = self.get_module_data()
+            data, _, _ = self.get_module_data()
 
             if data is None:
                 st_obj.info("请上传数据文件以进行分析")
@@ -69,25 +68,23 @@ class LeadLagAnalysisComponent(TimeSeriesAnalysisComponent):
                 return None
 
             # 渲染分析界面
-            return self.render_analysis_interface(st_obj, data, data_name)
+            return self.render_analysis_interface(st_obj, data)
 
         except Exception as e:  # noqa: BLE001 - top-level component render boundary
             self.handle_error(st_obj, e, f"渲染{self.title}组件")
             return None
     
-    def render_analysis_interface(self, st_obj, data: pd.DataFrame, data_name: str) -> Any:
+    def render_analysis_interface(self, st_obj, data: pd.DataFrame) -> Any:
         """
         渲染领先滞后分析界面
 
         Args:
             st_obj: Streamlit对象
             data: 分析数据
-            data_name: 数据名称
 
         Returns:
             Any: 分析结果
         """
-        del data_name  # 兼容基类接口；状态键已由组件 analysis_type 隔离。
         try:
                        
             # 渲染领先滞后分析
@@ -363,11 +360,12 @@ class LeadLagAnalysisComponent(TimeSeriesAnalysisComponent):
                 ax.set_title(f'{results["target_var"]} vs {candidate_var} KL散度')
                 ax.grid(True, alpha=0.3)
                 plt.tight_layout()
-                st_obj.pyplot(
-                    place_chart_legend_at_bottom(fig),
+                render_pyplot_figure(
+                    st_obj,
+                    fig,
                     use_container_width=True,
+                    clear_figure=None,
                 )
-                plt.close()
 
         # 添加时间序列对比图
         st_obj.markdown(f"**{results['target_var']} vs {candidate_var} 时间序列对比**")
@@ -445,8 +443,4 @@ class LeadLagAnalysisComponent(TimeSeriesAnalysisComponent):
             plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha='right')
 
         plt.tight_layout()
-        st_obj.pyplot(
-            place_chart_legend_at_bottom(fig),
-            width='stretch',
-        )
-        plt.close()
+        render_pyplot_figure(st_obj, fig, clear_figure=None)

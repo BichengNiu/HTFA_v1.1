@@ -20,7 +20,6 @@ UTILITIES_INDUSTRY_COLUMN = "中国:工业增加值:规模以上工业企业:电
 
 # 企业利润数据列名
 PROFIT_TOTAL_COLUMN = "中国:利润总额:规模以上工业企业:累计同比"
-PROFIT_MARGIN_COLUMN_BASE = "中国:营业收入利润率:规模以上工业企业:累计值"
 PROFIT_MARGIN_COLUMN_YOY = "中国:营业收入利润率:规模以上工业企业:累计同比"
 
 # 价格指数列名
@@ -28,16 +27,10 @@ PPI_COLUMN = "中国:PPI:累计同比"
 
 # 工作表名称
 SHEET_NAME_MACRO_DATA = "分行业工业增加值同比增速"
-SHEET_NAME_WEIGHTS = "工业增加值分行业指标权重"
 SHEET_NAME_OVERALL_INDUSTRIAL = "总体工业增加值同比增速"
 SHEET_NAME_PROFIT_BREAKDOWN = "分上中下游利润拆解"
 SHEET_NAME_ENTERPRISE_PROFIT = "工业企业利润"
 SHEET_NAME_INDUSTRY_PROFIT = "分行业工业企业利润"
-
-# ============================================================================
-# 指标名称映射
-# ============================================================================
-
 
 # ============================================================================
 # 企业经营指标常量
@@ -65,23 +58,6 @@ LINE_CHART_INDICATORS = [
 
 
 # ============================================================================
-# 权重数据列名
-# ============================================================================
-
-
-# ============================================================================
-# 分组前缀
-# ============================================================================
-
-
-# ============================================================================
-# 时间范围选项
-# ============================================================================
-
-# （时间范围选项统一由 utils/chart_config.py 提供）
-
-
-# ============================================================================
 # 图表配置常量
 # ============================================================================
 
@@ -97,7 +73,6 @@ ENTERPRISE_INDICATOR_COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
 STATE_NAMESPACE_INDUSTRIAL = "industrial.analysis"
 
 # 状态键常量 - 数据相关
-STATE_KEY_UPLOADED_FILE = "uploaded_file"
 STATE_KEY_MACRO_DATA = "macro_data"
 STATE_KEY_WEIGHTS_DATA = "weights_data"
 STATE_KEY_FILE_NAME = "file_name"
@@ -109,12 +84,6 @@ STATE_KEY_CONTRIBUTION_INDUSTRY = "contribution_industry"
 STATE_KEY_CONTRIBUTION_INDIVIDUAL = "contribution_individual"
 STATE_KEY_TOTAL_GROWTH = "total_growth"
 STATE_KEY_VALIDATION_RESULT = "validation_result"
-
-# 状态键常量 - 企业利润拆解数据
-STATE_KEY_PROFIT_CONTRIBUTION_STREAM = "profit_contribution_stream"
-STATE_KEY_PROFIT_CONTRIBUTION_INDIVIDUAL = "profit_contribution_individual"
-STATE_KEY_PROFIT_TOTAL_GROWTH = "profit_total_growth"
-STATE_KEY_PROFIT_VALIDATION_RESULT = "profit_validation_result"
 
 
 # ============================================================================

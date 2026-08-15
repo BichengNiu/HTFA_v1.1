@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import matplotlib.pyplot as plt
 import pandas as pd
 
-from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
+from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
 from dashboard.explore.analysis.stationarity import (
     create_time_series_figure,
     matplotlib_date_compatibility,
@@ -143,14 +142,7 @@ def render_data_overview(st_obj, uploaded_file, *, dataset=None) -> None:
             config = get_applied_config(st_obj, time_scope, time_defaults)
             with matplotlib_date_compatibility():
                 figure = create_time_series_figure(series, **config)
-                try:
-                    st_obj.pyplot(
-                        place_chart_legend_at_bottom(figure),
-                        width="stretch",
-                        clear_figure=True,
-                    )
-                finally:
-                    plt.close(figure)
+                render_pyplot_figure(st_obj, figure)
             render_time_series_config_expander(
                 st_obj,
                 scope=time_scope,

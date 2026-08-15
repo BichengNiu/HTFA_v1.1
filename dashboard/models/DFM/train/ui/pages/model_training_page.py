@@ -134,7 +134,7 @@ def _load_training_inputs(st_instance):
             if indicator and industry:
                 industry_to_indicators_temp[str(industry).strip()].append(str(indicator).strip())
 
-    unique_industries = sorted(list(industry_to_indicators_temp.keys()))
+    unique_industries = sorted(industry_to_indicators_temp.keys())
     var_to_indicators_map_by_industry = {k: sorted(v) for k, v in industry_to_indicators_temp.items()}
 
     # ===== 计算日期默认值的辅助函数 =====
@@ -464,8 +464,8 @@ def _render_advanced_options(st_instance, algorithm_value):
                 )
                 _state.set('dfm_ddfm_batch_size', batch_size_value)
 
-            # 第四行：激活函数 + 输入滞后期数
-            ddfm_col7, ddfm_col8 = st_instance.columns(2)
+            # 第四行：激活函数
+            ddfm_col7, _ = st_instance.columns(2)
 
             with ddfm_col7:
                 current_activation = _state.get('dfm_ddfm_activation', UIConfig.DDFM_ACTIVATION_DEFAULT)
@@ -785,7 +785,7 @@ def _render_variable_selection(
                     final_selected_indicators_flat.extend(indicators)
 
         # 更新最终的扁平化预测指标列表 (去重)
-        final_indicators = sorted(list(set(final_selected_indicators_flat)))
+        final_indicators = sorted(set(final_selected_indicators_flat))
         _state.set('dfm_selected_indicators', final_indicators)
 
 

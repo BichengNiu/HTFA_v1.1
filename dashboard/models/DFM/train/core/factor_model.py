@@ -109,7 +109,7 @@ class DFMModel:
 
         # PCA初始化：得到因子、载荷和V矩阵（用于R矩阵计算）
         initial_factors, initial_loadings, V = self._initialize_factors_pca(
-            Z_for_pca, obs_centered_for_pca, means, stds
+            Z_for_pca, obs_centered_for_pca
         )
 
         # 报告PCA初始化完成
@@ -124,7 +124,6 @@ class DFMModel:
             initial_loadings,
             V,  # V矩阵用于R矩阵计算
             stds,
-            Z_train.index,  # 训练期索引
             progress_callback
         )
 
@@ -147,14 +146,10 @@ class DFMModel:
             self.results_.factors = full_factors
             self.results_.factors_smooth = full_factors
             self.results_.factor_states_predicted = full_factor_states_predicted
-            self.results_.train_start_idx = 0
-            self.results_.train_end_idx = n_time_train
 
             logger.info(f"[fit] 因子已扩展到完整时间范围: {n_time_full} 个时间点 (训练期: {n_time_train})")
         else:
             # 没有验证期/观察期，因子长度等于训练期长度
-            self.results_.train_start_idx = 0
-            self.results_.train_end_idx = n_time_train
             logger.info(f"[fit] 仅训练期数据，因子长度: {n_time_train}")
 
         return self.results_
@@ -181,16 +176,12 @@ class DFMModel:
         self,
         Z_standardized: np.ndarray,
         obs_centered: pd.DataFrame,
-        means: np.ndarray,
-        stds: np.ndarray
     ) -> Tuple[pd.DataFrame, np.ndarray, np.ndarray]:
         """使用PCA初始化因子（完全匹配老代码的SVD实现）
 
         Args:
             Z_standardized: 标准化的观测数据 (n_time, n_obs) - 用于PCA
             obs_centered: 中心化的观测数据 (n_time, n_obs) - 用于计算载荷
-            means: 均值向量
-            stds: 标准差向量
 
         Returns:
             Tuple: (初始因子DataFrame, 初始载荷矩阵, V矩阵)
@@ -235,7 +226,7 @@ class DFMModel:
 
         # 最后检查：确保没有NaN或Inf
         if np.any(np.isnan(initial_loadings)) or np.any(np.isinf(initial_loadings)):
-            raise ValueError(f"载荷矩阵仍包含NaN或Inf，无法继续。请检查输入数据质量。")
+            raise ValueError("载荷矩阵仍包含NaN或Inf，无法继续。请检查输入数据质量。")
 
         # PCA初始化完成（静默）
 
@@ -296,7 +287,6 @@ class DFMModel:
         initial_loadings: np.ndarray,
         V: np.ndarray,
         stds: np.ndarray,
-        train_index: pd.DatetimeIndex,
         progress_callback: Optional[Callable[[str], None]] = None
     ) -> DFMModelResult:
         """EM算法估计DFM参数
@@ -307,7 +297,6 @@ class DFMModel:
             initial_loadings: 初始载荷矩阵
             V: SVD分解得到的V矩阵（用于R矩阵计算）
             stds: 标准差向量（用于计算R矩阵）
-            train_index: 训练期时间索引
             progress_callback: 进度回调函数
 
         Returns:
@@ -621,7 +610,7 @@ class DFMModel:
         smoother_result = kf.smooth(filter_result)
 
         if progress_callback:
-            progress_callback(f"[EM|98%] 完整数据滤波完成")
+            progress_callback("[EM|98%] 完整数据滤波完成")
 
         logger.info(f"[完整数据滤波] 因子形状: ({self.n_factors}, {n_time_full}), 训练期长度: {train_length}")
 

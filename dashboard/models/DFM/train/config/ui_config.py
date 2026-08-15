@@ -42,23 +42,8 @@ class UIConfig:
     KAISER_THRESHOLD_MAX = 2.0
     KAISER_THRESHOLD_STEP = 0.1
 
-    # 变量选择方法
-    VARIABLE_SELECTION_METHODS = {
-        'backward': "后向选择法 (逐步移除不重要变量)"
-    }
-    DEFAULT_VAR_SELECTION = 'backward'
-
     # 目标变量配置 (2026-01新增)
     TARGET_VARIABLE_HELP = "选择目标变量（必选），将以该变量为最小化RMSE的目标"
-
-    # DDFM目标变量配置（有监督学习）
-    DDFM_TARGET_VARIABLE_HELP = "选择目标变量（必选），神经网络将专注优化该变量的重构精度"
-
-    # 训练期权重配置 (2025-12新增)
-    DEFAULT_TRAINING_WEIGHT = 50  # 默认50%训练期权重（百分比）
-    TRAINING_WEIGHT_MIN = 0       # 0%=仅验证期
-    TRAINING_WEIGHT_MAX = 100     # 100%=仅训练期
-    TRAINING_WEIGHT_STEP = 10
 
     # ========== 算法选择配置（2025-12-21新增）==========
     ALGORITHM_OPTIONS = {
@@ -123,23 +108,6 @@ class UIConfig:
     }
     DDFM_ACTIVATION_DEFAULT = 'relu'
 
-    # 输入滞后期配置
-    LAGS_INPUT_MIN = 0
-    LAGS_INPUT_MAX = 5
-    LAGS_INPUT_DEFAULT = 0
-    LAGS_INPUT_HELP = "包含多少期滞后变量作为输入（0=仅当期）"
-
-    # 批量归一化配置
-    BATCH_NORM_DEFAULT = True
-    BATCH_NORM_HELP = "批量归一化可提高训练稳定性"
-
-    # EM算法配置
-    EM_MAX_ITERATIONS_DEFAULT = 100  # 默认最大迭代次数
-    EM_MAX_ITERATIONS_MIN = 10
-    EM_MAX_ITERATIONS_MAX = 100
-    EM_MAX_ITERATIONS_STEP = 5
-    EM_TOLERANCE = 1e-6
-
     # 因子AR阶数
     DEFAULT_FACTOR_AR_ORDER = 1
     FACTOR_AR_ORDER_MIN = 0
@@ -152,16 +120,6 @@ class UIConfig:
     }
     DEFAULT_RMSE_ALIGNMENT = 'current'
     RMSE_ALIGNMENT_HELP = "当月值：预测值与当月实际值对比；下月值：预测值与下月实际值对比（适用于数据滞后发布场景）"
-
-    # UI布局配置
-    NUM_COLS_INDUSTRY = 3
-    MAX_ITERATIONS_STEP = 10
-
-    # 文件上传配置
-    EXCEL_MAPPING_SHEET = '指标字典'
-    INDICATOR_COLUMN_NAME = '指标名称'
-    INDUSTRY_COLUMN_NAME = '行业'
-    TYPE_COLUMN_NAME = '类型'
 
     @classmethod
     def get_date_defaults(cls) -> Dict[str, date]:

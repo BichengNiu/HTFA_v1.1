@@ -10,5 +10,3 @@ from dashboard.models.DFM.train.ui.pages.model_training_page import render_dfm_m
 __all__ = [
     'render_dfm_model_training_page'
 ]
-
-__version__ = '1.0.0'

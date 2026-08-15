@@ -20,7 +20,6 @@ class ValidationResult:
     """验证结果数据类"""
     is_valid: bool
     error_message: str | None = None
-    warning_message: str | None = None
     cleaned_data: pd.Series | None = None
     metadata: dict | None = None
 

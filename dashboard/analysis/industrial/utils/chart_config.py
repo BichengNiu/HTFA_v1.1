@@ -15,9 +15,6 @@ from typing import Dict, List
 # 时间范围选项（全局统一）
 TIME_RANGE_OPTIONS: List[str] = ["1年", "3年", "5年", "全部", "自定义"]
 
-# 默认时间范围
-DEFAULT_TIME_RANGE: str = "3年"
-
 # 默认时间范围索引
 DEFAULT_TIME_RANGE_INDEX: int = 1  # "3年"的索引
 
@@ -37,7 +34,6 @@ CHART_COLORS: List[str] = [
 
 # 图表尺寸
 CHART_HEIGHT_STANDARD: int = 600
-CHART_HEIGHT_COMPACT: int = 500
 
 # 图表边距
 CHART_MARGIN_STANDARD: Dict[str, int] = {
@@ -45,13 +41,6 @@ CHART_MARGIN_STANDARD: Dict[str, int] = {
     'r': 50,
     't': 30,
     'b': 120
-}
-
-CHART_MARGIN_WITH_LEGEND: Dict[str, int] = {
-    'l': 80,
-    'r': 50,
-    't': 40,
-    'b': 180
 }
 
 # 字体大小配置
@@ -64,15 +53,6 @@ LEGEND_CONFIG_BOTTOM_CENTER: Dict = {
     'orientation': "h",
     'yanchor': "top",
     'y': -0.18,
-    'xanchor': "center",
-    'x': 0.5,
-    'font': dict(size=FONT_SIZE_LEGEND)
-}
-
-LEGEND_CONFIG_BOTTOM_CENTER_LARGE: Dict = {
-    'orientation': "h",
-    'yanchor': "top",
-    'y': -0.30,
     'xanchor': "center",
     'x': 0.5,
     'font': dict(size=FONT_SIZE_LEGEND)

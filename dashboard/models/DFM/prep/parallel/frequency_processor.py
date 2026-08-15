@@ -12,22 +12,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# 频率等级映射（从统一常量导入）
-from dashboard.models.DFM.prep.modules.config_constants import FREQ_ORDER
-
-
-def _get_freq_level(freq_code: str) -> int:
-    """获取频率等级"""
-    return FREQ_ORDER.get(freq_code, 2)
-
-
 # ========== 可序列化的顶层函数 ==========
 
 def _process_single_frequency(
     freq_name: str,
     freq_data_serialized: Dict[str, Tuple[np.ndarray, np.ndarray]],
-    original_freq: str,
-    target_level: int,
     data_start_date: Optional[str],
     data_end_date: Optional[str],
     target_freq: str,
@@ -39,8 +28,6 @@ def _process_single_frequency(
     Args:
         freq_name: 频率名称 ('daily', 'weekly', etc.)
         freq_data_serialized: 该频率的数据字典 {变量名: (values, index)}
-        original_freq: 原始频率代码 ('D', 'W', 'M', etc.)
-        target_level: 目标频率等级
         data_start_date: 数据开始日期
         data_end_date: 数据结束日期
         target_freq: 目标频率字符串
@@ -135,7 +122,6 @@ def _serialize_freq_data(freq_data: Dict[str, pd.DataFrame]) -> Dict[str, Tuple[
 
 def parallel_process_frequencies(
     data_by_freq: Dict[str, Dict],
-    target_level: int,
     data_start_date: Optional[str],
     data_end_date: Optional[str],
     target_freq: str,
@@ -148,7 +134,6 @@ def parallel_process_frequencies(
 
     Args:
         data_by_freq: 按频率分类的数据
-        target_level: 目标频率等级
         data_start_date: 数据开始日期
         data_end_date: 数据结束日期
         target_freq: 目标频率
@@ -190,8 +175,6 @@ def parallel_process_frequencies(
         delayed(_process_single_frequency)(
             freq_name,
             freq_data,
-            original_freq,
-            target_level,
             data_start_date,
             data_end_date,
             target_freq,

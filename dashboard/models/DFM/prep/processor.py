@@ -21,11 +21,13 @@ from dashboard.models.DFM.prep.modules.data_aligner import (
     DataAligner, generate_theoretical_index
 )
 from dashboard.models.DFM.prep.modules.data_cleaner import DataCleaner, clean_dataframe
-from dashboard.models.DFM.prep.modules.config_constants import FREQ_ORDER
 from dashboard.models.DFM.prep.modules.publication_calibrator import PublicationCalibrator
 from dashboard.models.DFM.prep.utils.date_utils import standardize_date
 from dashboard.models.DFM.utils.text_utils import normalize_text
-from dashboard.models.DFM.prep.config import PrepParallelConfig, create_default_prep_config
+from dashboard.models.DFM.utils.parallel_config import (
+    ParallelConfig,
+    create_default_parallel_config,
+)
 from dashboard.models.DFM.prep.parallel.frequency_processor import parallel_process_frequencies
 
 logger = logging.getLogger(__name__)
@@ -58,7 +60,7 @@ class DataPreparationProcessor:
         negative_handling: str = 'none',
         var_publication_lag_map: Dict[str, int] = None,
         enable_publication_calibration: bool = False,
-        parallel_config: Optional[PrepParallelConfig] = None
+        parallel_config: Optional[ParallelConfig] = None
     ):
         """初始化处理器
 
@@ -97,7 +99,7 @@ class DataPreparationProcessor:
         self.negative_handling = negative_handling
         self.var_publication_lag_map = var_publication_lag_map or {}
         self.enable_publication_calibration = enable_publication_calibration
-        self.parallel_config = parallel_config or create_default_prep_config()
+        self.parallel_config = parallel_config or create_default_parallel_config()
 
         # 初始化组件
         # DataAligner仅在启用频率对齐���使用
@@ -415,8 +417,6 @@ class DataPreparationProcessor:
         if not self.enable_freq_alignment:
             return self._step5_no_alignment(data_by_freq)
 
-        target_level = self._get_freq_level(self.target_freq)
-
         # 统计有数据的频率数量
         active_freqs = sum(1 for f in data_by_freq.values() if f)
 
@@ -424,7 +424,6 @@ class DataPreparationProcessor:
         logger.info(f"  使用并行频率处理 ({active_freqs}个频率, n_jobs={self.parallel_config.get_effective_n_jobs()})...")
         aligned_data, all_borrowing_log, removal_log = parallel_process_frequencies(
             data_by_freq=data_by_freq,
-            target_level=target_level,
             data_start_date=self.data_start_date,
             data_end_date=self.data_end_date,
             target_freq=self.target_freq,
@@ -512,7 +511,7 @@ class DataPreparationProcessor:
 
         # 检查并处理重复索引
         if combined_df.index.duplicated().any():
-            logger.warning(f"  检测到重复索引，正在清理...")
+            logger.warning("  检测到重复索引，正在清理...")
             combined_df = combined_df[~combined_df.index.duplicated(keep='last')]
             logger.info(f"  清理后形状: {combined_df.shape}")
 
@@ -606,21 +605,3 @@ class DataPreparationProcessor:
         logger.info(f"  移除日志: {len(self.removal_log)}条记录")
 
         return final_df, final_var_mapping, transform_log, self.removal_log
-
-
-    def _get_freq_level(self, freq: str) -> int:
-        """获取频率等级
-
-        Args:
-            freq: 频率字符串（如'W-FRI', 'D', 'M'）
-
-        Returns:
-            int: 频率等级（1-5）
-        """
-        # 提取频率代码
-        if '-' in freq:
-            freq_code = freq.split('-')[0]
-        else:
-            freq_code = freq[0] if freq else 'W'
-
-        return FREQ_ORDER.get(freq_code, 2)  # 默认为周度

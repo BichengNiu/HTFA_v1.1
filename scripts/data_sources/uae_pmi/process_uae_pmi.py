@@ -8,12 +8,12 @@ source and does not represent the observations as an LSEG feed.
 from __future__ import annotations
 
 import argparse
+import sys
 import csv
 import json
 import math
 import re
 import shutil
-import subprocess
 import tempfile
 import warnings
 from dataclasses import dataclass
@@ -22,6 +22,15 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from openpyxl import load_workbook
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from scripts.data_sources._excel_helpers import (
+    payload_json_file,
+    run_powershell_sheet_writer,
+)
 
 
 TARGET_SHEET = "月度_LSEG"
@@ -339,19 +348,12 @@ def write_workbook(path: Path, observations: list[PmiObservation]) -> None:
             for item in sorted(observations, key=lambda item: item.period, reverse=True)
         ],
     }
-    payload_path: Path | None = None
     backup_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            prefix=".uae-pmi-sheet-",
-            suffix=".json",
-            dir=Path(__file__).resolve().parent,
-            encoding="utf-8",
-            delete=False,
-        ) as temporary:
-            payload_path = Path(temporary.name)
-            json.dump(payload, temporary, ensure_ascii=True)
+    with payload_json_file(
+        payload,
+        prefix=".uae-pmi-sheet-",
+        directory=Path(__file__).resolve().parent,
+    ) as payload_path:
         with tempfile.NamedTemporaryFile(
             prefix=".uae-pmi-backup-",
             suffix=path.suffix,
@@ -359,41 +361,19 @@ def write_workbook(path: Path, observations: list[PmiObservation]) -> None:
             delete=False,
         ) as backup:
             backup_path = Path(backup.name)
-        shutil.copy2(path, backup_path)
-        completed = subprocess.run(
-            (
-                "powershell.exe",
-                "-NoProfile",
-                "-NonInteractive",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                str(helper_path),
-                "-WorkbookPath",
-                str(path),
-                "-DataPath",
-                str(payload_path),
-                "-SheetName",
-                TARGET_SHEET,
-            ),
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-        if completed.returncode:
-            message = (completed.stderr or completed.stdout).strip()
-            raise RuntimeError(f"Excel sheet update failed: {message}")
-        _verify_workbook(path, observations)
-    except Exception:
-        if backup_path is not None and backup_path.is_file():
-            shutil.copy2(backup_path, path)
-        raise
-    finally:
-        for temporary_path in (payload_path, backup_path):
-            if temporary_path is not None and temporary_path.exists():
-                temporary_path.unlink()
+        try:
+            shutil.copy2(path, backup_path)
+            run_powershell_sheet_writer(
+                helper_path, path, payload_path, TARGET_SHEET
+            )
+            _verify_workbook(path, observations)
+        except Exception:
+            if backup_path is not None and backup_path.is_file():
+                shutil.copy2(backup_path, path)
+            raise
+        finally:
+            if backup_path is not None and backup_path.exists():
+                backup_path.unlink()
 
 
 def parse_args() -> argparse.Namespace:

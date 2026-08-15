@@ -38,7 +38,7 @@ from dashboard.analysis.uae.government_finance.search_index import (
     load_search_index_data,
 )
 from dashboard.analysis.uae.oil.alignment import within_month_window
-from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
+from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
 
 
 @st.cache_data(show_spinner=False)
@@ -91,16 +91,13 @@ def _render_charts(
     )
     title = "政府及国有资本存款与信贷扩张"
     chart_frame = _chart_frame(display_values)
-    st_obj.pyplot(
-        place_chart_legend_at_bottom(
-            build_government_finance_yoy_figure(
-                data.values,
-                title=title,
-                source_text=source_text,
-            )
+    render_pyplot_figure(
+        st_obj,
+        build_government_finance_yoy_figure(
+            data.values,
+            title=title,
+            source_text=source_text,
         ),
-        width="stretch",
-        clear_figure=True,
         bbox_inches=None,
     )
     render_chart_download(
@@ -125,16 +122,13 @@ def _render_foreign_labor_chart(
         dict.fromkeys(metadata.source for metadata in data.metadata.values())
     )
     title = "尼泊尔和孟加拉国入境阿联酋劳工人数"
-    st_obj.pyplot(
-        place_chart_legend_at_bottom(
-            build_foreign_labor_figure(
-                display_values,
-                title=title,
-                source_text=source_text,
-            )
+    render_pyplot_figure(
+        st_obj,
+        build_foreign_labor_figure(
+            display_values,
+            title=title,
+            source_text=source_text,
         ),
-        width="stretch",
-        clear_figure=True,
         bbox_inches=None,
     )
     render_chart_download(
@@ -151,16 +145,13 @@ def _render_search_index_chart(
 ) -> None:
     title = "阿联酋工作谷歌搜索热度"
     display_values = display_search_index_values(values)
-    st_obj.pyplot(
-        place_chart_legend_at_bottom(
-            build_search_index_figure(
-                values,
-                title=title,
-                source_text=SEARCH_SOURCE_TEXT,
-            )
+    render_pyplot_figure(
+        st_obj,
+        build_search_index_figure(
+            values,
+            title=title,
+            source_text=SEARCH_SOURCE_TEXT,
         ),
-        width="stretch",
-        clear_figure=True,
         bbox_inches=None,
     )
     render_chart_download(
@@ -180,16 +171,13 @@ def _render_pmi_chart(
     )
     title = "阿联酋非油私营部门PMI"
     display_values = display_pmi_values(data.values)
-    st_obj.pyplot(
-        place_chart_legend_at_bottom(
-            build_pmi_figure(
-                data.values,
-                title=title,
-                source_text=source_text,
-            )
+    render_pyplot_figure(
+        st_obj,
+        build_pmi_figure(
+            data.values,
+            title=title,
+            source_text=source_text,
         ),
-        width="stretch",
-        clear_figure=True,
         bbox_inches=None,
     )
     render_chart_download(

@@ -95,6 +95,27 @@ def _add_war_line(axis: Axes) -> None:
     )
 
 
+def add_bottom_legend(
+    figure: Figure,
+    handles,
+    labels,
+    *,
+    ncol: int,
+    y: float = 0.115,
+) -> None:
+    """在图形底部添加统一的水平图例。"""
+
+    figure.legend(
+        handles=handles,
+        labels=labels,
+        loc="lower center",
+        bbox_to_anchor=(0.5, y),
+        frameon=False,
+        prop={"family": CHINESE_FONT_FAMILY[0], "size": 10},
+        ncol=ncol,
+    )
+
+
 def annotate_war(axis: Axes) -> None:
     """在战争时期的水平中间、图形上边框之上标注“<- 战争 ->”红色文字。"""
 

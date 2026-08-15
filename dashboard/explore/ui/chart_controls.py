@@ -6,10 +6,9 @@ import hashlib
 from datetime import date, datetime
 from typing import Any
 
-import matplotlib.pyplot as plt
 import pandas as pd
 
-from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
+from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
 from dashboard.explore.analysis.stationarity import (
     create_correlogram_figure,
     resolve_correlation_lags,
@@ -84,15 +83,11 @@ def _grid_line_style_select(st_obj, scope: str, applied: dict[str, Any]) -> str:
     return GRID_LINE_STYLE_OPTIONS[label]
 
 
-def _is_date_value(value: Any) -> bool:
-    return isinstance(value, (pd.Timestamp, datetime, date))
-
-
 def _time_series_axis_options(st_obj, scope: str, applied: dict[str, Any]) -> dict[str, Any]:
     st_obj.markdown("**坐标轴范围与刻度**")
     columns = st_obj.columns(4)
     x_start = applied["x_start"]
-    if _is_date_value(x_start):
+    if isinstance(x_start, (pd.Timestamp, datetime, date)):
         x_start = columns[0].date_input(
             "横轴起始日期",
             value=pd.Timestamp(x_start).date(),
@@ -314,14 +309,7 @@ def render_correlogram_chart(
             include_pacf=include_pacf,
             **{key: value for key, value in config.items() if key != "nlags"},
         )
-        try:
-            st_obj.pyplot(
-                place_chart_legend_at_bottom(figure),
-                width="stretch",
-                clear_figure=True,
-            )
-        finally:
-            plt.close(figure)
+        render_pyplot_figure(st_obj, figure)
         render_correlogram_config_expander(
             st_obj,
             scope=scope,

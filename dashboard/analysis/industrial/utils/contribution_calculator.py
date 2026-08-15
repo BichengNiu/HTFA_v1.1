@@ -15,26 +15,6 @@ from .weight_calculator import build_weight_series
 from .weighted_calculation import build_weights_mapping, categorize_indicators
 
 
-def prepare_weights_series_for_contribution(
-    weights_mapping: Dict[str, Dict],
-    time_index: pd.DatetimeIndex
-) -> Dict[str, pd.Series]:
-    """
-    为每个指标准备权重时间序列
-
-    Args:
-        weights_mapping: 权重映射 {指标名: {出口依赖, 上中下游, weights_row}}
-        time_index: 时间索引
-
-    Returns:
-        {指标名: 权重Series}
-    """
-    return {
-        indicator: build_weight_series(info['weights_row'], time_index)
-        for indicator, info in weights_mapping.items()
-    }
-
-
 def calculate_individual_contributions(
     df_macro: pd.DataFrame,
     weights_mapping: Dict[str, Dict]
@@ -53,9 +33,10 @@ def calculate_individual_contributions(
     """
     debug_log("开始计算单个行业拉动率", "DEBUG")
 
-    weights_series_mapping = prepare_weights_series_for_contribution(
-        weights_mapping, df_macro.index
-    )
+    weights_series_mapping = {
+        indicator: build_weight_series(info['weights_row'], df_macro.index)
+        for indicator, info in weights_mapping.items()
+    }
 
     contribution_df = pd.DataFrame(index=df_macro.index)
     missing_weights = []

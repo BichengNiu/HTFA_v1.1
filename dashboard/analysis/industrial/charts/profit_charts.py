@@ -100,13 +100,6 @@ class ProfitContributionChart(BaseChartCreator):
                                   '拉动率: %{y:.2f}百分点<extra></extra>'
                 ))
 
-    def _apply_layout(self, fig: go.Figure, data: pd.DataFrame) -> None:
-        """应用布局配置"""
-        super()._apply_layout(fig, data)
-
-        # 设置为相对堆积模式（正确处理正负值）
-        fig.update_layout(barmode='relative')
-
     @staticmethod
     def _get_color_for_stream(col_name: str) -> str:
         """根据列名返回对应的颜色"""

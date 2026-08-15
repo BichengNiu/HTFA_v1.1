@@ -134,10 +134,3 @@ class EnterpriseIndicatorsChart(BaseChartCreator):
                                   '时间: %{x|%Y年%m月}<br>' +
                                   '数值: %{y:.2f}%<extra></extra>'
                 ))
-
-    def _apply_layout(self, fig: go.Figure, data: pd.DataFrame) -> None:
-        """应用布局配置"""
-        super()._apply_layout(fig, data)
-
-        # 设置为相对堆积模式（正确处理正负值）
-        fig.update_layout(barmode='relative')

@@ -135,7 +135,7 @@ def _render_lead_lag_tab():
     """渲染领先滞后分析Tab"""
     with st.container():
         lead_lag_component = LeadLagAnalysisComponent()
-        lead_lag_component.render(st, tab_index=1)
+        lead_lag_component.render(st)
 
 
 def _clear_bivariate_results() -> None:

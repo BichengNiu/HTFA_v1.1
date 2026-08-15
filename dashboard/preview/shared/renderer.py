@@ -7,9 +7,11 @@ from pathlib import Path
 from typing import Optional, Any
 import logging
 
-from dashboard.preview.core.base_renderer import BaseRenderer
-from dashboard.preview.core.base_loader import BaseDataLoader
 from dashboard.preview.domain.models import LoadedPreviewData
+from dashboard.preview.shared.loader import (
+    PreviewWorkbookLoader,
+    extract_industry_name,
+)
 from dashboard.preview.shared.tabs import display_time_series_tab, display_overview_tab
 from dashboard.core.ui.utils.state_helpers import (
     clear_preview_data,
@@ -24,11 +26,9 @@ from dashboard.core.ui.utils.shared_dataset import (
 logger = logging.getLogger(__name__)
 
 
-class PreviewRenderer(BaseRenderer):
+class PreviewRenderer:
     """统一模板预览渲染器。"""
 
-    module_title: str
-    default_relative_path: Optional[Path] = None
     tab_names = ['数据概览', '日度', '周度', '旬度', '月度', '季度', '年度']
     frequency_tabs = {
         '日度': 'daily',
@@ -39,14 +39,23 @@ class PreviewRenderer(BaseRenderer):
         '年度': 'yearly',
     }
 
-    def __init__(self, loader: BaseDataLoader):
-        """初始化渲染器
-
-        Args:
-            loader: 数据加载器对象
-        """
-        super().__init__(loader)
+    def __init__(
+        self,
+        loader: PreviewWorkbookLoader,
+        *,
+        module_title: str,
+        default_relative_path: Optional[Path] = None,
+    ):
+        """初始化渲染器。"""
+        self.loader = loader
+        self.module_title = module_title
+        self.default_relative_path = default_relative_path
         self.state_namespace = loader.get_state_namespace()
+
+    def render(self):
+        """按固定流程渲染侧边栏和主内容。"""
+        self.render_sidebar()
+        self.render_main_content()
 
     def render_sidebar(self) -> Optional[Any]:
         """渲染侧边栏
@@ -235,11 +244,6 @@ class PreviewRenderer(BaseRenderer):
             preview_data.indicator_metadata_map,
             namespace=self.state_namespace,
         )
-        set_preview_state(
-            'custom_maps',
-            preview_data.custom_maps,
-            namespace=self.state_namespace,
-        )
 
         # 保存clean_industry_map
         clean_industry_map = self._build_clean_industry_map(preview_data)
@@ -267,7 +271,7 @@ class PreviewRenderer(BaseRenderer):
             if industry:
                 industries.add(industry)
 
-        return sorted(list(industries))
+        return sorted(industries)
 
     def _build_clean_industry_map(self, preview_data: LoadedPreviewData) -> dict:
         """构建clean_industry_map
@@ -283,7 +287,7 @@ class PreviewRenderer(BaseRenderer):
         for indicator, source in preview_data.source_map.items():
             industry_name = (
                 preview_data.indicator_industry_map.get(indicator)
-                or self.loader.extract_industry_name(source)
+                or extract_industry_name(source)
             )
             if industry_name not in clean_industry_map:
                 clean_industry_map[industry_name] = []

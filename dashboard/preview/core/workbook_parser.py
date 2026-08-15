@@ -355,26 +355,6 @@ def parse_preview_workbook(
             indicator_freq_map=frequency_map,
             indicator_metadata_map=metadata_map,
             module_name=module_name,
-            custom_maps={
-                "sheet_source": {
-                    name: metadata.sheet_source
-                    for name, metadata in metadata_map.items()
-                },
-                "dictionary_source": {
-                    name: metadata.dictionary_source
-                    for name, metadata in metadata_map.items()
-                    if metadata.dictionary_source
-                },
-                "updated_at": {
-                    name: metadata.updated_at
-                    for name, metadata in metadata_map.items()
-                },
-                "forecast_variable": {
-                    name: metadata.forecast_variable
-                    for name, metadata in metadata_map.items()
-                    if metadata.forecast_variable
-                },
-            },
         )
     finally:
         excel_file.close()

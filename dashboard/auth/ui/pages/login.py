@@ -156,8 +156,12 @@ class LoginPage:
                 success, user, message = self.auth_manager.authenticate(username, password)
 
                 if success and user:
-                    # 创建会话
-                    session_hours = 24 if remember_me else 8  # 记住登录状态时延长会话时间
+                    # 创建会话（会话时长统一由 AuthConfig 提供）
+                    session_hours = (
+                        self.auth_manager.config.remember_me_duration_hours
+                        if remember_me
+                        else self.auth_manager.config.session_duration_hours
+                    )
                     session = self.auth_manager.create_session(user, session_hours)
 
                     if session:

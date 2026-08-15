@@ -11,7 +11,7 @@ from Ts.TsPlots import plot_series
 
 from dashboard.analysis.uae.oil.alignment import within_month_window
 from dashboard.analysis.uae.plot_helpers import (
-    CHINESE_FONT_FAMILY,
+    add_bottom_legend,
     add_source_note,
     annotate_war,
     apply_strict_month_ticks,
@@ -21,8 +21,8 @@ from dashboard.analysis.uae.plot_helpers import (
 )
 from dashboard.analysis.uae.sheet_reader import (
     SheetSeriesMetadata,
+    open_uae_workbook,
     parse_target_sheet,
-    workbook_buffer,
 )
 
 
@@ -50,9 +50,10 @@ def load_pmi_data(
 ) -> PmiData:
     """只读取 ``月度_LSEG`` 的单一 PMI 指标并校验元数据。"""
 
-    buffer, source_name = workbook_buffer(file_input, file_name=file_name)
-    excel_file = pd.ExcelFile(buffer)
-    try:
+    with open_uae_workbook(file_input, file_name=file_name) as (
+        excel_file,
+        source_name,
+    ):
         values, metadata = parse_target_sheet(
             excel_file,
             sheet_name=PMI_SHEET,
@@ -60,8 +61,6 @@ def load_pmi_data(
             allowed_frequencies={"月", "月度"},
             expected_unit="点",
         )
-    finally:
-        excel_file.close()
 
     return PmiData(
         values=values,
@@ -119,15 +118,7 @@ def build_pmi_figure(
         spine.set_linewidth(0.9)
     apply_strict_month_ticks(axis, display_values.index)
     annotate_war(axis)
-    figure.legend(
-        handles=axis.get_lines()[:1],
-        labels=[PMI_LABEL],
-        loc="lower center",
-        bbox_to_anchor=(0.5, 0.115),
-        frameon=False,
-        prop={"family": CHINESE_FONT_FAMILY[0], "size": 10},
-        ncol=1,
-    )
+    add_bottom_legend(figure, axis.get_lines()[:1], [PMI_LABEL], ncol=1)
     finish_dual_axis_figure(figure, top=0.90)
     add_source_note(figure, source_text)
     return figure

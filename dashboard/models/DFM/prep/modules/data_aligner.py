@@ -97,69 +97,6 @@ class DataAligner:
 
         return merged_df
 
-    def align_target_to_nearest_friday(self, target_values: pd.Series) -> pd.Series:
-        """
-        将目标变量对齐到最近的周五
-
-        Args:
-            target_values: 目标变量序列，索引为发布日期
-
-        Returns:
-            pd.Series: 对齐到周五的目标变量序列
-        """
-        if target_values is None or target_values.empty:
-            raise ValueError("目标变量数据为空，无法对齐到周五")
-        
-        logger.info("目标变量对齐到最近周五...")
-
-        temp_target_df = pd.DataFrame({'value': target_values})
-
-        temp_target_df['nearest_friday'] = temp_target_df.index.map(get_nearest_friday)
-
-        # 验证周五日期计算结果
-        if temp_target_df['nearest_friday'].isna().any():
-            invalid_dates = temp_target_df[temp_target_df['nearest_friday'].isna()].index.tolist()[:5]
-            raise ValueError(f"无法计算周五日期: {invalid_dates}")
-        
-        # 处理同一个目标周五的重复：优先取非零值，避免0值覆盖有效数据
-        # 我们先按原始发布日期索引排序，然后分组并取优先非零的最后一个
-        target_series_aligned = temp_target_df.sort_index(ascending=True).groupby('nearest_friday')['value'].agg(_prefer_nonzero_last)
-        target_series_aligned.index.name = 'Date'
-        target_series_aligned.name = target_values.name
-
-        logger.info("目标变量对齐完成。Shape: %s", target_series_aligned.shape)
-
-        return target_series_aligned
-    
-    def align_target_sheet_predictors_to_nearest_friday(self, predictors_df: pd.DataFrame) -> pd.DataFrame:
-        """
-        将目标表格的预测变量对齐到最近的周五
-
-        Args:
-            predictors_df: 预测变量DataFrame，索引为发布日期
-
-        Returns:
-            pd.DataFrame: 对齐到周五的预测变量DataFrame
-        """
-        if predictors_df is None or predictors_df.empty:
-            raise ValueError("预测变量数据为空，无法对齐到周五")
-        
-        logger.info("目标 Sheet 预测变量对齐到最近周五...")
-        
-        # 确保没有重复列
-        predictors_df = self.cleaner.remove_duplicate_columns(predictors_df, "[目标Sheet预测变量对齐] ")
-
-        temp_df = predictors_df.copy()
-        temp_df['nearest_friday'] = temp_df.index.map(get_nearest_friday)
-        
-        # 处理同一个目标周五的重复：优先取非零值，避免0值覆盖有效数据
-        aligned_predictors = temp_df.sort_index(ascending=True).groupby('nearest_friday').agg(_prefer_nonzero_last)
-        aligned_predictors.index.name = 'Date'
-        
-        logger.info("目标 Sheet 预测变量对齐完成。Shape: %s", aligned_predictors.shape)
-
-        return aligned_predictors
-
     def _align_periodic_to_friday(
         self,
         data: pd.DataFrame,

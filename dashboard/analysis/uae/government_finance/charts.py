@@ -13,8 +13,8 @@ from dashboard.analysis.uae.government_finance.data import (
     combine_government_and_state_capital,
 )
 from dashboard.analysis.uae.plot_helpers import (
-    CHINESE_FONT_FAMILY,
     WAR_LINE_COLOR,
+    add_bottom_legend,
     WAR_START_DATE,
     add_source_note,
     annotate_war,
@@ -93,13 +93,10 @@ def build_government_finance_yoy_figure(
         spine.set_color("#6B7280")
         spine.set_linewidth(0.9)
     annotate_war(axis)
-    figure.legend(
-        handles=axis.get_lines()[: len(YOY_SERIES)],
-        labels=[spec[1] for spec in YOY_SERIES],
-        loc="lower center",
-        bbox_to_anchor=(0.5, 0.115),
-        frameon=False,
-        prop={"family": CHINESE_FONT_FAMILY[0], "size": 10},
+    add_bottom_legend(
+        figure,
+        axis.get_lines()[: len(YOY_SERIES)],
+        [spec[1] for spec in YOY_SERIES],
         ncol=len(YOY_SERIES),
     )
     finish_dual_axis_figure(figure, top=0.90)

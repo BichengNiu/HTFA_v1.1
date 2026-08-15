@@ -3,6 +3,12 @@ from pathlib import Path
 
 import pandas as pd
 
+from dashboard.models.DFM.decomp.core.impact_analyzer import (
+    DataRelease,
+    ImpactAnalyzer,
+    ImpactResult,
+)
+from dashboard.models.DFM.decomp.core.model_loader import SavedNowcastData
 from dashboard.models.DFM.train.training.config import TrainingConfig
 from dashboard.models.DFM.train.utils.data_utils import load_and_validate_data
 
@@ -52,3 +58,42 @@ def test_variable_transformer_has_one_active_batch_entry():
 
     assert "def transform_dataframe(" not in source
     assert "def get_transform_summary(" not in source
+
+
+def test_news_impact_pipeline_uses_saved_nowcast_data_directly(monkeypatch):
+    analyzer = ImpactAnalyzer(SavedNowcastData())
+
+    def calculate(release):
+        return ImpactResult(
+            release=release,
+            impact_on_target=1.0,
+            kalman_weight=0.5,
+        )
+
+    monkeypatch.setattr(analyzer, "calculate_single_release_impact", calculate)
+    releases = [
+        DataRelease(
+            timestamp=pd.Timestamp("2025-06-30"),
+            variable_name="inside",
+            observed_value=1.0,
+            expected_value=0.0,
+        ),
+        DataRelease(
+            timestamp=pd.Timestamp("2025-07-01"),
+            variable_name="outside",
+            observed_value=1.0,
+            expected_value=0.0,
+        ),
+    ]
+
+    result = analyzer.analyze_sequential_impacts(
+        releases,
+        pd.Timestamp("2025-06-15"),
+    )
+
+    assert [item.release.variable_name for item in result.individual_impacts] == [
+        "inside"
+    ]
+    assert not Path(
+        "dashboard/models/DFM/decomp/core/nowcast_extractor.py"
+    ).exists()

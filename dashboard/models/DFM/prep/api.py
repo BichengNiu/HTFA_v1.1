@@ -21,7 +21,7 @@ import threading
 from datetime import datetime
 
 from dashboard.models.DFM.prep.processor import DataPreparationProcessor
-from dashboard.models.DFM.prep.config import PrepParallelConfig
+from dashboard.models.DFM.utils.parallel_config import ParallelConfig
 from dashboard.models.DFM.utils.text_utils import normalize_text
 
 logger = logging.getLogger(__name__)
@@ -141,7 +141,7 @@ def load_mappings_once(
         )
 
         # 统计信息
-        logger.info(f"  映射加载完成:")
+        logger.info("  映射加载完成:")
         logger.info(f"    变量类型: {len(mappings['var_type_map'])}个")
         logger.info(f"    变量-行业: {len(mappings['var_industry_map'])}个")
         logger.info(f"    变量-频率: {len(mappings['var_frequency_map'])}个")
@@ -192,7 +192,7 @@ def prepare_dfm_data_simple(
     zero_handling: str = "missing",
     negative_handling: str = "none",
     enable_publication_calibration: bool = False,
-    parallel_config: Optional[PrepParallelConfig] = None
+    parallel_config: Optional[ParallelConfig] = None
 ) -> Dict[str, Any]:
     """
     DFM数据准备主API - 简化版（7步流程）

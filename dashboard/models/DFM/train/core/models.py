@@ -61,16 +61,6 @@ class EvaluationMetrics:
     converged: bool = False
     iterations: int = 0
 
-    def to_dict(self) -> Dict[str, float]:
-        """转换为字典"""
-        return {
-            'target_rmse': self.target_rmse,
-            'target_rmse_validation': self.target_rmse_validation,
-            'weighted_target_rmse': self.weighted_target_rmse,
-            'converged': self.converged,
-            'iterations': self.iterations
-        }
-
 
 # ==================== DFM模型相关 ====================
 
@@ -110,10 +100,6 @@ class DFMModelResult:
     iterations: int = 0
     log_likelihood: float = -np.inf
 
-    # 训练期索引范围（用于区分训练期/验证期因子）
-    train_start_idx: Optional[int] = None
-    train_end_idx: Optional[int] = None
-
 
 # ==================== 卡尔曼滤波相关 ====================
 
@@ -134,7 +120,6 @@ class KalmanSmootherResult:
     """卡尔曼平滑结果"""
     x_smoothed: np.ndarray      # 平滑状态估计
     P_smoothed: np.ndarray      # 平滑协方差
-    P_lag_smoothed: np.ndarray  # 滞后协方差
 
 
 # ==================== 变量选择相关 ====================

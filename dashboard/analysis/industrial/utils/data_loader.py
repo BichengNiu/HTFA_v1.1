@@ -17,6 +17,13 @@ from io import BytesIO
 
 import numpy as np
 
+from dashboard.analysis.industrial.constants import (
+    SHEET_NAME_ENTERPRISE_PROFIT,
+    SHEET_NAME_MACRO_DATA,
+    SHEET_NAME_OVERALL_INDUSTRIAL,
+    SHEET_NAME_PROFIT_BREAKDOWN,
+)
+
 logger = logging.getLogger(__name__)
 
 # 注：@st.cache_data装饰器会自动根据函数参数（包括uploaded_file的内容）生成缓存键
@@ -122,7 +129,7 @@ def _load_excel_sheet(uploaded_file, sheet_name: str) -> Optional[pd.DataFrame]:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def load_macro_data(uploaded_file, sheet_name: str = '分行业工业增加值同比增速') -> Optional[pd.DataFrame]:
+def load_macro_data(uploaded_file, sheet_name: str = SHEET_NAME_MACRO_DATA) -> Optional[pd.DataFrame]:
     """
     使用统一格式加载宏观工业数据：第一行是列名，第一列是时间列
 
@@ -188,7 +195,7 @@ def load_weights_data() -> Optional[pd.DataFrame]:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def load_overall_industrial_data(uploaded_file, sheet_name: str = '总体工业增加值同比增速') -> Optional[pd.DataFrame]:
+def load_overall_industrial_data(uploaded_file, sheet_name: str = SHEET_NAME_OVERALL_INDUSTRIAL) -> Optional[pd.DataFrame]:
     """
     使用统一格式加载总体工业增加值数据：第一行是列名，第一列是时间列
 
@@ -214,13 +221,13 @@ def load_overall_industrial_data(uploaded_file, sheet_name: str = '总体工业�
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def load_profit_breakdown_data(uploaded_file, sheet_name: str = '分上中下游利润拆解') -> Optional[pd.DataFrame]:
+def load_profit_breakdown_data(uploaded_file, sheet_name: str = SHEET_NAME_PROFIT_BREAKDOWN) -> Optional[pd.DataFrame]:
     """使用统一格式读取分上中下游利润拆解数据：第一行是列名，第一列是时间列"""
     return _load_excel_sheet(uploaded_file, sheet_name)
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def load_enterprise_profit_data(uploaded_file, sheet_name: str = '工业企业利润') -> Optional[pd.DataFrame]:
+def load_enterprise_profit_data(uploaded_file, sheet_name: str = SHEET_NAME_ENTERPRISE_PROFIT) -> Optional[pd.DataFrame]:
     """使用统一格式读取工业企业利润数据：第一行是列名，第一列是时间列"""
     return _load_excel_sheet(uploaded_file, sheet_name)
 

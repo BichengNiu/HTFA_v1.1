@@ -82,73 +82,6 @@ class VariableTransformer:
         """
         return self.DEFAULT_RECOMMENDATIONS.get(nature, ('none', 'none'))
 
-    def _preprocess_values(self, series: pd.Series, method: str, mask: pd.Series, label: str, adjust_value) -> pd.Series:
-        """
-        通用值预处理
-
-        Args:
-            series: 输入序列
-            method: 处理方法 ('none', 'missing', 'adjust')
-            mask: 需要处理的值的布尔掩码
-            label: 日志标签（如 '0值'、'负值'）
-            adjust_value: adjust 模式下的替换值或替换函数
-
-        Returns:
-            处理后的序列
-        """
-        if method == 'none':
-            return series.copy()
-
-        var_name = series.name if series.name else "未命名"
-        result = series.copy()
-        count = mask.sum()
-
-        if count == 0:
-            return result
-
-        if method == 'missing':
-            result[mask] = np.nan
-            self.logger.info(f"变量 '{var_name}' 将 {count} 个{label}设为缺失值")
-        elif method == 'adjust':
-            if callable(adjust_value):
-                replacement = adjust_value(result[mask])
-            else:
-                replacement = adjust_value
-            result[mask] = replacement
-            self.logger.info(f"变量 '{var_name}' 将 {count} 个{label}调正为{replacement if not callable(adjust_value) else '计算值'}")
-
-        return result
-
-    def preprocess_zeros(self, series: pd.Series, method: str) -> pd.Series:
-        """
-        0值预处理
-
-        Args:
-            series: 输入序列
-            method: 处理方法 ('none', 'missing', 'adjust')
-
-        Returns:
-            处理后的序列
-        """
-        return self._preprocess_values(series, method, series == 0, '0值', 1)
-
-    def preprocess_negatives(self, series: pd.Series, method: str) -> pd.Series:
-        """
-        负值预处理
-
-        Args:
-            series: 输入序列
-            method: 处理方法 ('none', 'missing', 'adjust')
-
-        Returns:
-            处理后的序列
-        """
-        negative_mask = series < 0
-        def _adjust_negatives(vals):
-            min_val = vals.min()
-            return vals + abs(min_val) + 1
-        return self._preprocess_values(series, method, negative_mask, '负值', _adjust_negatives)
-
     def apply_log(self, series: pd.Series) -> pd.Series:
         """
         对数变换
@@ -164,7 +97,7 @@ class VariableTransformer:
         Returns:
             pd.Series: 对数变换后的序列
         """
-        var_name = series.name if series.name else "未命名"
+        var_name = series.name or "未命名"
 
         # 获取有效值
         valid_values = series.dropna()
@@ -213,7 +146,7 @@ class VariableTransformer:
         Returns:
             pd.Series: 差分后的序列
         """
-        var_name = series.name if series.name else "未命名"
+        var_name = series.name or "未命名"
         result = series.diff(periods=periods)
         self.logger.debug(
             f"变量 '{var_name}' 应用{periods}期差分，"
@@ -254,7 +187,7 @@ class VariableTransformer:
         """
         from dashboard.models.DFM.prep.utils.friday_utils import get_yoy_friday_no_cross_month
 
-        var_name = series.name if series.name else "未命名"
+        var_name = series.name or "未命名"
         result = pd.Series(index=series.index, dtype=float)
         result[:] = np.nan
 
@@ -343,7 +276,7 @@ class VariableTransformer:
                 self.logger.warning(f"未知操作 '{op}'，跳过")
 
         # 记录转换详情
-        var_name = series.name if series.name else "未命名"
+        var_name = series.name or "未命名"
         self._transform_details[var_name] = {
             'operations': applied_ops,
             'original_stats': {

@@ -10,7 +10,7 @@ import pickle
 import joblib
 import numpy as np
 import pandas as pd
-from typing import Dict, Any, Tuple, Optional, List
+from typing import Dict, Any, Optional, List
 import io
 import logging
 
@@ -32,14 +32,11 @@ class SavedNowcastData:
         self.target_variable: Optional[str] = None
         self.variable_index_map: Optional[Dict[str, int]] = None  # 变量名到索引的映射
         self.var_industry_map: Optional[Dict[str, str]] = None  # 新增：变量名到行业分类的映射
-        self.model_parameters: Optional[Dict[str, Any]] = None
         self.metadata: Optional[Dict[str, Any]] = None
-        self.data_period: Optional[Tuple[str, str]] = None
         self.convergence_info: Optional[Dict[str, Any]] = None
         self.prepared_data: Optional[pd.DataFrame] = None  # 新增：complete_aligned_table（包含所有历史观测数据）
         self.model_type: Optional[str] = None  # 新增：模型类型 'classical' 或 'deep_learning'
         self.factor_states_predicted: Optional[np.ndarray] = None  # 先验因子状态 (n_time, n_factors)，用于expected_value计算
-        self.target_mean_original: Optional[float] = None  # 新增：目标变量训练期均值（用于反标准化）
         self.target_std_original: Optional[float] = None  # 新增：目标变量训练期标准差（用于反标准化）
 
 
@@ -54,7 +51,6 @@ class ModelLoader:
     def __init__(self):
         self._model: Optional[Any] = None
         self._metadata: Optional[Dict[str, Any]] = None
-        self._nowcast_data: Optional[SavedNowcastData] = None
 
     def load_model(self, model_content: bytes) -> Any:
         """
@@ -185,40 +181,34 @@ class ModelLoader:
             # 6. 提取变量映射
             nowcast_data.variable_index_map = self._extract_variable_mapping()
 
-            # 7. 提取模型参数
-            nowcast_data.model_parameters = self._extract_model_parameters()
+            # 7. 验证数据时间范围字段完整
+            self._validate_data_period()
 
-            # 8. 提取数据时间范围
-            nowcast_data.data_period = self._extract_data_period()
-
-            # 9. 提取收敛信息
+            # 8. 提取收敛信息
             nowcast_data.convergence_info = self._extract_convergence_info()
 
-            # 10. 提取历史观测数据表（complete_aligned_table）
+            # 9. 提取历史观测数据表（complete_aligned_table）
             nowcast_data.prepared_data = self._extract_prepared_data()
 
-            # 11. 提取行业分类映射
+            # 10. 提取行业分类映射
             nowcast_data.var_industry_map = self._extract_industry_map()
 
-            # 12. 提取先验因子状态（必需字段）
+            # 11. 提取先验因子状态（必需字段）
             nowcast_data.factor_states_predicted = self._extract_factor_states_predicted()
 
-            # 13. 提取目标变量标准化参数（用于影响分解反标准化）
-            target_mean, target_std = self._extract_target_standardization_params()
-            nowcast_data.target_mean_original = target_mean
-            nowcast_data.target_std_original = target_std
+            # 12. 提取并验证目标变量标准化参数（用于影响分解反标准化）
+            nowcast_data.target_std_original = self._extract_target_std()
 
-            # 14. 保存原始元数据
+            # 13. 保存原始元数据
             nowcast_data.metadata = self._metadata.copy()
 
-            # 15. 检测并设置模型类型
+            # 14. 检测并设置模型类型
             nowcast_data.model_type = self.detect_model_type()
             logger.info(f"模型类型: {nowcast_data.model_type}")
 
             # 验证提取的数据
             self._validate_extracted_data(nowcast_data)
 
-            self._nowcast_data = nowcast_data
             logger.info("成功提取nowcast数据")
             return nowcast_data
 
@@ -394,46 +384,21 @@ class ModelLoader:
         logger.info(f"提取目标变量: {target_variable}")
         return target_variable
 
-    def _extract_model_parameters(self) -> Dict[str, Any]:
-        """提取模型参数"""
-        parameters = {}
-
-        # 从模型中提取参数
-        if hasattr(self._model, 'A'):
-            parameters['state_transition'] = self._model.A
-        if hasattr(self._model, 'Q'):
-            parameters['state_noise'] = self._model.Q
-        if hasattr(self._model, 'R'):
-            parameters['observation_noise'] = self._model.R
-
-        # 从元数据中提取参数
-        if 'best_params' in self._metadata:
-            parameters.update(self._metadata['best_params'])
-
-        logger.info(f"提取模型参数: {len(parameters)} 个")
-        return parameters
-
-    def _extract_data_period(self) -> Tuple[str, str]:
-        """提取数据时间范围
+    def _validate_data_period(self) -> None:
+        """验证元数据包含完整的数据时间范围字段。
 
         Raises:
             DataFormatError: 时间范围信息缺失时抛出
         """
-        # 从元数据中获取
         if 'training_start_date' not in self._metadata:
             raise DataFormatError("元数据中缺少training_start_date字段")
 
         start_date = self._metadata['training_start_date']
-
-        # 结束日期优先使用 observation_period_end（DDFM），其次 validation_end_date（经典DFM）
         end_date = self._metadata.get('observation_period_end') or self._metadata.get('validation_end_date')
         if not end_date:
             raise DataFormatError("元数据中缺少observation_period_end或validation_end_date字段")
-
         if not start_date:
             raise DataFormatError("数据时间范围为空")
-
-        return start_date, end_date
 
     def _extract_convergence_info(self) -> Dict[str, Any]:
         """提取收敛信息"""
@@ -574,12 +539,12 @@ class ModelLoader:
         logger.info(f"提取先验因子状态: 形状={data.shape}")
         return data
 
-    def _extract_target_standardization_params(self) -> Tuple[float, float]:
+    def _extract_target_std(self) -> float:
         """
-        提取目标变量标准化参数（用于影响分解反标准化）
+        提取并验证目标变量标准差（用于影响分解反标准化）。
 
         Returns:
-            (target_mean, target_std) 元组
+            目标变量训练期标准差
 
         Raises:
             DataFormatError: 数据缺失或格式错误时抛出
@@ -621,7 +586,7 @@ class ModelLoader:
             )
 
         logger.info(f"提取标准化参数: mean={target_mean:.4f}, std={target_std:.4f}")
-        return float(target_mean), float(target_std)
+        return float(target_std)
 
     def _validate_extracted_data(self, nowcast_data: SavedNowcastData) -> None:
         """验证提取的数据维度一致性"""
@@ -659,4 +624,3 @@ class ModelLoader:
         logger.info(f"factor_states_predicted维度验证: {fsp_shape}")
 
         logger.info("数据完整性验证通过")
-

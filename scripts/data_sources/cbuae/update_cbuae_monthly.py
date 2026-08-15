@@ -13,11 +13,8 @@ The normalized series are written directly to the ``月度_CBUAE`` worksheet in
 from __future__ import annotations
 
 import argparse
-import json
 import re
-import subprocess
 import sys
-import tempfile
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -28,6 +25,16 @@ from typing import Iterable
 from openpyxl import load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 from pypdf import PdfReader
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from scripts.data_sources._excel_helpers import (
+    payload_json_file,
+    records_latest_first,
+    run_powershell_sheet_writer,
+)
 
 
 MONTH_NUMBERS = {
@@ -63,13 +70,6 @@ PERIOD_PATTERN = re.compile(
 )
 FILE_PERIOD_PATTERN = re.compile(r"^(20\d{2})-(0[1-9]|1[0-2])$")
 NUMBER_PATTERN = re.compile(r"-?\d[\d,]*(?:\.\d+)?")
-
-METRIC_COLUMNS = (
-    "government_deposits_aed_mn",
-    "gre_deposits_aed_mn",
-    "credit_to_government_aed_mn",
-    "credit_to_gres_aed_mn",
-)
 
 CBUAE_INDICATORS = (
     ("阿联酋政府存款", "存款"),
@@ -396,31 +396,6 @@ def _iter_months(start: str, end: str) -> Iterable[str]:
         current = current.replace(year=year, month=month)
 
 
-def _format_decimal(value: Decimal) -> str:
-    """Format a value without binary-float artifacts or unnecessary zeros."""
-
-    text = format(value, "f")
-    return text.rstrip("0").rstrip(".") if "." in text else text
-
-
-def _records_latest_first(
-    observations: Iterable[Observation],
-) -> list[dict[str, object]]:
-    """Serialize observations with the latest month in the first data row."""
-
-    return [
-        {
-            "period": observation.period,
-            "values": [float(value) for value in observation.values],
-        }
-        for observation in sorted(
-            observations,
-            key=lambda item: item.period,
-            reverse=True,
-        )
-    ]
-
-
 def select_latest_vintages(
     observations: Iterable[Observation],
     start_period: str,
@@ -497,51 +472,16 @@ def write_monthly_sheet(
             {"name": name, "type": indicator_type, "industry": "金融"}
             for name, indicator_type in CBUAE_INDICATORS
         ],
-        "records": _records_latest_first(observations),
+        "records": records_latest_first(observations),
     }
-    temporary_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            prefix=".cbuae-sheet-",
-            suffix=".json",
-            dir=Path(__file__).resolve().parent,
-            encoding="utf-8",
-            delete=False,
-        ) as temporary:
-            temporary_path = Path(temporary.name)
-            json.dump(payload, temporary, ensure_ascii=True)
-
-        completed = subprocess.run(
-            (
-                "powershell.exe",
-                "-NoProfile",
-                "-NonInteractive",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                str(helper_path),
-                "-WorkbookPath",
-                str(path),
-                "-DataPath",
-                str(temporary_path),
-                "-SheetName",
-                sheet_name,
-            ),
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
+    with payload_json_file(
+        payload,
+        prefix=".cbuae-sheet-",
+        directory=Path(__file__).resolve().parent,
+    ) as payload_path:
+        run_powershell_sheet_writer(
+            helper_path, path, payload_path, sheet_name
         )
-        if completed.returncode:
-            message = (completed.stderr or "").strip() or (
-                completed.stdout or ""
-            ).strip()
-            raise RuntimeError(f"Excel sheet update failed: {message}")
-    finally:
-        if temporary_path is not None and temporary_path.exists():
-            temporary_path.unlink()
 
 
 def parse_args() -> argparse.Namespace:

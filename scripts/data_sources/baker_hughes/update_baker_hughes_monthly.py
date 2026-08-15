@@ -9,9 +9,7 @@ Dubai and Sharjah are aggregated and written to the managed
 from __future__ import annotations
 
 import argparse
-import json
-import subprocess
-import tempfile
+import sys
 import warnings
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -20,6 +18,16 @@ from pathlib import Path
 from typing import Iterable
 
 from openpyxl import load_workbook
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from scripts.data_sources._excel_helpers import (
+    payload_json_file,
+    records_latest_first,
+    run_powershell_sheet_writer,
+)
 
 
 SOURCE_SHEET = "WW Monthly"
@@ -232,18 +240,6 @@ def target_is_current(path: Path, observations: Iterable[RigObservation]) -> boo
         workbook.close()
 
 
-def _records_latest_first(
-    observations: Iterable[RigObservation],
-) -> list[dict[str, object]]:
-    return [
-        {
-            "period": item.period,
-            "values": [float(value) for value in item.values],
-        }
-        for item in sorted(observations, key=lambda item: item.period, reverse=True)
-    ]
-
-
 def write_monthly_sheet(path: Path, observations: Iterable[RigObservation]) -> None:
     """Write the managed sheet through Excel, preserving all other worksheets."""
 
@@ -262,48 +258,16 @@ def write_monthly_sheet(path: Path, observations: Iterable[RigObservation]) -> N
             for name, _ in INDICATORS
         ],
         "obsolete_indicators": list(OBSOLETE_INDICATORS),
-        "records": _records_latest_first(observations),
+        "records": records_latest_first(observations),
     }
-    temporary_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            prefix=".baker-hughes-sheet-",
-            suffix=".json",
-            dir=Path(__file__).resolve().parent,
-            encoding="utf-8",
-            delete=False,
-        ) as temporary:
-            temporary_path = Path(temporary.name)
-            json.dump(payload, temporary, ensure_ascii=True)
-        completed = subprocess.run(
-            (
-                "powershell.exe",
-                "-NoProfile",
-                "-NonInteractive",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                str(helper_path),
-                "-WorkbookPath",
-                str(path),
-                "-DataPath",
-                str(temporary_path),
-                "-SheetName",
-                TARGET_SHEET,
-            ),
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
+    with payload_json_file(
+        payload,
+        prefix=".baker-hughes-sheet-",
+        directory=Path(__file__).resolve().parent,
+    ) as payload_path:
+        run_powershell_sheet_writer(
+            helper_path, path, payload_path, TARGET_SHEET
         )
-        if completed.returncode:
-            message = (completed.stderr or completed.stdout).strip()
-            raise RuntimeError(f"Excel sheet update failed: {message}")
-    finally:
-        if temporary_path is not None and temporary_path.exists():
-            temporary_path.unlink()
 
 
 def parse_args() -> argparse.Namespace:

@@ -13,6 +13,7 @@ from Ts.TsPlots.style import style_axes
 from dashboard.analysis.uae.oil.alignment import within_month_window
 from dashboard.analysis.uae.plot_helpers import (
     CHINESE_FONT_FAMILY,
+    add_bottom_legend,
     add_source_note,
     annotate_war,
     apply_strict_month_ticks,
@@ -22,8 +23,8 @@ from dashboard.analysis.uae.plot_helpers import (
 from dashboard.analysis.uae.sheet_reader import (
     SheetSeriesMetadata,
     format_updated_at,
+    open_uae_workbook,
     optional_text,
-    workbook_buffer,
 )
 from dashboard.preview.core.workbook_parser import normalize_indicator_name
 
@@ -63,12 +64,11 @@ def load_foreign_labor_data(
 ) -> ForeignLaborData:
     """Read the two official labour-flow series from the foreign-labour sheet."""
 
-    buffer, source_name = workbook_buffer(file_input, file_name=file_name)
-    excel_file = pd.ExcelFile(buffer)
-    try:
+    with open_uae_workbook(file_input, file_name=file_name) as (
+        excel_file,
+        source_name,
+    ):
         values, metadata = _parse_foreign_labor_sheet(excel_file)
-    finally:
-        excel_file.close()
 
     return ForeignLaborData(
         values=values,
@@ -302,13 +302,10 @@ def build_foreign_labor_figure(
         first_month - pd.Timedelta(days=16),
         last_month + pd.Timedelta(days=16),
     )
-    figure.legend(
-        handles=handles,
-        labels=[spec[1] for spec in SERIES_SPECS],
-        loc="lower center",
-        bbox_to_anchor=(0.5, 0.115),
-        frameon=False,
-        prop={"family": CHINESE_FONT_FAMILY[0], "size": 10},
+    add_bottom_legend(
+        figure,
+        handles,
+        [spec[1] for spec in SERIES_SPECS],
         ncol=2,
     )
     finish_dual_axis_figure(figure, top=0.90, right=0.88)

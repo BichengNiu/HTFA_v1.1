@@ -3,7 +3,6 @@
 import re
 from typing import Any, List
 
-from dashboard.preview.core.base_loader import BaseDataLoader
 from dashboard.preview.core.workbook_parser import parse_preview_workbook
 from dashboard.preview.domain.models import LoadedPreviewData
 
@@ -41,11 +40,12 @@ def extract_industry_name(source: str) -> str:
     )
 
 
-class PreviewWorkbookLoader(BaseDataLoader):
+class PreviewWorkbookLoader:
     """调用唯一工作簿协议的共享加载器。"""
 
-    module_name: str
-    state_namespace: str
+    def __init__(self, module_name: str, state_namespace: str):
+        self.module_name = module_name
+        self.state_namespace = state_namespace
 
     def load_and_process_data(self, files: List[Any]) -> LoadedPreviewData:
         """解析一个正式模板工作簿。"""
@@ -56,10 +56,6 @@ class PreviewWorkbookLoader(BaseDataLoader):
             files[0],
             module_name=self.module_name,
         )
-
-    def extract_industry_name(self, source: str) -> str:
-        """提取来源中的分类名称。"""
-        return extract_industry_name(source)
 
     def get_state_namespace(self) -> str:
         """返回模块隔离的状态命名空间。"""

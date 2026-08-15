@@ -77,20 +77,20 @@ def render_macro_operations_with_data(st_obj, df_macro: Optional[pd.DataFrame], 
         st_obj.info("数据加载失败，无法进行分析")
 
 
-def render_enterprise_profit_with_data(st_obj, df_macro: Optional[pd.DataFrame], df_weights: Optional[pd.DataFrame], uploaded_file=None):
+def render_enterprise_profit_with_data(st_obj, df_weights: Optional[pd.DataFrame], uploaded_file=None):
     """
     使用共享数据渲染工业企业利润分析
     """
     from dashboard.analysis.industrial.enterprise_analysis import render_enterprise_profit_analysis_with_data
-    render_enterprise_profit_analysis_with_data(st_obj, df_macro, df_weights, uploaded_file)
+    render_enterprise_profit_analysis_with_data(st_obj, df_weights, uploaded_file)
 
 
-def render_enterprise_efficiency_with_data(st_obj, df_macro: Optional[pd.DataFrame], df_weights: Optional[pd.DataFrame], uploaded_file=None):
+def render_enterprise_efficiency_with_data(st_obj, uploaded_file=None):
     """
     使用共享数据渲染工业企业经营效率分析
     """
     from dashboard.analysis.industrial.enterprise_analysis import render_enterprise_efficiency_analysis_with_data
-    render_enterprise_efficiency_analysis_with_data(st_obj, df_macro, df_weights, uploaded_file)
+    render_enterprise_efficiency_analysis_with_data(st_obj, uploaded_file)
 
 
 def render_industrial_analysis(st_obj):
@@ -122,9 +122,9 @@ def render_industrial_analysis(st_obj):
         ("工业增加值分析", "monitoring_analysis.industrial.added_value",
          lambda: render_macro_operations_with_data(st_obj, df_macro, df_weights, uploaded_file)),
         ("工业企业利润分析", "monitoring_analysis.industrial.profit",
-         lambda: render_enterprise_profit_with_data(st_obj, df_macro, df_weights, uploaded_file)),
+         lambda: render_enterprise_profit_with_data(st_obj, df_weights, uploaded_file)),
         ("工业企业经营效率分析", "monitoring_analysis.industrial.efficiency",
-         lambda: render_enterprise_efficiency_with_data(st_obj, df_macro, df_weights, uploaded_file))
+         lambda: render_enterprise_efficiency_with_data(st_obj, uploaded_file))
     ]
 
     # 过滤Tab

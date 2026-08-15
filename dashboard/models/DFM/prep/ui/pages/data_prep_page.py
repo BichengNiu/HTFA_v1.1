@@ -243,8 +243,8 @@ def _render_parameter_config(st_obj, detected_start, detected_end, min_date, max
     """
 
     # 设置默认值（使用检测到的真实日期范围）
-    default_start_date = detected_start if detected_start else date(2020, 1, 1)
-    default_end_date = detected_end if detected_end else date(2025, 4, 30)
+    default_start_date = detected_start or date(2020, 1, 1)
+    default_end_date = detected_end or date(2025, 4, 30)
 
     param_defaults = {
         PrepStateKeys.PARAM_TARGET_FREQ: 'W-FRI',
@@ -354,7 +354,7 @@ def _render_parameter_config(st_obj, detected_start, detected_end, min_date, max
     return True
 
 
-def _render_processing_section(st_obj, uploaded_file):
+def _render_processing_section(st_obj):
     """
     渲染数据处理按钮区域
 
@@ -391,13 +391,12 @@ def _clear_previous_results():
     prep_state.clear_results()
 
 
-def _prepare_processing_params(uploaded_file, st_obj) -> Optional[dict]:
+def _prepare_processing_params(uploaded_file) -> Optional[dict]:
     """
     准备数据处理参数
 
     Args:
         uploaded_file: 上传的文件对象
-        st_obj: Streamlit对象（用于显示警告）
 
     Returns:
         dict: 处理参数字典，包含所有API调用需要的参数
@@ -472,12 +471,11 @@ def _call_prepare_api(params: dict) -> dict:
     )
 
 
-def _process_success_result(st_obj, result: dict, excel_file_like_object) -> bool:
+def _process_success_result(result: dict, excel_file_like_object) -> bool:
     """
     处理成功的API返回结果
 
     Args:
-        st_obj: Streamlit对象
         result: API返回结果
         excel_file_like_object: Excel文件对象（用于重新加载映射）
 
@@ -566,7 +564,7 @@ def _execute_data_preparation(st_obj, uploaded_file):
         # Step 1: 准备参数
         status_text.text("正在准备数据...")
         progress_bar.progress(10)
-        params = _prepare_processing_params(uploaded_file, st_obj)
+        params = _prepare_processing_params(uploaded_file)
 
         # Step 2: 调用API
         status_text.text("正在执行数据预处理...")
@@ -581,7 +579,7 @@ def _execute_data_preparation(st_obj, uploaded_file):
             status_text.text("正在处理结果数据...")
             progress_bar.progress(80)
 
-            if _process_success_result(st_obj, result, params['excel_file']):
+            if _process_success_result(result, params['excel_file']):
                 progress_bar.progress(100)
                 status_text.text("处理完成！")
             else:
@@ -620,7 +618,7 @@ def _render_data_preview(st_obj):
     if updated_data is not None:
         _set_state(PrepStateKeys.PREPARED_DATA_DF, updated_data)
         # 重新生成导出文件以包含替换后的数据
-        _regenerate_export_file(st_obj, updated_data)
+        _regenerate_export_file(updated_data)
         st.rerun()
     # 重新获取可能已更新的数据
     prepared_data = _get_state(PrepStateKeys.PREPARED_DATA_DF)
@@ -1029,7 +1027,7 @@ def _apply_variable_transforms(st_obj, config_df):
         _render_transform_details_expander(st_obj, transform_details)
 
         # 重新生成导出文件
-        _regenerate_export_file(st_obj, transformed_df)
+        _regenerate_export_file(transformed_df)
 
         # 根据是否有错误显示不同的结果提示
         if result.get('errors'):
@@ -1049,12 +1047,11 @@ def _apply_variable_transforms(st_obj, config_df):
         st_obj.text_area("详细错误信息:", traceback.format_exc(), height=150)
 
 
-def _regenerate_export_file(st_obj, transformed_df):
+def _regenerate_export_file(transformed_df):
     """
     重新生成导出文件（转换后）
 
     Args:
-        st_obj: Streamlit对象
         transformed_df: 转换后的DataFrame
     """
     try:
@@ -1175,7 +1172,7 @@ def render_dfm_data_prep_page(st_obj):
     _render_parameter_config(st_obj, detected_start, detected_end, min_date, max_date)
 
     # 4. 数据处理按钮
-    run_button_clicked = _render_processing_section(st_obj, uploaded_file)
+    run_button_clicked = _render_processing_section(st_obj)
 
     # 5. 执行数据准备
     if run_button_clicked:

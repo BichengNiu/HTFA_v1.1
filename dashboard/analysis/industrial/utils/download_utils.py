@@ -143,7 +143,7 @@ def create_excel_download_button(
         return
 
     # 创建下载按钮（放在左侧列）
-    col_download, col_spacer = st_obj.columns(column_ratio)
+    col_download, _ = st_obj.columns(column_ratio)
 
     with col_download:
         st_obj.download_button(
@@ -217,7 +217,7 @@ def create_download_with_annotation(
         button_key=button_key,
         additional_sheets=additional_sheets,
         add_notes=bool(notes_content),
-        notes_content=notes_content if notes_content else None,
+        notes_content=notes_content or None,
         type=type
     )
 
@@ -258,7 +258,6 @@ def create_grouping_mappings(df_weights: pd.DataFrame) -> Tuple[Dict[str, List[s
 def prepare_grouping_annotation_data(
     df_weights: pd.DataFrame,
     groups: Dict[str, list],
-    group_type: str
 ) -> Optional[pd.DataFrame]:
     """
     准备分组注释数据
@@ -269,7 +268,6 @@ def prepare_grouping_annotation_data(
     Args:
         df_weights: 权重数据DataFrame
         groups: 分组字典 {分组名: [指标列表]}
-        group_type: 分组类型（用于列名，如 "出口依赖" 或 "上中下游"）
 
     Returns:
         注释数据DataFrame，包含列：分组、指标名称、以及各 权重_YYYY 列

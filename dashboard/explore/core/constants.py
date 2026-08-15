@@ -84,12 +84,6 @@ ERROR_MESSAGES = {
 
 # ==================== 默认参数 ====================
 
-# 默认聚合方法
-DEFAULT_AGG_METHOD = 'mean'
-
-# 默认标准化方法
-DEFAULT_STANDARDIZATION_METHOD = 'zscore'
-
 # 领先滞后分析结果显示的最大滞后范围
 MAX_DISPLAY_LAG_RANGE = 5
 

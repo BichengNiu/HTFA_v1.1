@@ -1,12 +1,2 @@
 # -*- coding: utf-8 -*-
-"""
-DFM共享工具模块
-"""
-
-from .text_utils import normalize_text, normalize_column_name, normalize_variable_name
-
-__all__ = [
-    'normalize_text',
-    'normalize_column_name',
-    'normalize_variable_name',
-]
+"""DFM 共享工具模块（具体功能从子模块导入）。"""

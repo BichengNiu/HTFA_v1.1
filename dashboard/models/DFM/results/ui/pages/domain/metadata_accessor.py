@@ -27,7 +27,6 @@ class TrainingInfo:
     training_end: str = 'N/A'
     validation_start: str = 'N/A'
     validation_end: str = 'N/A'
-    estimation_method: str = 'N/A'
     n_industries: Any = 'N/A'
     n_variables: Any = 'N/A'
     n_factors: Any = 'N/A'
@@ -69,7 +68,6 @@ class DFMMetadataAccessor:
             training_end=self._get_date_str('train_end_date'),
             validation_start=self._get_date_str('validation_start_date'),
             validation_end=self._get_date_str('validation_end_date'),
-            estimation_method=self._metadata.get('estimation_method', 'N/A'),
             n_industries=n_industries,
             n_variables=n_vars,
             n_factors=self._get_k_factors()
@@ -163,19 +161,9 @@ class DFMMetadataAccessor:
         return self._metadata.get('complete_aligned_table')
 
     @property
-    def nowcast_comparison(self) -> Optional[pd.DataFrame]:
-        """获取Nowcast对比数据"""
-        return self._metadata.get('nowcast_comparison')
-
-    @property
     def factor_loadings_df(self) -> Optional[pd.DataFrame]:
         """获取因子载荷矩阵"""
         return self._metadata.get('factor_loadings_df')
-
-    @property
-    def smoothed_factors(self) -> Optional[pd.DataFrame]:
-        """获取平滑因子"""
-        return self._metadata.get('smoothed_factors')
 
     @property
     def factor_series(self) -> Optional[pd.DataFrame]:

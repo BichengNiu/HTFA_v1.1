@@ -317,7 +317,7 @@ def evaluate_model_fit(
     # 确定目标变量索引
     target_var_index = None
     if target_variable:
-        var_names = variable_names if variable_names else list(observation_data.columns)
+        var_names = variable_names or list(observation_data.columns)
         if target_variable in var_names:
             target_var_index = var_names.index(target_variable)
         else:

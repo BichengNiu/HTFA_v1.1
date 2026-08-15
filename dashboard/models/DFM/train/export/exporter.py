@@ -226,14 +226,14 @@ class TrainingResultExporter:
         })
 
         # 因子载荷DataFrame
-        factor_loadings_df = self._extract_factor_loadings(result, config)
+        factor_loadings_df = self._extract_factor_loadings(result)
         metadata['factor_loadings_df'] = factor_loadings_df
 
         # ========== 影响分解专用字段（仅当设置目标变量时） ==========
         if target_variable:
             # 1. 提取目标变量的因子载荷向量
             if factor_loadings_df is None or factor_loadings_df.empty:
-                raise ValueError(f"无法提取因子载荷矩阵，影响分解功能不可用")
+                raise ValueError("无法提取因子载荷矩阵，影响分解功能不可用")
             if target_variable not in factor_loadings_df.index:
                 raise ValueError(f"目标变量 '{target_variable}' 不在因子载荷矩阵中")
             metadata['target_factor_loading'] = factor_loadings_df.loc[target_variable].values
@@ -540,7 +540,7 @@ class TrainingResultExporter:
 
     # ========== 工具方法 ==========
 
-    def _extract_factor_loadings(self, result, config=None) -> pd.DataFrame:
+    def _extract_factor_loadings(self, result) -> pd.DataFrame:
         """提取因子载荷矩阵（H矩阵）"""
         try:
             if not result.model_result:

@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 from typing import List, Callable, Dict
 from dashboard.models.DFM.train.utils.logger import get_logger
+from dashboard.models.DFM.train.training.config import TrainingConfig
 from dashboard.models.DFM.train.training.model_ops import train_dfm_model, evaluate_model_fit
 from dashboard.models.DFM.train.core.pca_utils import compute_optimal_k_factors
 from dashboard.models.DFM.train.core.models import EvaluationConfig
@@ -141,7 +142,7 @@ def _evaluate_variable_selection_model(config: EvaluationConfig) -> float:
 
 # ========== 工厂函数（返回可调用对象） ==========
 
-def create_variable_selection_evaluator(config: 'TrainingConfig') -> Callable:
+def create_variable_selection_evaluator(config: TrainingConfig) -> Callable:
     """
     创建变量筛选专用评估器（函数式接口）
 

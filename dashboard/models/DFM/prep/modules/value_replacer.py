@@ -5,7 +5,7 @@
 提供数据值替换功能，支持按月份、周次、日期范围、条件等多种规则进行值替换。
 """
 
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from typing import List, Optional, Union, Literal
 from datetime import date
 import pandas as pd
@@ -37,29 +37,6 @@ class ReplacementRule:
 
     # 替换目标
     replace_with: Union[float, Literal['nan']] = 'nan'
-
-    def to_dict(self) -> dict:
-        """转换为可序列化的字典"""
-        d = asdict(self)
-        # 处理date类型
-        if self.start_date:
-            d['start_date'] = self.start_date.isoformat()
-        if self.end_date:
-            d['end_date'] = self.end_date.isoformat()
-        return d
-
-    @classmethod
-    def from_dict(cls, d: dict) -> 'ReplacementRule':
-        """从字典创建规则"""
-        d = d.copy()  # 避免修改原字典
-        if d.get('start_date') and isinstance(d['start_date'], str):
-            d['start_date'] = date.fromisoformat(d['start_date'])
-        if d.get('end_date') and isinstance(d['end_date'], str):
-            d['end_date'] = date.fromisoformat(d['end_date'])
-        # 过滤掉不属于dataclass字段的键
-        valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
-        filtered_d = {k: v for k, v in d.items() if k in valid_fields}
-        return cls(**filtered_d)
 
 
 @dataclass

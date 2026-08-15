@@ -50,7 +50,7 @@ def _get_available_types(indicators, indicator_type_map):
     for indicator in indicators:
         indicator_type = indicator_type_map.get(indicator, "未分类")
         available_types.add(indicator_type)
-    return sorted(list(available_types))
+    return sorted(available_types)
 
 
 def _filter_by_type(indicators, selected_type, indicator_type_map):

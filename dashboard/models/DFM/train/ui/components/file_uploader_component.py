@@ -68,7 +68,7 @@ class FileUploaderComponent:
         st_instance.markdown("---")
 
         # 数据验证
-        if not self._validate_files(input_df, var_industry_map, excel_file, None, st_instance):
+        if not self._validate_files(input_df, var_industry_map, excel_file, st_instance):
             return None, {}, {}, {}, {}
 
         return input_df, var_industry_map, dfm_default_map, var_frequency_map, var_unit_map
@@ -83,14 +83,11 @@ class FileUploaderComponent:
         name = getattr(file_obj, 'name', 'unknown')
         return f"{name}_{size}"
 
-    def _clear_dependent_states(self, st_instance) -> None:
+    def _clear_dependent_states(self) -> None:
         """
         清除所有依赖于旧数据的状态
 
         当用户上传新文件时调用，确保页面状态与新数据一致
-
-        Args:
-            st_instance: Streamlit实例（用于打印日志）
         """
         # 1. 变量选择相关状态（StateManager命名空间内）
         variable_selection_keys = [
@@ -221,8 +218,8 @@ class FileUploaderComponent:
         # 检测到新文件上传，清除所有依赖旧数据的状态
         is_new_file = cached_file_id is not None and current_file_id != cached_file_id
         if is_new_file:
-            print(f"[模型训练] 检测到新文件上传，清除旧数据相关状态")
-            self._clear_dependent_states(st_instance)
+            print("[模型训练] 检测到新文件上传，清除旧数据相关状态")
+            self._clear_dependent_states()
             st_instance.info("检测到新数据文件，已重置所有配置。请重新设置模型参数。")
 
         # 重新加载Excel
@@ -360,7 +357,7 @@ class FileUploaderComponent:
 
         except ValueError as e:
             if "Worksheet named" in str(e):
-                st_instance.error(f"Excel文件格式错误：缺少必需的sheet。需要包含'数据'和'映射'两个sheet。")
+                st_instance.error("Excel文件格式错误：缺少必需的sheet。需要包含'数据'和'映射'两个sheet。")
             else:
                 st_instance.error(f"加载Excel文件失败: {e}")
             import traceback
@@ -372,7 +369,7 @@ class FileUploaderComponent:
             st_instance.code(traceback.format_exc(), language="python")
             return None, {}, {}, {}, {}
 
-    def _validate_files(self, input_df, var_industry_map, excel_file, _, st_instance) -> bool:
+    def _validate_files(self, input_df, var_industry_map, excel_file, st_instance) -> bool:
         """验证Excel文件是否已上传并成功解析"""
         if input_df is None or not var_industry_map:
             missing_details = []
@@ -386,7 +383,7 @@ class FileUploaderComponent:
             if not var_industry_map:
                 missing_details.append("行业映射：解析失败，请检查Excel文件的'映射'sheet是否包含'指标名称'和'行业'列")
 
-            st_instance.error(f"数据验证失败：\n\n" + "\n\n".join([f"{i+1}. {detail}" for i, detail in enumerate(missing_details)]))
+            st_instance.error("数据验证失败：\n\n" + "\n\n".join([f"{i+1}. {detail}" for i, detail in enumerate(missing_details)]))
 
             # 添加排查建议
             with st_instance.expander("查看排查建议"):

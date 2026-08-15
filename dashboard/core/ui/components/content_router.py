@@ -7,6 +7,7 @@ from collections.abc import Callable
 
 import streamlit as st
 
+from dashboard.auth.ui.pages._shared import PLATFORM_HEADER_MARKDOWN
 from dashboard.auth.ui.pages.user_management import render_user_management_page
 from dashboard.core import get_current_main_module, get_current_sub_module
 from dashboard.explore.ui.bivariate_page import render_bivariate_analysis_page
@@ -67,7 +68,7 @@ def render_main_content() -> None:
             if main_module == "数据探索":
                 render_data_exploration_welcome_page(st)
             else:
-                render_module_selection_guide(main_module, "sub_module")
+                render_module_selection_guide(main_module)
             return
 
         if navigation_level == "SUB_MODULE_ONLY":
@@ -75,8 +76,6 @@ def render_main_content() -> None:
                 render_data_exploration_content(sub_module)
             elif main_module == "模型分析":
                 render_model_analysis_content(sub_module)
-            else:
-                render_module_selection_guide(main_module, "function")
             return
 
         renderers: dict[str, Callable[[str | None], None]] = {
@@ -196,11 +195,8 @@ def render_user_management_content(sub_module: str | None) -> None:
     render_user_management_page(current_user)
 
 
-def render_module_selection_guide(main_module: str, guide_type: str) -> None:
+def render_module_selection_guide(main_module: str) -> None:
     """在尚未选定下一级导航时显示简洁引导。"""
-    if guide_type != "sub_module":
-        st.markdown("")
-        return
     st.markdown(
         f"""
         <div style="display:flex; flex-direction:column; align-items:center;
@@ -215,16 +211,7 @@ def render_module_selection_guide(main_module: str, guide_type: str) -> None:
 
 def render_welcome_page() -> None:
     """渲染平台首页。"""
-    st.markdown(
-        """
-        <div class="platform-header">
-            <h1 class="platform-title">经济运行分析平台</h1>
-            <hr class="platform-divider">
-            <p class="platform-subtitle">国家信息中心经济预测部政策仿真实验室</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.markdown(PLATFORM_HEADER_MARKDOWN, unsafe_allow_html=True)
 
 
 __all__ = ["PREVIEW_MODULE_MAPPING", "detect_navigation_level", "render_main_content"]

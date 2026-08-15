@@ -12,8 +12,6 @@ DFM 影响分解后端模块
 
 from .api import execute_news_analysis
 
-__version__ = "1.0.0"
-__author__ = "HTFA Team"
 
 # 导出的主要接口
 __all__ = ['execute_news_analysis']

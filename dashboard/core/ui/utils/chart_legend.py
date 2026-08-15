@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import matplotlib.pyplot as plt
 from matplotlib.figure import Figure as MatplotlibFigure
 from plotly.graph_objects import Figure as PlotlyFigure
 
@@ -81,4 +82,19 @@ def place_chart_legend_at_bottom(figure: Any) -> Any:
     return figure
 
 
-__all__ = ["place_chart_legend_at_bottom"]
+def render_pyplot_figure(st_obj, figure: MatplotlibFigure, **kwargs) -> None:
+    """按全局图例规则渲染 Matplotlib 图形并关闭资源。"""
+
+    if "use_container_width" not in kwargs:
+        kwargs.setdefault("width", "stretch")
+    kwargs.setdefault("clear_figure", True)
+    try:
+        st_obj.pyplot(
+            place_chart_legend_at_bottom(figure),
+            **kwargs,
+        )
+    finally:
+        plt.close(figure)
+
+
+__all__ = ["place_chart_legend_at_bottom", "render_pyplot_figure"]

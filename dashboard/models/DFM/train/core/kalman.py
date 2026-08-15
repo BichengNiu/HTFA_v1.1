@@ -226,8 +226,6 @@ class KalmanFilter:
         P_smooth = [np.zeros((self.n_states, self.n_states)) for _ in range(n_time)]
         P_smooth[n_time-1] = P_filt[n_time-1].copy()
 
-        P_lag_smooth = [np.zeros((self.n_states, self.n_states)) for _ in range(n_time - 1)]
-
         # RTS平滑器 - 反向迭代
         for i in reversed(range(n_time - 1)):
             try:
@@ -247,9 +245,6 @@ class KalmanFilter:
             delta_P = P_smooth[i+1] - P_pred[i+1]
             P_smooth[i] = P_filt[i] + J_i @ delta_P @ J_i.T
 
-            # 滞后协方差
-            P_lag_smooth[i] = J_i @ P_smooth[i+1]
-
         # 转换回(n_states, n_time)格式
         x_smooth = x_smooth.T
 
@@ -257,12 +252,7 @@ class KalmanFilter:
         P_smooth_array = np.array([P_smooth[t] for t in range(n_time)])
         P_smooth_array = np.transpose(P_smooth_array, (1, 2, 0))
 
-        # 转换P_lag_smooth为3D数组
-        P_lag_smooth_array = np.array([P_lag_smooth[t] for t in range(n_time - 1)])
-        P_lag_smooth_array = np.transpose(P_lag_smooth_array, (1, 2, 0))
-
         return KalmanSmootherResult(
             x_smoothed=x_smooth,
             P_smoothed=P_smooth_array,
-            P_lag_smoothed=P_lag_smooth_array
         )

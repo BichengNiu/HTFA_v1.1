@@ -12,6 +12,7 @@ from scipy.signal import savgol_filter
 
 from dashboard.analysis.uae.plot_helpers import (
     CHINESE_FONT_FAMILY,
+    add_bottom_legend,
     add_source_note,
     annotate_war,
     apply_strict_month_ticks,
@@ -144,13 +145,10 @@ def build_search_index_figure(
         Line2D([0], [0], color=color, linewidth=2.2, linestyle=linestyle, label=label)
         for _, label, color, linestyle in SEARCH_SERIES
     ]
-    figure.legend(
-        handles=handles,
-        labels=[label for _, label, *_ in SEARCH_SERIES],
-        loc="lower center",
-        bbox_to_anchor=(0.5, 0.115),
-        frameon=False,
-        prop={"family": CHINESE_FONT_FAMILY[0], "size": 10},
+    add_bottom_legend(
+        figure,
+        handles,
+        [label for _, label, *_ in SEARCH_SERIES],
         ncol=len(handles),
     )
     finish_dual_axis_figure(figure, top=0.90)

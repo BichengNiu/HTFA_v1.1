@@ -79,28 +79,6 @@ def normalize_text(text: Union[str, float, None], to_lower: bool = True) -> str:
     return text
 
 
-def normalize_column_name(column_name: Union[str, float, None]) -> str:
-    """
-    标准化列名
-
-    这是 normalize_text 的便利包装函数，专门用于列名标准化。
-    默认转换为小写并去除空格。
-
-    Args:
-        column_name: 列名
-
-    Returns:
-        str: 标准化后的列名
-
-    Examples:
-        >>> normalize_column_name('  规模以上工业增加值  ')
-        '规模以上工业增加值'
-        >>> normalize_column_name('Total_Revenue')
-        'total_revenue'
-    """
-    return normalize_text(column_name, to_lower=True)
-
-
 def normalize_variable_name(variable_name: Union[str, float, None]) -> str:
     """
     标准化变量名以匹配var_industry_map中的键
@@ -168,6 +146,5 @@ def match_columns_case_insensitive(
 __all__ = [
     'match_columns_case_insensitive',
     'normalize_text',
-    'normalize_column_name',
     'normalize_variable_name',
 ]

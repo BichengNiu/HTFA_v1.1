@@ -10,7 +10,7 @@ from typing import List, Dict, Tuple, Callable, Optional
 from dashboard.models.DFM.train.utils.logger import get_logger
 from dashboard.models.DFM.train.core.models import SelectionResult
 from dashboard.models.DFM.train.evaluation.metrics import compare_model_scores
-from dashboard.models.DFM.train.utils.parallel_config import ParallelConfig
+from dashboard.models.DFM.utils.parallel_config import ParallelConfig
 from dashboard.models.DFM.train.utils.formatting import generate_progress_bar
 
 logger = get_logger(__name__)
@@ -123,7 +123,7 @@ class BackwardSelector:
 
         # 3. 迭代移除变量
         iteration = 0
-        while self._should_continue_selection(current_variables, iteration):
+        while self._should_continue_selection(current_variables):
             iteration += 1
             self._log_iteration_start(iteration, len(current_variables), progress_callback)
 
@@ -176,7 +176,7 @@ class BackwardSelector:
             score = self.evaluator_func(variables=current_variables, **self._eval_params)
 
             if not np.isfinite(score):
-                logger.warning(f"初始基准评估返回无效分数，使用最差分数")
+                logger.warning("初始基准评估返回无效分数，使用最差分数")
                 score = np.inf
 
             logger.info(
@@ -203,7 +203,6 @@ class BackwardSelector:
     def _should_continue_selection(
         self,
         current_variables: List[str],
-        iteration: int
     ) -> bool:
         """判断是否应该继续变量选择"""
         return len(current_variables) > self.min_variables

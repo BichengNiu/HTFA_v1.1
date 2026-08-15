@@ -56,7 +56,7 @@ def _calculate_indicator_detail(indicator, frequency, series, industry, ind_type
 
     # 计算期望数据点数
     expected_points = calculate_expected_data_points(
-        start_date, end_date, None, frequency
+        start_date, end_date, frequency
     )
 
     # 计算有效值和缺失率
@@ -429,7 +429,7 @@ def display_time_series_tab(
         col1, col2 = st_module.columns(2)
         col_idx = 0
 
-        for type_name, indicators in types_dict.items():
+        for indicators in types_dict.values():
             for indicator in indicators:
                 series = df[indicator].dropna()
                 if not series.empty:
@@ -464,7 +464,7 @@ def display_time_series_tab(
                     col_idx += 1
 
 
-def calculate_expected_data_points(start_date, end_date, full_df, frequency):
+def calculate_expected_data_points(start_date, end_date, frequency):
     """计算期望的数据点数
 
     用于计算缺失率时,应该相对于有效值在其时间范围内的理论数据点数
@@ -472,7 +472,6 @@ def calculate_expected_data_points(start_date, end_date, full_df, frequency):
     Args:
         start_date: 开始日期
         end_date: 结束日期
-        full_df: 完整的dataframe
         frequency: 数据频率(周度、月度、日度、旬度、年度)
 
     Returns:

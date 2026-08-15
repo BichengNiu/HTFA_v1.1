@@ -27,7 +27,7 @@ from dashboard.analysis.uae.oil.revenue import (
     estimate_monthly_oil_revenue,
 )
 from dashboard.core.ui.utils.shared_dataset import get_shared_dataset_file
-from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
+from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
 
 
 def _source_payload() -> tuple[bytes, str] | None:
@@ -213,16 +213,13 @@ def _render_charts(
         last_month=revenue_last_month,
     )
     with columns[0]:
-        st_obj.pyplot(
-            place_chart_legend_at_bottom(
-                build_oil_market_figure(
-                    market_production,
-                    market_sources,
-                    market_rig_count,
-                )
+        render_pyplot_figure(
+            st_obj,
+            build_oil_market_figure(
+                market_production,
+                market_sources,
+                market_rig_count,
             ),
-            width="stretch",
-            clear_figure=True,
             bbox_inches=None,
         )
         render_chart_download(
@@ -232,15 +229,12 @@ def _render_charts(
             key="analysis.uae.oil.market.download",
         )
     with columns[1]:
-        st_obj.pyplot(
-            place_chart_legend_at_bottom(
-                build_oil_revenue_figure(
-                    revenue_download,
-                    revenue_sources,
-                )
+        render_pyplot_figure(
+            st_obj,
+            build_oil_revenue_figure(
+                revenue_download,
+                revenue_sources,
             ),
-            width="stretch",
-            clear_figure=True,
             bbox_inches=None,
         )
         render_chart_download(

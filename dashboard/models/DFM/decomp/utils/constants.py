@@ -12,14 +12,5 @@ DEFAULT_MEASUREMENT_ERROR = 0.1     # 默认测量误差
 # 归一化阈值
 NORMALIZATION_ZERO_THRESHOLD = 1e-10  # 归一化时判断是否接近零的阈值
 
-# 可视化颜色方案
-WATERFALL_COLORS = {
-    'positive': '#2E8B57',    # 海绿色 - 正向影响
-    'negative': '#DC143C',    # 深红色 - 负向影响
-    'neutral': '#708090',     # 石板灰 - 中性
-    'baseline': '#4169E1',    # 皇家蓝 - 基准线
-    'total': '#FFD700'        # 金色 - 总计
-}
-
 # 默认行业分类
 DEFAULT_INDUSTRY = "Other"

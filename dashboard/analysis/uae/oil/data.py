@@ -9,8 +9,8 @@ import pandas as pd
 
 from dashboard.analysis.uae.sheet_reader import (
     SheetSeriesMetadata,
+    open_uae_workbook,
     parse_target_sheet,
-    workbook_buffer,
 )
 
 
@@ -46,9 +46,10 @@ def load_oil_market_data(
 ) -> OilMarketData:
     """只读取日度油价和月度原油产量，不依赖完整指标字典。"""
 
-    buffer, source_name = workbook_buffer(file_input, file_name=file_name)
-    excel_file = pd.ExcelFile(buffer)
-    try:
+    with open_uae_workbook(file_input, file_name=file_name) as (
+        excel_file,
+        source_name,
+    ):
         prices, price_metadata = parse_target_sheet(
             excel_file,
             sheet_name=DAILY_SHEET,
@@ -74,8 +75,6 @@ def load_oil_market_data(
         else:
             rig_count_frame = None
             rig_count_metadata = {}
-    finally:
-        excel_file.close()
 
     production = production_frame[PRODUCTION_INDICATOR[0]].rename(
         PRODUCTION_INDICATOR[0]

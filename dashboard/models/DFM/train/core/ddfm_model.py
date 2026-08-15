@@ -417,8 +417,6 @@ class DDFMModel:
         data_values[miss_indices[0], miss_indices[1]] = prediction_iter[self.bool_miss]
 
         self.eps = self.data_tmp[self.data_mod.columns].values - prediction_iter
-        self._prediction_prev_iter = None
-        self._initial_prediction = prediction_iter
 
     def _run_single_mcmc_iteration(self, iter_count, prediction_prev_iter):
         """执行单次MCMC迭代
@@ -535,9 +533,6 @@ class DDFMModel:
             iter_count += 1
         else:
             self._report_progress(f"未在{self.max_iter}次迭代内收敛，继续处理...", 0.90)
-
-        # 保存最后一层神经元（线性解码器，直接使用因子）
-        self.last_neurons = self.factors
 
     def _build_state_space(self) -> None:
         """从自编码器构建状态空间模型"""

@@ -53,7 +53,7 @@ from dashboard.analysis.industrial.constants import (
 )
 
 
-def _compute_contributions(st_obj, df_macro, df_weights, target_columns, uploaded_file):
+def _compute_contributions(df_macro, df_weights, target_columns, uploaded_file):
     """计算拉动率并保存到状态"""
     if not target_columns:
         return
@@ -163,7 +163,7 @@ def _render_contribution_chart(st_obj, state_key, prefix, chart_id, chart_title,
                 groups, _ = create_grouping_mappings(df_weights)
             else:
                 _, groups = create_grouping_mappings(df_weights)
-            annotation_df = prepare_grouping_annotation_data(df_weights, groups, grouping_label)
+            annotation_df = prepare_grouping_annotation_data(df_weights, groups)
             create_download_with_annotation(
                 st_obj=st_obj, data=download_df,
                 file_name=f"{grouping_label}分组_拉动率_全部",
@@ -189,7 +189,7 @@ def render_macro_operations_analysis_with_data(st_obj, df_macro: pd.DataFrame, d
     column_names = df_macro.columns.tolist()
     target_columns = [col for col in column_names[1:] if pd.notna(col)] if len(column_names) > 1 else []
 
-    _compute_contributions(st_obj, df_macro, df_weights, target_columns, uploaded_file)
+    _compute_contributions(df_macro, df_weights, target_columns, uploaded_file)
 
     # 三大产业拉动率图表
     _render_contribution_chart(
@@ -479,7 +479,7 @@ def _render_individual_contribution_analysis(st_obj, df_weights):
     create_excel_download_button(
         st_obj=st_obj,
         data=download_df_contribution,
-        file_name=f"工业指标拉动率_全部指标",
+        file_name="工业指标拉动率_全部指标",
         sheet_name="拉动率",
         additional_sheets={"拉动率排名": download_df_rank_with_date},
         button_label="下载数据",

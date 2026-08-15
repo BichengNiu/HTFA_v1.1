@@ -12,6 +12,7 @@ from dashboard.models.DFM.train.utils.logger import get_logger
 
 # 导入数据模型
 from dashboard.models.DFM.train.core.models import TrainingResult
+from dashboard.models.DFM.train.training.config import TrainingConfig
 
 # 导入统一训练和评估函数
 from dashboard.models.DFM.train.training.model_ops import (
@@ -50,7 +51,7 @@ class DFMTrainer:
     3. 最终训练: 使用选定变量和因子数训练模型
     """
 
-    def __init__(self, config: 'TrainingConfig'):
+    def __init__(self, config: TrainingConfig):
         """
         初始化训练器
 
@@ -93,7 +94,6 @@ class DFMTrainer:
             data, variable_names = load_and_validate_data(
                 data=self.config.data,
                 selected_indicators=self.config.selected_indicators,
-                progress_callback=progress_callback
             )
 
             # 确保索引排序（pandas切片要求单调索引）

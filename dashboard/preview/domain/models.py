@@ -4,8 +4,8 @@
 定义数据预览相关的数据结构
 """
 
-from dataclasses import asdict, dataclass, field
-from typing import Dict, Any, List, Optional
+from dataclasses import dataclass, field
+from typing import Dict, Optional
 import pandas as pd
 
 
@@ -24,10 +24,6 @@ class IndicatorMetadata:
     forecast_variable: Optional[str] = None
     file_name: str = ""
     sheet_name: str = ""
-
-    def to_dict(self) -> Dict[str, Any]:
-        """返回便于状态存储和展示的字典。"""
-        return asdict(self)
 
 
 @dataclass
@@ -53,9 +49,6 @@ class LoadedPreviewData:
     # 元数据
     module_name: str = "unknown"
 
-    # 额外的自定义映射(可扩展)
-    custom_maps: Dict[str, Dict[str, Any]] = field(default_factory=dict)
-
     def get_dataframe(self, frequency: str) -> pd.DataFrame:
         """获取指定频率的DataFrame
 
@@ -74,88 +67,3 @@ class LoadedPreviewData:
             Dict[str, pd.DataFrame]: 所有DataFrame的字典
         """
         return self.dataframes
-
-    def get_all_maps(self) -> Dict[str, Dict[str, Any]]:
-        """获取所有映射字典
-
-        Returns:
-            Dict[str, Dict[str, str]]: 所有映射字典
-        """
-        return {
-            'source': self.source_map,
-            'industry': self.indicator_industry_map,
-            'unit': self.indicator_unit_map,
-            'type': self.indicator_type_map,
-            'freq': self.indicator_freq_map,
-            'metadata': self.indicator_metadata_map,
-        }
-
-    def has_frequency(self, frequency: str) -> bool:
-        """检查是否存在指定频率的数据
-
-        Args:
-            frequency: 频率名称
-
-        Returns:
-            bool: 是否存在该频率的数据
-        """
-        df = self.dataframes.get(frequency)
-        return df is not None and not df.empty
-
-    def get_available_frequencies(self) -> List[str]:
-        """获取所有可用的频率
-
-        Returns:
-            List[str]: 可用频率列表
-        """
-        return [freq for freq in self.dataframes.keys() if not self.dataframes[freq].empty]
-
-    def get_indicators_by_frequency(self, frequency: str) -> List[str]:
-        """获取指定频率的所有指标
-
-        Args:
-            frequency: 频率名称
-
-        Returns:
-            List[str]: 指标名称列表
-        """
-        df = self.get_dataframe(frequency)
-        if df.empty:
-            return []
-
-        return df.columns.tolist()
-
-    def get_indicator_metadata(self, indicator: str) -> Dict[str, Any]:
-        """获取指标的元数据
-
-        Args:
-            indicator: 指标名称
-
-        Returns:
-            Dict[str, str]: 指标元数据(行业、单位、类型等)
-        """
-        metadata = self.indicator_metadata_map.get(indicator)
-        if metadata is not None:
-            return metadata.to_dict()
-
-        return {
-            'indicator_name': indicator,
-            'industry': self.indicator_industry_map.get(indicator, '未知'),
-            'unit': self.indicator_unit_map.get(indicator, ''),
-            'indicator_type': self.indicator_type_map.get(indicator, ''),
-            'physical_source': self.source_map.get(indicator, ''),
-        }
-
-    def __repr__(self) -> str:
-        """字符串表示
-
-        Returns:
-            str: 对象的字符串表示
-        """
-        freqs = self.get_available_frequencies()
-        total_indicators = sum(len(self.get_indicators_by_frequency(f)) for f in freqs)
-        return (
-            f"LoadedPreviewData(module='{self.module_name}', "
-            f"frequencies={freqs}, "
-            f"total_indicators={total_indicators})"
-        )

@@ -209,7 +209,7 @@ def extract_excel(path: Path) -> dict[str, tuple[Decimal | None, ...]]:
                 continue
             values = [_parse_decimal(value) for value in row[2:6]]
             annual = _parse_decimal(row[6]) if len(row) > 6 else None
-            rows[code] = tuple([*values, annual])
+            rows[code] = (*values, annual)
     finally:
         workbook.close()
 

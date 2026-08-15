@@ -26,6 +26,21 @@ class AuthMiddleware:
         self.permission_manager = PermissionManager()
         self.logger = logging.getLogger(__name__)
 
+    def _store_authenticated_user(
+        self,
+        user: User,
+        session_id: str,
+        remember_me: bool = False,
+    ) -> None:
+        """将已认证用户的会话信息写入 Streamlit session state。"""
+
+        st.session_state['auth.current_user'] = user
+        st.session_state['auth.user_session_id'] = session_id
+        st.session_state['auth.last_activity'] = datetime.now()
+        st.session_state['auth.remember_me'] = remember_me
+        accessible_modules = self.permission_manager.get_accessible_modules(user)
+        st.session_state['auth.user_accessible_modules'] = set(accessible_modules)
+
     def check_authentication(self) -> tuple[bool, Optional[User]]:
         """
         检查当前 Streamlit 会话中的用户认证状态。
@@ -44,24 +59,16 @@ class AuthMiddleware:
             is_valid, user = self.auth_manager.validate_session(session_id)
 
             if is_valid and user:
-                # 更新用户信息到session state
-                st.session_state['auth.current_user'] = user
-                st.session_state['auth.user_session_id'] = session_id
-                st.session_state['auth.last_activity'] = datetime.now()
-
-                # 设置用户可访问模块
-                accessible_modules = self.permission_manager.get_accessible_modules(user)
-                st.session_state['auth.user_accessible_modules'] = set(accessible_modules)
-
+                self._store_authenticated_user(user, session_id)
                 return True, user
-            else:
-                return False, None
+
+            return False, None
 
         except Exception as e:
             self.logger.error(f"检查认证状态失败: {e}")
             return False, None
 
-    def require_authentication(self, show_login=True) -> Optional[User]:
+    def require_authentication(self, show_login: bool = True) -> Optional[User]:
         """
         要求用户认证，如果未认证则显示登录页面
 
@@ -84,29 +91,18 @@ class AuthMiddleware:
             if login_result:
                 success, login_data = login_result
                 if success:
-                    # 登录成功，保存会话信息
-                    user = login_data['user']
-                    session = login_data['session']
-                    remember_me = login_data.get('remember_me', False)
-
-                    # 存储到session_state
-                    st.session_state['auth.current_user'] = user
-                    st.session_state['auth.user_session_id'] = session.session_id
-                    st.session_state['auth.last_activity'] = datetime.now()
-                    st.session_state['auth.remember_me'] = remember_me
-
-                    # 设置用户可访问模块
-                    accessible_modules = self.permission_manager.get_accessible_modules(user)
-                    st.session_state['auth.user_accessible_modules'] = set(accessible_modules)
-
-                    # 刷新页面以进入主应用
+                    # 登录成功，保存会话信息并刷新页面以进入主应用
+                    self._store_authenticated_user(
+                        login_data['user'],
+                        login_data['session'].session_id,
+                        remember_me=login_data.get('remember_me', False),
+                    )
                     st.rerun()
 
             # 如果登录页面正在显示，停止后续页面渲染
             st.stop()
 
         return None
-
 
     def logout(self) -> bool:
         """

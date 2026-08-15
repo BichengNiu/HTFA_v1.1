@@ -4,7 +4,6 @@ Industrial Enterprise Operations Analysis Module
 """
 
 import pandas as pd
-import plotly.graph_objects as go
 from typing import Optional
 import logging
 
@@ -30,110 +29,12 @@ from dashboard.analysis.industrial.utils.state_manager import industrial_state
 
 
 # ============================================================================
-# 图表创建函数（向后兼容封装）
-# ============================================================================
-
-
-def create_profit_contribution_chart(
-    df_contribution: pd.DataFrame,
-    total_growth: pd.Series,
-    time_range: str = "3年",
-    custom_start_date: Optional[str] = None,
-    custom_end_date: Optional[str] = None
-) -> Optional[go.Figure]:
-    """
-    创建工业企业利润分行业拉动率图表（堆叠柱状图+折线图）
-
-    Args:
-        df_contribution: 上中下游拉动率DataFrame
-        total_growth: 总体增速Series
-        time_range: 时间范围选择
-        custom_start_date: 自定义开始日期
-        custom_end_date: 自定义结束日期
-
-    Returns:
-        plotly Figure对象
-    """
-    chart = ProfitContributionChart(total_growth=total_growth)
-    return chart.create(df_contribution, time_range, custom_start_date, custom_end_date)
-
-
-def create_enterprise_operations_indicators_chart(
-    df_operations: pd.DataFrame,
-    time_range: str = "3年",
-    custom_start_date: Optional[str] = None,
-    custom_end_date: Optional[str] = None
-) -> Optional[go.Figure]:
-    """
-    创建企业经营指标图表（四个子图：ROE、利润率、周转率、权益乘数）
-
-    Args:
-        df_operations: 包含企业经营数据的DataFrame
-        time_range: 时间范围选择
-        custom_start_date: 自定义开始日期
-        custom_end_date: 自定义结束日期
-
-    Returns:
-        plotly Figure对象（包含4个子图）
-    """
-    chart = OperationsIndicatorsChart()
-    return chart.create(df_operations, time_range, custom_start_date, custom_end_date)
-
-
-def create_enterprise_efficiency_metrics_chart(
-    df_efficiency: pd.DataFrame,
-    time_range: str = "3年",
-    custom_start_date: Optional[str] = None,
-    custom_end_date: Optional[str] = None
-) -> Optional[go.Figure]:
-    """
-    创建企业经营效率指标图表（六个子图）
-
-    Args:
-        df_efficiency: 包含企业经营效率数据的DataFrame
-        time_range: 时间范围选择
-        custom_start_date: 自定义开始日期
-        custom_end_date: 自定义结束日期
-
-    Returns:
-        plotly Figure对象（包含6个子图）
-    """
-    chart = EfficiencyMetricsChart()
-    return chart.create(df_efficiency, time_range, custom_start_date, custom_end_date)
-
-
-def create_enterprise_indicators_chart(
-    df_data: pd.DataFrame,
-    time_range: str = "3年",
-    custom_start_date: Optional[str] = None,
-    custom_end_date: Optional[str] = None
-) -> Optional[go.Figure]:
-    """
-    创建企业经营四个指标的时间序列线图
-
-    Args:
-        df_data: 包含指标数据的DataFrame
-        time_range: 时间范围选择
-        custom_start_date: 自定义开始日期
-        custom_end_date: 自定义结束日期
-
-    Returns:
-        plotly Figure对象
-    """
-    chart = EnterpriseIndicatorsChart()
-    return chart.create(df_data, time_range, custom_start_date, custom_end_date)
-
-
-# ============================================================================
 # 渲染函数（保持原有API）
 # ============================================================================
 
 
-
-
 def render_enterprise_profit_analysis_with_data(
     st_obj,
-    df_macro: Optional[pd.DataFrame],
     df_weights: Optional[pd.DataFrame],
     uploaded_file=None
 ):
@@ -142,7 +43,6 @@ def render_enterprise_profit_analysis_with_data(
 
     Args:
         st_obj: Streamlit对象
-        df_macro: 宏观运行数据
         df_weights: 权重数据
         uploaded_file: 上传的Excel文件对象
     """
@@ -198,15 +98,15 @@ def render_enterprise_profit_analysis_with_data(
     available_vars = [var for var in chart1_variables if var in df_profit.columns]
 
     if not available_vars:
-        st_obj.error(f"错误：未找到任何必需的指标列！")
+        st_obj.error("错误：未找到任何必需的指标列！")
         return
 
     def create_chart1(df, variables, time_range, custom_start_date, custom_end_date):
-        return create_enterprise_indicators_chart(
-            df_data=df,
-            time_range=time_range,
-            custom_start_date=custom_start_date,
-            custom_end_date=custom_end_date
+        return EnterpriseIndicatorsChart().create(
+            df,
+            time_range,
+            custom_start_date,
+            custom_end_date,
         )
 
     create_chart_with_time_selector_fragment(
@@ -259,12 +159,11 @@ def render_enterprise_profit_analysis_with_data(
         total_growth_series = profit_contribution_result['total_growth']
 
         def create_chart2(df, variables, time_range, custom_start_date, custom_end_date):
-            return create_profit_contribution_chart(
-                df_contribution=df,
-                total_growth=total_growth_series,
-                time_range=time_range,
-                custom_start_date=custom_start_date,
-                custom_end_date=custom_end_date
+            return ProfitContributionChart(total_growth=total_growth_series).create(
+                df,
+                time_range,
+                custom_start_date,
+                custom_end_date,
             )
 
         available_vars_chart2 = list(stream_contribution_df.columns)
@@ -311,8 +210,6 @@ def render_enterprise_profit_analysis_with_data(
 
 def render_enterprise_efficiency_analysis_with_data(
     st_obj,
-    df_macro: Optional[pd.DataFrame],
-    df_weights: Optional[pd.DataFrame],
     uploaded_file=None
 ):
     """
@@ -320,8 +217,6 @@ def render_enterprise_efficiency_analysis_with_data(
 
     Args:
         st_obj: Streamlit对象
-        df_macro: 宏观运行数据
-        df_weights: 权重数据
         uploaded_file: 上传的Excel文件对象
     """
     if uploaded_file is None:
@@ -349,7 +244,7 @@ def render_enterprise_efficiency_analysis_with_data(
 
     if missing_cols:
         logger.warning(f"缺少必需列: {missing_cols}")
-        st_obj.warning(f"数据中缺少部分企业经营指标列，无法生成完整图表")
+        st_obj.warning("数据中缺少部分企业经营指标列，无法生成完整图表")
         return
 
     # 转换累计值为当期值
@@ -371,11 +266,11 @@ def render_enterprise_efficiency_analysis_with_data(
     all_indicators = ['ROE', '利润率', '总资产周转率', '权益乘数']
 
     def create_operations_chart(df, variables, time_range, custom_start_date, custom_end_date):
-        return create_enterprise_operations_indicators_chart(
-            df_operations=df,
-            time_range=time_range,
-            custom_start_date=custom_start_date,
-            custom_end_date=custom_end_date
+        return OperationsIndicatorsChart().create(
+            df,
+            time_range,
+            custom_start_date,
+            custom_end_date,
         )
 
     from dashboard.analysis.industrial.utils.fragment_components import create_chart_with_time_selector_fragment
@@ -442,7 +337,7 @@ def render_enterprise_efficiency_analysis_with_data(
 
         if missing_efficiency_cols:
             logger.warning(f"企业经营效率指标分析缺少必需列: {missing_efficiency_cols}")
-            st_obj.warning(f"数据中缺少部分企业经营效率指标列，无法生成完整图表")
+            st_obj.warning("数据中缺少部分企业经营效率指标列，无法生成完整图表")
         else:
             # 转换累计值为累计同比
             df_efficiency_metrics['每百元营业收入中的成本'] = convert_cumulative_to_yoy(df_efficiency_metrics[cost_per_hundred_cumulative_col])
@@ -466,11 +361,11 @@ def render_enterprise_efficiency_analysis_with_data(
             ]
 
             def create_efficiency_metrics_chart(df, variables, time_range, custom_start_date, custom_end_date):
-                return create_enterprise_efficiency_metrics_chart(
-                    df_efficiency=df,
-                    time_range=time_range,
-                    custom_start_date=custom_start_date,
-                    custom_end_date=custom_end_date
+                return EfficiencyMetricsChart().create(
+                    df,
+                    time_range,
+                    custom_start_date,
+                    custom_end_date,
                 )
 
             create_chart_with_time_selector_fragment(
