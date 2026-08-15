@@ -1,0 +1,144 @@
+"""从阿联酋工作簿读取月度_LSEG 的阿联酋非油私营部门 PMI。"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+import pandas as pd
+from matplotlib.figure import Figure
+from Ts.TsPlots import plot_series
+
+from dashboard.analysis.uae.oil.alignment import within_month_window
+from dashboard.analysis.uae.oil.charts import (
+    CHINESE_FONT_FAMILY,
+    _add_source_note,
+    _apply_strict_month_ticks,
+    _finish_dual_axis_figure,
+    _new_ts_figure_axis,
+    _normalize_ts_axis,
+)
+from dashboard.analysis.uae.oil.data import (
+    OilSeriesMetadata,
+    _parse_target_sheet,
+    _workbook_buffer,
+)
+
+
+PMI_SHEET = "月度_LSEG"
+PMI_LABEL = "阿联酋非油私营部门采购经理人指数(PMI)"
+PMI_INDICATOR = PMI_LABEL
+PMI_COLOR = "#000000"
+
+DISPLAY_MONTHS = 37
+
+
+@dataclass(frozen=True)
+class PmiData:
+    """阿联酋非油私营部门月度 PMI 序列及来源信息。"""
+
+    values: pd.DataFrame
+    metadata: dict[str, OilSeriesMetadata]
+    source_name: str
+
+
+def load_pmi_data(
+    file_input: Any,
+    *,
+    file_name: str | None = None,
+) -> PmiData:
+    """只读取 ``月度_LSEG`` 的单一 PMI 指标并校验元数据。"""
+
+    buffer, source_name = _workbook_buffer(file_input, file_name=file_name)
+    excel_file = pd.ExcelFile(buffer)
+    try:
+        values, metadata = _parse_target_sheet(
+            excel_file,
+            sheet_name=PMI_SHEET,
+            targets=((PMI_LABEL, PMI_INDICATOR),),
+            allowed_frequencies={"月", "月度"},
+            expected_unit="点",
+        )
+    finally:
+        excel_file.close()
+
+    return PmiData(
+        values=values,
+        metadata=metadata,
+        source_name=source_name,
+    )
+
+
+def display_pmi_values(values: pd.DataFrame) -> pd.DataFrame:
+    """返回最近展示窗口内的 PMI 序列。"""
+
+    last_month = pd.Timestamp(values.index[-1]).to_period("M")
+    return within_month_window(
+        values,
+        first_month=last_month - (DISPLAY_MONTHS - 1),
+        last_month=last_month,
+    )
+
+
+def build_pmi_figure(
+    values: pd.DataFrame,
+    *,
+    title: str,
+    source_text: str,
+) -> Figure:
+    """绘制阿联酋非油私营部门 PMI 的月度线图。"""
+
+    display_values = display_pmi_values(values)
+    if display_values.dropna(how="all").empty:
+        raise ValueError(f"{title}没有可绘制的有效数据")
+
+    figure, axis = _new_ts_figure_axis()
+    figure, returned_axis = plot_series(
+        display_values[PMI_LABEL].rename(PMI_LABEL),
+        title=None,
+        xtitle="",
+        ytitle="点",
+        colors=[PMI_COLOR],
+        linewidth=2.2,
+        markersize=0,
+        max_ticks=8,
+        freq="month",
+        show_legend=False,
+        note=None,
+        grid=True,
+        ax=axis,
+    )
+    axis = _normalize_ts_axis(returned_axis)
+
+    axis.set_title(title, fontsize=14, pad=14)
+    axis.xaxis.grid(False)
+    axis.set_ylabel("点", fontsize=12)
+    for spine in axis.spines.values():
+        spine.set_visible(True)
+        spine.set_color("#6B7280")
+        spine.set_linewidth(0.9)
+    _apply_strict_month_ticks(axis, display_values.index)
+    figure.legend(
+        handles=axis.get_lines()[:1],
+        labels=[PMI_LABEL],
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.115),
+        frameon=False,
+        prop={"family": CHINESE_FONT_FAMILY[0], "size": 10},
+        ncol=1,
+    )
+    _finish_dual_axis_figure(figure, top=0.90)
+    _add_source_note(figure, source_text)
+    return figure
+
+
+__all__ = [
+    "PMI_COLOR",
+    "PMI_INDICATOR",
+    "PMI_LABEL",
+    "PMI_SHEET",
+    "PmiData",
+    "build_pmi_figure",
+    "display_pmi_values",
+    "load_pmi_data",
+]

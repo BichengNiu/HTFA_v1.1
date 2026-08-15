@@ -248,45 +248,40 @@ def test_revenue_metrics_include_year_to_date_yoy() -> None:
     assert st_obj.metric.call_args_list[-1].args[1] == "+32.0%"
 
 
-def test_oil_market_figure_combines_brent_and_production() -> None:
+def test_oil_market_figure_combines_production_and_rigs() -> None:
     data = load_oil_market_data(_workbook_bytes(), file_name="test.xlsx")
 
     figure = build_oil_market_figure(
-        data.prices,
         data.production,
-        "金联创、OPEC",
+        "OPEC、Baker Hughes",
         data.rig_count,
     )
 
-    price_axis, production_axis, rig_axis = figure.axes
-    assert len(price_axis.get_lines()) == 1
-    assert price_axis.get_lines()[0].get_label() == "布伦特原油现货价（左轴）"
+    production_axis, rig_axis = figure.axes
     assert len(production_axis.patches) == len(data.production)
     assert production_axis.patches[-1].get_height() == 311.0
     assert len(rig_axis.get_lines()) == 1
     assert (
         rig_axis.get_lines()[0].get_label()
-        == "阿联酋石油活跃钻机数（外右轴）"
+        == "阿联酋石油活跃钻机数（右轴）"
     )
     assert rig_axis.get_lines()[0].get_ydata()[-1] == 59
-    assert price_axis.get_ylabel() == "美元/桶"
     assert production_axis.get_ylabel() == "万桶/天"
-    assert price_axis.get_title() == "原油价格、产量与钻机数"
+    assert rig_axis.get_ylabel() == "活跃钻机数（台）"
+    assert production_axis.get_title() == "原油产量及活动钻机数"
     assert figure._suptitle is None
-    assert price_axis.get_xticklabels()[-1].get_text() == "12月"
+    assert production_axis.get_xticklabels()[-1].get_text() == "12月"
     legend_labels = {
         text.get_text()
         for text in figure.texts
         if text.get_text() in {
-            "布伦特原油现货价（左轴）",
-            "阿联酋原油产量（右轴）",
-            "阿联酋石油活跃钻机数（外右轴）",
+            "阿联酋原油产量（左轴）",
+            "阿联酋石油活跃钻机数（右轴）",
         }
     }
     assert legend_labels == {
-        "布伦特原油现货价（左轴）",
-        "阿联酋原油产量（右轴）",
-        "阿联酋石油活跃钻机数（外右轴）",
+        "阿联酋原油产量（左轴）",
+        "阿联酋石油活跃钻机数（右轴）",
     }
     assert all(
         text.get_position()[1] < 0.2
@@ -294,11 +289,11 @@ def test_oil_market_figure_combines_brent_and_production() -> None:
         if text.get_text() in legend_labels
     )
     assert figure.subplotpars.bottom >= 0.30
-    assert {text.get_text().strip() for text in price_axis.texts} >= {
+    assert {text.get_text().strip() for text in production_axis.texts} >= {
         "2025年"
     }
     assert any(
-        text.get_text() == "数据来源：金联创、OPEC"
+        text.get_text() == "数据来源：OPEC、Baker Hughes"
         for text in figure.texts
     )
 
@@ -319,14 +314,13 @@ def test_oil_figures_accept_ts_ndarray_axes(monkeypatch) -> None:
     revenue = estimate_monthly_oil_revenue(data.prices, data.production)
 
     market_figure = build_oil_market_figure(
-        data.prices,
         data.production,
-        "金联创、OPEC",
+        "OPEC、Baker Hughes",
         data.rig_count,
     )
     revenue_figure = build_oil_revenue_figure(revenue, "金联创、OPEC")
 
-    assert len(market_figure.axes) == 3
+    assert len(market_figure.axes) == 2
     assert len(revenue_figure.axes) == 2
 
 
@@ -383,30 +377,26 @@ def test_monthly_revenue_calculates_yoy_and_chart_axes() -> None:
     ) == pytest.approx(revenue[YOY_COLUMN].iloc[-1])
     assert revenue[YTD_COLUMN].iloc[-1] == pytest.approx(40.92)
     assert revenue[YTD_YOY_COLUMN].iloc[-1] == pytest.approx(32.0)
-    rate_axis, revenue_axis = figure.axes
-    assert [line.get_label() for line in rate_axis.get_lines()] == [
-        "石油收入同比增速（右轴）",
-        "油价拉动率（右轴）",
-        "产量拉动率（右轴）",
+    price_axis, revenue_axis = figure.axes
+    assert [line.get_label() for line in price_axis.get_lines()] == [
+        "布伦特原油现货价（左轴）",
     ]
     assert len(revenue_axis.patches) == len(revenue)
     assert revenue_axis.patches[-1].get_height() == pytest.approx(40.92)
     assert revenue_axis.get_ylabel() == "亿美元"
-    assert rate_axis.get_ylabel() == "拉动率/同比（%）"
-    assert rate_axis.get_title() == "估算石油收入"
+    assert price_axis.get_ylabel() == "美元/桶"
+    assert price_axis.get_title() == "石油价格与阿联酋石油收入"
     assert figure._suptitle is None
-    assert rate_axis.get_xticklabels()[-1].get_text() == "12月"
+    assert price_axis.get_xticklabels()[-1].get_text() == "12月"
     legend_labels = {text.get_text() for text in figure.legends[0].get_texts()}
     assert legend_labels == {
-        "石油收入（左轴）",
-        "石油收入同比增速（右轴）",
-        "油价拉动率（右轴）",
-        "产量拉动率（右轴）",
+        "布伦特原油现货价（左轴）",
+        "石油收入（右轴）",
     }
     assert figure.legends[0].get_bbox_to_anchor()._bbox.y0 < 0.2
     assert figure.subplotpars.bottom >= 0.30
-    assert len(rate_axis.get_xticklabels()) <= 4
-    assert {text.get_text().strip() for text in rate_axis.texts} >= {
+    assert len(price_axis.get_xticklabels()) <= 4
+    assert {text.get_text().strip() for text in price_axis.texts} >= {
         "2024年",
         "2025年",
     }

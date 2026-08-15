@@ -19,9 +19,7 @@ from dashboard.analysis.uae.oil.charts import (
 )
 from dashboard.analysis.uae.oil.data import OilMarketData, load_oil_market_data
 from dashboard.analysis.uae.oil.revenue import (
-    PRICE_CONTRIBUTION_COLUMN,
     PRICE_BENCHMARK_COLUMN,
-    PRODUCTION_CONTRIBUTION_COLUMN,
     REVENUE_COLUMN,
     YOY_COLUMN,
     YTD_COLUMN,
@@ -169,11 +167,7 @@ def _render_charts(
     market_sources = "、".join(
         dict.fromkeys(
             source
-            for source in (
-                data.metadata["布伦特现货"].source,
-                production_source,
-                rig_count_source,
-            )
+            for source in (production_source, rig_count_source)
             if source
         )
     )
@@ -181,19 +175,11 @@ def _render_charts(
         dict.fromkeys((data.metadata["布伦特现货"].source, production_source))
     )
     columns = st_obj.columns(2, gap="small")
-    market_cutoff_series = [
-        ("布伦特现货", data.prices["布伦特现货"]),
-        (data.production.name, data.production),
-    ]
+    market_cutoff_series = [(data.production.name, data.production)]
     if data.rig_count is not None and not data.rig_count.dropna().empty:
         market_cutoff_series.append((data.rig_count.name, data.rig_count))
     market_last_month = common_latest_month(market_cutoff_series)
     market_first_month = market_last_month - 36
-    market_prices = within_month_window(
-        data.prices,
-        first_month=market_first_month,
-        last_month=market_last_month,
-    )
     market_production = within_month_window(
         data.production,
         first_month=market_first_month,
@@ -209,7 +195,6 @@ def _render_charts(
         )
     )
     market_series = [
-        market_prices["布伦特现货"].rename("布伦特原油现货价（美元/桶）"),
         market_production.div(10_000).rename("阿联酋原油产量（万桶/天）"),
     ]
     if market_rig_count is not None:
@@ -221,15 +206,6 @@ def _render_charts(
         axis=1,
     ).sort_index()
     revenue_cutoff_series = [(REVENUE_COLUMN, revenue[REVENUE_COLUMN])]
-    revenue_cutoff_series.extend(
-        (column, revenue[column])
-        for column in (
-            YOY_COLUMN,
-            PRICE_CONTRIBUTION_COLUMN,
-            PRODUCTION_CONTRIBUTION_COLUMN,
-        )
-        if not revenue[column].dropna().empty
-    )
     revenue_last_month = common_latest_month(revenue_cutoff_series)
     revenue_download = within_month_window(
         revenue,
@@ -240,7 +216,6 @@ def _render_charts(
         st_obj.pyplot(
             place_chart_legend_at_bottom(
                 build_oil_market_figure(
-                    market_prices,
                     market_production,
                     market_sources,
                     market_rig_count,
@@ -253,7 +228,7 @@ def _render_charts(
         render_chart_download(
             st_obj,
             market_download,
-            title="原油价格、产量与钻机数",
+            title="原油产量及活动钻机数",
             key="analysis.uae.oil.market.download",
         )
     with columns[1]:
@@ -271,7 +246,7 @@ def _render_charts(
         render_chart_download(
             st_obj,
             revenue_download,
-            title="估算石油收入",
+            title="石油价格与阿联酋石油收入",
             key="analysis.uae.oil.revenue.download",
         )
 

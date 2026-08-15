@@ -203,7 +203,9 @@ def test_chart_row_renders_one_yoy_view_and_downloads_only_yoy_data() -> None:
     } == {13}
 
 
-def test_section_adds_divider_before_title(monkeypatch) -> None:
+def test_section_renders_infrastructure_and_labor_employment_subsections(
+    monkeypatch,
+) -> None:
     data = load_government_finance_data(
         _workbook_bytes(),
         file_name="test.xlsx",
@@ -213,8 +215,21 @@ def test_section_adds_divider_before_title(monkeypatch) -> None:
         "_load_government_finance_cached",
         lambda content, file_name: data,
     )
-    monkeypatch.setattr(renderer, "_render_charts", lambda *args: None)
+    for loader_name in (
+        "_load_pmi_cached",
+        "_load_foreign_labor_cached",
+        "_load_search_index_cached",
+    ):
+        monkeypatch.setattr(renderer, loader_name, lambda *args: object())
+    for render_name in (
+        "_render_charts",
+        "_render_pmi_chart",
+        "_render_foreign_labor_chart",
+        "_render_search_index_chart",
+    ):
+        monkeypatch.setattr(renderer, render_name, lambda *args: None)
     st_obj = MagicMock()
+    st_obj.columns.return_value = (MagicMock(), MagicMock())
 
     result = renderer.render_government_finance_section(
         st_obj,
@@ -224,5 +239,10 @@ def test_section_adds_divider_before_title(monkeypatch) -> None:
 
     assert result["status"] == "success"
     calls = [call[0] for call in st_obj.method_calls]
+    assert calls.count("divider") == 2
+    assert calls.count("subheader") == 2
     assert calls.index("divider") < calls.index("subheader")
-    st_obj.subheader.assert_called_once_with("基础设施建设")
+    assert [call.args[0] for call in st_obj.subheader.call_args_list] == [
+        "财政支出和投资",
+        "劳动就业",
+    ]
