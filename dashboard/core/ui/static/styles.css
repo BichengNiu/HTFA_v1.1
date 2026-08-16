@@ -454,6 +454,13 @@ body {
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
+/* 图表/图片全屏展开（右上角放大按钮）时自适应整个页面：
+   限制在视口高度内完整显示，保持纵横比并居中，避免超高图溢出滚动 */
+div[data-testid="stFullScreenFrame"] div[data-testid="stImageContainer"] img {
+    max-height: calc(100vh - 6rem) !important;
+    object-fit: contain !important;
+}
+
 /* 下载按钮使用Streamlit默认样式 */
 
 /* Expander样式优化 */

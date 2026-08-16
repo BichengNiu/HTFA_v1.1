@@ -153,13 +153,13 @@ def render_model_analysis_content(sub_module: str | None) -> None:
         _render_model_submodule_tabs("DFM 模型", all_tabs)
         return
 
-    if sub_module == "单变量时间序列":
+    if sub_module == "单变量模型":
         from dashboard.models.SARIMAX.ui.pages import render_sarimax_model_page
 
         all_tabs = [
             ("SARIMAX 模型", lambda: render_sarimax_model_page(st)),
         ]
-        _render_model_submodule_tabs("单变量时间序列", all_tabs)
+        _render_model_submodule_tabs("单变量模型", all_tabs)
         return
 
     st.info("请选择一个模型分析子模块以开始分析")

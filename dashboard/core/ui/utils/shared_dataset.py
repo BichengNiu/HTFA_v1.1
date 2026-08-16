@@ -51,7 +51,18 @@ def _parse_first_column_as_time(frame: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
-def load_shared_dataframe(uploaded_file) -> pd.DataFrame:
+def list_excel_sheets(uploaded_file) -> Optional[list[str]]:
+    """Excel 文件返回工作表名列表；非 Excel 文件返回 None。"""
+    extension = uploaded_file.name.rsplit(".", 1)[-1].lower()
+    if extension not in {"xlsx", "xls"}:
+        return None
+    with pd.ExcelFile(io.BytesIO(uploaded_file.getvalue())) as excel:
+        return list(excel.sheet_names)
+
+
+def load_shared_dataframe(
+    uploaded_file, sheet_name: Optional[str] = None
+) -> pd.DataFrame:
     """以通用时序表格式读取共享文件，第一列优先解析为时间列。"""
     content = uploaded_file.getvalue()
     extension = uploaded_file.name.rsplit(".", 1)[-1].lower()
@@ -66,7 +77,10 @@ def load_shared_dataframe(uploaded_file) -> pd.DataFrame:
                 last_error = exc
         raise ValueError("无法解码 CSV 文件，请使用 UTF-8、GBK 或 GB2312 编码") from last_error
     if extension in {"xlsx", "xls"}:
-        frame = pd.read_excel(io.BytesIO(content))
+        if sheet_name is None:
+            with pd.ExcelFile(io.BytesIO(content)) as excel:
+                sheet_name = excel.sheet_names[0]
+        frame = pd.read_excel(io.BytesIO(content), sheet_name=sheet_name)
         return _parse_first_column_as_time(frame)
     raise ValueError(f"不支持的文件格式：{extension}")
 
@@ -91,11 +105,44 @@ def get_shared_dataset_fingerprint() -> str:
     return st.session_state.get(_state_key("fingerprint"), "")
 
 
+def get_shared_dataset_sheets() -> Optional[list[str]]:
+    """获取当前会话上传文件的工作表名列表（非 Excel 为 None）。"""
+    return st.session_state.get(_state_key("sheets"))
+
+
+def get_shared_dataset_sheet() -> Optional[str]:
+    """获取当前会话选中的工作表名。"""
+    return st.session_state.get(_state_key("sheet"))
+
+
+def select_shared_dataset_sheet(sheet: str) -> bool:
+    """切换到指定工作表并重载共享数据；成功返回 True。"""
+    uploaded_file = get_shared_dataset_file()
+    if uploaded_file is None:
+        return False
+    try:
+        data = load_shared_dataframe(uploaded_file, sheet_name=sheet)
+        data = data.dropna(how="all").dropna(axis=1, how="all")
+        if data.empty:
+            raise ValueError("工作表清理后为空")
+    except Exception:
+        return False
+    _clear_dependent_analysis_state()
+    st.session_state[_state_key("data")] = data
+    st.session_state[_state_key("file_name")] = uploaded_file.name
+    st.session_state[_state_key("fingerprint")] = (
+        f"{fingerprint_file(uploaded_file)}::{sheet}"
+    )
+    st.session_state[_state_key("sheet")] = sheet
+    return True
+
+
 def _clear_dependent_analysis_state() -> None:
-    """新文件进入后移除依赖旧数据的探索结果。"""
+    """新文件进入后移除依赖旧数据的探索与模型分析结果。"""
     prefixes = (
         "tools.analysis.",
         "exploration.lead_lag.",
+        "model_analysis.sarimax.",
     )
     for key in list(st.session_state):
         if str(key).startswith(prefixes):
@@ -110,26 +157,43 @@ def clear_shared_dataset() -> None:
     _clear_dependent_analysis_state()
 
 
-def render_shared_dataset_uploader(st_obj) -> dict:
-    """在侧边栏渲染唯一上传器，并在文件变更时更新共享状态。"""
-    st_obj.markdown("### 共享数据集")
+def _fingerprint_matches(file_fingerprint: str, current: str) -> bool:
+    """当前指纹是否属于该文件（兼容“文件指纹::工作表名”形式）。"""
+    return current == file_fingerprint or current.startswith(
+        f"{file_fingerprint}::"
+    )
+
+
+def render_shared_dataset_uploader(st_obj, *, compact: bool = False) -> dict:
+    """渲染共享数据集上传器，并在文件变更时更新共享状态。
+
+    compact=True 时隐藏「共享数据集」标题、已加载提示与行数列数
+    小字（用于页面主区域内嵌场景，如模型分析的数据概览）。
+    """
+    if not compact:
+        st_obj.markdown("### 共享数据集")
     uploaded_file = st_obj.file_uploader(
         "选择数据文件",
         type=SUPPORTED_FILE_TYPES,
         key="dashboard_shared_dataset_uploader",
-        help="数据预览、监测分析和数据探索会共同使用此文件。",
+        help="数据预览、监测分析、数据探索和模型分析会共同使用此文件。",
     )
 
     if uploaded_file is None:
         if get_shared_dataset_file() is not None:
             clear_shared_dataset()
-        st_obj.caption("支持 CSV、XLS、XLSX；更换文件会清除数据探索的历史结果。")
+        if not compact:
+            st_obj.caption(
+                "支持 CSV、XLS、XLSX；更换文件会清除数据探索与模型分析的历史结果。"
+            )
         return {"show_upload": True, "has_data": False}
 
     fingerprint = fingerprint_file(uploaded_file)
-    if fingerprint != get_shared_dataset_fingerprint():
+    if not _fingerprint_matches(fingerprint, get_shared_dataset_fingerprint()):
         try:
-            data = load_shared_dataframe(uploaded_file)
+            sheets = list_excel_sheets(uploaded_file)
+            sheet = sheets[0] if sheets else None
+            data = load_shared_dataframe(uploaded_file, sheet_name=sheet)
             data = data.dropna(how="all").dropna(axis=1, how="all")
             if data.empty:
                 raise ValueError("文件清理后为空")
@@ -143,10 +207,13 @@ def render_shared_dataset_uploader(st_obj) -> dict:
         st.session_state[_state_key("data")] = data
         st.session_state[_state_key("file_name")] = uploaded_file.name
         st.session_state[_state_key("fingerprint")] = fingerprint
+        st.session_state[_state_key("sheets")] = sheets
+        st.session_state[_state_key("sheet")] = sheet
 
-    data = get_shared_dataset_data()
-    st_obj.success(f"已加载：{uploaded_file.name}")
-    st_obj.caption(f"{data.shape[0]:,} 行 × {data.shape[1]:,} 列")
+    if not compact:
+        st_obj.success(f"已加载：{uploaded_file.name}")
+        data = get_shared_dataset_data()
+        st_obj.caption(f"{data.shape[0]:,} 行 × {data.shape[1]:,} 列")
     return {"show_upload": True, "has_data": True, "file_name": uploaded_file.name}
 
 
@@ -157,5 +224,9 @@ __all__ = [
     "get_shared_dataset_file",
     "get_shared_dataset_fingerprint",
     "get_shared_dataset_name",
+    "get_shared_dataset_sheet",
+    "get_shared_dataset_sheets",
+    "list_excel_sheets",
     "render_shared_dataset_uploader",
+    "select_shared_dataset_sheet",
 ]

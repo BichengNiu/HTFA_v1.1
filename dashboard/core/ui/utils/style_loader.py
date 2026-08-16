@@ -8,9 +8,12 @@ import streamlit as st
 STATIC_DIR = Path(__file__).parent.parent / "static"
 
 
-@st.cache_data(show_spinner=False)
 def load_cached_styles(css_file: str = "styles.css") -> str:
-    """读取静态 CSS；缺失时让 Streamlit 使用默认样式。"""
+    """读取静态 CSS；缺失时让 Streamlit 使用默认样式。
+
+    不缓存文件内容（文件很小）：样式文件改动后下一次 rerun 即生效，
+    无需重启应用。
+    """
 
     path = STATIC_DIR / css_file
     if not path.is_file():

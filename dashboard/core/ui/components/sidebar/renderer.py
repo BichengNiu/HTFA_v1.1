@@ -87,6 +87,8 @@ def render_complete_sidebar(
         st.markdown("---")
         if selected_main in {"数据预览", "监测分析", "数据探索"}:
             render_shared_dataset_uploader(st)
+        # 模型分析 - 单变量模型的上传组件已移至页面主区域
+        # （与变量选择并排），不再在侧边栏渲染。
 
 
 __all__ = ["render_complete_sidebar"]

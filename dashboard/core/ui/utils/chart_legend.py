@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import matplotlib.pyplot as plt
@@ -10,7 +11,25 @@ from plotly.graph_objects import Figure as PlotlyFigure
 
 
 PLOTLY_LEGEND_Y = -0.14
-MATPLOTLIB_LEGEND_Y = 0.115
+
+# 图例区物理尺寸（英寸）预留，按图高换算为比例：X 轴标题（时间列名）
+# 与图例各占一段并留出安全间距，任何图高下两者都不重叠、也不远离轴。
+_XLABEL_INCHES = 0.32
+_LEGEND_ROW_INCHES = 0.60
+_LEGEND_BAND_PAD_INCHES = 0.45
+
+
+def _legend_band_height(figure: MatplotlibFigure, rows: int) -> float:
+    """底部留白比例：X 轴标题 + 图例区 + 安全间距。"""
+    inches = (
+        _XLABEL_INCHES + _LEGEND_ROW_INCHES * rows + _LEGEND_BAND_PAD_INCHES
+    )
+    return inches / figure.get_figheight()
+
+
+def _legend_anchor_y(figure: MatplotlibFigure, rows: int) -> float:
+    """图例下边缘锚点比例：紧贴 X 轴标题下方，互不重叠。"""
+    return _XLABEL_INCHES / figure.get_figheight()
 
 
 def _place_plotly_legend_at_bottom(figure: PlotlyFigure) -> None:
@@ -36,7 +55,11 @@ def _place_plotly_legend_at_bottom(figure: PlotlyFigure) -> None:
     )
 
 
-def _place_matplotlib_legend_at_bottom(figure: MatplotlibFigure) -> None:
+def _place_matplotlib_legend_at_bottom(
+    figure: MatplotlibFigure,
+    legend_title: str | None = None,
+    legend_cols: int | None = None,
+) -> None:
     handles: list[Any] = []
     labels: list[str] = []
     for axis in figure.axes:
@@ -50,49 +73,88 @@ def _place_matplotlib_legend_at_bottom(figure: MatplotlibFigure) -> None:
                 labels.append(label)
         legend.remove()
 
+    rows = 1
     if handles:
+        ncol = legend_cols or min(4, len(labels))
+        rows = math.ceil(len(labels) / ncol)
         figure.legend(
             handles,
             labels,
             loc="lower center",
-            bbox_to_anchor=(0.5, MATPLOTLIB_LEGEND_Y),
-            ncol=min(4, len(labels)),
+            bbox_to_anchor=(0.5, _legend_anchor_y(figure, rows)),
+            ncol=ncol,
             frameon=False,
+            fontsize=15,
+            markerscale=1.6,
+            handlelength=2.6,
+            title=legend_title or None,
+            title_fontsize=15,
         )
 
     for legend in figure.legends:
         if hasattr(legend, "set_loc"):
             legend.set_loc("lower center")
         legend.set_bbox_to_anchor(
-            (0.5, MATPLOTLIB_LEGEND_Y),
+            (0.5, _legend_anchor_y(figure, rows)),
             transform=figure.transFigure,
         )
 
     if figure.legends:
-        figure.subplots_adjust(bottom=max(figure.subplotpars.bottom, 0.32))
+        # 底部留白只占轴标题与图例区的实际所需：宽幅图下既不出现
+        # 大段空白，图例也不会压到 X 轴标题。
+        figure.subplots_adjust(
+            bottom=max(figure.subplotpars.bottom, _legend_band_height(figure, rows))
+        )
 
 
-def place_chart_legend_at_bottom(figure: Any) -> Any:
-    """原地应用全局图例置底规则，并返回原图表对象。"""
+def place_chart_legend_at_bottom(
+    figure: Any,
+    *,
+    legend_title: str | None = None,
+    legend_cols: int | None = None,
+) -> Any:
+    """原地应用全局图例布局规则，并返回原图表对象。
+
+    legend_title：图例上方标题（None 不显示）；legend_cols：图例列数
+    （None 时按条目数自动，最多 4 列）。
+    """
 
     if isinstance(figure, PlotlyFigure):
         _place_plotly_legend_at_bottom(figure)
     elif isinstance(figure, MatplotlibFigure):
-        _place_matplotlib_legend_at_bottom(figure)
+        _place_matplotlib_legend_at_bottom(
+            figure, legend_title=legend_title, legend_cols=legend_cols
+        )
     return figure
 
 
-def render_pyplot_figure(st_obj, figure: MatplotlibFigure, **kwargs) -> None:
-    """按全局图例规则渲染 Matplotlib 图形并关闭资源。"""
+def render_pyplot_figure(
+    st_obj,
+    figure: MatplotlibFigure,
+    *,
+    place_legend_bottom: bool = True,
+    legend_title: str | None = None,
+    legend_cols: int | None = None,
+    **kwargs,
+) -> None:
+    """按全局图例规则渲染 Matplotlib 图形并关闭资源。
+
+    place_legend_bottom=False 时跳过图例置底（图例保持在原位置，
+    供用户显式选择图例位置的图表使用）。legend_title / legend_cols
+    仅在置底时生效。
+    """
 
     if "use_container_width" not in kwargs:
         kwargs.setdefault("width", "stretch")
     kwargs.setdefault("clear_figure", True)
     try:
-        st_obj.pyplot(
-            place_chart_legend_at_bottom(figure),
-            **kwargs,
-        )
+        if place_legend_bottom:
+            figure = place_chart_legend_at_bottom(
+                figure,
+                legend_title=legend_title,
+                legend_cols=legend_cols,
+            )
+        st_obj.pyplot(figure, **kwargs)
     finally:
         plt.close(figure)
 

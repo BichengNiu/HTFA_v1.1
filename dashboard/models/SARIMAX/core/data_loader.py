@@ -59,6 +59,31 @@ def numeric_variable_names(frame: pd.DataFrame) -> list[str]:
     return names
 
 
+def build_modeling_dataset(
+    frame: pd.DataFrame,
+    file_name: str,
+    fingerprint: str,
+) -> ModelingDataset:
+    """从已解析的数据框构造建模数据集（共享数据集路径）。
+
+    Raises
+    ------
+    ValueError
+        数据框为空或没有数值型变量时抛出，消息面向用户。
+    """
+    frame = frame.dropna(how="all").dropna(axis=1, how="all")
+    if frame.empty or frame.shape[1] == 0:
+        raise ValueError("文件清理后为空，没有可分析的列")
+    if not numeric_variable_names(frame):
+        raise ValueError("数据中没有数值型变量，无法进行 SARIMAX 建模")
+    return ModelingDataset(
+        fingerprint=fingerprint,
+        file_name=file_name,
+        frame=frame,
+        time_column=_detect_time_column(frame),
+    )
+
+
 def load_modeling_dataset(uploaded_file: Any) -> ModelingDataset:
     """解析上传文件并返回建模数据集。
 
@@ -129,6 +154,7 @@ def prepare_modeling_inputs(
 
 __all__ = [
     "ModelingDataset",
+    "build_modeling_dataset",
     "load_modeling_dataset",
     "numeric_variable_names",
     "prepare_modeling_inputs",

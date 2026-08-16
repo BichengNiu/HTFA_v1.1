@@ -1,15 +1,17 @@
-# 模型分析 - 单变量时间序列（SARIMAX）模块设计说明
+# 模型分析 - 单变量模型（SARIMAX）模块设计说明
 
 ## 1. 模块定位
 
-在「模型分析」主模块下新增 **单变量时间序列** 子模块，其下第一个 tab 为
+在「模型分析」主模块下新增 **单变量模型** 子模块，其下第一个 tab 为
 **SARIMAX 模型**，提供基于 Ts 运行时（`Ts.TsModels` / `Ts.TsTests` /
 `Ts.TsPlots`）的 ARIMA 家族建模工作流。该 tab 是一个**单页四环节工作流**，
 各环节之间以分割线分隔，后续可在同一子模块下扩展其他单变量模型 tab：
 
-1. **① 数据导入**：文件上传、数据预览、目标/外生变量选择；
-2. **② 模型训练**：手动 SARIMAX（`(p,d,q)×(P,D,Q,s)`、趋势、外生变量、
-   log 变换）或 AutoSARIMAX 自动选阶；
+1. **① 数据概览**：数据文件在**侧边栏**上传（复用「共享数据集」机制），
+   页面左半为数据表格，右半为**变量筛选器**（多选变量，调用
+   `TsPlots.plot_series` 绘制时间序列图，支持 expander 高级图形参数）；
+2. **② 模型训练**：**变量选择**（目标变量 + 外生变量）、手动 SARIMAX
+   （`(p,d,q)×(P,D,Q,s)`、趋势、log 变换）或 AutoSARIMAX 自动选阶；
 3. **③ 模型分析**：参数估计表、拟合效果图、残差诊断图、残差检验
    （Ljung-Box、Jarque-Bera、Engle LM）与稳定性结论；
 4. **④ 模型预测**：样本外预测与置信区间、动态/静态预测、含外生变量时的
@@ -37,11 +39,16 @@ dashboard/models/SARIMAX/
         ├── sarimax_page.py      # 主页面：四环节顺序渲染 + 分割线
         └── sections/            # 四环节组件
             ├── __init__.py
-            ├── data_section.py      # ① 数据导入
-            ├── training_section.py  # ② 模型训练
+            ├── data_section.py      # ① 数据概览（表格 + TsPlots 预览图）
+            ├── training_section.py  # ② 模型训练（含变量选择）
             ├── analysis_section.py  # ③ 模型分析
             └── forecast_section.py  # ④ 模型预测
 ```
+
+数据文件不再由本模块上传，而是在侧边栏复用 `render_shared_dataset_uploader()`
+（`dashboard/core/ui/components/sidebar/renderer.py`），当主模块为「模型分析」
+且子模块为「单变量模型」时显示；文件解析与指纹仍走
+`dashboard/core/ui/utils/shared_dataset.py` 的共享机制。
 
 ## 3. 导航与权限
 
@@ -49,15 +56,15 @@ dashboard/models/SARIMAX/
 
   | 子模块 | 权限码 | Tabs |
   | --- | --- | --- |
-  | 单变量时间序列 | `model_analysis.univariate_ts` | SARIMAX 模型 |
+  | 单变量模型 | `model_analysis.univariate_ts` | SARIMAX 模型 |
 
   Tab「SARIMAX 模型」的权限码为 `model_analysis.univariate_ts.sarimax`，
-  由 `PermissionTreeBuilder` 自动生成显示名（如「模型分析 - 单变量时间序列 -
+  由 `PermissionTreeBuilder` 自动生成显示名（如「模型分析 - 单变量模型 -
   SARIMAX 模型」），无需额外注册。
 - `dashboard/core/ui/components/content_router.py` 的
-  `render_model_analysis_content()` 分派「单变量时间序列」子模块；Tab 权限
+  `render_model_analysis_content()` 分派「单变量模型」子模块；Tab 权限
   过滤逻辑由 `_filter_tabs_by_permission()` 与 `_render_model_submodule_tabs()`
-  统一处理，DFM 与单变量时间序列共用。当前仅一个 tab，未来增加其他单变量
+  统一处理，DFM 与单变量模型共用。当前仅一个 tab，未来增加其他单变量
   模型 tab（如 GARCH）只需扩展导航配置。
 
 ## 4. 页面布局（参考 DFM 设计特点）
@@ -66,6 +73,10 @@ SARIMAX 模型 tab 为单页四环节工作流，环节间以 `st.markdown("---"
 分隔，环节标题采用 `#### ①/②/③/④ …` 样式；未满足前置条件的环节显示一行
 `st.info` 引导提示并跳过，不报错、不中断后续环节。布局规范与 DFM 对齐：
 
+- 数据文件在侧边栏上传；① 数据概览使用 `st.columns(2)` 左右分栏：
+  左半为数据表（`head(8)`），右半为变量筛选器（`st.multiselect` 多选）
+  与时间序列预览图；图参数（标题、线宽、标记、网格、图例、双 Y 轴）
+  收进 `st.expander("图形高级选项")`；
 - 参数控件一律 `st.columns(2~4)` 紧凑并排，每个 widget 带 `help` 说明；
 - 长内容与详情进 `st.expander`（默认折叠）：高级优化器设置、参数摘要、
   候选模型表等；
@@ -74,13 +85,13 @@ SARIMAX 模型 tab 为单页四环节工作流，环节间以 `st.markdown("---"
 - 操作按钮与下载按钮并排（columns），条件不满足时按钮 `disabled` 并给出
   warning（同 DFM 训练页的训练条件检查模式）。
 
-## 4. 数据流
+## 5. 数据流
 
 ```
-上传文件(CSV/XLSX/XLS)
-  → load_shared_dataframe（编码回退 utf-8/gbk/gb2312；首列日期解析）
-  → ModelingDataset（内容指纹 + 宽表 + 时间列标记）存入 session_state
-  → 选择目标变量 + 外生变量
+侧边栏上传文件(CSV/XLSX/XLS) → 共享数据集（fingerprint + 宽表）
+  → build_modeling_dataset（内容指纹 + 宽表 + 时间列标记）存入 session_state
+  → ① 数据概览：表格 + 多选变量 → TsPlots.plot_series 预览图（高级参数）
+  → ② 模型训练：选择目标变量 + 外生变量
   → prepare_modeling_inputs → (目标 Series, 外生 DataFrame, 索引)
   → SARIMAXConfig / AutoSARIMAXConfig（signature 用于结果失效）
   → Ts.TsModels.SARIMAX(...).fit() 或 AutoSARIMAX(...).fit()
@@ -90,9 +101,11 @@ SARIMAX 模型 tab 为单页四环节工作流，环节间以 `st.markdown("---"
 ```
 
 状态签名 =（文件指纹, 目标变量, 外生变量, 配置 signature）。任一变化即清除
-旧拟合结果、诊断表与预测，避免展示陈旧结果。
+旧拟合结果、诊断表与预测，避免展示陈旧结果。更换侧边栏文件时，
+`shared_dataset._clear_dependent_analysis_state()` 会一并清除
+`model_analysis.sarimax.` 命名空间下的结果状态。
 
-## 5. Ts 包 API 对照
+## 6. Ts 包 API 对照
 
 | 功能 | 调用 |
 | --- | --- |
@@ -104,7 +117,7 @@ SARIMAX 模型 tab 为单页四环节工作流，环节间以 `st.markdown("---"
 | 稳定性 | `result.is_stationary / is_invertible` |
 | 预测 | `result.predict(start=nobs, end=nobs+steps-1, dynamic, alpha, future_exog)` → `PredictResult.mean / lower / upper` |
 
-## 6. 边界与失败模式
+## 7. 边界与失败模式
 
 - 文件解析失败（编码、空表、无数值列）：页面报错，保留旧文件状态。
 - 样本少于 10 个有效观测、log 变换遇非正值、季节周期 s 过大：拟合前
@@ -118,7 +131,7 @@ SARIMAX 模型 tab 为单页四环节工作流，环节间以 `st.markdown("---"
 - 预测时含外生变量：必须为每个预测期填写全部未来值（列名严格一致），
   未填完整时预测按钮禁用。
 
-## 7. 明确不做（YAGNI）
+## 8. 明确不做（YAGNI）
 
 - 不修改 Ts 包、不新增第三方依赖。
 - 不做模型文件导出/加载、不做 compare_models 多模型比较。

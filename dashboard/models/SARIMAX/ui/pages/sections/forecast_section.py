@@ -93,8 +93,14 @@ def render_forecast_section(st_obj) -> None:
         return
 
     table = build_prediction_table(forecast)
+    # 日期索引转为字符串列显示：Streamlit 1.61 前端 statistics 对
+    # datetime 列存在单位换算 bug（min 显示为错误年份），字符串列走
+    # 文本统计显示正确日期；CSV 下载仍用原始表格（保留日期类型）。
+    display = table.reset_index()
+    if "日期" in display.columns:
+        display["日期"] = display["日期"].dt.strftime("%Y-%m-%d")
     st_obj.markdown("**预测结果**")
-    st_obj.dataframe(table, width="stretch")
+    st_obj.dataframe(display, width="stretch")
     st_obj.download_button(
         "下载预测结果 CSV",
         data=table.to_csv(encoding="utf-8-sig").encode("utf-8-sig"),

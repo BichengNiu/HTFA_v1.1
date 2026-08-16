@@ -124,7 +124,7 @@ def render_data_overview(st_obj, uploaded_file, *, dataset=None) -> None:
             time_scope = chart_scope("data_overview", table_key, variable, "time_series")
             time_defaults = {
                 "title": f"{variable} · 原始序列",
-                "x_title": "时间",
+                "x_title": "",
                 "y_title": str(series.name or "数值"),
                 "line_width": 3.0,
                 "marker_size": 0.0,

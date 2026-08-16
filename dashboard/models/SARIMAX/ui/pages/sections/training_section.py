@@ -8,7 +8,10 @@ import pandas as pd
 import streamlit as st
 from Ts.TsModels import AutoModelResult
 
-from dashboard.models.SARIMAX.core.data_loader import prepare_modeling_inputs
+from dashboard.models.SARIMAX.core.data_loader import (
+    numeric_variable_names,
+    prepare_modeling_inputs,
+)
 from dashboard.models.SARIMAX.core.model_config import (
     AUTO_CRITERIA,
     AutoSARIMAXConfig,
@@ -24,7 +27,11 @@ from dashboard.models.SARIMAX.core.modeling import (
     translate_ts_error,
     validate_fit_inputs,
 )
-from dashboard.models.SARIMAX.ui.state import clear_fit_results, state
+from dashboard.models.SARIMAX.ui.state import (
+    clear_fit_results,
+    clear_widget_state,
+    state,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,16 +50,54 @@ def render_training_section(st_obj) -> None:
     """配置并拟合 SARIMAX 模型。"""
     st_obj.markdown("#### ② 模型训练")
     dataset = state.get("dataset")
-    target = state.get("target_variable")
-    if dataset is None or not target:
-        st_obj.info("完成「① 数据导入」后可配置并拟合模型。")
+    if dataset is None:
+        st_obj.info("完成「① 数据概览」（在上方上传数据）后可配置并拟合模型。")
         return
+
+    variables = numeric_variable_names(dataset.frame)
+    if not variables:
+        st_obj.error("数据中没有可用的数值型变量。")
+        return
+
+    st_obj.markdown("**变量选择**")
+    select_columns = st_obj.columns(2)
+    with select_columns[0]:
+        target = st_obj.selectbox(
+            "目标变量（因变量，将被建模的序列）",
+            options=variables,
+            index=variables.index(state.get("target_variable"))
+            if state.get("target_variable") in variables
+            else 0,
+            key="sarimax_target_select",
+        )
+    if target != state.get("target_variable"):
+        state.set("target_variable", target)
+        state.set("exog_variables", ())
+        clear_fit_results()
+        clear_widget_state(st_obj, ("sarimax_exog_select",))
+
+    with select_columns[1]:
+        exog_options = [name for name in variables if name != target]
+        exog = st_obj.multiselect(
+            "外生变量（可选，作为回归输入参与建模）",
+            options=exog_options,
+            key="sarimax_exog_select",
+            help="外生变量的观测日期必须与目标变量完全对齐。",
+        )
+    if tuple(exog) != state.get("exog_variables", ()):
+        state.set("exog_variables", tuple(exog))
+        clear_fit_results()
+
+    st_obj.caption(
+        f"当前配置：目标变量「{target}」，外生变量 "
+        + (f"「{'、'.join(exog)}」" if exog else "无")
+    )
 
     try:
         series, exog, index = prepare_modeling_inputs(
             dataset,
             target,
-            tuple(state.get("exog_variables", ())),
+            tuple(exog),
         )
     except Exception as exc:  # noqa: BLE001 - 用户可读的数据准备边界
         st_obj.error(f"数据准备失败：{exc}")
