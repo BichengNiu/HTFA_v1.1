@@ -37,6 +37,12 @@ GRANULAR_PERMISSION_MAP = {
                     "影响分解": "model_analysis.dfm.news",
                 },
             },
+            "单变量时间序列": {
+                "code": "model_analysis.univariate_ts",
+                "tabs": {
+                    "SARIMAX 模型": "model_analysis.univariate_ts.sarimax",
+                },
+            },
         },
     },
     "数据探索": {

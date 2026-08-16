@@ -137,37 +137,61 @@ def render_monitoring_analysis_content(sub_module: str | None) -> None:
 
 
 def render_model_analysis_content(sub_module: str | None) -> None:
-    """渲染 DFM 分析标签页。"""
-    if sub_module != "DFM 模型":
-        st.info("请选择一个模型分析子模块以开始分析")
+    """渲染模型分析子模块标签页。"""
+    if sub_module == "DFM 模型":
+        from dashboard.models.DFM.decomp.ui.pages import render_dfm_news_analysis_page
+        from dashboard.models.DFM.prep.ui.pages import render_dfm_data_prep_page
+        from dashboard.models.DFM.results.ui.pages import render_dfm_model_analysis_page
+        from dashboard.models.DFM.train.ui.pages import render_dfm_model_training_page
+
+        all_tabs = [
+            ("数据准备", lambda: render_dfm_data_prep_page(st)),
+            ("模型训练", lambda: render_dfm_model_training_page(st)),
+            ("模型分析", lambda: render_dfm_model_analysis_page(st)),
+            ("影响分解", lambda: render_dfm_news_analysis_page(st)),
+        ]
+        _render_model_submodule_tabs("DFM 模型", all_tabs)
         return
 
-    from dashboard.models.DFM.decomp.ui.pages import render_dfm_news_analysis_page
-    from dashboard.models.DFM.prep.ui.pages import render_dfm_data_prep_page
-    from dashboard.models.DFM.results.ui.pages import render_dfm_model_analysis_page
-    from dashboard.models.DFM.train.ui.pages import render_dfm_model_training_page
+    if sub_module == "单变量时间序列":
+        from dashboard.models.SARIMAX.ui.pages import render_sarimax_model_page
 
-    all_tabs = [
-        ("数据准备", lambda: render_dfm_data_prep_page(st)),
-        ("模型训练", lambda: render_dfm_model_training_page(st)),
-        ("模型分析", lambda: render_dfm_model_analysis_page(st)),
-        ("影响分解", lambda: render_dfm_news_analysis_page(st)),
-    ]
+        all_tabs = [
+            ("SARIMAX 模型", lambda: render_sarimax_model_page(st)),
+        ]
+        _render_model_submodule_tabs("单变量时间序列", all_tabs)
+        return
+
+    st.info("请选择一个模型分析子模块以开始分析")
+
+
+def _filter_tabs_by_permission(
+    sub_module_name: str,
+    all_tabs: list[tuple[str, Callable[[], None]]],
+) -> list[tuple[str, Callable[[], None]]]:
+    """按子模块 Tab 权限过滤；调试模式或无用户时不过滤。"""
     current_user = st.session_state.get("auth.current_user")
     if st.session_state.get("auth.debug_mode", False) or current_user is None:
-        visible_tabs = all_tabs
-    else:
-        from dashboard.auth.ui.middleware import get_auth_middleware
+        return all_tabs
 
-        permission_manager = get_auth_middleware().permission_manager
-        visible_tabs = [
-            (tab_name, render_func)
-            for tab_name, render_func in all_tabs
-            if permission_manager.check_granular_access(
-                current_user, "模型分析", "DFM 模型", tab_name
-            )
-        ]
+    from dashboard.auth.ui.middleware import get_auth_middleware
 
+    permission_manager = get_auth_middleware().permission_manager
+    return [
+        (tab_name, render_func)
+        for tab_name, render_func in all_tabs
+        if permission_manager.check_granular_access(
+            current_user, "模型分析", sub_module_name, tab_name
+        )
+    ]
+
+
+def _render_model_submodule_tabs(
+    sub_module_name: str,
+    all_tabs: list[tuple[str, Callable[[], None]]],
+) -> None:
+    """渲染模型分析子模块下的标签页。"""
+    visible_tabs = _filter_tabs_by_permission(sub_module_name, all_tabs)
     if not visible_tabs:
         st.warning("您没有权限访问任何Tab")
         return
