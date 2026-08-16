@@ -1,12 +1,12 @@
-"""数据概览解析层测试：频率推断、时间掩码、参考线/阴影解析。"""
+"""解析层测试：频率推断、时间掩码、参考线/阴影解析。"""
 
 from __future__ import annotations
 
 import pandas as pd
 import pytest
 
-from dashboard.models.SARIMAX.core.data_loader import build_modeling_dataset
-from dashboard.models.SARIMAX.core.overview.parsing import (
+from data_overview.core.dataset import build_overview_dataset
+from data_overview.core.parsing import (
     detect_frequency,
     parse_float,
     parse_shade,
@@ -19,7 +19,7 @@ from dashboard.models.SARIMAX.core.overview.parsing import (
 
 def _frame():
     index = pd.date_range("2020-01-01", periods=30, freq="MS")
-    return build_modeling_dataset(
+    return build_overview_dataset(
         pd.DataFrame({"date": index, "a": range(30)}), "sample.csv", "fp"
     )
 
@@ -74,6 +74,17 @@ def test_time_mask_custom():
     assert mask.sum() == 3
     # 自定义但缺起止 = 不过滤。
     mask = time_mask(dataset, {"sarimax_table_time_preset": "自定义"})
+    assert mask.all()
+
+
+def test_time_mask_key_prefix():
+    """不同 key_prefix 读取不同键。"""
+    dataset = _frame()
+    state = {"dfm_table_time_preset": "过去3个月"}
+    mask = time_mask(dataset, state, key_prefix="dfm")
+    assert mask.sum() == 3
+    # 默认前缀读不到 dfm 键 → 不过滤。
+    mask = time_mask(dataset, state)
     assert mask.all()
 
 

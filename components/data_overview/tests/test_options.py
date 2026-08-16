@@ -1,4 +1,4 @@
-"""数据概览选项构建层测试：UI 状态 ↔ Ts plot_series 参数一致性。"""
+"""选项构建层测试：UI 状态 ↔ Ts plot_series 参数一致性 + 前缀隔离。"""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ import pandas as pd
 import pytest
 from Ts.TsPlots import plot_series
 
-from dashboard.models.SARIMAX.core.data_loader import build_modeling_dataset
-from dashboard.models.SARIMAX.core.overview.options import (
+from data_overview.core.dataset import build_overview_dataset
+from data_overview.core.options import (
     build_chart_options,
     build_table_options,
 )
@@ -27,7 +27,7 @@ _UI_TO_TS_ALIASES = {
 
 
 def _dataset():
-    frame = build_modeling_dataset(
+    return build_overview_dataset(
         pd.DataFrame(
             {
                 "date": pd.date_range("2020-01-01", periods=30, freq="MS"),
@@ -38,7 +38,6 @@ def _dataset():
         "sample.csv",
         "fp",
     )
-    return frame
 
 
 def _state(**overrides):
@@ -48,14 +47,14 @@ def _state(**overrides):
 
 
 def test_chart_options_keys_match_plot_series_signature():
-    """build_chart_options 输出键 ⊆ plot_series 参数（一一对应，无多余）。"""
+    """build_chart_options 输出键（别名映射后）⊆ plot_series 参数。"""
     dataset = _dataset()
     options, errors = build_chart_options(_state(), dataset, dataset.frame)
     assert errors == []
     signature = set(inspect.signature(plot_series).parameters)
     mapped = {_UI_TO_TS_ALIASES.get(key, key) for key in options}
     assert mapped | _FIXED_AT_CALL_SITE <= signature
-    # 覆盖度：UI 可驱动的绘图参数都应被构建（排除数据/风格固定参数）。
+    # 覆盖度：UI 可驱动的绘图参数都应被构建。
     assert set(options) >= {
         "title",
         "xtitle",
@@ -233,22 +232,42 @@ def test_table_options_defaults_and_filter():
     assert table["view"] == "tail"
 
 
-def test_widget_key_registry_matches_summary():
-    """WIDGET_KEYS 汇总 = 各域键集合（防拆域漂移）。"""
-    from dashboard.models.SARIMAX.ui.state import MODEL_WIDGET_KEYS, WIDGET_KEYS
-    from dashboard.models.SARIMAX.ui.widget_keys import (
-        CHART_WIDGET_KEYS,
-        SELECTOR_WIDGET_KEYS,
-        TABLE_WIDGET_KEYS,
+def test_key_prefix_isolation():
+    """不同 key_prefix 读取完全隔离的键。"""
+    dataset = _dataset()
+    options, errors = build_chart_options(
+        _state(dfm_preview_title="标题", dfm_preview_grid_style="横网格"),
+        dataset,
+        dataset.frame,
+        key_prefix="dfm",
+    )
+    assert errors == []
+    assert options["title"] == "标题"
+    assert options["grid_axis"] == "y"
+    # 默认前缀不受 dfm 键影响。
+    options2, _ = build_chart_options(_state(), dataset, dataset.frame)
+    assert options2["title"] is None
+    assert options2["grid_axis"] == "both"
+
+
+def test_widget_key_generation():
+    """键生成函数与历史默认一致；不同前缀无交集。"""
+    from data_overview.ui.widget_keys import (
+        chart_widget_keys,
+        overview_widget_keys,
+        preview_key,
+        selector_widget_keys,
+        table_key,
+        table_widget_keys,
     )
 
-    assert set(WIDGET_KEYS) == (
-        set(SELECTOR_WIDGET_KEYS)
-        | set(CHART_WIDGET_KEYS)
-        | set(TABLE_WIDGET_KEYS)
-        | set(MODEL_WIDGET_KEYS)
+    assert selector_widget_keys() == ("sarimax_preview_vars",)
+    assert "sarimax_preview_title" in chart_widget_keys()
+    assert "sarimax_table_filter_col" in table_widget_keys()
+    assert overview_widget_keys()[0] == "sarimax_preview_vars"
+    assert preview_key("dfm", "title") == "dfm_preview_title"
+    assert table_key("dfm", "filter_col") == "dfm_table_filter_col"
+    assert not set(overview_widget_keys("sarimax")) & set(
+        overview_widget_keys("dfm")
     )
-    assert len(WIDGET_KEYS) == len(set(WIDGET_KEYS))
-    # 历史约定：数据概览键在前，第一个键是变量多选（换文件时被排除清理）。
-    assert WIDGET_KEYS[0] == "sarimax_preview_vars"
-    assert "sarimax_preview_vars" not in CHART_WIDGET_KEYS
+    assert len(overview_widget_keys()) == len(set(overview_widget_keys()))

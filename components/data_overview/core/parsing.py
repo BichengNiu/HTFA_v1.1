@@ -7,10 +7,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from dashboard.models.SARIMAX.core.overview.constants import (
-    FREQ_PERIOD,
-    TIME_PRESETS,
-)
+from .constants import FREQ_PERIOD, TIME_PRESETS
 
 
 def detect_frequency(dates) -> str:
@@ -42,15 +39,16 @@ def period_bounds(text: str, freq: str) -> tuple[pd.Timestamp, pd.Timestamp]:
     return period.start_time, period.end_time
 
 
-def time_mask(dataset, state) -> pd.Series:
+def time_mask(dataset, state, *, key_prefix: str = "sarimax") -> pd.Series:
     """按时间筛选预设/自定义起止构造布尔掩码（频率匹配数据粒度）。
 
     state：会话状态映射（如 st.session_state），缺失键回退不筛选。
+    key_prefix：widget 键前缀，默认 "sarimax"（读 {prefix}_table_* 键）。
     """
     time_series = pd.to_datetime(dataset.frame[dataset.time_column])
     mask = pd.Series(True, index=dataset.frame.index)
     freq = detect_frequency(time_series)
-    preset_label = state.get("sarimax_table_time_preset")
+    preset_label = state.get(f"{key_prefix}_table_time_preset")
     if preset_label is None:
         return mask
     preset_value = dict(TIME_PRESETS[freq]).get(preset_label, "all")
@@ -58,8 +56,8 @@ def time_mask(dataset, state) -> pd.Series:
         return mask
     last = time_series.max()
     if preset_value == "custom":
-        start = state.get("sarimax_table_time_start")
-        end = state.get("sarimax_table_time_end")
+        start = state.get(f"{key_prefix}_table_time_start")
+        end = state.get(f"{key_prefix}_table_time_end")
         if start is None or end is None:
             return mask
         start_ts, _ = period_bounds(str(start), freq)

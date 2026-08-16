@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from dashboard.core.ui.utils.state_helpers import NamespacedStateManager
-from dashboard.models.SARIMAX.ui.widget_keys import (
+from data_overview.ui.widget_keys import (
     CHART_WIDGET_KEYS,
     SELECTOR_WIDGET_KEYS,
     TABLE_WIDGET_KEYS,

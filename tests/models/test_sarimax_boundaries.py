@@ -124,23 +124,23 @@ def test_section_entry_functions_do_not_import_ts_directly():
                         f"{section} 的 render_ 函数直接导入了 Ts，"
                         "统计调用必须走 core 层"
                     )
-    # 数据概览入口（模块化后位于 ui/overview/section.py）。
-    overview_path = PROJECT_ROOT / "dashboard/models/SARIMAX/ui/overview/section.py"
-    tree = ast.parse(overview_path.read_text(encoding="utf-8"))
-    for node in tree.body:
-        if not isinstance(node, ast.FunctionDef):
-            continue
-        if not node.name.startswith("render_"):
-            continue
-        for child in ast.walk(node):
+    # 数据概览接线（sections/__init__.py 与 overview_bridge.py）不直接 import Ts：
+    # 绘图能力在独立组件包 data_overview（ui/chart_panel.py 收口）。
+    for wiring_path in (
+        "dashboard/models/SARIMAX/ui/pages/sections/__init__.py",
+        "dashboard/models/SARIMAX/ui/overview_bridge.py",
+    ):
+        tree = ast.parse(
+            (PROJECT_ROOT / wiring_path).read_text(encoding="utf-8")
+        )
+        for child in ast.walk(tree):
             if (
                 isinstance(child, ast.ImportFrom)
                 and child.module
                 and "Ts" in child.module
             ):
                 raise AssertionError(
-                    "overview/section.py 的 render_ 函数直接导入了 Ts，"
-                    "绘图调用必须走 chart_panel 层"
+                    f"{wiring_path} 直接导入了 Ts，绘图调用必须走 data_overview 组件"
                 )
 
 

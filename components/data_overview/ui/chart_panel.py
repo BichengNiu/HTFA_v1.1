@@ -1,7 +1,7 @@
 """数据概览的图侧面板：调用 Ts plot_series 渲染预览图。
 
 签名与 Ts plot_series 参数一一对应（auto_dual_y 固定 False），
-是 HTFA UI 层与 Ts 包底层的参数契约收口点。
+是组件 UI 层与 Ts 包底层的参数契约收口点。外部依赖：Ts 包。
 """
 
 from __future__ import annotations
@@ -10,9 +10,9 @@ import logging
 
 from Ts.TsPlots import plot_series
 
-from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
-from dashboard.explore.analysis.stationarity import matplotlib_date_compatibility
-from dashboard.models.SARIMAX.core.overview.constants import PREVIEW_DPI, PREVIEW_FIGSIZE
+from ..core.constants import PREVIEW_DPI, PREVIEW_FIGSIZE
+from ..core.compat import matplotlib_date_compatibility
+from .legend import render_pyplot_figure
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +136,7 @@ def draw_series_plot(
             shade_alpha=shade_alpha,
         )
     except Exception:
-        logger.exception("SARIMAX 时间序列预览绘图失败")
+        logger.exception("数据概览时间序列预览绘图失败")
         raise
 
     fig.set_size_inches(PREVIEW_FIGSIZE)

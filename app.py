@@ -2,6 +2,15 @@
 
 from __future__ import annotations
 
+import os
+import sys
+
+# 独立组件容器：components/ 下的包（如 data_overview）以顶层名导入，
+# 与拷贝到其他项目后的导入方式一致（包内一律相对导入）。
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "components")
+)
+
 import streamlit as st
 
 
