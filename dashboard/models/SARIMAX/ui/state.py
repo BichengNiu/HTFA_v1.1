@@ -5,70 +5,17 @@ from __future__ import annotations
 from typing import Any
 
 from dashboard.core.ui.utils.state_helpers import NamespacedStateManager
+from dashboard.models.SARIMAX.ui.widget_keys import (
+    CHART_WIDGET_KEYS,
+    SELECTOR_WIDGET_KEYS,
+    TABLE_WIDGET_KEYS,
+)
 
 # 所有 SARIMAX 页面共用的会话状态命名空间。
 state = NamespacedStateManager("model_analysis.sarimax")
 
-# 全部 Streamlit widget 键；换文件或换变量时需要清除，
-# 避免旧 widget 值被 Streamlit 自动恢复。
-WIDGET_KEYS = (
-    "sarimax_preview_vars",
-    "sarimax_preview_title",
-    "sarimax_preview_note",
-    "sarimax_preview_note_loc",
-    "sarimax_preview_note_prefix",
-    "sarimax_preview_title_pos",
-    "sarimax_preview_xtitle",
-    "sarimax_preview_xtitle_loc",
-    "sarimax_preview_ytitle",
-    "sarimax_preview_ytitle_pos",
-    "sarimax_preview_ymin",
-    "sarimax_preview_xmin",
-    "sarimax_preview_ytick_count",
-    "sarimax_preview_ylabel_count",
-    "sarimax_preview_xtick_count",
-    "sarimax_preview_xlabel_count",
-    "sarimax_preview_year_ruler",
-    "sarimax_preview_linewidth",
-    "sarimax_preview_markersize",
-    "sarimax_preview_marker_edge",
-    "sarimax_preview_grid_style",
-    "sarimax_preview_grid_width",
-    "sarimax_preview_grid_linestyle",
-    "sarimax_preview_legend",
-    "sarimax_preview_legend_loc",
-    "sarimax_preview_legend_title",
-    "sarimax_preview_legend_cols",
-    "sarimax_preview_aspect",
-    "sarimax_preview_width",
-    "sarimax_preview_height",
-    "sarimax_preview_facet",
-    "sarimax_preview_facet_rows",
-    "sarimax_preview_facet_cols",
-    "sarimax_preview_sharey",
-    "sarimax_preview_second_axis_on",
-    "sarimax_preview_third_axis_on",
-    "sarimax_preview_second_axis",
-    "sarimax_preview_third_axis",
-    "sarimax_preview_second_axis_title",
-    "sarimax_preview_third_axis_title",
-    "sarimax_preview_log_vars",
-    "sarimax_preview_show_values",
-    "sarimax_preview_value_decimals",
-    "sarimax_preview_shade_alpha",
-    "sarimax_preview_shade_color",
-    "sarimax_preview_vlines",
-    "sarimax_preview_vline_color",
-    "sarimax_preview_vline_style",
-    "sarimax_preview_shade",
-    "sarimax_table_filter_col",
-    "sarimax_table_filter_op",
-    "sarimax_table_filter_val",
-    "sarimax_table_time_preset",
-    "sarimax_table_time_start",
-    "sarimax_table_time_end",
-    "sarimax_table_view_head",
-    "sarimax_table_view_tail",
+# 训练 / 分析 / 预测环节的 widget 键（数据概览的键在 ui/overview/widget_keys.py）。
+MODEL_WIDGET_KEYS = (
     "sarimax_target_select",
     "sarimax_exog_select",
     "sarimax_mode_radio",
@@ -114,6 +61,14 @@ WIDGET_KEYS = (
     "sarimax_forecast_download",
 )
 
+# 全部 Streamlit widget 键；换文件或换变量时需要清除，
+# 避免旧 widget 值被 Streamlit 自动恢复。
+# 顺序保持历史约定：选择器在前（WIDGET_KEYS[1:] 在换文件时清空，
+# 变量多选键被排除在清理之外）。
+WIDGET_KEYS = (
+    SELECTOR_WIDGET_KEYS + CHART_WIDGET_KEYS + TABLE_WIDGET_KEYS + MODEL_WIDGET_KEYS
+)
+
 RESULT_KEYS = (
     "fitted_result",
     "fit_signature",
@@ -155,6 +110,7 @@ def get_fitted_result() -> Any:
 
 
 __all__ = [
+    "MODEL_WIDGET_KEYS",
     "RESULT_KEYS",
     "WIDGET_KEYS",
     "clear_dataset_state",

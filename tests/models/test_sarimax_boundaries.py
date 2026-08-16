@@ -103,7 +103,6 @@ def test_sarimax_main_page_only_orchestrates_sections():
 def test_section_entry_functions_do_not_import_ts_directly():
     """环节入口函数只做编排，统计计算必须集中在 core/modeling.py。"""
     for section in (
-        "data_section.py",
         "training_section.py",
         "analysis_section.py",
         "forecast_section.py",
@@ -122,9 +121,27 @@ def test_section_entry_functions_do_not_import_ts_directly():
                     and "Ts" in child.module
                 ):
                     raise AssertionError(
-                        f"{section}.{node.name} 直接导入了 Ts，"
-                        "统计调用必须集中在 core/modeling.py"
+                        f"{section} 的 render_ 函数直接导入了 Ts，"
+                        "统计调用必须走 core 层"
                     )
+    # 数据概览入口（模块化后位于 ui/overview/section.py）。
+    overview_path = PROJECT_ROOT / "dashboard/models/SARIMAX/ui/overview/section.py"
+    tree = ast.parse(overview_path.read_text(encoding="utf-8"))
+    for node in tree.body:
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        if not node.name.startswith("render_"):
+            continue
+        for child in ast.walk(node):
+            if (
+                isinstance(child, ast.ImportFrom)
+                and child.module
+                and "Ts" in child.module
+            ):
+                raise AssertionError(
+                    "overview/section.py 的 render_ 函数直接导入了 Ts，"
+                    "绘图调用必须走 chart_panel 层"
+                )
 
 
 def test_univariate_ts_tab_renders_without_exception(monkeypatch):

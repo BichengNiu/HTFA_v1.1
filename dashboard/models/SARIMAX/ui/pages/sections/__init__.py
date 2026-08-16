@@ -3,9 +3,7 @@
 from dashboard.models.SARIMAX.ui.pages.sections.analysis_section import (
     render_analysis_section,
 )
-from dashboard.models.SARIMAX.ui.pages.sections.data_section import (
-    render_data_overview_section,
-)
+from dashboard.models.SARIMAX.ui.overview import render_data_overview_section
 from dashboard.models.SARIMAX.ui.pages.sections.forecast_section import (
     render_forecast_section,
 )
