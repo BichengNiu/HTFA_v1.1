@@ -16,7 +16,7 @@ PREVIEW_MODULES = {
         "module_name": "uae",
         "state_namespace": "preview.uae",
         "module_title": "阿联酋数据预览",
-        "default_relative_path": Path("data") / "阿联酋.xlsx",
+        "default_relative_path": Path("data") / "UAE" / "阿联酋.xlsx",
     },
 }
 

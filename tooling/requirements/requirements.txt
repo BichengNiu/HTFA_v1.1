@@ -10,6 +10,8 @@ numpy>=2.3.0
 openpyxl>=3.1.0
 xlrd>=2.0.0
 pypdf>=6.15.0
+# 本地数据管理（data/ 统一 DuckDB 管线）
+duckdb>=1.5.0
 
 # 科学计算与统计分析
 scipy>=1.16.0

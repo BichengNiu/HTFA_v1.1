@@ -20,7 +20,7 @@ def test_preview_modules_are_declared_config_not_class_per_module():
     uae = create_preview_renderer("uae")
     assert uae.module_title == "阿联酋数据预览"
     assert uae.state_namespace == "preview.uae"
-    assert uae.default_relative_path == Path("data") / "阿联酋.xlsx"
+    assert uae.default_relative_path == Path("data") / "UAE" / "阿联酋.xlsx"
 
 
 def test_preview_renderer_rejects_unknown_module():

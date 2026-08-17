@@ -13,6 +13,7 @@ colorama==0.4.6
 contourpy==1.3.3
 cycler==0.12.1
 dtaidistance==2.4.0
+duckdb==1.5.5
 et-xmlfile==2.0.0
 fonttools==4.63.0
 h11==0.16.0

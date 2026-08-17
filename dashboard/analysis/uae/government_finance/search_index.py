@@ -23,7 +23,7 @@ from dashboard.analysis.uae.plot_helpers import (
 SMOOTH_WINDOW = 7
 SMOOTH_POLYORDER = 2
 
-SEARCH_CSV_RELATIVE = "data/employment/工作搜索热度.csv"
+SEARCH_CSV_RELATIVE = "data/UAE/工作搜索热度.csv"
 
 TIME_COLUMN = "Time"
 WORK_DUBAI_COLUMN = "work in dubai"

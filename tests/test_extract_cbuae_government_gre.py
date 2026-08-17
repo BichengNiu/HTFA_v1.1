@@ -1,12 +1,18 @@
 """Tests for the CBUAE government/GRE monthly-series extractor."""
 
+import sys
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 
 from openpyxl import Workbook
 
-from scripts.data_sources._excel_helpers import records_latest_first
-from scripts.data_sources.cbuae.update_cbuae_monthly import (
+DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "UAE"
+if str(DATA_DIR) not in sys.path:
+    sys.path.insert(0, str(DATA_DIR))
+
+from _excel_helpers import records_latest_first  # noqa: E402
+from source_cbuae import (  # noqa: E402
     Observation,
     _normalize_label,
     add_missing_fallbacks,

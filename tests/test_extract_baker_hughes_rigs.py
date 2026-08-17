@@ -1,11 +1,17 @@
 """Tests for the Baker Hughes UAE monthly rig-count extractor."""
 
+import sys
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 
 from openpyxl import Workbook
 
-from scripts.data_sources.baker_hughes.update_baker_hughes_monthly import (
+DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "UAE"
+if str(DATA_DIR) not in sys.path:
+    sys.path.insert(0, str(DATA_DIR))
+
+from source_baker_hughes import (  # noqa: E402
     INDICATORS,
     RigObservation,
     extract_uae_monthly,

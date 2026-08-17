@@ -1,9 +1,12 @@
-"""Update Ts once and launch HTFA in the current Python process."""
+"""Update Ts once and launch HTFA in the current Python process.
+
+Data updates no longer run at startup: the DuckDB pipeline under ``data/``
+is triggered explicitly via ``data/UAE/update_data.bat`` / ``merge_workbook.bat``.
+"""
 
 from __future__ import annotations
 
 import importlib
-import subprocess
 import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -14,43 +17,6 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts.ts_runtime import RuntimeSelection, RuntimeUpdateError, prepare_ts_runtime
-
-
-class DataRefreshError(RuntimeError):
-    """Raised when a managed source workbook cannot be refreshed."""
-
-
-def refresh_baker_hughes_data(
-    project_root: Path,
-    *,
-    runner: Callable[..., subprocess.CompletedProcess[str]] | None = None,
-) -> bool:
-    """Refresh the UAE Baker Hughes sheet before launch on Windows."""
-
-    if sys.platform != "win32":
-        return False
-    updater = (
-        project_root
-        / "scripts"
-        / "data_sources"
-        / "baker_hughes"
-        / "update_baker_hughes_monthly.py"
-    )
-    if not updater.is_file():
-        return False
-    run = runner or subprocess.run
-    completed = run(
-        [sys.executable, str(updater)],
-        cwd=project_root,
-        check=False,
-        text=True,
-    )
-    if completed.returncode:
-        raise DataRefreshError(
-            "Baker Hughes monthly-data refresh failed with exit code "
-            f"{completed.returncode}"
-        )
-    return True
 
 
 def _purge_ts_modules() -> None:
@@ -122,13 +88,14 @@ def main(
     arguments: Sequence[str] | None = None,
     *,
     preparer: Callable[..., RuntimeSelection] | None = None,
-    data_refresher: Callable[[Path], bool] | None = None,
     streamlit_main: Callable[[], int | None] | None = None,
 ) -> int:
-    """Refresh managed data, check Ts once, then start Streamlit."""
+    """Check Ts once, then start Streamlit.
 
-    refresh_data = data_refresher or refresh_baker_hughes_data
-    refresh_data(PROJECT_ROOT)
+    Data refreshes are no longer performed here; run ``data/UAE/update_data.py``
+    and ``data/UAE/merge_workbook.py`` explicitly when new data is available.
+    """
+
     prepare = preparer or prepare_ts_runtime
     selected = prepare(project_root=PROJECT_ROOT)
     _, active = activate_ts_runtime(selected)
@@ -148,10 +115,8 @@ if __name__ == "__main__":
 
 
 __all__ = [
-    "DataRefreshError",
     "activate_ts_runtime",
     "build_streamlit_argv",
     "format_selection_message",
     "main",
-    "refresh_baker_hughes_data",
 ]
