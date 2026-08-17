@@ -19,6 +19,12 @@ $range = $null
 try {
     $payload = Get-Content -Raw -LiteralPath $DataPath | ConvertFrom-Json
     $records = @(foreach ($record in $payload.records) { $record })
+    $indicatorNames = @($payload.indicators | ForEach-Object { $_.name })
+    $indicatorCount = $indicatorNames.Count
+    # 末列（跳过 A 列日期）：B 为第 2 列，指标数即占用列数，最大字母索引 = 1 + indicatorCount
+    $lastColumnIndex = 1 + $indicatorCount
+    $lastColumnLetter = [char]([int][char]'A' + $lastColumnIndex - 1)
+
     $excel = New-Object -ComObject Excel.Application
     $excel.Visible = $false
     $excel.DisplayAlerts = $false
@@ -47,15 +53,14 @@ try {
 
     $sheet.Cells.Clear()
     $rowCount = $records.Count + 6
-    $columnCount = 5
+    $columnCount = $lastColumnIndex
     $values = [object[,]]::new($rowCount, $columnCount)
-    $indicatorNames = @($payload.indicators | ForEach-Object { $_.name })
     $values[0, 0] = "CBUAE"
     $metadataLabels = @($payload.metadata_labels)
     for ($row = 0; $row -lt $metadataLabels.Count; $row++) {
         $values[($row + 1), 0] = $metadataLabels[$row]
     }
-    for ($column = 0; $column -lt $indicatorNames.Count; $column++) {
+    for ($column = 0; $column -lt $indicatorCount; $column++) {
         $targetColumn = $column + 1
         $values[1, $targetColumn] = $indicatorNames[$column]
         $values[2, $targetColumn] = $payload.frequency
@@ -78,8 +83,11 @@ try {
             [Globalization.CultureInfo]::InvariantCulture
         )
         $values[($index + 6), 0] = $monthStart.AddMonths(1).AddDays(-1).ToOADate()
-        for ($column = 0; $column -lt 4; $column++) {
-            $values[($index + 6), ($column + 1)] = [double]$record.values[$column]
+        for ($column = 0; $column -lt $indicatorCount; $column++) {
+            $value = $record.values[$column]
+            if ($null -ne $value) {
+                $values[($index + 6), ($column + 1)] = [double]$value
+            }
         }
     }
 
@@ -88,16 +96,16 @@ try {
         $sheet.Cells.Item($rowCount, $columnCount)
     )
     $range.Value2 = $values
-    $header = $sheet.Range("A2:E2")
+    $header = $sheet.Range("A2:$($lastColumnLetter)2")
     $header.Font.Bold = $true
     $header.Font.Color = 0xFFFFFF
     $header.Interior.Color = 0x784E1F
     $header.HorizontalAlignment = -4108
-    $sheet.Range("B6:E6").NumberFormat = "yyyy-mm-dd"
+    $sheet.Range("B6:$($lastColumnLetter)6").NumberFormat = "yyyy-mm-dd"
     $sheet.Range("A7:A$rowCount").NumberFormat = "yyyy-mm"
-    $sheet.Range("B7:E$rowCount").NumberFormat = "#,##0.000"
+    $sheet.Range("B7:$($lastColumnLetter)$rowCount").NumberFormat = "#,##0.000"
     $sheet.Columns.Item("A").ColumnWidth = 13
-    $sheet.Columns.Item("B:E").ColumnWidth = 34
+    $sheet.Columns.Item("B:$($lastColumnLetter)").ColumnWidth = 34
 
     $dictionarySheet = $workbook.Worksheets.Item(
         $payload.dictionary_sheet_name
@@ -113,7 +121,7 @@ try {
             $knownIndicators[$name] = $true
         }
     }
-    for ($index = 0; $index -lt $indicatorNames.Count; $index++) {
+    for ($index = 0; $index -lt $indicatorCount; $index++) {
         $name = $indicatorNames[$index]
         if (-not $knownIndicators.ContainsKey($name)) {
             $lastDictionaryRow++

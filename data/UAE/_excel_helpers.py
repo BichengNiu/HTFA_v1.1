@@ -25,7 +25,10 @@ def records_latest_first(observations: Iterable) -> list[dict[str, object]]:
     return [
         {
             "period": observation.period,
-            "values": [float(value) for value in observation.values],
+            "values": [
+                None if value is None else float(value)
+                for value in observation.values
+            ],
         }
         for observation in sorted(
             observations,

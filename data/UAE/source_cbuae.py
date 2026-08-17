@@ -1,10 +1,15 @@
-"""CBUAE 政府/政府控股企业存贷款月度入库与写表。
+"""CBUAE 政府/政府控股企业存贷款与外资流向指标月度入库与写表。
 
 逻辑移植自 ``scripts/data_sources/cbuae/update_cbuae_monthly.py``：扫描
 ``data/UAE/raw/cbuae/`` 下全部 YYYY-MM.xlsx / YYYY-MM.pdf 统计公报，读取全银行口径的
-国内信贷与居民/非居民存款两张表，为每个观测月保留最新 vintage；无工作簿的月份
-回退解析 PDF；仍缺的月份用 ``data/UAE/阿联酋.xlsx`` 的 月度_Wind sheet 回填（只读）。
-入库为长表 ``cbuae_monthly``（(period, indicator) 一行），单位百万迪拉姆。
+国内信贷、居民/非居民存款、按币种存款、国外资产负债等多张表，为每个观测月保留
+最新 vintage；无工作簿的月份回退解析 PDF。入库为长表 ``cbuae_monthly``
+（(period, indicator) 一行），单位百万迪拉姆。数据一律直接来自 CBUAE 公报，不依赖
+任何 Wind 序列。
+
+外资流向口径：非居民存款分项（个人/政府及非商业实体/其他金融企业）取自存款表
+「非居民」块(2)；外币存款总额取自按币种存款表；银行国外资产/负债取自国外资产负债表
+（All Banks）。均为月度存量，表征外资流入须结合环比增量解读，不含 FDI。
 """
 
 from __future__ import annotations
@@ -40,7 +45,6 @@ from _excel_helpers import (  # noqa: E402
 # ---------------------------------------------------------------------------
 
 RAW_DIR = DATA_DIR / "raw" / "cbuae"
-WIND_PATH = DATA_DIR / "阿联酋.xlsx"
 TARGET_SHEET = "月度_CBUAE"
 DICTIONARY_SHEET = "指标字典"
 SOURCE_NAME = "CBUAE"
@@ -87,25 +91,37 @@ CBUAE_INDICATORS = (
     ("阿联酋政府控股企业存款", "存款"),
     ("阿联酋政府信贷", "信贷"),
     ("阿联酋政府控股企业信贷", "信贷"),
+    ("阿联酋:国内信贷:私人企业信贷(Private Corporate Credit)", "信贷"),
+    ("阿联酋:国内信贷:商业及工业部门信贷(Business & Industrial Sector Credit)", "信贷"),
+    ("阿联酋:非居民存款:私人企业存款(Private Corporate Deposit)", "存款"),
+    ("阿联酋:非居民存款:商业及工业部门存款(Business & Industrial Sector Deposit)", "存款"),
+    ("阿联酋:非居民存款:个人存款(Individuals Deposit)", "存款"),
+    ("阿联酋:非居民存款:政府及非商业实体存款(Government & Non Commercial Entities Deposit)", "存款"),
+    ("阿联酋:非居民存款:其他金融企业存款(Other Financial Corporations Deposit)", "存款"),
+    ("阿联酋:外币存款(Total Foreign Currencies)", "存款"),
+    ("阿联酋:银行国外资产(Foreign Assets)", "资产"),
+    ("阿联酋:银行国外负债(Foreign Liabilities)", "负债"),
 )
 INDICATOR_ORDER = {name: index for index, (name, _) in enumerate(CBUAE_INDICATORS)}
-
-WIND_FALLBACK_INDICATORS = (
-    "阿联酋:银行存款:居民存款:政府部门",
-    "阿联酋:银行存款:居民存款:政府相关实体(政府持股超50%)",
-    "阿联酋:信贷总额:国内信贷:政府部门",
-    "阿联酋:信贷总额:国内信贷:公共部门(政府相关实体)",
-)
 
 CBUAE_PRIMARY_START = "2020-01"
 
 
 @dataclass(frozen=True)
 class Observation:
-    """一个观测期的一个来源 vintage。"""
+    """一个观测期的一个来源 vintage。
+
+    ``values`` 为 14 元组：(政府存款, 政府控股企业存款, 政府信贷, 政府控股企业信贷,
+    私人企业信贷, 商业及工业部门信贷, 非居民私人企业存款, 非居民商业及工业部门存款,
+    非居民个人存款, 非居民政府及非商业实体存款, 非居民其他金融企业存款, 外币存款总额,
+    银行国外资产, 银行国外负债)。
+
+    政府 4 项始终存在；企业信贷/存款与外币/国外资产负债各项在对应行未单列
+    或 PDF 回退月份为 ``None``。
+    """
 
     period: str
-    values: tuple[Decimal, Decimal, Decimal, Decimal]
+    values: tuple[Decimal | None, ...]
     source_period: str
     source_file: str
 
@@ -162,11 +178,15 @@ def _sheet_text(sheet: Worksheet, max_rows: int = 10) -> str:
     return _normalize_label(" ".join(values))
 
 
-def _find_source_sheets(workbook: object) -> tuple[Worksheet, Worksheet]:
-    """定位全银行口径的国内信贷与存款工作表。"""
+def _find_source_sheets(
+    workbook: object,
+) -> tuple[Worksheet, Worksheet, Worksheet, Worksheet]:
+    """定位全银行口径的国内信贷、居民/非居民存款、按币种存款、国外资产负债四张工作表。"""
 
     credit_sheet: Worksheet | None = None
     deposit_sheet: Worksheet | None = None
+    currency_sheet: Worksheet | None = None
+    foreign_sheet: Worksheet | None = None
     for sheet in workbook.worksheets:
         text = _sheet_text(sheet)
         if "domestic credit" in text and "all banks" in text:
@@ -176,9 +196,31 @@ def _find_source_sheets(workbook: object) -> tuple[Worksheet, Worksheet]:
             and "all banks" in text
         ):
             deposit_sheet = sheet
-    if credit_sheet is None or deposit_sheet is None:
-        raise ValueError("Required all-banks credit/deposit worksheets not found")
-    return credit_sheet, deposit_sheet
+        if (
+            "deposits by type and currency" in text
+            and "all banks" in text
+        ):
+            currency_sheet = sheet
+        if (
+            "foreign assets and liabilities" in text
+            and "all banks" in text
+        ):
+            foreign_sheet = sheet
+    missing = [
+        name
+        for name, found in (
+            ("domestic credit", credit_sheet),
+            ("deposits residents/non-residents", deposit_sheet),
+            ("deposits by type and currency", currency_sheet),
+            ("foreign assets and liabilities", foreign_sheet),
+        )
+        if found is None
+    ]
+    if missing:
+        raise ValueError(
+            "Required all-banks worksheets not found: " + ", ".join(missing)
+        )
+    return credit_sheet, deposit_sheet, currency_sheet, foreign_sheet
 
 
 def _header_columns(sheet: Worksheet) -> dict[str, int]:
@@ -223,12 +265,188 @@ def _extract_sheet_rows(
     return extracted
 
 
+def _find_row_optional(
+    sheet: Worksheet, accepted_labels: set[str]
+) -> int | None:
+    """查找首列标签（首个非空单元格）落在 ``accepted_labels`` 的行；找不到返回 ``None``。
+
+    只匹配“行首标签”，避免把表格下方脚注里的同名短语误当成数据行。
+    """
+
+    for row_number, row in enumerate(sheet.iter_rows(), start=1):
+        label = _row_default_label(row)
+        if label in accepted_labels:
+            return row_number
+    return None
+
+
+def _row_default_label(row) -> str:
+    """返回行内首个非空字符串单元格（作为该行的默认标签）。"""
+
+    for cell in row:
+        if isinstance(cell.value, str) and cell.value.strip():
+            return _normalize_label(cell.value)
+    return ""
+
+
+def _extract_one_row(
+    sheet: Worksheet,
+    columns: dict[int, str],
+    row_number: int | None,
+) -> dict[str, Decimal]:
+    """按期间读某一行数值；行不存在时返回空 dict。"""
+
+    if row_number is None:
+        return {}
+    extracted: dict[str, Decimal] = {}
+    for period, column in columns.items():
+        value = _to_decimal(sheet.cell(row_number, column).value)
+        if value is not None:
+            extracted[period] = value
+    return extracted
+
+
+def _extract_corporate_rows(
+    sheet: Worksheet,
+) -> tuple[dict[str, Decimal], dict[str, Decimal]]:
+    """提取 Domestic Credit (All Banks) 表的「私人企业 / 商业及工业部门」两行。
+
+    标签兼容旧格式（Private - Corporate / Business and Industrial Sector **）与新格式
+    （Private - Corporate 或 Corporate / Business and Industrial Sector）。
+
+    当公报不再单列 "Business and Industrial Sector" 行（如新格式 2026-05/06），且同时
+    单列 "Corporate" 与 "Other Financial Corporations" 两行时，按已验证口径推导：
+        商业及工业部门 = 私人企业(Corporate) - 其他金融企业(Other Financial Corporations)
+    （该恒等在重叠期逐月成立，见核查；C/BUAE 财务印在同一表。「Commercial & Industrial」注释
+     亦印证此拆分。）
+    """
+
+    try:
+        columns = _header_columns(sheet)
+    except ValueError:
+        return {}, {}
+    corporate_row = _find_row_optional(
+        sheet, {"private - corporate", "corporate"}
+    )
+    business_row = _find_row_optional(
+        sheet, {"business and industrial sector"}
+    )
+    other_financial_row = _find_row_optional(
+        sheet, {"other financial corporations"}
+    )
+
+    corporate = _extract_one_row(sheet, columns, corporate_row)
+    business = _extract_one_row(sheet, columns, business_row)
+    other_financial = _extract_one_row(sheet, columns, other_financial_row)
+
+    # 仅在最新公报未单列 Business 行时，用 Corporate - OtherFinancial 推导缺失期间
+    if corporate and other_financial and not business:
+        business = {
+            period: corporate_value - other_financial[period]
+            for period, corporate_value in corporate.items()
+            if period in other_financial
+        }
+    return corporate, business
+
+
+def _extract_nonresident_deposits(
+    sheet: Worksheet,
+) -> tuple[dict[str, Decimal], dict[str, Decimal], dict[str, Decimal], dict[str, Decimal]]:
+    """提取存款表「非居民」块(2) 的私人企业 / 个人 / 政府及非商业实体 / 其他金融企业存款。
+
+    存款表分两块：(1) 居民 Residents / (2) 非居民 Non-Residents。用户口径取**非居民块
+    (2)**，按行首标签（而非块内编号）定位各子项，因新旧公报块内编号顺序不同
+    （旧格式 2.2=Non Banking Financial Institutions/2.3=Individuals/2.4=Government；
+    新格式 2.2=Individuals/2.3=Government/2.4=Other Financial Corporations），
+    故必须按语义标签匹配。
+
+    返回四行：corporate、individuals、government_non_commercial、other_financial；
+    ``other_financial`` 兼容 "Other Financial Corporations"（新）与
+    "Non Banking Financial Institutions"（旧）。
+    """
+
+    try:
+        columns = _header_columns(sheet)
+    except ValueError:
+        return {}, {}, {}, {}
+
+    block2_start: int | None = None
+    corporate_row: int | None = None
+    individuals_row: int | None = None
+    government_row: int | None = None
+    financial_row: int | None = None
+    for row_number, row in enumerate(sheet.iter_rows(), start=1):
+        block_label = _normalize_label(row[1].value)
+        if block_label == "(2)":
+            block2_start = row_number
+            continue
+        if block2_start is None:
+            continue
+        # 块内标签在第 4 列（index 3），如 'Corporate' / 'Individuals' 等
+        label = _normalize_label(row[3].value)
+        if corporate_row is None and label == "corporate":
+            corporate_row = row_number
+        elif individuals_row is None and label == "individuals":
+            individuals_row = row_number
+        elif government_row is None and "government and non commercial" in label:
+            government_row = row_number
+        elif financial_row is None and (
+            "non banking financial" in label or "other financial" in label
+        ):
+            financial_row = row_number
+
+    corporate = _extract_one_row(sheet, columns, corporate_row)
+    individuals = _extract_one_row(sheet, columns, individuals_row)
+    government = _extract_one_row(sheet, columns, government_row)
+    other_financial = _extract_one_row(sheet, columns, financial_row)
+    return corporate, individuals, government, other_financial
+
+
+def _extract_total_foreign_currencies(
+    sheet: Worksheet,
+) -> dict[str, Decimal]:
+    """提取按币种存款表（All Banks）的「外币存款总额 / Total Foreign Currencies」行。
+
+    该行在平铺（旧格式，Demand/Local Currency/Foreign Currencies 逐行）与嵌套
+    （新格式）两种布局下都以 ``Total Foreign Currencies`` 作为行首标签，跨格式稳定。
+    """
+
+    try:
+        columns = _header_columns(sheet)
+    except ValueError:
+        return {}
+    row = _find_row_optional(sheet, {"total foreign currencies"})
+    return _extract_one_row(sheet, columns, row)
+
+
+def _extract_foreign_assets_liabilities(
+    sheet: Worksheet,
+) -> tuple[dict[str, Decimal], dict[str, Decimal]]:
+    """提取国外资产负债表中「Foreign Assets」与「Foreign Liabilities」两个汇总行。"""
+
+    try:
+        columns = _header_columns(sheet)
+    except ValueError:
+        return {}, {}
+    assets_row = _find_row_optional(sheet, {"foreign assets"})
+    liabilities_row = _find_row_optional(sheet, {"foreign liabilities"})
+    return (
+        _extract_one_row(sheet, columns, assets_row),
+        _extract_one_row(sheet, columns, liabilities_row),
+    )
+
+
 def extract_workbook(path: Path) -> list[Observation]:
     """从一个工作簿提取所有完整的期间观测。"""
 
     workbook = load_workbook(path, read_only=True, data_only=True)
     try:
-        credit_sheet, deposit_sheet = _find_source_sheets(workbook)
+        (
+            credit_sheet,
+            deposit_sheet,
+            currency_sheet,
+            foreign_sheet,
+        ) = _find_source_sheets(workbook)
         deposits = _extract_sheet_rows(
             deposit_sheet,
             ({"government"}, {"gres"}),
@@ -236,6 +454,23 @@ def extract_workbook(path: Path) -> list[Observation]:
         credits = _extract_sheet_rows(
             credit_sheet,
             ({"government"}, {"public sector", "public sector (gres)"}),
+        )
+        corporate, business = _extract_corporate_rows(credit_sheet)
+        (
+            nonres_corporate,
+            nonres_individuals,
+            nonres_government,
+            nonres_other_financial,
+        ) = _extract_nonresident_deposits(deposit_sheet)
+        # 商业及工业部门存款 = Corporate − OtherFinancial（与信贷侧同口径恒等推导）
+        deposit_business = {
+            period: corporate_value - nonres_other_financial[period]
+            for period, corporate_value in nonres_corporate.items()
+            if period in nonres_other_financial
+        }
+        total_foreign_currencies = _extract_total_foreign_currencies(currency_sheet)
+        foreign_assets, foreign_liabilities = _extract_foreign_assets_liabilities(
+            foreign_sheet
         )
     finally:
         workbook.close()
@@ -253,6 +488,16 @@ def extract_workbook(path: Path) -> list[Observation]:
                     gre_deposits,
                     government_credit,
                     gre_credit,
+                    corporate.get(period),
+                    business.get(period),
+                    nonres_corporate.get(period),
+                    deposit_business.get(period),
+                    nonres_individuals.get(period),
+                    nonres_government.get(period),
+                    nonres_other_financial.get(period),
+                    total_foreign_currencies.get(period),
+                    foreign_assets.get(period),
+                    foreign_liabilities.get(period),
                 ),
                 source_period=source_period,
                 source_file=path.name,
@@ -313,87 +558,15 @@ def extract_pdf_fallback(path: Path) -> Observation:
     period = _source_period(path)
     return Observation(
         period=period,
-        values=(*deposit_values, *credit_values),
+        # PDF 回退仅政府存贷 4 项；企业/外币/国外资产负债 10 项以 None 占位
+        values=(
+            *deposit_values,
+            *credit_values,
+            None, None, None, None, None, None, None, None, None, None,
+        ),
         source_period=period,
         source_file=path.name,
     )
-
-
-def extract_wind_fallback(path: Path) -> list[Observation]:
-    """读取四条匹配的 Wind 序列并把十亿换算为百万。"""
-
-    workbook = load_workbook(path, read_only=True, data_only=True)
-    try:
-        sheet = (
-            workbook["月度_Wind"]
-            if "月度_Wind" in workbook.sheetnames
-            else workbook.active
-        )
-        expected_names = {
-            _normalize_label(name): name for name in WIND_FALLBACK_INDICATORS
-        }
-        matching_columns: dict[str, int] = {}
-        header_row = next(
-            sheet.iter_rows(min_row=2, max_row=2, values_only=True)
-        )
-        for column, value in enumerate(header_row[1:], start=2):
-            normalized_name = _normalize_label(value)
-            if normalized_name not in expected_names:
-                continue
-            if normalized_name in matching_columns:
-                raise ValueError(
-                    "Duplicate Wind fallback indicator: "
-                    + expected_names[normalized_name]
-                )
-            matching_columns[normalized_name] = column
-
-        missing = [
-            name
-            for name in WIND_FALLBACK_INDICATORS
-            if _normalize_label(name) not in matching_columns
-        ]
-        if missing:
-            raise ValueError(
-                "Missing Wind fallback indicators: " + ", ".join(missing)
-            )
-
-        ordered_columns = [
-            matching_columns[_normalize_label(name)]
-            for name in WIND_FALLBACK_INDICATORS
-        ]
-        unit_row = next(
-            sheet.iter_rows(min_row=4, max_row=4, values_only=True)
-        )
-        units = [
-            _normalize_label(unit_row[column - 1])
-            for column in ordered_columns
-        ]
-        if any(unit != _normalize_label("十亿阿联酋迪拉姆") for unit in units):
-            raise ValueError("Wind indicators are not in billions of AED")
-
-        observations: list[Observation] = []
-        for row in sheet.iter_rows(min_row=7, values_only=True):
-            period_value = row[0]
-            if not isinstance(period_value, (date, datetime)):
-                continue
-            converted = tuple(
-                _to_decimal(Decimal(str(value)) * Decimal("1000"))
-                for value in (row[column - 1] for column in ordered_columns)
-            )
-            if any(value is None for value in converted):
-                continue
-            period = period_value.strftime("%Y-%m")
-            observations.append(
-                Observation(
-                    period=period,
-                    values=converted,
-                    source_period=period,
-                    source_file=path.name,
-                )
-            )
-        return observations
-    finally:
-        workbook.close()
 
 
 def _iter_months(start: str, end: str) -> Iterable[str]:
@@ -441,27 +614,6 @@ def select_latest_vintages(
     return selected, missing, revised_periods
 
 
-def add_missing_fallbacks(
-    primary: Iterable[Observation],
-    fallback: Iterable[Observation],
-    start_period: str,
-    end_period: str | None,
-) -> tuple[list[Observation], list[str]]:
-    """仅在主序列缺期间的位置补充回填观测。"""
-
-    merged = {observation.period: observation for observation in primary}
-    added: list[str] = []
-    for observation in fallback:
-        if observation.period < start_period:
-            continue
-        if end_period is not None and observation.period > end_period:
-            continue
-        if observation.period not in merged:
-            merged[observation.period] = observation
-            added.append(observation.period)
-    return [merged[period] for period in sorted(merged)], sorted(added)
-
-
 def _month_end(period: str) -> date:
     """'YYYY-MM' -> 该月最后一天的 date。"""
 
@@ -490,6 +642,9 @@ def _long_rows(observations: Iterable[Observation]) -> list[dict]:
     rows: list[dict] = []
     for observation in observations:
         for (indicator, _), value in zip(CBUAE_INDICATORS, observation.values):
+            if value is None:
+                # 该指标本月无值（如企业信贷未单列或公报缺失），不入库
+                continue
             rows.append(
                 {
                     "period": _month_end(observation.period),
@@ -526,8 +681,8 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     """发现公报文件 -> 解析（xlsx 优先，pdf 回退）-> vintage 选择 -> 入库。
 
     本数据源无网络下载环节（公报由外部环节放入 data/UAE/raw/cbuae/），因此
-    ``skip_download``/``force`` 仅作签名兼容。Wind 回填只读 data/UAE/阿联酋.xlsx，
-    绝不写入该文件。
+    ``skip_download``/``force`` 仅作签名兼容。数据一律直接来自 CBUAE 公报，
+    不依赖任何 Wind 序列。
     """
 
     observations: list[Observation] = []
@@ -554,19 +709,6 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         start_period=primary_start,
         end_period=None,
     )
-    fallback_added: list[str] = []
-    if WIND_PATH.is_file():
-        try:
-            selected, fallback_added = add_missing_fallbacks(
-                selected,
-                extract_wind_fallback(WIND_PATH),
-                start_period=START_PERIOD,
-                end_period=None,
-            )
-        except (OSError, ValueError) as exc:
-            errors.append(f"{WIND_PATH.name}: {exc}")
-    else:
-        errors.append(f"{WIND_PATH.name}: Wind fallback file not found")
 
     rows = _long_rows(selected)
     with _transaction(con):
@@ -575,8 +717,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
 
     note = (
         f"{len(selected)} 个观察月（{selected[0].period} 至 {selected[-1].period}）"
-        f"× {len(CBUAE_INDICATORS)} 指标；vintage 修订 {revised_periods} 期；"
-        f"Wind 回填 {len(fallback_added)} 期"
+        f"× {len(CBUAE_INDICATORS)} 指标；vintage 修订 {revised_periods} 期"
     )
     if errors:
         note += f"；源警告 {len(errors)} 条，首条：{errors[0]}"
@@ -626,8 +767,8 @@ def merge(workbook_path: Path) -> dict:
     ]
     if not observations:
         raise ValueError("cbuae_monthly is empty; nothing to merge")
-    if any(value is None for observation in observations for value in observation.values):
-        raise ValueError("cbuae_monthly 中某期间缺少指标列，无法还原宽表")
+    # 允许部分指标缺值（如企业信贷在公报未单列或公报缺失的月份为 None），
+    # 写表时对应单元格留空。
 
     payload = {
         "dictionary_sheet_name": DICTIONARY_SHEET,
@@ -659,6 +800,6 @@ def merge(workbook_path: Path) -> dict:
 if __name__ == "__main__":
     print("source_cbuae.py 自检：")
     print("  update(con, force=, skip_download=) 解析 data/UAE/raw/cbuae/ 下公报")
-    print("    （xlsx 优先、pdf 回退、Wind 补缺）并入库 cbuae_monthly 长表")
+    print("    （xlsx 优先、pdf 回退补缺）并入库 cbuae_monthly 长表")
     print("  merge(workbook_path) 把表写回 月度_CBUAE")
     print("  本文件直接运行不执行任何下载或工作簿写入。")
