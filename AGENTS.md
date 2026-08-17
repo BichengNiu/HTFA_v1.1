@@ -1,5 +1,18 @@
 # Repository Guidelines
 
+## 语言规则（Language rule）
+
+- **永远用中文回复用户**（Always reply to the user in Chinese），除非用户明确另有要求。
+
+## ⚠️ 数据变量硬性规则（Data pipeline rule，必守）
+
+**所有新增数据变量，必须先写入 `data/UAE/uae.duckdb`，再经由 duckdb 更新到 `data/UAE/阿联酋.xlsx`。** 任何数据源禁止绕过 duckdb 直接改写 Excel 里的指标数据。
+
+- 扩展某来源的变量：在对应 `data/UAE/source_*.py` 中解析原始数据 → 入长表 → 在 `merge()` / Excel 写表 helper 中一并还原宽表。
+- 已规范化（入库→合并）的做法参考 `source_cbuae.py`：`update()` 解析原文入库 `cbuae_monthly`（(period, indicator) 长表），`merge()` 从库读取并调用 `write_cbuae_sheet.ps1` 重建 `月度_CBUAE`；缺失值以 `None` 写入并留空单元格。
+- 口径推算约定（CBUAE 企业部门，信贷+存款）：新格式公报（2026-05 起）不再单列 "Business & Industrial Sector" 行，只给 "Corporate / Other Financial Corporations"。经核实恒等 `商业及工业部门 = 私人企业(Corporate) − 其他金融企业(Other Financial Corporations)` 在重叠期逐月成立，故对最新公报未单列该行的期间按此式**推算补全**（`source_cbuae._extract_corporate_rows`）。存款侧取存款表「非居民」块(2) 的 Corporate 与 Other Financial 行、按同一恒等式派生（`source_cbuae._extract_deposit_corporate`）。
+- Excel 的 `指标字典` 只在 `merge()` 写表时由辅助脚本同步补录，不手工维护单个指标。
+
 ## Project layout
 
 `app.py` is the Streamlit entry point (it injects `components/` into `sys.path` so its packages import by top-level name). Application code lives under `dashboard/`, maintenance and data-source scripts under `scripts/`, deployment configuration under `tooling/`, and reusable documentation under `docs/`. Local data belongs in `data/`; local binary references belong in `references-local/`. Do not commit credentials, databases, raw data, binary research files, logs, caches, or temporary exports.
