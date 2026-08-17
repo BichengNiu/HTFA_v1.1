@@ -38,6 +38,32 @@ Any change touching plotting (chart style, axes, legend, titles, grid, multi-axi
 - **Legend placement**: the bottom legend is drawn by HTFA (`dashboard/core/ui/utils/chart_legend.py`, `place_chart_legend_at_bottom`/`render_pyplot_figure`); Ts's native `draw_legend` is used for non-bottom locations.
 - Recent Ts commits (newest first): `1d30bc4` (legend title/cols), `1273077` (centered facet panel titles), `b861525` (figsize/facet grid), `7f827b9` (manual 2nd/3rd y-axes + titles + log), `5ebe449` (grid axis/width/linestyle), `8cd6f09` (dropped freq/xtick_step), `0c7b823` (minor ticks), `ca74453` (xmin/tick and label counts).
 
+## 推送规范（Push policy）
+
+仓库远端只应收到**正式源文件与两份数据文件**（`data/UAE/uae.duckdb` 经 Git LFS、
+`data/UAE/阿联酋.xlsx`）；任何缓存、临时、中间产物、调试文件一律**不入 git、不推送**。
+
+**绝不 add/提交/推送**（无论 .gitignore 是否已忽略，都不要碰）：
+
+- `data/UAE/raw/**`、`data/UAE/.env`、`data/UAE/工作搜索热度.csv`、`data/UAE/uae.duckdb.wal` / `.tmp`
+- `data/UAE/backups/`、`data/UAE/processed/`、`.cache/`、`.mesteel-wide-*.csv`、`.dld_indices_*.csv`
+- `__pycache__/`、`.pytest_cache/`、`.mypy_cache/`、`.coverage`、`htmlcov/`
+- `*.pyc`、`*.pyo`、`*.tmp`、`*.temp`、`*.log`、`*.cache`、`~$*`
+- 仓库根的调试残留（未跟踪的 `_*.py` / `_*.ps1` / `_*.json` / `_*.csv`）
+- 用户本地数据：`data/工业/`、`data/暂存/`、`users.db`
+
+**当用户下达「推送 / push」指令时，必须先清理再推送（强制性步骤）：**
+
+1. 运行清理脚本：
+   `powershell -NoProfile -ExecutionPolicy Bypass -File tooling\scripts\clean_temps.ps1`
+   （只删除上述临时形态，**绝不**删除 `raw/`、`uae.duckdb`、`阿联酋.xlsx`、`.env`、`工业`、`暂存`、`users.db`）；
+2. `git status --short` 人工复核：除本次真正要提交的正式文件外，不得出现任何缓存/临时/调试残留；
+3. 再 `git add` 目标文件 → 提交 → `git push`。
+
+**防线**：`tooling/hooks/pre-push` 已通过 `git config core.hooksPath tooling/hooks` 启用，
+推送前会拦截任何暂存的临时/缓存文件；被拦截时回到第 1 步清理后重推。
+`.gitignore` 已整体覆盖上述临时形态（`*.duckdb*` 全局忽略，仅 `data/UAE/uae.duckdb` 特例入库，走 LFS）。
+
 ## Code changes
 
 Use four-space indentation and PEP 8 naming. Keep UI rendering separate from data transformation, reuse existing module utilities, and keep diffs focused. Preserve user files and unrelated worktree changes. Runtime input validation, statistical assumptions, workbook schemas, authentication, download safety, and failure rollback are product behavior and must not be removed merely to shorten the code.
@@ -48,4 +74,5 @@ Use four-space indentation and PEP 8 naming. Keep UI rendering separate from dat
 - [ ] HTFA tests pass (12) + component tests pass (25)
 - [ ] UI-layer ↔ Ts-parameter consistency verified (`components/data_overview/tests/test_options.py`)
 - [ ] `WIDGET_KEYS` updated
+- [ ] User instructed push: run `tooling/scripts/clean_temps.ps1` → `git status` 复核 → commit → push（见「推送规范」）
 - [ ] User reminded to restart `start.bat`

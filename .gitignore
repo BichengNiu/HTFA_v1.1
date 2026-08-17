@@ -59,7 +59,7 @@ htmlcov/
 
 # Databases, logs, temporary files, and generated outputs
 *.db
-*.duckdb
+*.duckdb*
 # 唯一需要入库/推送的数据库（经 Git LFS）
 !/data/UAE/uae.duckdb
 *.sqlite

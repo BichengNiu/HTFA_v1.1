@@ -1,0 +1,16 @@
+#!/bin/sh
+# Pre-push guard（推送前守卫）：若已暂存/提交待推的变更里含临时/缓存文件则拦截。
+# 启用方式: git config core.hooksPath tooling/hooks   （仓库级，随仓库目录存在）
+# 出现拦截时，先运行 tooling/scripts/clean_temps.ps1 清理，再重新 git add 所需文件并 push。
+
+bad=$(git diff --cached --name-only --diff-filter=ACMR | \
+  grep -Ei '(^|/)(__pycache__|\.pytest_cache|\.mypy_cache|\.ruff_cache|\.ipynb_checkpoints|backups|processed|htmlcov)(/|$)|\.pyc$|\.pyo$|\.tmp$|\.temp$|\.log$|\.cache$|\.coverage$|\.duckdb\.wal$|\.duckdb\.tmp$|data/UAE/\.mesteel|data/UAE/\.dld_|(^|/)~\$|\.out\.json$') || true
+
+if [ -n "$bad" ]; then
+    echo "!! push 被拦截：以下临时/缓存文件即将被推送：" >&2
+    echo "$bad" >&2
+    echo "!! 请先运行  tooling/scripts/clean_temps.ps1  清理，" >&2
+    echo "!! 再 git add 真正要提交的文件并重新 push。" >&2
+    exit 1
+fi
+exit 0
