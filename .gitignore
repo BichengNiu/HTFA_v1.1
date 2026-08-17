@@ -40,6 +40,8 @@ htmlcov/
 !/data/UAE/auto/*.bat
 !/data/UAE/*.md
 !/data/UAE/数据说明.md
+# 唯一推送的数据库文件（经 Git LFS，见 .gitattributes）
+!/data/UAE/uae.duckdb
 /data/UAE/raw/
 /data/UAE/工作搜索热度.csv
 
@@ -58,6 +60,8 @@ htmlcov/
 # Databases, logs, temporary files, and generated outputs
 *.db
 *.duckdb
+# 唯一需要入库/推送的数据库（经 Git LFS）
+!/data/UAE/uae.duckdb
 *.sqlite
 *.sqlite3
 *.tmp
