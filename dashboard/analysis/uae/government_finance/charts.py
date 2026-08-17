@@ -1,4 +1,4 @@
-"""Plot government and government-related entity monthly year-on-year trends."""
+"""Plot government and government-controlled enterprise loan year-on-year trends."""
 
 from __future__ import annotations
 
@@ -7,10 +7,9 @@ import pandas as pd
 from Ts.TsPlots import plot_series
 
 from dashboard.analysis.uae.government_finance.data import (
-    GOVERNMENT_AND_STATE_CAPITAL_CREDIT,
-    GOVERNMENT_AND_STATE_CAPITAL_DEPOSITS,
+    GOVERNMENT_CREDIT,
+    GRE_CREDIT,
     calculate_calendar_yoy,
-    combine_government_and_state_capital,
 )
 from dashboard.analysis.uae.plot_helpers import (
     WAR_LINE_COLOR,
@@ -19,24 +18,25 @@ from dashboard.analysis.uae.plot_helpers import (
     add_source_note,
     annotate_war,
     finish_dual_axis_figure,
+    matching_line_handles,
     normalize_ts_axis,
 )
 
 
-DEPOSIT_LINE_COLOR = "#000000"
-CREDIT_LINE_COLOR = "#1F4E79"
+GOVERNMENT_LINE_COLOR = "#000000"
+GRE_LINE_COLOR = "#1F4E79"
 
 YOY_SERIES = (
     (
-        GOVERNMENT_AND_STATE_CAPITAL_DEPOSITS,
-        "政府及国有资本存款同比",
-        DEPOSIT_LINE_COLOR,
+        GOVERNMENT_CREDIT,
+        "政府贷款增长率",
+        GOVERNMENT_LINE_COLOR,
         "-",
     ),
     (
-        GOVERNMENT_AND_STATE_CAPITAL_CREDIT,
-        "政府及国有资本信贷同比",
-        CREDIT_LINE_COLOR,
+        GRE_CREDIT,
+        "政府控制企业贷款增长率",
+        GRE_LINE_COLOR,
         "--",
     ),
 )
@@ -48,10 +48,11 @@ def build_government_finance_yoy_figure(
     title: str,
     source_text: str,
 ) -> Figure:
-    """Plot the four CBUAE series as monthly year-on-year growth rates."""
+    """Plot 政府贷款 / 政府控制企业贷款 作为月度同比增长率（不加总）。"""
 
-    selected = combine_government_and_state_capital(values).dropna(how="all")
-    selected = selected.sort_index()
+    selected = (
+        values[[GOVERNMENT_CREDIT, GRE_CREDIT]].dropna(how="all").sort_index()
+    )
     if selected.empty:
         raise ValueError(f"{title}没有可绘制的有效数据")
 
@@ -95,7 +96,7 @@ def build_government_finance_yoy_figure(
     annotate_war(axis)
     add_bottom_legend(
         figure,
-        axis.get_lines()[: len(YOY_SERIES)],
+        matching_line_handles(axis, [spec[1] for spec in YOY_SERIES]),
         [spec[1] for spec in YOY_SERIES],
         ncol=len(YOY_SERIES),
     )

@@ -9,8 +9,10 @@ data/ded_license/build_monthly_ded_sheet.py（合并写入月度_DED），整体
 
 口径保持与旧脚本 100% 一致：
 - records      ：快照记录行数（按发照日期归月）；
-- enterprises  ：新增企业数（commerce_number 首次出现月份，剔除占位 '0'/空）；
-- licences     ：新增执照数（main_license_number 首次出现月份，同号筛除）；
+- enterprises  ：当月有发证活动的企业数（commerce_number 按发照月去重，剔除占位
+                  '0'/空；快照中企业号↔发照月份一一对应，故企业号首现筛重数值
+                  即当月有发证活动的企业数，正名不改数）；
+- licences     ：当月新发执照数（main_license_number 按发照月去重，同号剔除）；
 - official     ：官方公布数字（official_ded_monthly.csv，人工维护）；
 - 单期存量快照无法给出流量，历史月份低估、近期可信（与旧脚本同样口径）。
 """
@@ -529,9 +531,9 @@ def aggregate(rows, date_col, type_col):
     """月度聚合（与 fetch_ded_license.py 完全相同）。
 
     - monthly            ：记录行数（每条登记记录一张执照，按发照日期归月）
-    - monthly_enterprise ：新增企业数——企业号(commerce_number)在快照中首次
-                           出现的月份（剔除占位值 '0'/空）
-    - monthly_licence    ：新增执照数——执照号(main_license_number)首次出现的月份
+    - monthly_enterprise ：当月有发证活动的企业数——企业号(commerce_number)按
+                           发照月去重（快照中企业号↔月份一一对应，首现筛重即活动数）
+    - monthly_licence    ：当月新发执照数——执照号(main_license_number)按发照月去重
     """
     total = parsed = bad = 0
     monthly = Counter()
@@ -636,7 +638,7 @@ def write_monthly(path, monthly):
 
 
 def write_monthly_counts(path, monthly, monthly_enterprise, monthly_licence):
-    """三种口径的月度序列：记录数 / 新增企业数 / 新增执照数。"""
+    """三种口径的月度序列：记录数 / 当月有发证活动的企业数 / 当月新发执照数。"""
     months = sorted(set(monthly) | set(monthly_enterprise) | set(monthly_licence))
     with open(path, "w", encoding="utf-8-sig", newline="") as target:
         writer = csv.writer(target)
@@ -823,8 +825,8 @@ def update_sheet(workbook, rows):
 
     ws.cell(row=1, column=1, value=SOURCE_NAME)
     ws.cell(row=2, column=1, value="指标名称")
-    ws.cell(row=2, column=2, value="迪拜:新增企业数(企业号首现筛重)")
-    ws.cell(row=2, column=3, value="迪拜:新增执照数(执照号首现筛重)")
+    ws.cell(row=2, column=2, value="迪拜:当月有发证活动的企业数(企业号筛重)")
+    ws.cell(row=2, column=3, value="迪拜:当月新发执照数(执照号筛重)")
     ws.cell(row=2, column=4, value="迪拜:新发执照数(官方口径)")
     ws.cell(row=3, column=1, value="频率")
     ws.cell(row=3, column=2, value="月")
@@ -835,8 +837,8 @@ def update_sheet(workbook, rows):
     ws.cell(row=4, column=3, value="张")
     ws.cell(row=4, column=4, value="张")
     ws.cell(row=5, column=1, value="来源")
-    ws.cell(row=5, column=2, value="data.dubai Commerce Registry (commerce_number 首现筛重)")
-    ws.cell(row=5, column=3, value="data.dubai Commerce Registry (main_license_number 首现筛重)")
+    ws.cell(row=5, column=2, value="data.dubai Commerce Registry (commerce_number 按发照月去重)")
+    ws.cell(row=5, column=3, value="data.dubai Commerce Registry (main_license_number 按发照月去重)")
     ws.cell(row=5, column=4, value="DET/迪拜媒体办新闻稿")
     ws.cell(row=6, column=1, value="更新时间")
     now = datetime.now()

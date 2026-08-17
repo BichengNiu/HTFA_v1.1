@@ -1,7 +1,7 @@
 # Data Dubai DED 企业注册主表 下载与月度聚合
 
 从迪拜官方开放数据门户下载 DED（迪拜经济局）企业注册主表全量快照，并自动
-按月聚合"新增执照数"，与官方公布数字对比后写入阿联酋.xlsx。
+按月聚合"当月有发证活动的企业数 / 当月新发执照数"，与官方公布数字对比后写入阿联酋.xlsx。
 
 ## 官方数据源
 
@@ -20,7 +20,7 @@
 等价于依次执行：
 
 ```powershell
-python -u fetch_ded_license.py          # 1. 下载最新快照 + 企业/执照号首现筛重聚合
+python -u fetch_ded_license.py          # 1. 下载最新快照 + 企业/执照号按发照月去重聚合
 python -u build_monthly_ded_sheet.py    # 2. 合并写入 阿联酋.xlsx 的「月度_DED」sheet
 ```
 
@@ -32,7 +32,7 @@ python -u build_monthly_ded_sheet.py    # 2. 合并写入 阿联酋.xlsx 的「�
 |---|---|
 | `raw/commerce_registry_<快照时间>_*.csv.gz` | 原始全量快照（gzip 约 58 MB） |
 | `monthly_new_licenses.csv` | 月度新增（按记录行数）：`month, new_licenses` |
-| `monthly_counts.csv` | 三序列：`month, records`（记录行数）`, enterprises`（新增企业，企业号首现）`, licences`（新增执照，执照号首现） |
+| `monthly_counts.csv` | 三序列：`month, records`（记录行数）`, enterprises`（当月有发证活动的企业数）`, licences`（当月新发执照数） |
 | `monthly_diff.csv` | （可选）快照差分序列：`month, added_records, added_enterprises`，由 diff_snapshots.py 生成 |
 | `monthly_by_type.csv` | 月度 × 法律形式明细 |
 | `schema_report.txt` | 字段清单、日期解析质量、样例数据 |
@@ -44,13 +44,16 @@ python -u build_monthly_ded_sheet.py    # 2. 合并写入 阿联酋.xlsx 的「�
 
 | 列 | 含义 | 更新方式 |
 |---|---|---|
-| 迪拜:新增企业数(企业号首现筛重) | `commerce_number` 在快照中**最早发照月份**=企业新增月份；该企业号在其他月份的记录全部筛除（剔除占位 `'0'`） | 自动（fetch_ded_license.py） |
-| 迪拜:新增执照数(执照号首现筛重) | `main_license_number` 最早发照月份=执照新增月份；同号重复记录筛除 | 自动（fetch_ded_license.py） |
+| 迪拜:当月有发证活动的企业数(企业号筛重) | `commerce_number` 按发照月去重：当月有发照记录的企业数（剔除占位 `'0'`）。快照中企业号↔发照月份一一对应，故企业号首现筛重数值即当月有发证活动的企业数 | 自动（fetch_ded_license.py） |
+| 迪拜:当月新发执照数(执照号筛重) | `main_license_number` 按发照月去重：当月新签发的执照号数（同号重复记录筛除） | 自动（fetch_ded_license.py） |
 | 迪拜:新发执照数(官方口径) | DET/迪拜媒体办公布的官方数字 | 手工维护 `official_ded_monthly.csv` |
 
-**筛重原理**：单期存量快照中，同一企业号（多执照/续期）会出现在多个发照月份。
-把"之前月份已出现过的号"全部筛掉后，每月剩下的就是当月真实新增——不需要第二期快照。
-历史月份仍受存量快照性质影响（已注销企业不在库中）而低估，近期可信；
+**筛重原理（正名不改数）**：单期存量快照中，同一企业号（多执照/续期）会出现在多个
+发照月份。把"之前月份已出现过的号"全部筛掉后，每月剩下的就是当月真实新增——不需要
+第二期快照。经逐月核对（2012–2026 样本全等），快照中企业号↔发照月份一一对应，因此
+「企业号首现筛重」的数值**恰好等于「当月有发证活动的企业数」**（当月有≥1 条发照记录
+的企业），故本表将该列正名为"当月有发证活动的企业数"，数值不变；执照列同理正名为
+"当月新发执照数"。历史月份仍受存量快照性质影响（已注销企业不在库中）而低估，近期可信；
 17.7% 无发照日期的记录无法归月，已排除。
 
 另：`diff_snapshots.py` 保留为可选工具——等官方每月新快照发布后，可用相邻两期快照

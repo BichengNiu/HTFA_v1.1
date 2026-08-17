@@ -19,8 +19,6 @@ GOVERNMENT_DEPOSITS = "阿联酋政府存款"
 GRE_DEPOSITS = "阿联酋政府控股企业存款"
 GOVERNMENT_CREDIT = "阿联酋政府信贷"
 GRE_CREDIT = "阿联酋政府控股企业信贷"
-GOVERNMENT_AND_STATE_CAPITAL_DEPOSITS = "政府及国有资本存款"
-GOVERNMENT_AND_STATE_CAPITAL_CREDIT = "政府及国有资本信贷"
 
 CBUAE_INDICATORS: tuple[tuple[str, str], ...] = (
     (GOVERNMENT_DEPOSITS, GOVERNMENT_DEPOSITS),
@@ -82,32 +80,6 @@ def calculate_calendar_yoy(values: pd.DataFrame) -> pd.DataFrame:
     return yoy
 
 
-def combine_government_and_state_capital(values: pd.DataFrame) -> pd.DataFrame:
-    """Combine government and government-controlled entity bank positions."""
-
-    required_columns = (
-        GOVERNMENT_DEPOSITS,
-        GRE_DEPOSITS,
-        GOVERNMENT_CREDIT,
-        GRE_CREDIT,
-    )
-    missing_columns = [column for column in required_columns if column not in values]
-    if missing_columns:
-        raise KeyError(f"缺少政府及国有资本合计所需指标：{missing_columns}")
-
-    return pd.DataFrame(
-        {
-            GOVERNMENT_AND_STATE_CAPITAL_DEPOSITS: values[
-                [GOVERNMENT_DEPOSITS, GRE_DEPOSITS]
-            ].sum(axis=1, min_count=2),
-            GOVERNMENT_AND_STATE_CAPITAL_CREDIT: values[
-                [GOVERNMENT_CREDIT, GRE_CREDIT]
-            ].sum(axis=1, min_count=2),
-        },
-        index=values.index,
-    )
-
-
 def latest_complete_month(values: pd.DataFrame) -> pd.Timestamp:
     """返回四个指标均有有效值的最新月份。"""
 
@@ -124,11 +96,8 @@ __all__ = [
     "GOVERNMENT_DEPOSITS",
     "GRE_CREDIT",
     "GRE_DEPOSITS",
-    "GOVERNMENT_AND_STATE_CAPITAL_CREDIT",
-    "GOVERNMENT_AND_STATE_CAPITAL_DEPOSITS",
     "GovernmentFinanceData",
     "calculate_calendar_yoy",
-    "combine_government_and_state_capital",
     "latest_complete_month",
     "load_government_finance_data",
 ]

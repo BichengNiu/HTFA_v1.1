@@ -273,11 +273,6 @@ def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
         }
 
     source_name = _source_name(file_input)
-    st_obj.caption(f"当前上传数据来源：{source_name}")
-    st_obj.caption(
-        "数据说明：页面只使用工作簿中可验证的真实序列；"
-        "指标不足的主题会明确标记为不可用，不生成模拟数据。"
-    )
 
     try:
         with st_obj.spinner("正在构建宏观监测页面..."):

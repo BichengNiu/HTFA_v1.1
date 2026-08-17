@@ -7,11 +7,13 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 
 import pandas as pd
 from matplotlib.axes import Axes
 from matplotlib.dates import date2num
 from matplotlib.figure import Figure
+from matplotlib.lines import Line2D
 from matplotlib.transforms import blended_transform_factory
 import numpy as np
 from Ts.TsPlots.style import apply_fonts
@@ -114,6 +116,18 @@ def add_bottom_legend(
         prop={"family": CHINESE_FONT_FAMILY[0], "size": 10},
         ncol=ncol,
     )
+
+
+def matching_line_handles(axis: Axes, labels: Sequence[str]) -> list[Line2D]:
+    """按标签返回轴上的数据线句柄（顺序与 ``labels`` 一致）。
+
+    Ts ``plot_series`` 会在轴上额外放置未命名（``_childN``）的占位/参考线
+    （如战争线），不能直接取 ``axis.get_lines()[:n]``；按标签过滤才能保证
+    图例中的线与图中实际数据线一一对应。
+    """
+
+    by_label = {line.get_label(): line for line in axis.get_lines()}
+    return [by_label[label] for label in labels if label in by_label]
 
 
 def annotate_war(axis: Axes) -> None:
@@ -247,6 +261,7 @@ __all__ = [
     "annotate_war",
     "apply_strict_month_ticks",
     "finish_dual_axis_figure",
+    "matching_line_handles",
     "new_ts_figure_axis",
     "normalize_ts_axis",
     "source_note",

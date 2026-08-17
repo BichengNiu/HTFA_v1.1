@@ -101,6 +101,7 @@ CBUAE_INDICATORS = (
     ("阿联酋:外币存款(Total Foreign Currencies)", "存款"),
     ("阿联酋:银行国外资产(Foreign Assets)", "资产"),
     ("阿联酋:银行国外负债(Foreign Liabilities)", "负债"),
+    ("阿联酋:国内信贷:个人信贷(Individual Credit)", "信贷"),
 )
 INDICATOR_ORDER = {name: index for index, (name, _) in enumerate(CBUAE_INDICATORS)}
 
@@ -111,12 +112,12 @@ CBUAE_PRIMARY_START = "2020-01"
 class Observation:
     """一个观测期的一个来源 vintage。
 
-    ``values`` 为 14 元组：(政府存款, 政府控股企业存款, 政府信贷, 政府控股企业信贷,
+    ``values`` 为 15 元组：(政府存款, 政府控股企业存款, 政府信贷, 政府控股企业信贷,
     私人企业信贷, 商业及工业部门信贷, 非居民私人企业存款, 非居民商业及工业部门存款,
     非居民个人存款, 非居民政府及非商业实体存款, 非居民其他金融企业存款, 外币存款总额,
-    银行国外资产, 银行国外负债)。
+    银行国外资产, 银行国外负债, 个人信贷)。
 
-    政府 4 项始终存在；企业信贷/存款与外币/国外资产负债各项在对应行未单列
+    政府 4 项始终存在；企业信贷/存款、个人信贷与外币/国外资产负债各项在对应行未单列
     或 PDF 回退月份为 ``None``。
     """
 
@@ -349,6 +350,25 @@ def _extract_corporate_rows(
     return corporate, business
 
 
+def _extract_individual_row(
+    sheet: Worksheet,
+) -> dict[str, Decimal]:
+    """提取 Domestic Credit (All Banks) 表的「个人信贷」行。
+
+    兼容老格式行首标签 ``Private - Retail`` 与新格式标签 ``Individual``
+    （新格式自 2026-05 起不再单列 Business & Industrial Sector 行，但始终单列
+    Individual 行；老格式的 Private - Retail 即个人/居民信贷，与新格式同口径，
+    私人企业信贷 + 个人信贷 = Private Sector 总额）。
+    """
+
+    try:
+        columns = _header_columns(sheet)
+    except ValueError:
+        return {}
+    row = _find_row_optional(sheet, {"private - retail", "individual"})
+    return _extract_one_row(sheet, columns, row)
+
+
 def _extract_nonresident_deposits(
     sheet: Worksheet,
 ) -> tuple[dict[str, Decimal], dict[str, Decimal], dict[str, Decimal], dict[str, Decimal]]:
@@ -456,6 +476,7 @@ def extract_workbook(path: Path) -> list[Observation]:
             ({"government"}, {"public sector", "public sector (gres)"}),
         )
         corporate, business = _extract_corporate_rows(credit_sheet)
+        individual = _extract_individual_row(credit_sheet)
         (
             nonres_corporate,
             nonres_individuals,
@@ -498,6 +519,7 @@ def extract_workbook(path: Path) -> list[Observation]:
                     total_foreign_currencies.get(period),
                     foreign_assets.get(period),
                     foreign_liabilities.get(period),
+                    individual.get(period),
                 ),
                 source_period=source_period,
                 source_file=path.name,
@@ -562,7 +584,7 @@ def extract_pdf_fallback(path: Path) -> Observation:
         values=(
             *deposit_values,
             *credit_values,
-            None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None,
         ),
         source_period=period,
         source_file=path.name,

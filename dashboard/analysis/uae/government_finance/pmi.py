@@ -16,6 +16,7 @@ from dashboard.analysis.uae.plot_helpers import (
     annotate_war,
     apply_strict_month_ticks,
     finish_dual_axis_figure,
+    matching_line_handles,
     new_ts_figure_axis,
     normalize_ts_axis,
 )
@@ -118,7 +119,12 @@ def build_pmi_figure(
         spine.set_linewidth(0.9)
     apply_strict_month_ticks(axis, display_values.index)
     annotate_war(axis)
-    add_bottom_legend(figure, axis.get_lines()[:1], [PMI_LABEL], ncol=1)
+    add_bottom_legend(
+        figure,
+        matching_line_handles(axis, [PMI_LABEL]),
+        [PMI_LABEL],
+        ncol=1,
+    )
     finish_dual_axis_figure(figure, top=0.90)
     add_source_note(figure, source_text)
     return figure
