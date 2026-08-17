@@ -38,6 +38,7 @@ htmlcov/
 !/data/UAE/*.ps1
 !/data/UAE/*.bat
 !/data/UAE/auto/*.bat
+!/data/UAE/*.md
 !/data/UAE/数据说明.md
 /data/UAE/raw/
 /data/UAE/工作搜索热度.csv
