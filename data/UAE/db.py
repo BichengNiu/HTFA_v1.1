@@ -123,6 +123,24 @@ _BASE_DDL = (
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS dld_sales_monthly (
+        period    DATE            NOT NULL,
+        indicator VARCHAR         NOT NULL,
+        count     BIGINT,
+        value_aed DECIMAL(24, 2),
+        PRIMARY KEY (period, indicator)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS dld_lease_monthly (
+        period     DATE    NOT NULL,
+        indicator  VARCHAR NOT NULL,
+        value      DOUBLE,
+        source_url VARCHAR,
+        PRIMARY KEY (period, indicator)
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS ded_monthly_by_type (
         month      DATE    NOT NULL,
         legal_form VARCHAR NOT NULL,

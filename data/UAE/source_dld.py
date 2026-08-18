@@ -10,17 +10,28 @@
    原始 CSV 到 ``data/UAE/raw/dld/`` 下。
 3. 周度指标：移植 ``generate_dld_investment_indices.py`` 的全部分析逻辑
    （RAW_WEEKLY_SQL + build_rows），结果事务内写入 ``dld_investment_pipeline_weekly``。
+4. 月度指标：
+   a) 销售指标（``dld_sales_monthly``）：从 dld.transactions 按月聚合
+      Sales × (Off-Plan/Existing) × (Residential/Commercial) 的笔数与金额
+      （4 个指标 × 笔数+金额，2009 起全历史，本地精确）；
+   b) 租赁合同指标（``dld_lease_monthly``）：抓取 Property Finder 镜像的
+      DLD Mo'asher「Official Rental Performance Index」月度页面（2022-01 起），
+      解析官方边缘口径：租赁合同总数、新签占比、续签占比、住宅占比、商业占比。
+      官方从不发布「住宅×新签」等交叉绝对数，故只入边缘口径；缺报月份留空。
 
-表结构瘦身（2026-08）：``dld.transactions`` 只保留被周度指标与三个视图消费的
-列（``KEEP_COLUMNS``，47 → 8）；``dld.land_registry`` 仓库内零消费，不再建表
-入库（原始 CSV / 旧库仍保留在 ``data/UAE/raw/dld/``，需要时可单独重建）。
+表结构瘦身（2026-08）：``dld.transactions`` 只保留被周度/月度指标与三个视图
+消费的列（``KEEP_COLUMNS``，47 → 9，2026-08+1 回补 property_usage_en 供月度
+销售指标分市场）；``dld.land_registry`` 仓库内零消费，不再建表入库（原始
+CSV / 旧库仍保留在 ``data/UAE/raw/dld/``，需要时可单独重建）。
 
 回调写表（对应 ``merge()`` 一个入口）：
-从库中查询周度指标 → 导出 7 列临时 CSV（列名与旧
-``merge_dld_indices_into_uae_workbook.ps1`` 完全一致）→ 调用
-``data/merge_dld_indices_into_uae_workbook.ps1`` 写回工作簿。
+1. 从库中查询周度指标 → 导出 7 列临时 CSV（列名与旧
+   ``merge_dld_indices_into_uae_workbook.ps1`` 完全一致）→ 调用
+   ``data/merge_dld_indices_into_uae_workbook.ps1`` 写回工作簿（周度_迪拜房地产）。
+2. 从库中查询月度指标 → 以 openpyxl 直写「月度_DLD」sheet（新建，头部元信息
+   6 行 + 数据行按月降序；约定同 source_ded 的 update_sheet）。
 
-只许使用标准库 + duckdb。
+只许使用标准库 + duckdb + openpyxl（月度 sheet 写表，与 source_ded 一致）。
 """
 
 from __future__ import annotations
@@ -42,7 +53,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 DATA_DIR = Path(__file__).resolve().parent
@@ -64,10 +75,11 @@ MIN_BASELINE_OBSERVATIONS = 104
 # 原始 CSV / 旧库所在目录（与 data/UAE/raw/dld/ 一致）
 RAW_DLD_DIR = DATA_DIR / "raw" / "dld"
 
-# dld.transactions 仅保留被 RAW_WEEKLY_SQL 与三个视图消费的列（47 → 8）。
-# 「保留 = 被查询」：transaction_id(计数/主键)、instance_date(周/年分组)、
+# dld.transactions 仅保留被周度/月度指标与三个视图消费的列（47 → 9）。
+# 「保留 = 被查询」：transaction_id(计数/主键)、instance_date(周/月分组)、
 # trans_group_en/reg_type_en(Sales/Off-Plan 过滤)、project_number(项目维度)、
 # actual_worth(金额)、property_type_en(Land 视图/年汇总)、
+# property_usage_en(月度销售指标分市场 Residential/Commercial)、
 # load_timestamp(bulk 快照时间，每行同值，字典压缩近零成本，仅用于追溯)。
 KEEP_COLUMNS = (
     "actual_worth",
@@ -75,6 +87,7 @@ KEEP_COLUMNS = (
     "load_timestamp",
     "project_number",
     "property_type_en",
+    "property_usage_en",
     "reg_type_en",
     "trans_group_en",
     "transaction_id",
@@ -321,6 +334,7 @@ COLUMN_DICTIONARY = (
     ('dld.transactions', 'load_timestamp', 'TIMESTAMPTZ', '时间', 'Data Dubai生成bulk快照的时间', None, '不是交易发生时间'),
     ('dld.transactions', 'project_number', 'VARCHAR', '项目建筑', '交易数据中的项目编号', None, 'RAW_WEEKLY_SQL 按项目编号聚合期房窗口'),
     ('dld.transactions', 'property_type_en', 'VARCHAR', '房产分类', '房产大类英文名', 'land_transactions', 'Land决定是否进入land_transactions视图'),
+    ('dld.transactions', 'property_usage_en', 'VARCHAR', '用途分类', '住宅/商业/酒店/其他等用途英文名', 'dld_sales_monthly', '月度销售指标按 Residential/Commercial 分市场；含阿语“أخرى”等脏值需归一化'),
     ('dld.transactions', 'reg_type_en', 'VARCHAR', '登记类型', 'Existing或Off-Plan英文名', None, '现房/期房过滤键（RAW_WEEKLY_SQL）'),
     ('dld.transactions', 'trans_group_en', 'VARCHAR', '交易分类', 'Sales/Mortgages/Gifts', None, '交易大类过滤键（RAW_WEEKLY_SQL）'),
     ('dld.transactions', 'transaction_id', 'VARCHAR', '主键', '交易记录唯一编号', 'land_transactions.transaction_id', '本表唯一主键'),
@@ -350,6 +364,73 @@ WEEKLY_CSV_HEADERS = (
     "项目启动指数",
     "期房销售吸收指数",
     "项目商业转化指数",
+)
+
+# ---------------------------------------------------------------------------
+# 月度指标（2026-08 新增）：销售 4 指标（本地精确聚合）+ 租赁合同 5 指标
+# （DLD Mo'asher 官方边缘口径，Property Finder Insights Hub 镜像）。
+# ---------------------------------------------------------------------------
+
+MONTHLY_WORKSHEET_NAME = "月度_DLD"
+
+# 月度销售指标：SQL 聚合键 (property_usage_en, reg_type_en) -> indicator 名。
+# indicator 名与用户口径一一对应（Off-Plan=期房，Existing=现房/二手房）。
+SALES_INDICATOR_KEYS = {
+    ("Residential", "Off-Plan Properties"): "residential_offplan_sales",
+    ("Residential", "Existing Properties"): "residential_ready_sales",
+    ("Commercial", "Off-Plan Properties"): "commercial_offplan_sales",
+    ("Commercial", "Existing Properties"): "commercial_ready_sales",
+}
+
+# 租赁合同边缘指标（Mo'asher Rental Performance Index 页面发布口径）。
+LEASE_INDICATORS = (
+    "lease_contracts_total",   # 当季/当月租赁合同总数（份）
+    "lease_new_pct",           # 新签占比（%）
+    "lease_renewed_pct",       # 续签占比（%）
+    "lease_residential_pct",   # 住宅用途占比（%）
+    "lease_commercial_pct",    # 商业用途占比（%）
+)
+
+# Mo'asher 月度页 URL 清单（Property Finder Insights Hub 镜像；每月两版：
+# Official Sales Price Index / Official Rental Performance Index，按标题判别）。
+# 由本模块生成/维护到 raw/dld/moasher_page_urls.txt（原始清单，不入 Git）。
+MOASHER_URLS_FILE = RAW_DLD_DIR / "moasher_page_urls.txt"
+MOASHER_BASE = "https://www.propertyfinder.ae/en/insightshub/moasher/"
+
+# 月度_DLD sheet 数据列（与 MERGE 写表一一对应；A 列为日期）。
+MONTHLY_SHEET_HEADERS = (
+    "日期",
+    "迪拜:期房销售-住宅笔数",
+    "迪拜:期房销售-住宅金额(百万AED)",
+    "迪拜:现房销售-住宅笔数",
+    "迪拜:现房销售-住宅金额(百万AED)",
+    "迪拜:期房销售-商业笔数",
+    "迪拜:期房销售-商业金额(百万AED)",
+    "迪拜:现房销售-商业笔数",
+    "迪拜:现房销售-商业金额(百万AED)",
+    "迪拜:租赁合同总数(份)",
+    "迪拜:租赁合同-新签占比(%)",
+    "迪拜:租赁合同-续签占比(%)",
+    "迪拜:租赁合同-住宅占比(%)",
+    "迪拜:租赁合同-商业占比(%)",
+)
+
+# 指标字典补录（与 MONTHLY_SHEET_HEADERS[1:] 一一对应；type/industry 沿用
+# 旧 ps1 口径：交易笔数/金额/占比，房地产；来源为 DLD / Mo'asher 官方镜像）。
+MONTHLY_INDICATOR_DICTIONARY = (
+    ("迪拜:期房销售-住宅笔数", "月", "笔", "Dubai Land Department", "交易笔数", "房地产"),
+    ("迪拜:期房销售-住宅金额(百万AED)", "月", "百万AED", "Dubai Land Department", "交易金额", "房地产"),
+    ("迪拜:现房销售-住宅笔数", "月", "笔", "Dubai Land Department", "交易笔数", "房地产"),
+    ("迪拜:现房销售-住宅金额(百万AED)", "月", "百万AED", "Dubai Land Department", "交易金额", "房地产"),
+    ("迪拜:期房销售-商业笔数", "月", "笔", "Dubai Land Department", "交易笔数", "房地产"),
+    ("迪拜:期房销售-商业金额(百万AED)", "月", "百万AED", "Dubai Land Department", "交易金额", "房地产"),
+    ("迪拜:现房销售-商业笔数", "月", "笔", "Dubai Land Department", "交易笔数", "房地产"),
+    ("迪拜:现房销售-商业金额(百万AED)", "月", "百万AED", "Dubai Land Department", "交易金额", "房地产"),
+    ("迪拜:租赁合同总数(份)", "月", "份", "Dubai Land Department (Mo'asher)", "合同数", "房地产"),
+    ("迪拜:租赁合同-新签占比(%)", "月", "%", "Dubai Land Department (Mo'asher)", "占比", "房地产"),
+    ("迪拜:租赁合同-续签占比(%)", "月", "%", "Dubai Land Department (Mo'asher)", "占比", "房地产"),
+    ("迪拜:租赁合同-住宅占比(%)", "月", "%", "Dubai Land Department (Mo'asher)", "占比", "房地产"),
+    ("迪拜:租赁合同-商业占比(%)", "月", "%", "Dubai Land Department (Mo'asher)", "占比", "房地产"),
 )
 
 # 下载器 URL 常量（与 download_dld_all.py 一致）
@@ -617,7 +698,7 @@ def to_weekly_table_rows(built_rows):
 # ---------------------------------------------------------------------------
 
 def _transactions_ddl(csv_path: Path) -> str:
-    """transactions 建表 DDL：从 CSV 只保留 ``KEEP_COLUMNS`` 八列（TRY_CAST）。"""
+    """transactions 建表 DDL：从 CSV 只保留 ``KEEP_COLUMNS`` 九列（TRY_CAST）。"""
 
     path = csv_path.resolve().as_posix()
     return rf"""
@@ -628,6 +709,7 @@ def _transactions_ddl(csv_path: Path) -> str:
         TRY_CAST(load_timestamp AS TIMESTAMPTZ) AS load_timestamp,
         regexp_replace(project_number, '\.0+$', '') AS project_number,
         property_type_en,
+        property_usage_en,
         reg_type_en,
         trans_group_en,
         transaction_id
@@ -749,10 +831,11 @@ def _upsert_column_dictionary(con) -> None:
 
 
 def _upsert_indicator_dictionary(con) -> None:
-    """把 6 个周度指标合并进 meta_indicator_dictionary。"""
+    """把 6 个周度指标 + 13 个月度指标合并进 meta_indicator_dictionary。"""
 
     today = date.today()
-    for indicator_name, frequency, unit, source, type_, industry in INDICATOR_DICTIONARY:
+    for row in INDICATOR_DICTIONARY + MONTHLY_INDICATOR_DICTIONARY:
+        indicator_name, frequency, unit, source, type_, industry = row
         db.upsert_dictionary_rows(
             con,
             [
@@ -775,6 +858,344 @@ def _fetch_raw_weekly(con) -> list[dict]:
     relation = con.execute(RAW_WEEKLY_SQL)
     columns = [column[0] for column in relation.description]
     return [dict(zip(columns, row)) for row in relation.fetchall()]
+
+
+# ---------------------------------------------------------------------------
+# 月度指标（2026-08 新增）
+# a) 销售指标：dld.transactions 按月聚合 Sales × 现房/期房 × 住宅/商业
+# b) 租赁合同指标：DLD Mo'asher Rental Performance Index 官方边缘口径
+# ---------------------------------------------------------------------------
+
+def build_sales_monthly(con) -> list[dict]:
+    """从 dld.transactions 按月聚合 4 个销售指标（笔数 + 金额）。
+
+    口径：trans_group_en='Sales'；用途只取 Residential / Commercial；
+    登记类型只取 Off-Plan Properties（期房）与 Existing Properties（现房）。
+    period 为月末日期（datum 约定），金额单位 AED 原值（写表时折算百万 AED）。
+    """
+
+    rows = con.execute(
+        """
+        SELECT
+            (date_trunc('month', instance_date)
+             + INTERVAL 1 MONTH - INTERVAL 1 DAY)::DATE AS period,
+            property_usage_en,
+            reg_type_en,
+            count(*) AS cnt,
+            sum(actual_worth) AS val
+        FROM dld.transactions
+        WHERE trans_group_en = 'Sales'
+          AND property_usage_en IN ('Residential', 'Commercial')
+          AND reg_type_en IN ('Off-Plan Properties', 'Existing Properties')
+          AND instance_date >= DATE '1975-01-01'
+        GROUP BY 1, 2, 3
+        ORDER BY 1, 2, 3
+        """
+    ).fetchall()
+    out = []
+    for period, usage, reg, cnt, val in rows:
+        key = SALES_INDICATOR_KEYS.get((usage, reg))
+        if key is None:
+            continue
+        out.append(
+            {
+                "period": period,
+                "indicator": key,
+                "count": int(cnt),
+                "value_aed": None if val is None else float(val),
+            }
+        )
+    return out
+
+
+def _moasher_month_from_slug(slug: str) -> date | None:
+    """'2023-monthly-january' -> 2023-01-31（月末日期；解析失败返回 None）。"""
+
+    match = re.search(r"(\d{4})-monthly-([a-z]+)", slug)
+    if not match:
+        return None
+    months = {
+        "january": 1, "february": 2, "march": 3, "april": 4, "may": 5,
+        "june": 6, "july": 7, "august": 8, "september": 9, "october": 10,
+        "november": 11, "december": 12,
+    }
+    month = months.get(match.group(2))
+    if month is None:
+        return None
+    year = int(match.group(1))
+    if month == 12:
+        return date(year, 12, 31)
+    return date(year, month + 1, 1) - timedelta(days=1)
+
+
+def _parse_moasher_rental(html: str, slug: str | None = None) -> dict | None:
+    """解析 Mo'asher 页面文本，返回租赁指标字典；非租赁版返回 None。
+
+    官方口径（例：2024-09）："67,278 rental contracts, of which 59% of
+    contracts were new and 41% were renewals…62.6% were registered for
+    residential purposes, while 37.4% were for commercial and other purposes"。
+    页面上数字格式在 2022–2024 年间有 "59%" / "53.64 percent" / "recorded
+    X leases" / "had X leases" 等多种写法；个别页面是整季报告（如 2022-03 的
+    Q1 季报），必须按「月份名所在句子」取当月值，避免把季合计错当当月值。
+    解析失败的值以 None 占位，不静默丢弃整月。
+    """
+
+    title = re.search(r"<title>(.*?)</title>", html, re.S)
+    if not title or "Rental Performance" not in title.group(1):
+        return None
+    text = re.sub(r"<title>.*?</title>", " ", html, flags=re.I | re.S)
+    text = re.sub(r"<script[\s\S]*?</script>", " ", text, flags=re.I)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"\s+", " ", text)
+
+    month_name = None
+    if slug:
+        match = re.search(r"(\d{4})-monthly-([a-z]+)", slug)
+        if match:
+            month_name = match.group(2)
+    month_pattern = rf"\b{month_name}\b" if month_name else None
+    if month_pattern:
+        month_sentences = [
+            sentence
+            for sentence in re.split(r"[•\n]", text)
+            if re.search(month_pattern, sentence, re.I)
+        ]
+        month_text = " ".join(month_sentences) or text
+    else:
+        month_text = text
+
+    # 数字解析统一入口：月中句子优先（避免季报误配），否则全文
+    def first_pct(source: str, *patterns: str) -> float | None:
+        for pattern in patterns:
+            match = re.search(pattern, source, re.I)
+            if match:
+                return float(match.group(1).replace(",", ""))
+        return None
+
+    total = first_pct(
+        month_text,
+        r"had a total of\s*([\d,]+)\s*(?:rental contracts|rental leases)",
+        r"recorded\s*([\d,]+)\s*(?:rental contracts|rental leases)",
+        r"had\s+([\d,]+)\s*(?:rental )?leases?\b",
+        r"had\s+([\d,]+)\s*(?:rental )?contracts\b",
+    )
+    if total is None and month_text is not text:
+        total = first_pct(
+            text,
+            r"had a total of\s*([\d,]+)\s*(?:rental contracts|rental leases)",
+            r"recorded\s*([\d,]+)\s*(?:rental contracts|rental leases)",
+            r"had\s+([\d,]+)\s*(?:rental )?leases?\b",
+            r"had\s+([\d,]+)\s*(?:rental )?contracts\b",
+        )
+    new_pct = first_pct(
+        month_text,
+        r"([\d.]+)\s*percent\s*(?:of contracts\s*)?were new\b",
+        r"([\d.]+)\s*%\s*(?:of contracts\s*)?were new\b",
+        r"([\d.]+)\s*%\s*of contracts were new",
+        r"([\d.]+)\s*(?:percent|%)\s*were new leases",
+    )
+    if new_pct is None and month_text is not text:
+        new_pct = first_pct(
+            text,
+            r"([\d.]+)\s*percent\s*(?:of contracts\s*)?were new\b",
+            r"([\d.]+)\s*%\s*(?:of contracts\s*)?were new\b",
+            r"([\d.]+)\s*%\s*of contracts were new",
+            r"([\d.]+)\s*(?:percent|%)\s*were new leases",
+        )
+    renewed_pct = first_pct(
+        month_text,
+        r"([\d.]+)\s*percent\s*(?:of contracts\s*)?were renewals?\b",
+        r"([\d.]+)\s*%\s*(?:of contracts\s*)?were renewals?\b",
+        r"were\s+([\d.]+)\s*(?:percent|%)\s*renewals?\b",
+        r"([\d.]+)\s*(?:percent|%)\s*were renewals?\b",
+    )
+    if renewed_pct is None and month_text is not text:
+        renewed_pct = first_pct(
+            text,
+            r"([\d.]+)\s*percent\s*(?:of contracts\s*)?were renewals?\b",
+            r"([\d.]+)\s*%\s*(?:of contracts\s*)?were renewals?\b",
+            r"were\s+([\d.]+)\s*(?:percent|%)\s*renewals?\b",
+            r"([\d.]+)\s*(?:percent|%)\s*were renewals?\b",
+        )
+    residential_pct = first_pct(
+        month_text,
+        r"([\d.]+)\s*percent\s*(?:were|of contracts were)\s*registered for residential",
+        r"([\d.]+)\s*%\s*(?:were|of contracts were)\s*registered for residential",
+        r"([\d.]+)\s*(?:percent|%)\s*were residential leases",
+    )
+    if residential_pct is None and month_text is not text:
+        residential_pct = first_pct(
+            text,
+            r"([\d.]+)\s*percent\s*(?:were|of contracts were)\s*registered for residential",
+            r"([\d.]+)\s*%\s*(?:were|of contracts were)\s*registered for residential",
+            r"([\d.]+)\s*(?:percent|%)\s*were residential leases",
+        )
+    commercial_pct = first_pct(
+        month_text,
+        r"([\d.]+)\s*percent\s*(?:were|of contracts were)\s*(?:registered )?for commercial",
+        r"([\d.]+)\s*%\s*(?:were|of contracts were)\s*(?:registered )?for commercial",
+        r"([\d.]+)\s*(?:percent|%)\s*were commercial (?:and other )?leases",
+    )
+    if commercial_pct is None and month_text is not text:
+        commercial_pct = first_pct(
+            text,
+            r"([\d.]+)\s*percent\s*(?:were|of contracts were)\s*(?:registered )?for commercial",
+            r"([\d.]+)\s*%\s*(?:were|of contracts were)\s*(?:registered )?for commercial",
+            r"([\d.]+)\s*(?:percent|%)\s*were commercial (?:and other )?leases",
+        )
+    if total is None and new_pct is None and renewed_pct is None:
+        return None
+    if total is not None:
+        total = int(total)
+    return {
+        "lease_contracts_total": total,
+        "lease_new_pct": new_pct,
+        "lease_renewed_pct": renewed_pct,
+        "lease_residential_pct": residential_pct,
+        "lease_commercial_pct": commercial_pct,
+    }
+
+
+def _fetch_moasher_page(url: str, cached_dir: Path, *, force: bool) -> str:
+    """抓取单个 Mo'asher 页面；缓存到 raw/dld/moasher/ 供离线重跑。"""
+
+    cached_dir.mkdir(parents=True, exist_ok=True)
+    slug = url.rstrip("/").rsplit("/", 1)[-1]
+    cache_path = cached_dir / f"{slug}.html"
+    if cache_path.exists() and not force:
+        return cache_path.read_text(encoding="utf-8", errors="replace")
+    request = urllib.request.Request(
+        url, headers={"User-Agent": _USER_AGENT, "Accept-Language": "en-US,en;q=0.9"}
+    )
+    html = _http_read(request, timeout=60, retries=3)
+    cache_path.write_text(html, encoding="utf-8")
+    return html
+
+
+def _discover_moasher_urls() -> list[str]:
+    """从 Property Finder Insights Hub 分页发现全部 Mo'asher 月度页 URL 并落盘。"""
+
+    found: set[str] = set()
+    for page_no in range(1, 13):
+        url = f"https://www.propertyfinder.ae/en/insightshub?page={page_no}"
+        request = urllib.request.Request(
+            url, headers={"User-Agent": _USER_AGENT, "Accept-Language": "en-US,en;q=0.9"}
+        )
+        html = _http_read(request, timeout=60, retries=2)
+        for slug in re.findall(
+            r"insightshub/moasher/(\d{4}-monthly-[a-z]+-\d+)", html
+        ):
+            found.add(MOASHER_BASE + slug)
+        if not re.findall(r"insightshub/moasher/\d{4}-monthly-[a-z]+-\d+", html):
+            break
+    urls = sorted(found)
+    MOASHER_URLS_FILE.write_text("\n".join(urls), encoding="utf-8")
+    return urls
+
+
+def _moasher_urls(con, *, force: bool, skip_download: bool) -> list[str]:
+    """取得 Mo'asher 月度页 URL 清单：读缓存文件，缺失/强制时在线发现。"""
+
+    if MOASHER_URLS_FILE.exists() and not force:
+        urls = [
+            line.strip("\ufeff \t\r\n")
+            for line in MOASHER_URLS_FILE.read_text(encoding="utf-8-sig").splitlines()
+            if line.strip()
+        ]
+        if urls:
+            return urls
+    if skip_download:
+        raise RuntimeError(
+            "缺少 Mo'asher 页面清单（raw/dld/moasher_page_urls.txt）且 skip_download=True"
+        )
+    return _discover_moasher_urls()
+
+
+def build_lease_monthly(con, *, force: bool = False, skip_download: bool = False) -> list[dict]:
+    """抓取/解析 Mo'asher 租赁指数页面，输出 dld_lease_monthly 入库行。
+
+    页面按标题判别：仅处理 "Official Rental Performance Index"（租赁版）；
+    销售指数版跳过。解析失败的值以 None 入库（Excel 留空），源码 URL 记录
+    在 source_url 以便追溯。
+    """
+
+    urls = _moasher_urls(con, force=force, skip_download=skip_download)
+    cached_dir = RAW_DLD_DIR / "moasher"
+    rows: list[dict] = []
+    seen: set[date] = set()
+    for url in urls:
+        slug = url.rstrip("/").rsplit("/", 1)[-1]
+        try:
+            html = _fetch_moasher_page(url, cached_dir, force=force)
+        except Exception as exc:  # noqa: BLE001 - 单页失败不阻断整批
+            print(f"[source_dld] Mo'asher 页面抓取失败 {slug}: {exc}", flush=True)
+            continue
+        parsed = _parse_moasher_rental(html, slug=slug)
+        if parsed is None:
+            continue
+        period = _moasher_month_from_slug(slug)
+        if period is None:
+            print(f"[source_dld] Mo'asher 页面月份无法解析: {slug}", flush=True)
+            continue
+        if period in seen:
+            continue  # 同月有两个变体 URL（EN 镜像重复）；取首个
+        seen.add(period)
+        for indicator in LEASE_INDICATORS:
+            rows.append(
+                {
+                    "period": period,
+                    "indicator": indicator,
+                    "value": parsed.get(indicator),
+                    "source_url": url,
+                }
+            )
+    return rows
+
+
+def _upgrade_transactions_columns(con) -> bool:
+    """把 dld.transactions 升级到当前 KEEP_COLUMNS（缺列时重建）。
+
+    2026-08 瘦身到 8 列后，月度销售指标需要回补 property_usage_en（第 9 列）。
+    列缺失时从旧库（优先）或原始 CSV 整表重建（先删视图→删表→重建，update()
+    随后会重建成视图），返回是否发生了重建。无缺失时不动表。
+    """
+
+    missing = [
+        column
+        for column in KEEP_COLUMNS
+        if not db.table_exists(con, "dld.transactions")
+        or column
+        not in {
+            row[0]
+            for row in con.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_schema='dld' AND table_name='transactions'"
+            ).fetchall()
+        }
+    ]
+    if not missing:
+        return False
+    if db.table_exists(con, "dld.transactions"):
+        for view in (
+            "dld.land_transactions",
+            "dld.transaction_year_summary",
+            "dld.transaction_date_quality_issues",
+        ):
+            con.execute(f"DROP VIEW IF EXISTS {view}")
+        con.execute("DROP TABLE dld.transactions")
+    old_db = RAW_DLD_DIR / "DLD.duckdb"
+    txn_csv = RAW_DLD_DIR / "DLD_Transactions_ALL.csv"
+    if old_db.exists():
+        _migrate_from_old_db(con)
+    elif txn_csv.exists():
+        _build_base_from_csv(con)
+    else:
+        raise RuntimeError(
+            "dld.transactions 需要重建（缺列："
+            + ", ".join(missing)
+            + "），但旧库与原始 CSV 均缺失"
+        )
+    return True
 
 
 def _ensure_base_tables(con, *, force: bool, skip_download: bool) -> str:
@@ -801,6 +1222,9 @@ def _ensure_base_tables(con, *, force: bool, skip_download: bool) -> str:
     if txn_ready:
         if downloaded:
             return "基表已存在（本次已强制重新下载原始 CSV；基表保持原快照，重建需删表后重跑）"
+        upgraded = _upgrade_transactions_columns(con)
+        if upgraded:
+            return "基表已存在（缺 property_usage_en 列，已从旧库/CSV 重建为 9 列）"
         return "基表已存在"
 
     if old_db.exists() and not downloaded:
@@ -1279,9 +1703,9 @@ def _download_all() -> None:
 # ---------------------------------------------------------------------------
 
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
-    """建库/迁移 → 周度指标计算 → 事务内入库。
+    """建库/迁移 → 周度指标 → 月度指标 → 事务内入库。
 
-    返回 {"status": "ok", "rows": 周度指标入库行数, "note": 路径简述}；
+    返回 {"status": "ok", "rows": 周度+月度入库行数, "note": 路径简述}；
     异常直接抛出，由总控（update_data.py）捕获记入 meta_source_runs。
     """
 
@@ -1292,10 +1716,14 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
 
     built = build_rows(_fetch_raw_weekly(con))
     weekly_rows = to_weekly_table_rows(built)
+    sales_rows = build_sales_monthly(con)
+    lease_rows = build_lease_monthly(con, force=force, skip_download=skip_download)
 
     con.begin()
     try:
         row_count = db.replace(con, "dld_investment_pipeline_weekly", weekly_rows)
+        row_count += db.replace(con, "dld_sales_monthly", sales_rows)
+        row_count += db.replace(con, "dld_lease_monthly", lease_rows)
         # 瘦身后只保留 transactions 的 KEEP_COLUMNS 字典行；历史 land_registry
         # 字典行一并清理（保证 update 幂等，不以库内旧行为准）。
         con.execute(
@@ -1315,9 +1743,16 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     last_week = (
         f"{weekly_rows[-1]['week_end']:%Y-%m-%d}" if weekly_rows else "-"
     )
+    sales_months = sorted({row["period"] for row in sales_rows})
+    lease_months = sorted({row["period"] for row in lease_rows})
     note = (
-        f"{path_note}；周度指标共 {row_count} 行入库"
-        f"（{first_week} .. {last_week}）"
+        f"{path_note}；周度指标 {row_count - len(sales_rows) - len(lease_rows)} 行"
+        f"（{first_week} .. {last_week}）；月度销售 {len(sales_rows)} 行"
+        f"（{sales_months[0]:%Y-%m} .. {sales_months[-1]:%Y-%m}）；"
+        f"月度租赁合同 {len(lease_rows)} 行"
+        f"（{lease_months[0]:%Y-%m} .. {lease_months[-1]:%Y-%m}）"
+        if sales_months and lease_months
+        else f"{path_note}；周度指标 {row_count} 行（{first_week} .. {last_week}）"
     )
     return {"status": "ok", "rows": row_count, "note": note}
 
@@ -1325,6 +1760,113 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
 # ---------------------------------------------------------------------------
 # 公开入口二：merge()
 # ---------------------------------------------------------------------------
+
+def _query_monthly_rows() -> list[dict]:
+    """从 dld_sales_monthly / dld_lease_monthly 组装「月度_DLD」14 列行（月末降序）。
+
+    销售金额由 AED 原值折算为百万 AED（保留 3 位）；租赁占比为官方发布值；
+    缺失月份不补齐（约定：缺报留空，不插值、不前向填充）。
+    """
+
+    con = db.connect(read_only=True)
+    try:
+        sales = con.execute(
+            "SELECT period, indicator, count, value_aed "
+            "FROM dld_sales_monthly ORDER BY period, indicator"
+        ).fetchall()
+        lease = con.execute(
+            "SELECT period, indicator, value "
+            "FROM dld_lease_monthly ORDER BY period, indicator"
+        ).fetchall()
+    finally:
+        con.close()
+
+    sales_map: dict[tuple[date, str], tuple[int | None, float | None]] = {
+        (row[0], row[1]): (row[2], row[3]) for row in sales
+    }
+    lease_map: dict[tuple[date, str], float | None] = {
+        (row[0], row[1]): row[2] for row in lease
+    }
+    periods = sorted(
+        {row[0] for row in sales} | {row[0] for row in lease}, reverse=True
+    )
+    rows = []
+    for period in periods:
+        values = []
+        for key in ("residential_offplan_sales", "residential_ready_sales",
+                    "commercial_offplan_sales", "commercial_ready_sales"):
+            count, value = sales_map.get((period, key), (None, None))
+            values.append(count)
+            values.append(None if value is None else round(value / 1_000_000, 3))
+        for indicator in LEASE_INDICATORS:
+            values.append(lease_map.get((period, indicator)))
+        rows.append({"period": period, "values": values})
+    return rows
+
+
+def _write_monthly_sheet(workbook_path: Path) -> int:
+    """以 openpyxl 直写「月度_DLD」sheet（参照 source_ded 的 update_sheet）。
+
+    头部 6 行元信息（指标名称/频率/单位/来源/更新时间）+ 数据行按月降序；
+    缺失值写入空单元格。返回写入的数据行数。
+    """
+
+    from openpyxl import load_workbook
+    from openpyxl.styles import Font, PatternFill
+
+    header_font = Font(name="Microsoft YaHei", size=9, bold=True)
+    body_font = Font(name="Microsoft YaHei", size=9)
+    header_fill = PatternFill("solid", fgColor="D9E1F2")
+
+    rows = _query_monthly_rows()
+    wb = load_workbook(workbook_path)
+    if MONTHLY_WORKSHEET_NAME in wb.sheetnames:
+        del wb[MONTHLY_WORKSHEET_NAME]
+    ws = wb.create_sheet(MONTHLY_WORKSHEET_NAME)
+
+    headers = MONTHLY_SHEET_HEADERS
+    units = [row[2] for row in MONTHLY_INDICATOR_DICTIONARY]
+    sources = [row[3] for row in MONTHLY_INDICATOR_DICTIONARY]
+    ws.cell(row=1, column=1, value="Dubai Land Department（迪拜土地局）月度指标")
+    ws.cell(row=2, column=1, value="指标名称")
+    ws.cell(row=3, column=1, value="频率")
+    ws.cell(row=4, column=1, value="单位")
+    ws.cell(row=5, column=1, value="来源")
+    ws.cell(row=6, column=1, value="更新时间")
+    for col, header in enumerate(headers, start=1):
+        ws.cell(row=2, column=col, value=header)
+    for col, unit in enumerate(units, start=2):
+        ws.cell(row=3, column=col, value="月")
+        ws.cell(row=4, column=col, value=unit)
+        ws.cell(row=5, column=col, value=sources[col - 2])
+    now = datetime.now()
+    for col in range(2, len(headers) + 1):
+        ws.cell(row=6, column=col, value=now)
+
+    for i, row in enumerate(rows):
+        r = 7 + i
+        ws.cell(row=r, column=1, value=row["period"])
+        for col, value in enumerate(row["values"], start=2):
+            ws.cell(row=r, column=col, value=value)
+
+    for cell in ws[1]:
+        cell.font = Font(name="Microsoft YaHei", size=11, bold=True)
+    for row_cells in ws.iter_rows(min_row=2, max_row=6, max_col=len(headers)):
+        for cell in row_cells:
+            cell.font = header_font
+            cell.fill = header_fill
+    for row_cells in ws.iter_rows(min_row=7, max_row=ws.max_row, max_col=len(headers)):
+        for cell in row_cells:
+            cell.font = body_font
+
+    ws.column_dimensions["A"].width = 13
+    for label, width in zip("BCDEFGHIJKLMN", (18, 22, 18, 26, 18, 26, 18, 26, 18, 20, 20, 20, 20)):
+        ws.column_dimensions[label].width = width
+    ws.freeze_panes = "B7"
+
+    wb.save(workbook_path)
+    return len(rows)
+
 
 def _write_weekly_csv(handle, rows) -> None:
     """按 7 列中文表头写出周度 CSV（截止日期 yyyy-MM-dd，空数值留空）。"""
@@ -1424,10 +1966,11 @@ def merge(workbook_path: Path) -> dict:
         raise
 
     latest = f"{_as_date(rows[-1][0]):%Y-%m-%d}"
+    monthly_rows = _write_monthly_sheet(workbook_path)
     return {
         "status": "ok",
-        "note": f"已写入 {workbook_path.name}：共 {len(rows)} 行周度数据，"
-        f"截至 {latest}",
+        "note": f"已写入 {workbook_path.name}：周度 {len(rows)} 行截至 {latest}；"
+        f"「{MONTHLY_WORKSHEET_NAME}」月度数据 {monthly_rows} 行按月降序",
     }
 
 
@@ -1453,7 +1996,7 @@ def self_check() -> str:
     assert formatted(5) == "5"
     assert formatted(5.5) == "5.500000"
     assert len(INDICATOR_DICTIONARY) == 6
-    assert len(COLUMN_DICTIONARY) == len(KEEP_COLUMNS) == 8
+    assert len(COLUMN_DICTIONARY) == len(KEEP_COLUMNS) == 9
     assert all(len(row) == 7 for row in COLUMN_DICTIONARY)
     assert {row[1] for row in COLUMN_DICTIONARY} == set(KEEP_COLUMNS)
     assert [row[0] for row in INDICATOR_DICTIONARY] == list(WEEKLY_CSV_HEADERS[1:])
@@ -1469,6 +2012,105 @@ def self_check() -> str:
         "transaction_id",
     }
     assert required <= set(KEEP_COLUMNS)
+    # 月度常量完整性
+    assert len(SALES_INDICATOR_KEYS) == 4
+    assert len(LEASE_INDICATORS) == 5
+    assert len(MONTHLY_INDICATOR_DICTIONARY) == len(MONTHLY_SHEET_HEADERS) - 1 == 13
+    assert [row[0] for row in MONTHLY_INDICATOR_DICTIONARY] == list(
+        MONTHLY_SHEET_HEADERS[1:]
+    )
+    assert _moasher_month_from_slug("2023-monthly-january-25") == date(2023, 1, 31)
+    assert _moasher_month_from_slug("garbage") is None
+    # 租赁页面解析冒烟（百分号与 percent 两种官方写法）
+    rental_html = (
+        "<title>Dubai January 2023: The Official Rental Performance Index</title>"
+        "<p>January had a total of 59,390 rental contracts, of which "
+        "53.64 percent were new, and 46.36 percent were renewals.</p>"
+        "<p>66.15 percent were registered for residential purposes, "
+        "while 32.32 percent were for commercial purposes.</p>"
+    )
+    parsed = _parse_moasher_rental(rental_html)
+    assert parsed is not None
+    assert parsed["lease_contracts_total"] == 59390
+    assert abs(parsed["lease_new_pct"] - 53.64) < 1e-9
+    assert abs(parsed["lease_renewed_pct"] - 46.36) < 1e-9
+    assert abs(parsed["lease_residential_pct"] - 66.15) < 1e-9
+    assert abs(parsed["lease_commercial_pct"] - 32.32) < 1e-9
+    rental_pct_html = (
+        "<title>Dubai September 2024: The Official Rental Performance Index</title>"
+        "<p>September had a total of 67,278 rental contracts, of which "
+        "59% of contracts were new and 41% were renewals.</p>"
+        "<p>62.6% were registered for residential purposes, "
+        "while 37.4% were for commercial and other purposes.</p>"
+    )
+    parsed2 = _parse_moasher_rental(rental_pct_html)
+    assert parsed2 is not None
+    assert parsed2["lease_contracts_total"] == 67278
+    assert abs(parsed2["lease_new_pct"] - 59.0) < 1e-9
+    assert abs(parsed2["lease_residential_pct"] - 62.6) < 1e-9
+    sales_html = "<title>Dubai January 2023: The Official Sales Price Index</title><p>x</p>"
+    assert _parse_moasher_rental(sales_html) is None
+    # 2022 版措辞：recorded ... rental leases / percent were X leases
+    rental_2022 = (
+        "<title>Dubai July 2022: The Official Rental Performance Index</title>"
+        "<p>July 2022 recorded 42,698 rental leases. 56.04 percent were new "
+        "leases while 43.96 percent were renewals. 25.66 percent were commercial "
+        "leases while 72.97 percent were residential leases.</p>"
+    )
+    parsed3 = _parse_moasher_rental(rental_2022)
+    assert parsed3 is not None
+    assert parsed3["lease_contracts_total"] == 42698
+    assert abs(parsed3["lease_new_pct"] - 56.04) < 1e-9
+    assert abs(parsed3["lease_residential_pct"] - 72.97) < 1e-9
+    assert abs(parsed3["lease_commercial_pct"] - 25.66) < 1e-9
+    # 2024-01 变体：", and were 53.85% renewals"（renewals 数字在 were 之后）
+    rental_2024 = (
+        "<title>Dubai January 2024: The Official Rental Performance Index</title>"
+        "<p>January had a total of 73,297 rental contracts, of which 46.15% "
+        "were new, and were 53.85% renewals. 60.97% were registered for "
+        "residential purposes, while 37.68% were for commercial purposes.</p>"
+    )
+    parsed4 = _parse_moasher_rental(rental_2024)
+    assert parsed4 is not None
+    assert parsed4["lease_contracts_total"] == 73297
+    assert abs(parsed4["lease_new_pct"] - 46.15) < 1e-9
+    assert abs(parsed4["lease_renewed_pct"] - 53.85) < 1e-9
+    assert abs(parsed4["lease_residential_pct"] - 60.97) < 1e-9
+    assert abs(parsed4["lease_commercial_pct"] - 37.68) < 1e-9
+    # 季报页防误配：页面含 Q1 合计 160,530，但当月（March）为 44,783
+    rental_q1 = (
+        "<title>Dubai March 2022: The Official Rental Performance Index</title>"
+        "<p>Key Findings: • Q1 2022 had a total of 160,530 rental contracts "
+        "of which 51.89 percent of contracts were new and 48.1 percent were "
+        "renewals. • March had a total of 44,783 rental contracts of which "
+        "60.28 percent of contracts were new and 39.72 percent were renewals.</p>"
+    )
+    parsed5 = _parse_moasher_rental(rental_q1, slug="2022-monthly-march-190")
+    assert parsed5 is not None
+    assert parsed5["lease_contracts_total"] == 44783, parsed5
+    assert abs(parsed5["lease_new_pct"] - 60.28) < 1e-9
+    assert abs(parsed5["lease_renewed_pct"] - 39.72) < 1e-9
+    # 2022-01 措辞 "had 51,452 leases"
+    rental_2022a = (
+        "<title>Dubai January 2022: The Official Rental Performance Index</title>"
+        "<p>January 2022 had 51,452 leases. 52% were new leases while 48% "
+        "were renewals. 29% were commercial leases while 70% were residential leases.</p>"
+    )
+    parsed6 = _parse_moasher_rental(rental_2022a, slug="2022-monthly-january-148")
+    assert parsed6 is not None
+    assert parsed6["lease_contracts_total"] == 51452
+    assert abs(parsed6["lease_new_pct"] - 52.0) < 1e-9
+    # 2024-08 措辞 "commercial and other leases"
+    rental_2024a = (
+        "<title>Dubai August 2024: The Official Rental Performance Index</title>"
+        "<p>August 2024 recorded 63,516 rental leases. 64.2% were residential "
+        "leases. While 35.8% were commercial and other leases.</p>"
+    )
+    parsed7 = _parse_moasher_rental(rental_2024a, slug="2024-monthly-august-213")
+    assert parsed7 is not None
+    assert parsed7["lease_contracts_total"] == 63516
+    assert abs(parsed7["lease_residential_pct"] - 64.2) < 1e-9
+    assert abs(parsed7["lease_commercial_pct"] - 35.8) < 1e-9
     # 短序列冒烟：build_rows 输出形状与 None 传播
     small = [
         {
