@@ -1,15 +1,19 @@
 """Dubai Land Department（DLD）数据源模块。
 
 职责（对应 ``update()`` 一个入口）：
-1. 建库：确保 ``dld`` schema、``dld.transactions`` / ``dld.land_registry``
-   两个基表（优先从 ``data/UAE/raw/dld/DLD.duckdb`` 旧库迁移，否则按
-   ``build_dld_database.sql`` 的 TRY_CAST 逻辑从 CSV 全量建表）、三个只读视图、
-   唯一索引，以及 ``meta_column_dictionary`` / ``meta_indicator_dictionary``。
+1. 建库：确保 ``dld`` schema、``dld.transactions`` 基表（优先从
+   ``data/UAE/raw/dld/DLD.duckdb`` 旧库迁移，否则按 ``build_dld_database.sql``
+   的 TRY_CAST 逻辑从 CSV 建表）、三个只读视图、唯一索引，以及
+   ``meta_column_dictionary`` / ``meta_indicator_dictionary``。
 2. 下载：仅当缺失原始数据或 ``force=True`` 且 ``skip_download=False`` 时，
    按 ``download_dld_all.py`` 的流程从 Data Dubai 官方 bulk 数据抓取并合并
    原始 CSV 到 ``data/UAE/raw/dld/`` 下。
 3. 周度指标：移植 ``generate_dld_investment_indices.py`` 的全部分析逻辑
    （RAW_WEEKLY_SQL + build_rows），结果事务内写入 ``dld_investment_pipeline_weekly``。
+
+表结构瘦身（2026-08）：``dld.transactions`` 只保留被周度指标与三个视图消费的
+列（``KEEP_COLUMNS``，47 → 8）；``dld.land_registry`` 仓库内零消费，不再建表
+入库（原始 CSV / 旧库仍保留在 ``data/UAE/raw/dld/``，需要时可单独重建）。
 
 回调写表（对应 ``merge()`` 一个入口）：
 从库中查询周度指标 → 导出 7 列临时 CSV（列名与旧
@@ -59,6 +63,22 @@ MIN_BASELINE_OBSERVATIONS = 104
 
 # 原始 CSV / 旧库所在目录（与 data/UAE/raw/dld/ 一致）
 RAW_DLD_DIR = DATA_DIR / "raw" / "dld"
+
+# dld.transactions 仅保留被 RAW_WEEKLY_SQL 与三个视图消费的列（47 → 8）。
+# 「保留 = 被查询」：transaction_id(计数/主键)、instance_date(周/年分组)、
+# trans_group_en/reg_type_en(Sales/Off-Plan 过滤)、project_number(项目维度)、
+# actual_worth(金额)、property_type_en(Land 视图/年汇总)、
+# load_timestamp(bulk 快照时间，每行同值，字典压缩近零成本，仅用于追溯)。
+KEEP_COLUMNS = (
+    "actual_worth",
+    "instance_date",
+    "load_timestamp",
+    "project_number",
+    "property_type_en",
+    "reg_type_en",
+    "trans_group_en",
+    "transaction_id",
+)
 
 # 工作簿写表（merge() 使用）
 WORKSHEET_NAME = "周度_迪拜房地产"
@@ -290,89 +310,19 @@ ORDER BY week_start
 """
 
 # ---------------------------------------------------------------------------
-# 列字典：照搬旧 build_dld_database.sql 的 metadata.column_dictionary 全部 79 行，
-# 仅 object_name 改为 dld.transactions / dld.land_registry（其余字段逐字保留）。
+# 列字典：dld.transactions 仅保留 KEEP_COLUMNS 八列（含义沿用旧
+# build_dld_database.sql 的 metadata.column_dictionary；land_registry 已不再建表,
+# 其字典行一并移除）。
 # ---------------------------------------------------------------------------
 
 COLUMN_DICTIONARY = (
-    ('dld.land_registry', 'actual_area', 'DECIMAL(20,2)', '面积', '登记地块面积', None, '通常按平方米理解；源文件未单列单位'),
-    ('dld.land_registry', 'area_id', 'INTEGER', '区域', 'DLD区域代码', 'land_registry.area_name_en/ar; transactions.area_id', '可用于跨表区域级聚合'),
-    ('dld.land_registry', 'area_name_ar', 'VARCHAR', '区域', '区域阿拉伯文名', 'land_registry.area_id', None),
-    ('dld.land_registry', 'area_name_en', 'VARCHAR', '区域', '区域英文名', 'land_registry.area_id', None),
-    ('dld.land_registry', 'is_free_hold', 'BOOLEAN', '登记状态', '是否永久产权', None, 'TRUE/FALSE/NULL'),
-    ('dld.land_registry', 'is_registered', 'BOOLEAN', '登记状态', '是否正式登记', None, '源数据只有TRUE和NULL'),
-    ('dld.land_registry', 'land_number', 'VARCHAR', '地块标识', '土地号码', 'land_registry.land_sub_number', '单独不保证全局唯一'),
-    ('dld.land_registry', 'land_sub_number', 'VARCHAR', '地块标识', '土地子号码', 'land_registry.land_number', '编号而非数值量'),
-    ('dld.land_registry', 'land_type_ar', 'VARCHAR', '土地分类', '土地用途阿拉伯文名', 'land_registry.land_type_id', None),
-    ('dld.land_registry', 'land_type_en', 'VARCHAR', '土地分类', '土地用途英文名', 'land_registry.land_type_id', '例如Commercial、Residential'),
-    ('dld.land_registry', 'land_type_id', 'INTEGER', '土地分类', '土地用途代码', 'land_registry.land_type_en/ar', None),
-    ('dld.land_registry', 'load_timestamp', 'TIMESTAMP', '时间', 'Data Dubai生成登记快照的时间', None, '不是登记发生日期'),
-    ('dld.land_registry', 'master_project_ar', 'VARCHAR', '项目', '总体项目阿拉伯文名', 'land_registry.master_project_id', None),
-    ('dld.land_registry', 'master_project_en', 'VARCHAR', '项目', '总体项目英文名', 'land_registry.master_project_id; transactions.master_project_en', '与交易表仅能做弱名称匹配'),
-    ('dld.land_registry', 'master_project_id', 'BIGINT', '项目', '登记数据中的总体项目ID', 'land_registry.master_project_en/ar', '仅在本数据集内作为项目维度代码'),
-    ('dld.land_registry', 'munc_number', 'VARCHAR', '市政标识', '市政编号', 'land_registry.munc_zip_code; land_registry.parcel_id', '编号而非数值量'),
-    ('dld.land_registry', 'munc_zip_code', 'VARCHAR', '市政标识', '市政区域编码', 'land_registry.munc_number; land_registry.parcel_id', '编号而非数值量'),
-    ('dld.land_registry', 'parcel_id', 'VARCHAR', '地块标识', '地块编号', 'land_registry.munc_number; land_registry.property_id', '可能缺失；不是交易表字段'),
-    ('dld.land_registry', 'pre_registration_number', 'VARCHAR', '地块标识', '预登记号码', 'land_registry.property_id', '期房或预登记记录常用'),
-    ('dld.land_registry', 'project_id', 'BIGINT', '项目', '登记数据中的具体项目ID', 'land_registry.project_name_en/ar', '不能与transactions.project_number直接连接'),
-    ('dld.land_registry', 'project_name_ar', 'VARCHAR', '项目', '具体项目阿拉伯文名', 'land_registry.project_id', None),
-    ('dld.land_registry', 'project_name_en', 'VARCHAR', '项目', '具体项目英文名', 'land_registry.project_id; transactions.project_name_en', '与交易表仅能做弱名称匹配'),
-    ('dld.land_registry', 'property_id', 'BIGINT', '主键', '土地登记记录唯一编号', None, '本表唯一主键；交易bulk中没有该字段'),
-    ('dld.land_registry', 'property_sub_type_ar', 'VARCHAR', '土地分类', '土地子类型阿拉伯文名', 'land_registry.property_sub_type_id', None),
-    ('dld.land_registry', 'property_sub_type_en', 'VARCHAR', '土地分类', '土地子类型英文名', 'land_registry.property_sub_type_id', None),
-    ('dld.land_registry', 'property_sub_type_id', 'INTEGER', '土地分类', '土地子类型代码', 'land_registry.property_sub_type_en/ar; transactions.property_sub_type_id', '跨数据集代码关系需核验'),
-    ('dld.land_registry', 'property_type_ar', 'VARCHAR', '土地分类', '房产大类阿拉伯文名', 'land_registry.property_type_id', None),
-    ('dld.land_registry', 'property_type_en', 'VARCHAR', '土地分类', '房产大类英文名', 'land_registry.property_type_id', '当前全部为Land'),
-    ('dld.land_registry', 'property_type_id', 'INTEGER', '土地分类', '房产大类代码', 'land_registry.property_type_en/ar; transactions.property_type_id', '当前全部为1=Land'),
-    ('dld.land_registry', 'separated_from', 'VARCHAR', '地块沿革', '地块分割来源记录', 'land_registry.separated_reference', '源系统沿革编号，未提供外键保证'),
-    ('dld.land_registry', 'separated_reference', 'VARCHAR', '地块沿革', '地块分割关系参考编号', 'land_registry.separated_from', '源系统沿革编号，未提供外键保证'),
-    ('dld.land_registry', 'zone_id', 'INTEGER', '区域', 'DLD分区代码', 'land_registry.area_id', '与area_id层级关系未在bulk字典中说明'),
     ('dld.transactions', 'actual_worth', 'DECIMAL(24,2)', '金额面积', '交易金额或实际价值', None, '通常按AED理解；源文件未单列单位'),
-    ('dld.transactions', 'area_id', 'INTEGER', '区域', 'DLD区域代码', 'transactions.area_name_en/ar; land_registry.area_id', '不是交易或地块主键'),
-    ('dld.transactions', 'area_name_ar', 'VARCHAR', '区域', '区域阿拉伯文名', 'transactions.area_id', '与area_name_en为同一概念的双语标签'),
-    ('dld.transactions', 'area_name_en', 'VARCHAR', '区域', '区域英文名', 'transactions.area_id', '与area_name_ar为同一概念的双语标签'),
-    ('dld.transactions', 'building_name_ar', 'VARCHAR', '项目建筑', '建筑物阿拉伯文名', 'transactions.building_name_en', '土地交易通常为空'),
-    ('dld.transactions', 'building_name_en', 'VARCHAR', '项目建筑', '建筑物英文名', 'transactions.building_name_ar', '土地交易通常为空'),
-    ('dld.transactions', 'has_parking', 'BOOLEAN', '房产属性', '是否有停车位', None, 'TRUE/FALSE/NULL'),
     ('dld.transactions', 'instance_date', 'DATE', '时间', '交易登记日期', 'transaction_year_summary.transaction_year', '官方源含4条1900年以前异常日期'),
     ('dld.transactions', 'load_timestamp', 'TIMESTAMPTZ', '时间', 'Data Dubai生成bulk快照的时间', None, '不是交易发生时间'),
-    ('dld.transactions', 'master_project_ar', 'VARCHAR', '项目建筑', '总体项目阿拉伯文名', 'transactions.master_project_en', '名称字段，不是稳定ID'),
-    ('dld.transactions', 'master_project_en', 'VARCHAR', '项目建筑', '总体项目英文名', 'transactions.master_project_ar; land_registry.master_project_en', '跨表名称匹配可靠性较弱'),
-    ('dld.transactions', 'meter_rent_price', 'DECIMAL(24,2)', '金额面积', '每平方米租赁价格', 'transactions.rent_value', '大部分交易为空'),
-    ('dld.transactions', 'meter_sale_price', 'DECIMAL(24,2)', '金额面积', '每平方米销售价格', 'transactions.actual_worth; transactions.procedure_area', '应结合交易类型解释'),
-    ('dld.transactions', 'nearest_landmark_ar', 'VARCHAR', '周边设施', '最近地标阿拉伯文名', 'transactions.nearest_landmark_en', None),
-    ('dld.transactions', 'nearest_landmark_en', 'VARCHAR', '周边设施', '最近地标英文名', 'transactions.nearest_landmark_ar', None),
-    ('dld.transactions', 'nearest_mall_ar', 'VARCHAR', '周边设施', '最近商场阿拉伯文名', 'transactions.nearest_mall_en', None),
-    ('dld.transactions', 'nearest_mall_en', 'VARCHAR', '周边设施', '最近商场英文名', 'transactions.nearest_mall_ar', None),
-    ('dld.transactions', 'nearest_metro_ar', 'VARCHAR', '周边设施', '最近地铁站阿拉伯文名', 'transactions.nearest_metro_en', None),
-    ('dld.transactions', 'nearest_metro_en', 'VARCHAR', '周边设施', '最近地铁站英文名', 'transactions.nearest_metro_ar', None),
-    ('dld.transactions', 'no_of_parties_role_1', 'INTEGER', '参与方', '第一类参与方数量', 'transactions.no_of_parties_role_2/3', '官方bulk未附角色代码字典'),
-    ('dld.transactions', 'no_of_parties_role_2', 'INTEGER', '参与方', '第二类参与方数量', 'transactions.no_of_parties_role_1/3', '官方bulk未附角色代码字典'),
-    ('dld.transactions', 'no_of_parties_role_3', 'INTEGER', '参与方', '第三类参与方数量', 'transactions.no_of_parties_role_1/2', '官方bulk未附角色代码字典'),
-    ('dld.transactions', 'procedure_area', 'DECIMAL(20,2)', '金额面积', '本次交易涉及面积', 'transactions.actual_worth; transactions.meter_sale_price', '通常按平方米理解；源文件未单列单位'),
-    ('dld.transactions', 'procedure_id', 'INTEGER', '交易分类', '具体交易程序代码', 'transactions.procedure_name_en/ar', '代码和双语名称构成一个分类维度'),
-    ('dld.transactions', 'procedure_name_ar', 'VARCHAR', '交易分类', '具体交易程序阿拉伯文名', 'transactions.procedure_id', None),
-    ('dld.transactions', 'procedure_name_en', 'VARCHAR', '交易分类', '具体交易程序英文名', 'transactions.procedure_id', None),
-    ('dld.transactions', 'project_name_ar', 'VARCHAR', '项目建筑', '具体项目阿拉伯文名', 'transactions.project_name_en', None),
-    ('dld.transactions', 'project_name_en', 'VARCHAR', '项目建筑', '具体项目英文名', 'transactions.project_name_ar; land_registry.project_name_en', '跨表名称匹配可靠性较弱'),
-    ('dld.transactions', 'project_number', 'VARCHAR', '项目建筑', '交易数据中的项目编号', 'transactions.project_name_en/ar', '不能与land_registry.project_id直接连接'),
-    ('dld.transactions', 'property_sub_type_ar', 'VARCHAR', '房产分类', '房产子类型阿拉伯文名', 'transactions.property_sub_type_id', None),
-    ('dld.transactions', 'property_sub_type_en', 'VARCHAR', '房产分类', '房产子类型英文名', 'transactions.property_sub_type_id', None),
-    ('dld.transactions', 'property_sub_type_id', 'INTEGER', '房产分类', '房产子类型代码', 'transactions.property_sub_type_en/ar; land_registry.property_sub_type_id', '跨数据集代码关系需核验'),
-    ('dld.transactions', 'property_type_ar', 'VARCHAR', '房产分类', '房产大类阿拉伯文名', 'transactions.property_type_id', None),
-    ('dld.transactions', 'property_type_en', 'VARCHAR', '房产分类', '房产大类英文名', 'transactions.property_type_id; land_transactions', 'Land决定是否进入land_transactions视图'),
-    ('dld.transactions', 'property_type_id', 'INTEGER', '房产分类', '房产大类代码', 'transactions.property_type_en/ar; land_registry.property_type_id', '1=Land，其他值对应Building/Unit/Villa'),
-    ('dld.transactions', 'property_usage_ar', 'VARCHAR', '房产分类', '房产用途阿拉伯文名', 'transactions.property_usage_en', '源数据个别双语标签存在错位，分析优先核查英文值'),
-    ('dld.transactions', 'property_usage_en', 'VARCHAR', '房产分类', '房产用途英文名', 'transactions.property_usage_ar', None),
-    ('dld.transactions', 'reg_type_ar', 'VARCHAR', '登记类型', '现房/期房阿拉伯文名', 'transactions.reg_type_id', None),
-    ('dld.transactions', 'reg_type_en', 'VARCHAR', '登记类型', 'Existing或Off-Plan英文名', 'transactions.reg_type_id', None),
-    ('dld.transactions', 'reg_type_id', 'INTEGER', '登记类型', '现房/期房代码', 'transactions.reg_type_en/ar', '0=Off-Plan，1=Existing'),
-    ('dld.transactions', 'rent_value', 'DECIMAL(24,2)', '金额面积', '租赁金额', 'transactions.meter_rent_price', '大部分交易为空'),
-    ('dld.transactions', 'rooms_ar', 'VARCHAR', '房产属性', '房间类别阿拉伯文名', 'transactions.rooms_en', '土地及部分非住宅交易为空'),
-    ('dld.transactions', 'rooms_en', 'VARCHAR', '房产属性', '房间类别英文名', 'transactions.rooms_ar', '例如2 B/R；不是纯数字'),
-    ('dld.transactions', 'trans_group_ar', 'VARCHAR', '交易分类', '交易大类阿拉伯文名', 'transactions.trans_group_id', None),
-    ('dld.transactions', 'trans_group_en', 'VARCHAR', '交易分类', 'Sales/Mortgages/Gifts', 'transactions.trans_group_id', None),
-    ('dld.transactions', 'trans_group_id', 'INTEGER', '交易分类', '交易大类代码', 'transactions.trans_group_en/ar', '1=Sales，2=Mortgages，3=Gifts'),
+    ('dld.transactions', 'project_number', 'VARCHAR', '项目建筑', '交易数据中的项目编号', None, 'RAW_WEEKLY_SQL 按项目编号聚合期房窗口'),
+    ('dld.transactions', 'property_type_en', 'VARCHAR', '房产分类', '房产大类英文名', 'land_transactions', 'Land决定是否进入land_transactions视图'),
+    ('dld.transactions', 'reg_type_en', 'VARCHAR', '登记类型', 'Existing或Off-Plan英文名', None, '现房/期房过滤键（RAW_WEEKLY_SQL）'),
+    ('dld.transactions', 'trans_group_en', 'VARCHAR', '交易分类', 'Sales/Mortgages/Gifts', None, '交易大类过滤键（RAW_WEEKLY_SQL）'),
     ('dld.transactions', 'transaction_id', 'VARCHAR', '主键', '交易记录唯一编号', 'land_transactions.transaction_id', '本表唯一主键'),
 )
 
@@ -667,59 +617,20 @@ def to_weekly_table_rows(built_rows):
 # ---------------------------------------------------------------------------
 
 def _transactions_ddl(csv_path: Path) -> str:
-    """transactions 建表 DDL：移植 build_dld_database.sql 的逐列 TRY_CAST。"""
+    """transactions 建表 DDL：从 CSV 只保留 ``KEEP_COLUMNS`` 八列（TRY_CAST）。"""
 
     path = csv_path.resolve().as_posix()
     return rf"""
     CREATE TABLE dld.transactions AS
     SELECT
         TRY_CAST(actual_worth AS DECIMAL(24, 2)) AS actual_worth,
-        TRY_CAST(area_id AS INTEGER) AS area_id,
-        area_name_ar,
-        area_name_en,
-        building_name_ar,
-        building_name_en,
-        CASE WHEN has_parking = '1' THEN TRUE WHEN has_parking = '0' THEN FALSE END AS has_parking,
         TRY_CAST(instance_date AS DATE) AS instance_date,
-        master_project_ar,
-        master_project_en,
-        TRY_CAST(meter_rent_price AS DECIMAL(24, 2)) AS meter_rent_price,
-        TRY_CAST(meter_sale_price AS DECIMAL(24, 2)) AS meter_sale_price,
-        nearest_landmark_ar,
-        nearest_landmark_en,
-        nearest_mall_ar,
-        nearest_mall_en,
-        nearest_metro_ar,
-        nearest_metro_en,
-        TRY_CAST(no_of_parties_role_1 AS INTEGER) AS no_of_parties_role_1,
-        TRY_CAST(no_of_parties_role_2 AS INTEGER) AS no_of_parties_role_2,
-        TRY_CAST(no_of_parties_role_3 AS INTEGER) AS no_of_parties_role_3,
-        TRY_CAST(procedure_area AS DECIMAL(20, 2)) AS procedure_area,
-        TRY_CAST(procedure_id AS INTEGER) AS procedure_id,
-        procedure_name_ar,
-        procedure_name_en,
-        project_name_ar,
-        project_name_en,
+        TRY_CAST(load_timestamp AS TIMESTAMPTZ) AS load_timestamp,
         regexp_replace(project_number, '\.0+$', '') AS project_number,
-        property_sub_type_ar,
-        property_sub_type_en,
-        TRY_CAST(property_sub_type_id AS INTEGER) AS property_sub_type_id,
-        property_type_ar,
         property_type_en,
-        TRY_CAST(property_type_id AS INTEGER) AS property_type_id,
-        property_usage_ar,
-        property_usage_en,
-        reg_type_ar,
         reg_type_en,
-        TRY_CAST(reg_type_id AS INTEGER) AS reg_type_id,
-        TRY_CAST(rent_value AS DECIMAL(24, 2)) AS rent_value,
-        rooms_ar,
-        rooms_en,
-        transaction_id,
-        trans_group_ar,
         trans_group_en,
-        TRY_CAST(trans_group_id AS INTEGER) AS trans_group_id,
-        TRY_CAST(load_timestamp AS TIMESTAMPTZ) AS load_timestamp
+        transaction_id
     FROM read_csv(
         '{path}',
         header=true,
@@ -730,58 +641,26 @@ def _transactions_ddl(csv_path: Path) -> str:
     """
 
 
-def _land_registry_ddl(csv_path: Path) -> str:
-    """land_registry 建表 DDL：移植 build_dld_database.sql 的逐列 TRY_CAST。"""
+def _assert_transaction_id_unique(con) -> None:
+    """transaction_id 唯一性由数据源保证，入库后以断言兜底。
 
-    path = csv_path.resolve().as_posix()
-    return rf"""
-    CREATE TABLE dld.land_registry AS
-    SELECT
-        TRY_CAST(actual_area AS DECIMAL(20, 2)) AS actual_area,
-        TRY_CAST(area_id AS INTEGER) AS area_id,
-        area_name_ar,
-        area_name_en,
-        CASE WHEN is_free_hold = '1' THEN TRUE WHEN is_free_hold = '0' THEN FALSE END AS is_free_hold,
-        CASE WHEN TRY_CAST(is_registered AS DECIMAL(10, 2)) = 1 THEN TRUE
-             WHEN TRY_CAST(is_registered AS DECIMAL(10, 2)) = 0 THEN FALSE END AS is_registered,
-        land_number,
-        regexp_replace(land_sub_number, '\.0+$', '') AS land_sub_number,
-        land_type_ar,
-        land_type_en,
-        TRY_CAST(land_type_id AS INTEGER) AS land_type_id,
-        master_project_ar,
-        master_project_en,
-        TRY_CAST(master_project_id AS BIGINT) AS master_project_id,
-        munc_number,
-        munc_zip_code,
-        regexp_replace(parcel_id, '\.0+$', '') AS parcel_id,
-        pre_registration_number,
-        TRY_CAST(project_id AS BIGINT) AS project_id,
-        project_name_ar,
-        project_name_en,
-        TRY_CAST(property_id AS BIGINT) AS property_id,
-        property_sub_type_ar,
-        property_sub_type_en,
-        TRY_CAST(property_sub_type_id AS INTEGER) AS property_sub_type_id,
-        property_type_ar,
-        property_type_en,
-        TRY_CAST(property_type_id AS INTEGER) AS property_type_id,
-        separated_from,
-        separated_reference,
-        TRY_CAST(zone_id AS INTEGER) AS zone_id,
-        TRY_CAST(load_timestamp AS TIMESTAMP) AS load_timestamp
-    FROM read_csv(
-        '{path}',
-        header=true,
-        all_varchar=true,
-        nullstr='',
-        strict_mode=true
-    )
+    故意不建持久化唯一索引：duckdb 的 ART 唯一索引会把事务表文件撑大约
+    68MB（2026-08 瘦身），而任何查询都不需要它（RAW_WEEKLY_SQL 全表扫 /
+    按项目分组，均不用主键查找）。唯一性校验移到建表阶段，零文件开销。
     """
+
+    total, distinct = con.execute(
+        "SELECT count(*), count(DISTINCT transaction_id) FROM dld.transactions"
+    ).fetchone()
+    if total != distinct:
+        raise RuntimeError(
+            "dld.transactions 主键不唯一："
+            f"{total} 行 / {distinct} 个不同 transaction_id"
+        )
 
 
 def _migrate_from_old_db(con) -> str:
-    """从 data/UAE/raw/dld/DLD.duckdb 一次性迁移两个基表并回灌列字典。"""
+    """从 data/UAE/raw/dld/DLD.duckdb 迁移 dld.transactions（只保留必需列）。"""
 
     old_db = RAW_DLD_DIR / "DLD.duckdb"
     attach = old_db.resolve().as_posix()
@@ -789,68 +668,45 @@ def _migrate_from_old_db(con) -> str:
     try:
         if not db.table_exists(con, "dld.transactions"):
             con.execute(
-                "CREATE TABLE dld.transactions AS SELECT * FROM old_dld.transactions"
+                "CREATE TABLE dld.transactions AS "
+                "SELECT " + ", ".join(KEEP_COLUMNS) + " FROM old_dld.transactions"
             )
-            con.execute(
-                "CREATE UNIQUE INDEX IF NOT EXISTS transactions_transaction_id_uq "
-                "ON dld.transactions(transaction_id)"
-            )
-        if not db.table_exists(con, "dld.land_registry"):
-            con.execute(
-                "CREATE TABLE dld.land_registry AS SELECT * FROM old_dld.land_registry"
-            )
-            con.execute(
-                "CREATE UNIQUE INDEX IF NOT EXISTS land_registry_property_id_uq "
-                "ON dld.land_registry(property_id)"
-            )
+            _assert_transaction_id_unique(con)
         dictionary = con.execute(
             "SELECT object_name, column_name, data_type, group_cn, meaning_cn, "
-            "relates_to, caveat_cn FROM old_dld.metadata.column_dictionary"
+            "relates_to, caveat_cn FROM old_dld.metadata.column_dictionary "
+            "WHERE object_name = 'transactions'"
         ).fetchall()
     finally:
         try:
             con.execute("DETACH old_dld")
         except Exception:  # noqa: BLE001 - 已分离时忽略
             pass
-    object_names = {
-        "transactions": "dld.transactions",
-        "land_registry": "dld.land_registry",
-    }
-    for object_name, *fields in dictionary:
-        _upsert_column_dictionary_row(con, (object_names[object_name], *fields))
+    for row in dictionary:
+        if row[1] in KEEP_COLUMNS:
+            _upsert_column_dictionary_row(con, ("dld.transactions", *row[1:]))
     return f"迁移旧库 {old_db.name}"
 
 
 def _build_base_from_csv(con) -> str:
-    """旧库缺失时按 build_dld_database.sql 的 TRY_CAST 逻辑从 CSV 全量建表。"""
+    """旧库缺失时按 build_dld_database.sql 的 TRY_CAST 逻辑从 CSV 建表（只保留必需列）。"""
 
     txn_csv = RAW_DLD_DIR / "DLD_Transactions_ALL.csv"
-    reg_csv = RAW_DLD_DIR / "DLD_Land_Registry_ALL.csv"
-    if not (txn_csv.exists() and reg_csv.exists()):
-        raise RuntimeError(
-            f"缺少原始 CSV：{txn_csv.name} / {reg_csv.name}"
-        )
+    if not txn_csv.exists():
+        raise RuntimeError(f"缺少原始 CSV：{txn_csv.name}")
     if not db.table_exists(con, "dld.transactions"):
         con.execute(_transactions_ddl(txn_csv))
-        con.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS transactions_transaction_id_uq "
-            "ON dld.transactions(transaction_id)"
-        )
-    if not db.table_exists(con, "dld.land_registry"):
-        con.execute(_land_registry_ddl(reg_csv))
-        con.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS land_registry_property_id_uq "
-            "ON dld.land_registry(property_id)"
-        )
+        _assert_transaction_id_unique(con)
     return "从原始 CSV 全量建表"
 
 
 def _create_dld_views(con) -> None:
-    """每次 update 都重建的三个只读视图（照旧 SQL）。"""
+    """每次 update 都重建的三个只读视图（显式列出保留列，规避 SELECT *）。"""
 
+    kept = ", ".join(KEEP_COLUMNS)
     con.execute(
         "CREATE OR REPLACE VIEW dld.land_transactions AS "
-        "SELECT * FROM dld.transactions WHERE property_type_en = 'Land'"
+        f"SELECT {kept} FROM dld.transactions WHERE property_type_en = 'Land'"
     )
     con.execute(
         """
@@ -869,7 +725,7 @@ def _create_dld_views(con) -> None:
     )
     con.execute(
         "CREATE OR REPLACE VIEW dld.transaction_date_quality_issues AS "
-        "SELECT * FROM dld.transactions "
+        f"SELECT {kept} FROM dld.transactions "
         "WHERE instance_date < DATE '1900-01-01' OR instance_date IS NULL"
     )
 
@@ -922,7 +778,10 @@ def _fetch_raw_weekly(con) -> list[dict]:
 
 
 def _ensure_base_tables(con, *, force: bool, skip_download: bool) -> str:
-    """确保 dld.transactions / dld.land_registry 存在，必要时触发下载。
+    """确保 dld.transactions 存在，必要时触发下载。
+
+    land_registry 自 2026-08 起不再入库（仓库内零消费，瘦身）；原始 CSV / 旧库
+    仍保留在 data/UAE/raw/dld/ 供需要时单独重建。
 
     下载触发条件：基表缺失且 raw 目录无 CSV（首次安装）、或 force=True ——
     两者都必须 not skip_download。下载输出的 CSV 覆盖到 data/UAE/raw/dld/ 后，
@@ -930,18 +789,16 @@ def _ensure_base_tables(con, *, force: bool, skip_download: bool) -> str:
     """
 
     txn_csv = RAW_DLD_DIR / "DLD_Transactions_ALL.csv"
-    reg_csv = RAW_DLD_DIR / "DLD_Land_Registry_ALL.csv"
     old_db = RAW_DLD_DIR / "DLD.duckdb"
     txn_ready = db.table_exists(con, "dld.transactions")
-    reg_ready = db.table_exists(con, "dld.land_registry")
-    csv_ready = txn_csv.exists() and reg_csv.exists()
+    csv_ready = txn_csv.exists()
 
     downloaded = False
-    if ((not (txn_ready and reg_ready) and not csv_ready) or force) and not skip_download:
+    if ((not txn_ready and not csv_ready) or force) and not skip_download:
         _download_all()
         downloaded = True
 
-    if txn_ready and reg_ready:
+    if txn_ready:
         if downloaded:
             return "基表已存在（本次已强制重新下载原始 CSV；基表保持原快照，重建需删表后重跑）"
         return "基表已存在"
@@ -952,11 +809,11 @@ def _ensure_base_tables(con, *, force: bool, skip_download: bool) -> str:
         return _build_base_from_csv(con)
     if downloaded:
         raise RuntimeError(
-            "下载已完成但 data/UAE/raw/dld/ 下仍缺少 DLD_Transactions_ALL.csv / "
-            "DLD_Land_Registry_ALL.csv，请检查下载日志"
+            "下载已完成但 data/UAE/raw/dld/ 下仍缺少 DLD_Transactions_ALL.csv，"
+            "请检查下载日志"
         )
     raise RuntimeError(
-        "dld.transactions / dld.land_registry 不存在，且 data/UAE/raw/dld/ 下"
+        "dld.transactions 不存在，且 data/UAE/raw/dld/ 下"
         "既无旧库（DLD.duckdb）也无原始 CSV；请先去下载（不带 --skip-download）"
     )
 
@@ -1439,6 +1296,12 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     con.begin()
     try:
         row_count = db.replace(con, "dld_investment_pipeline_weekly", weekly_rows)
+        # 瘦身后只保留 transactions 的 KEEP_COLUMNS 字典行；历史 land_registry
+        # 字典行一并清理（保证 update 幂等，不以库内旧行为准）。
+        con.execute(
+            "DELETE FROM meta_column_dictionary "
+            "WHERE object_name IN ('dld.transactions', 'dld.land_registry')"
+        )
         _upsert_column_dictionary(con)
         _upsert_indicator_dictionary(con)
         con.commit()
@@ -1590,10 +1453,22 @@ def self_check() -> str:
     assert formatted(5) == "5"
     assert formatted(5.5) == "5.500000"
     assert len(INDICATOR_DICTIONARY) == 6
-    assert len(COLUMN_DICTIONARY) == 79
+    assert len(COLUMN_DICTIONARY) == len(KEEP_COLUMNS) == 8
     assert all(len(row) == 7 for row in COLUMN_DICTIONARY)
+    assert {row[1] for row in COLUMN_DICTIONARY} == set(KEEP_COLUMNS)
     assert [row[0] for row in INDICATOR_DICTIONARY] == list(WEEKLY_CSV_HEADERS[1:])
     assert "FROM dld.transactions" in RAW_WEEKLY_SQL
+    # 周度 SQL 与视图所需列必须全部属于保留列
+    required = {
+        "actual_worth",
+        "instance_date",
+        "project_number",
+        "property_type_en",
+        "reg_type_en",
+        "trans_group_en",
+        "transaction_id",
+    }
+    assert required <= set(KEEP_COLUMNS)
     # 短序列冒烟：build_rows 输出形状与 None 传播
     small = [
         {

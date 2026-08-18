@@ -314,19 +314,20 @@ def test_indicator_dictionary_contract() -> None:
 
 
 def test_column_dictionary_contract() -> None:
-    assert len(dld.COLUMN_DICTIONARY) == 79
+    assert len(dld.COLUMN_DICTIONARY) == len(dld.KEEP_COLUMNS) == 8
     assert all(len(row) == 7 for row in dld.COLUMN_DICTIONARY)
     object_names = {row[0] for row in dld.COLUMN_DICTIONARY}
-    assert object_names == {"dld.transactions", "dld.land_registry"}
+    # 2026-08 瘦身：只保留 transactions（land_registry 已不再入库）
+    assert object_names == {"dld.transactions"}
+    assert {row[1] for row in dld.COLUMN_DICTIONARY} == set(dld.KEEP_COLUMNS)
 
 
 def test_column_dictionary_matches_legacy_metadata_rows() -> None:
-    # 迁移旧库后，meta_column_dictionary 应包含与内置常量一致的行；
-    # 此测试只做常量间的自洽检查（旧库内容在真实迁移验证中比对）
+    # 迁移旧库后，meta_column_dictionary 应只含与内置常量一致的保留列
+    # （旧库的完整 79 行列字典在真实迁移验证中人工比对）
     by_object: dict[str, dict[str, tuple]] = {}
     for row in dld.COLUMN_DICTIONARY:
         by_object.setdefault(row[0], {})[row[1]] = row
-    assert len(by_object["dld.transactions"]) == 47
-    assert len(by_object["dld.land_registry"]) == 32
+    assert set(by_object["dld.transactions"]) == set(dld.KEEP_COLUMNS)
+    assert "dld.land_registry" not in by_object
     assert by_object["dld.transactions"]["transaction_id"][2] == "VARCHAR"
-    assert by_object["dld.land_registry"]["property_id"][2] == "BIGINT"
