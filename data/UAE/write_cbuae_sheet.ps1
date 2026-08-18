@@ -62,9 +62,14 @@ try {
     }
     for ($column = 0; $column -lt $indicatorCount; $column++) {
         $targetColumn = $column + 1
+        # 单位优先取单指标（支付表数量/金额单位不同）；缺省退回整体单位
+        $perUnit = $payload.indicators[$column].unit
+        if ($null -eq $perUnit -or [string]::IsNullOrWhiteSpace([string]$perUnit)) {
+            $perUnit = $payload.unit
+        }
         $values[1, $targetColumn] = $indicatorNames[$column]
         $values[2, $targetColumn] = $payload.frequency
-        $values[3, $targetColumn] = $payload.unit
+        $values[3, $targetColumn] = $perUnit
         $values[4, $targetColumn] = $payload.source
         $values[5, $targetColumn] = (
             [datetime]::ParseExact(

@@ -10,6 +10,11 @@
 外资流向口径：非居民存款分项（个人/政府及非商业实体/其他金融企业）取自存款表
 「非居民」块(2)；外币存款总额取自按币种存款表；银行国外资产/负债取自国外资产负债表
 （All Banks）。均为月度存量，表征外资流入须结合环比增量解读，不含 FDI。
+
+支付体系月度数据：同批 CBUAE 月度公报的 Cheques(ICCS) 与 FTS 两表（表 36/37 或
+47/48）亦一并入库为 ``cbuae_monthly`` 的 8 个「支付」指标（金额百万迪拉姆、笔数
+为张/笔），口径为公报原样发布的年内累计(YTD，每年 1 月重置)；单月增量需在分析层
+差分。PDF 回退月（如 2020-01）不覆盖支付表。
 """
 
 from __future__ import annotations
@@ -86,7 +91,7 @@ PERIOD_PATTERN = re.compile(
 FILE_PERIOD_PATTERN = re.compile(r"^(20\d{2})-(0[1-9]|1[0-2])$")
 NUMBER_PATTERN = re.compile(r"-?\d[\d,]*(?:\.\d+)?")
 
-CBUAE_INDICATORS = (
+CBUAE_CREDIT_INDICATORS = (
     ("阿联酋政府存款", "存款"),
     ("阿联酋政府控股企业存款", "存款"),
     ("阿联酋政府信贷", "信贷"),
@@ -103,9 +108,53 @@ CBUAE_INDICATORS = (
     ("阿联酋:银行国外负债(Foreign Liabilities)", "负债"),
     ("阿联酋:国内信贷:个人信贷(Individual Credit)", "信贷"),
 )
+
+# 支付体系逐月数据（来自公报表36/37 或 47/48）：
+#   Cheques(ICCS)：SWIFT之外的国家动产清算，公报给年内累计(YTD)口径（每年1月重置）。
+#   FTS：UAE Funds Transfer System 的逐月累计笔数与金额（金额单位为百万迪拉姆）。
+CBUAE_PAYMENT_INDICATORS = (
+    ("阿联酋:支票清算笔数(累计)Cheques Cleared Number", "支付"),
+    ("阿联酋:支票清算金额(累计)Cheques Cleared Amount", "支付"),
+    ("阿联酋:FTS客户转账笔数(累计)Customer Transfers Number", "支付"),
+    ("阿联酋:FTS客户转账金额(累计)Customer Transfers Amount", "支付"),
+    ("阿联酋:FTS银行转账笔数(累计)Bank Transfers Number", "支付"),
+    ("阿联酋:FTS银行转账金额(累计)Bank Transfers Amount", "支付"),
+    ("阿联酋:FTS国内资金转账总额笔数(累计)Total Fund Transfers Number", "支付"),
+    ("阿联酋:FTS国内资金转账总额金额(累计)Total Fund Transfers Amount", "支付"),
+)
+
+CBUAE_INDICATORS = CBUAE_CREDIT_INDICATORS + CBUAE_PAYMENT_INDICATORS
 INDICATOR_ORDER = {name: index for index, (name, _) in enumerate(CBUAE_INDICATORS)}
+CREDIT_INDICATOR_COUNT = len(CBUAE_CREDIT_INDICATORS)
 
 CBUAE_PRIMARY_START = "2020-01"
+
+# 支付指标单位（数量 vs 金额不同，写入 指标字典 与 月度_CBUAE 表头单位行）
+PAYMENT_UNITS = {
+    "阿联酋:支票清算笔数(累计)Cheques Cleared Number": "张",
+    "阿联酋:支票清算金额(累计)Cheques Cleared Amount": "百万迪拉姆",
+    "阿联酋:FTS客户转账笔数(累计)Customer Transfers Number": "笔",
+    "阿联酋:FTS客户转账金额(累计)Customer Transfers Amount": "百万迪拉姆",
+    "阿联酋:FTS银行转账笔数(累计)Bank Transfers Number": "笔",
+    "阿联酋:FTS银行转账金额(累计)Bank Transfers Amount": "百万迪拉姆",
+    "阿联酋:FTS国内资金转账总额笔数(累计)Total Fund Transfers Number": "笔",
+    "阿联酋:FTS国内资金转账总额金额(累计)Total Fund Transfers Amount": "百万迪拉姆",
+}
+
+# 2020 起月频连续；更早公报只含季/年度参考列，不入连续月度序列
+PAYMENT_START = "2020-01"
+
+# 表内指标 slug -> CBUAE_INDICATORS 中的名称
+PAYMENT_METRIC_INDICATOR = {
+    "cheques_number": "阿联酋:支票清算笔数(累计)Cheques Cleared Number",
+    "cheques_amount": "阿联酋:支票清算金额(累计)Cheques Cleared Amount",
+    "customer_number": "阿联酋:FTS客户转账笔数(累计)Customer Transfers Number",
+    "customer_amount": "阿联酋:FTS客户转账金额(累计)Customer Transfers Amount",
+    "bank_number": "阿联酋:FTS银行转账笔数(累计)Bank Transfers Number",
+    "bank_amount": "阿联酋:FTS银行转账金额(累计)Bank Transfers Amount",
+    "total_number": "阿联酋:FTS国内资金转账总额笔数(累计)Total Fund Transfers Number",
+    "total_amount": "阿联酋:FTS国内资金转账总额金额(累计)Total Fund Transfers Amount",
+}
 
 
 @dataclass(frozen=True)
@@ -456,6 +505,155 @@ def _extract_foreign_assets_liabilities(
     )
 
 
+def _find_row_contains(sheet: Worksheet, tokens: tuple[str, ...]) -> int | None:
+    """查找首列标签包含 ``tokens`` 中任一子串的行；找不到返回 ``None``。"""
+
+    for row_number, row in enumerate(sheet.iter_rows(), start=1):
+        label = _row_default_label(row)
+        if any(token in label for token in tokens):
+            return row_number
+    return None
+
+
+def _extract_payment_sheet(
+    sheet: Worksheet, kind: str
+) -> dict[str, dict[str, Decimal]]:
+    """提取 Cheques(FTS 之外的支票清算) 表：period -> {metric: 年内累计值}。
+
+    ``kind='cheques'`` 时提取去 "Number of Cheques" 与 "Amount" 两行（金额百万迪拉姆）。
+    """
+
+    try:
+        columns = _header_columns(sheet)
+    except ValueError:
+        return {}
+    if kind == "cheques":
+        number_row = _find_row_contains(sheet, ("number of che",))
+        amount_row = _find_row_contains(sheet, ("amount",))
+        extracted: dict[str, dict[str, Decimal]] = {}
+        for metric, row_number in (
+            ("cheques_number", number_row),
+            ("cheques_amount", amount_row),
+        ):
+            for period, value in _extract_one_row(sheet, columns, row_number).items():
+                extracted.setdefault(period, {})[metric] = value
+        return extracted
+    raise ValueError(f"Unsupported payment sheet kind: {kind}")
+
+
+def _extract_fts_rows(sheet: Worksheet) -> dict[str, dict[str, Decimal]]:
+    """提取 FTS 表三块（Customer / Bank / Total）的笔数与金额。
+
+    行结构：分区标题（Customer to Customer / Bank to Bank / Total Domestic Fund
+    Transfers）后跟 "Number of Transfers" 与 "Amount" 两行。
+    """
+
+    try:
+        columns = _header_columns(sheet)
+    except ValueError:
+        return {}
+    section: str | None = None
+    rows_by_metric: dict[str, int] = {}
+    for row_number, row in enumerate(sheet.iter_rows(), start=1):
+        label = _row_default_label(row)
+        if "customer to customer" in label:
+            section = "customer"
+        elif "bank to bank" in label:
+            section = "bank"
+        elif "total domestic" in label:
+            section = "total"
+        if section is None:
+            continue
+        if "number of trans" in label:
+            rows_by_metric[f"{section}_number"] = row_number
+        elif label.startswith("amount"):
+            rows_by_metric[f"{section}_amount"] = row_number
+
+    extracted: dict[str, dict[str, Decimal]] = {}
+    for metric, row_number in rows_by_metric.items():
+        for period, value in _extract_one_row(sheet, columns, row_number).items():
+            extracted.setdefault(period, {})[metric] = value
+    return extracted
+
+
+def extract_payment_rows(path: Path) -> list[dict]:
+    """从一份公报工作簿提取 Cheques 与 FTS 两表的逐月累计长表行。
+
+    返回 dict 列表：{period: date, indicator, value, source_period, source_file}。
+    仅解析 xlsx；PDF 回退不覆盖支付表（pdf 为主的月份该项留空）。
+    """
+
+    workbook = load_workbook(path, read_only=True, data_only=True)
+    try:
+        cheques_sheet: Worksheet | None = None
+        fts_sheet: Worksheet | None = None
+        for sheet in workbook.worksheets:
+            text = _sheet_text(sheet)
+            if cheques_sheet is None and "cheques clear" in text and "number of che" in text:
+                cheques_sheet = sheet
+            # FTS 表按表名（48/37 FTS）或文本特征识别；勿要求 'bank to bank'
+            # 出现在表头前 10 行（2020 等早期公报该分区行还在更下方）。
+            if fts_sheet is None and (
+                "fts" in _normalize_label(sheet.title)
+                or "fund transfer" in text
+                or "uaefts" in text
+            ):
+                fts_sheet = sheet
+        source_period = _source_period(path)
+        combined: dict[str, dict[str, Decimal]] = {}
+        if cheques_sheet is not None:
+            for period, metrics in _extract_payment_sheet(cheques_sheet, "cheques").items():
+                combined.setdefault(period, {}).update(metrics)
+        if fts_sheet is not None:
+            for period, metrics in _extract_fts_rows(fts_sheet).items():
+                combined.setdefault(period, {}).update(metrics)
+    finally:
+        workbook.close()
+
+    rows: list[dict] = []
+    for period, metrics in combined.items():
+        for metric, value in metrics.items():
+            indicator = PAYMENT_METRIC_INDICATOR.get(metric)
+            if indicator is None:
+                continue
+            rows.append(
+                {
+                    "period": _month_end(period),
+                    "indicator": indicator,
+                    "value": value,
+                    "source_period": source_period,
+                    "source_file": path.name,
+                }
+            )
+    return rows
+
+
+def _indicator_unit(name: str) -> str:
+    """返回单个指标的计量单位（支付表数量/金额单位不同）。"""
+
+    return PAYMENT_UNITS.get(name, UNIT)
+
+
+def _payment_rows_selected(
+    rows: Iterable[dict], start_period: str
+) -> list[dict]:
+    """为每个 (period, indicator) 保留最新 vintage 的支付长表行，并过滤到月频区间。"""
+
+    best: dict[tuple, dict] = {}
+    for row in rows:
+        period = row["period"].strftime("%Y-%m")
+        if period < start_period:
+            continue
+        key = (period, row["indicator"])
+        current = best.get(key)
+        if current is None or (row["source_period"], row["source_file"]) > (
+            current["source_period"],
+            current["source_file"],
+        ):
+            best[key] = row
+    return list(best.values())
+
+
 def extract_workbook(path: Path) -> list[Observation]:
     """从一个工作簿提取所有完整的期间观测。"""
 
@@ -659,11 +857,13 @@ def _transaction(con) -> Iterator[None]:
 
 
 def _long_rows(observations: Iterable[Observation]) -> list[dict]:
-    """把宽表观测展开为 (period, indicator) 长表入库行。"""
+    """把宽表观测展开为 (period, indicator) 长表入库行（仅信贷/存贷款组）。"""
 
     rows: list[dict] = []
     for observation in observations:
-        for (indicator, _), value in zip(CBUAE_INDICATORS, observation.values):
+        for (indicator, _), value in zip(
+            CBUAE_CREDIT_INDICATORS, observation.values
+        ):
             if value is None:
                 # 该指标本月无值（如企业信贷未单列或公报缺失），不入库
                 continue
@@ -684,7 +884,7 @@ def _dictionary_rows() -> list[dict]:
         {
             "indicator_name": name,
             "frequency": "月",
-            "unit": UNIT,
+            "unit": _indicator_unit(name),
             "source": SOURCE_NAME,
             "type": indicator_type,
             "industry": INDUSTRY,
@@ -708,11 +908,16 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     """
 
     observations: list[Observation] = []
+    payment_rows: list[dict] = []
     errors: list[str] = []
     workbook_paths = sorted(RAW_DIR.glob("20??-??.xlsx"))
     for path in workbook_paths:
         try:
             observations.extend(extract_workbook(path))
+        except (OSError, ValueError) as exc:
+            errors.append(f"{path.name}: {exc}")
+        try:
+            payment_rows.extend(extract_payment_rows(path))
         except (OSError, ValueError) as exc:
             errors.append(f"{path.name}: {exc}")
 
@@ -732,14 +937,19 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         end_period=None,
     )
 
-    rows = _long_rows(selected)
+    payment_selected = _payment_rows_selected(payment_rows, primary_start)
+    rows = _long_rows(selected) + payment_selected
     with _transaction(con):
         db.replace(con, "cbuae_monthly", rows)
         db.upsert_dictionary_rows(con, _dictionary_rows())
 
+    payment_periods = sorted({row["period"].strftime("%Y-%m") for row in payment_selected})
     note = (
         f"{len(selected)} 个观察月（{selected[0].period} 至 {selected[-1].period}）"
-        f"× {len(CBUAE_INDICATORS)} 指标；vintage 修订 {revised_periods} 期"
+        f"× {len(CBUAE_CREDIT_INDICATORS)} 存贷款指标；"
+        f"支付体系 {len(CBUAE_PAYMENT_INDICATORS)} 指标"
+        f"（{'/'.join((payment_periods[0], payment_periods[-1])) if payment_periods else '无'}）；"
+        f"vintage 修订 {revised_periods} 期"
     )
     if errors:
         note += f"；源警告 {len(errors)} 条，首条：{errors[0]}"
@@ -800,7 +1010,12 @@ def merge(workbook_path: Path) -> dict:
         "source": SOURCE_NAME,
         "updated_at": date.today().isoformat(),
         "indicators": [
-            {"name": name, "type": indicator_type, "industry": INDUSTRY}
+            {
+                "name": name,
+                "type": indicator_type,
+                "industry": INDUSTRY,
+                "unit": _indicator_unit(name),
+            }
             for name, indicator_type in CBUAE_INDICATORS
         ],
         "records": records_latest_first(observations),

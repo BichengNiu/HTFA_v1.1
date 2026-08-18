@@ -464,7 +464,7 @@ def _render_ded_chart(
     source_text = "、".join(
         dict.fromkeys(metadata.source for metadata in data.metadata.values())
     )
-    title = "迪拜企业发证活动与新发执照"
+    title = "迪拜新发执照数"
     render_pyplot_figure(
         st_obj,
         build_ded_figure(

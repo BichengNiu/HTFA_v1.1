@@ -83,6 +83,8 @@ def test_pmi_figure_plots_single_line() -> None:
     lines = figure.axes[0].get_lines()
     assert [line.get_label() for line in lines] == [PMI_INDICATOR]
     assert figure.axes[0].get_ylabel() == "点"
+    # 单序列图不需要图例
+    assert len(figure.legends) == 0
     assert any(text.get_text() == "数据来源：S&P Global" for text in figure.texts)
 
 

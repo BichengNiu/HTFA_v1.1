@@ -1,9 +1,9 @@
-"""DED 迪拜企业发证活动与新发执照的月度分组柱状图。
+"""DED 迪拜当月新发执照数的月度柱状图。
 
 ``月度_DED`` 沿用页面的前六行元数据协议，但两列单位不同（企业“家”、许可“张”），
-因此用定制 loader 读取（与 ``foreign_labor`` 的定制解析一致），再绘制同一坐标轴上的
-分组柱：当月有发证活动的企业数（黑）与当月新发执照数（深蓝）按月并排。窗口由调用方
-给定（与「财政金融」区块锚定到同一最新月，避开 DED 快照尾部欠计噪声）。
+因此用定制 loader 读取（与 ``foreign_labor`` 的定制解析一致）。图表只展示「当月
+新发执照数」（执照号筛重）单条柱，不再叠加「有发证活动企业数」。窗口由调用方给定
+（与「财政金融」区块锚定到同一最新月，避开 DED 快照尾部欠计噪声）。
 """
 
 from __future__ import annotations
@@ -14,12 +14,10 @@ from typing import Any
 
 import pandas as pd
 from matplotlib.figure import Figure
-from matplotlib.patches import Patch
 
 from dashboard.analysis.uae.oil.alignment import within_month_window
 from dashboard.analysis.uae.plot_helpers import (
     CHINESE_FONT_FAMILY,
-    add_bottom_legend,
     add_source_note,
     annotate_war,
     apply_strict_month_ticks,
@@ -47,13 +45,9 @@ DED_INDICATORS: tuple[tuple[str, str], ...] = (
     (ENTERPRISES_DISPLAY, ENTERPRISES_INDICATOR),
     (LICENCES_DISPLAY, LICENCES_INDICATOR),
 )
-DED_SERIES = (
-    (ENTERPRISES_DISPLAY, "#000000"),
-    (LICENCES_DISPLAY, "#1F4E79"),
-)
+LICENCES_COLOR = "#1F4E79"
 ALLOWED_UNITS = {"家", "张"}
-BAR_OFFSET_DAYS = 7
-BAR_WIDTH = 12
+BAR_WIDTH = 26
 
 
 @dataclass(frozen=True)
@@ -200,37 +194,29 @@ def build_ded_figure(
     source_text: str,
     last_month: pd.Period,
 ) -> Figure:
-    """绘制有发证活动企业数与当月新发执照数的月度分组柱状图（窗口 [last_month-36, last_month]）。"""
+    """绘制当月新发执照数的月度柱状图（窗口 [last_month-36, last_month]，单序列无图例）。"""
 
     display_values = within_month_window(
         values,
         first_month=last_month - 36,
         last_month=last_month,
     )
-    if display_values.dropna(how="all").empty:
+    if display_values[LICENCES_DISPLAY].dropna().empty:
         raise ValueError(f"{title}没有可绘制的有效数据")
 
     figure, axis = new_ts_figure_axis()
-    handles: list[Patch] = []
-    for offset, (display_name, color) in zip(
-        (-BAR_OFFSET_DAYS, BAR_OFFSET_DAYS),
-        DED_SERIES,
-        strict=True,
-    ):
-        axis.bar(
-            display_values.index + pd.Timedelta(days=offset),
-            display_values[display_name],
-            width=BAR_WIDTH,
-            color=color,
-            edgecolor="#6B7280",
-            linewidth=0.6,
-            alpha=0.72,
-            label=display_name,
-            zorder=2,
-        )
-        handles.append(Patch(facecolor=color, label=display_name))
+    axis.bar(
+        display_values.index,
+        display_values[LICENCES_DISPLAY],
+        width=BAR_WIDTH,
+        color=LICENCES_COLOR,
+        edgecolor="#6B7280",
+        linewidth=0.6,
+        alpha=0.72,
+        zorder=2,
+    )
 
-    axis.set_ylabel("家 / 张", fontsize=12, color="#000000")
+    axis.set_ylabel("张", fontsize=12, color="#000000")
     axis.set_ylim(bottom=0)
     axis.tick_params(axis="y", colors="#000000")
     axis.spines["left"].set_color("#000000")
@@ -242,26 +228,20 @@ def build_ded_figure(
     )
     apply_strict_month_ticks(axis, display_values.index)
     annotate_war(axis)
-    add_bottom_legend(
-        figure,
-        handles,
-        [display_name for display_name, _ in DED_SERIES],
-        ncol=len(DED_SERIES),
-    )
     finish_dual_axis_figure(figure, top=0.90)
     add_source_note(figure, source_text)
     return figure
 
 
 __all__ = [
-    "BAR_OFFSET_DAYS",
+    "ALLOWED_UNITS",
     "BAR_WIDTH",
     "DED_INDICATORS",
-    "DED_SERIES",
     "DED_SHEET",
     "DedData",
     "ENTERPRISES_DISPLAY",
     "ENTERPRISES_INDICATOR",
+    "LICENCES_COLOR",
     "LICENCES_DISPLAY",
     "LICENCES_INDICATOR",
     "build_ded_figure",
