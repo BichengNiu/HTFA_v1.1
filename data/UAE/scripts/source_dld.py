@@ -56,9 +56,10 @@ import urllib.request
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-DATA_DIR = Path(__file__).resolve().parent
-if str(DATA_DIR) not in sys.path:
-    sys.path.insert(0, str(DATA_DIR))
+SCRIPTS_DIR = Path(__file__).resolve().parent
+DATA_DIR = SCRIPTS_DIR.parent
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
 
 import db  # noqa: E402
 
@@ -95,7 +96,7 @@ KEEP_COLUMNS = (
 
 # 工作簿写表（merge() 使用）
 WORKSHEET_NAME = "周度_迪拜房地产"
-WORKBOOK_MERGER = DATA_DIR / "merge_dld_indices_into_uae_workbook.ps1"
+WORKBOOK_MERGER = SCRIPTS_DIR / "merge_dld_indices_into_uae_workbook.ps1"
 
 # ---------------------------------------------------------------------------
 # 周度原始口径 SQL：移植自 generate_dld_investment_indices.py 的 RAW_WEEKLY_SQL，

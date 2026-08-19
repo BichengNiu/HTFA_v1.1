@@ -45,9 +45,10 @@ try:  # Windows 控制台 GBK 下避免中文乱码
 except Exception:
     pass
 
-DATA_DIR = Path(__file__).resolve().parent
-if str(DATA_DIR) not in sys.path:
-    sys.path.insert(0, str(DATA_DIR))
+SCRIPTS_DIR = Path(__file__).resolve().parent
+DATA_DIR = SCRIPTS_DIR.parent
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
 
 from db import (  # noqa: E402
     connect,

@@ -13,7 +13,8 @@ from typing import Any, Iterable
 
 import duckdb
 
-DATA_DIR = Path(__file__).resolve().parent
+SCRIPTS_DIR = Path(__file__).resolve().parent
+DATA_DIR = SCRIPTS_DIR.parent
 DB_PATH = DATA_DIR / "uae.duckdb"
 
 # --------------------------------------------------------------------------
@@ -157,6 +158,16 @@ _BASE_DDL = (
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS uaewps_monthly (
+        period      DATE           NOT NULL,
+        indicator   VARCHAR        NOT NULL,
+        value       DECIMAL(28, 3),
+        source_file VARCHAR,
+        note        VARCHAR,
+        PRIMARY KEY (period, indicator)
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS dld_investment_pipeline_weekly (
         week_end                          DATE PRIMARY KEY,
         confirmed_new_projects_28d        DOUBLE,
@@ -165,6 +176,40 @@ _BASE_DDL = (
         project_launch_index              DOUBLE,
         offplan_absorption_index          DOUBLE,
         project_commercial_transition_index DOUBLE
+    )
+    """,
+    # --- EU↔UAE / US↔UAE 航空客货运（月度） ---
+    """
+    CREATE TABLE IF NOT EXISTS eurostat_air_monthly (
+        period   DATE           NOT NULL,
+        dataset  VARCHAR        NOT NULL,
+        geo      VARCHAR        NOT NULL,
+        partner  VARCHAR        NOT NULL,
+        schedule VARCHAR        NOT NULL,
+        unit     VARCHAR        NOT NULL,
+        tra_meas VARCHAR        NOT NULL,
+        value    DECIMAL(28, 3),
+        PRIMARY KEY (period, dataset, geo, partner, schedule, unit, tra_meas)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS dot_t100_monthly (
+        period      DATE           NOT NULL,
+        indicator   VARCHAR        NOT NULL,
+        value       DECIMAL(28, 3),
+        source_file VARCHAR,
+        PRIMARY KEY (period, indicator)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS emirates_post_monthly (
+        period      DATE    NOT NULL,
+        origin_city VARCHAR NOT NULL,
+        destn_city  VARCHAR NOT NULL,
+        service     VARCHAR NOT NULL,
+        volume      BIGINT,
+        raw_rows    BIGINT,
+        PRIMARY KEY (period, origin_city, destn_city, service)
     )
     """,
     # --- metadata ---

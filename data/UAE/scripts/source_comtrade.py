@@ -25,9 +25,10 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Iterator
 
-DATA_DIR = Path(__file__).resolve().parent
-if str(DATA_DIR) not in sys.path:
-    sys.path.insert(0, str(DATA_DIR))
+SCRIPTS_DIR = Path(__file__).resolve().parent
+DATA_DIR = SCRIPTS_DIR.parent
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
 
 import db  # noqa: E402
 from source_comtrade_scope import (  # noqa: E402
@@ -45,10 +46,10 @@ from source_comtrade_scope import (  # noqa: E402
 
 RAW_DIR = DATA_DIR / "raw" / "comtrade"
 REFERENCE_DIR = RAW_DIR / "reference"
-PROCESSED_DIR = DATA_DIR / "processed"
+PROCESSED_DIR = SCRIPTS_DIR / "processed"
 REPORTERS_PATH = REFERENCE_DIR / "reporters.json"
 QUALITY_PATH = RAW_DIR / "quality_report.json"
-MERGE_SCRIPT = DATA_DIR / "merge_with_excel.ps1"
+MERGE_SCRIPT = SCRIPTS_DIR / "merge_with_excel.ps1"
 
 API_ROOT = "https://comtradeapi.un.org/data/v1/get"
 REPORTERS_URL = "https://comtradeapi.un.org/files/v1/app/reference/Reporters.json"

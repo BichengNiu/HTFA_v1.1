@@ -37,7 +37,9 @@ htmlcov/
 !/data/UAE/*.py
 !/data/UAE/*.ps1
 !/data/UAE/*.bat
-!/data/UAE/auto/*.bat
+!/data/UAE/scripts/*.py
+!/data/UAE/scripts/*.ps1
+!/data/UAE/scripts/*.bat
 !/data/UAE/*.md
 !/data/UAE/数据说明.md
 # 唯一推送的数据库文件（经 Git LFS，见 .gitattributes）

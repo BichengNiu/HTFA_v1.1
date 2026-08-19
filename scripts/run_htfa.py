@@ -1,7 +1,7 @@
 """Update Ts once and launch HTFA in the current Python process.
 
 Data updates no longer run at startup: the DuckDB pipeline under ``data/``
-is triggered explicitly via ``data/UAE/update_data.bat`` / ``merge_workbook.bat``.
+is triggered explicitly via ``data/UAE/scripts/update_data.bat`` / ``merge_workbook.bat``.
 """
 
 from __future__ import annotations
@@ -92,8 +92,8 @@ def main(
 ) -> int:
     """Check Ts once, then start Streamlit.
 
-    Data refreshes are no longer performed here; run ``data/UAE/update_data.py``
-    and ``data/UAE/merge_workbook.py`` explicitly when new data is available.
+    Data refreshes are no longer performed here; run ``data/UAE/scripts/update_data.py``
+    and ``data/UAE/scripts/merge_workbook.py`` explicitly when new data is available.
     """
 
     prepare = preparer or prepare_ts_runtime

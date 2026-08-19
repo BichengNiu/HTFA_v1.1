@@ -33,7 +33,8 @@ try:
 except Exception:
     pass
 
-DATA_DIR = Path(__file__).resolve().parent
+SCRIPTS_DIR = Path(__file__).resolve().parent
+DATA_DIR = SCRIPTS_DIR.parent
 RAW_DED = DATA_DIR / "raw" / "ded"
 DEFAULT_URLS_FILE = RAW_DED / "news_urls.txt"
 DEFAULT_PENDING = RAW_DED / "official_pending.csv"

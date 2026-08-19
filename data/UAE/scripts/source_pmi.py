@@ -29,9 +29,10 @@ from urllib.request import Request, urlopen
 
 from openpyxl import load_workbook
 
-DATA_DIR = Path(__file__).resolve().parent
-if str(DATA_DIR) not in sys.path:
-    sys.path.insert(0, str(DATA_DIR))
+SCRIPTS_DIR = Path(__file__).resolve().parent
+DATA_DIR = SCRIPTS_DIR.parent
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
 
 import db  # noqa: E402
 from _excel_helpers import (  # noqa: E402

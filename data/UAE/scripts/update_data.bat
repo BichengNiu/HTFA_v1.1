@@ -1,14 +1,14 @@
 @echo off
 rem Fetch, clean and load all data sources into data\uae.duckdb.
 rem Usage: update_data.bat [--source cbuae,gfs] [--skip-download] [--force]
-cd /d "%~dp0..\.."
+cd /d "%~dp0..\..\.."
 if errorlevel 1 goto :failed
 if not exist "runtime\python.exe" (
     echo [ERROR] Bundled runtime\python.exe was not found.
     echo [HINT] Run scripts\windows\setup_runtime.bat first.
     goto :failed
 )
-"runtime\python.exe" -u "data\UAE\update_data.py" %*
+"runtime\python.exe" -u "data\UAE\scripts\update_data.py" %*
 if errorlevel 1 (
     echo.
     echo [ERROR] At least one source failed. Review the messages above.

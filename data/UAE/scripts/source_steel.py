@@ -24,9 +24,10 @@ from pathlib import Path
 from typing import Any, Iterator, NamedTuple
 from urllib.request import Request, urlopen
 
-DATA_DIR = Path(__file__).resolve().parent
-if str(DATA_DIR) not in sys.path:
-    sys.path.insert(0, str(DATA_DIR))
+SCRIPTS_DIR = Path(__file__).resolve().parent
+DATA_DIR = SCRIPTS_DIR.parent
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
 
 import db  # noqa: E402
 
@@ -38,8 +39,8 @@ RAW_DIR = DATA_DIR / "raw" / "steel"
 RAW_PATH = RAW_DIR / "mesteel_monthly_prices.json"
 MANIFEST_PATH = RAW_DIR / "source_manifest.json"
 # merge_workbook.ps1 硬编码从脚本旁 processed/ 读质量报告，路径必须一致
-QUALITY_PATH = DATA_DIR / "processed" / "quality_report.json"
-MERGE_SCRIPT = DATA_DIR / "merge_workbook.ps1"
+QUALITY_PATH = SCRIPTS_DIR / "processed" / "quality_report.json"
+MERGE_SCRIPT = SCRIPTS_DIR / "merge_workbook.ps1"
 
 TARGET_SHEET = "月度_MEsteel"
 SOURCE_NAME = "MEsteel"
