@@ -7,13 +7,11 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
 
 import pandas as pd
 from matplotlib.axes import Axes
 from matplotlib.dates import date2num
 from matplotlib.figure import Figure
-from matplotlib.lines import Line2D
 from matplotlib.transforms import blended_transform_factory
 import numpy as np
 from Ts.TsPlots.style import apply_fonts
@@ -33,6 +31,9 @@ SOURCE_DISPLAY_NAMES = {
     "尼泊尔 DoFE monthly final labour approval": "尼泊尔外国就业局",
     "Bangladesh BMET": "孟加拉国人力就业培训局",
     "孟加拉国 BMET/OEP Country Clearance": "孟加拉国人力就业培训局",
+    "Dubai Land Department": "迪拜土地局",
+    "Dubai Land Department (Mo'asher)": "迪拜土地局（Mo'asher）",
+    "IMF PortWatch (HDX mirror)": "IMF PortWatch",
 }
 
 
@@ -68,7 +69,7 @@ def source_note(source_text: str) -> str:
 
 
 def add_source_note(figure: Figure, source_text: str) -> None:
-    """把来源统一放在图形左下角边距内。"""
+    """把来源统一放在图形左下角边距内（字号对齐模板 NOTE_FONTSIZE）。"""
 
     figure.text(
         0.04,
@@ -76,7 +77,7 @@ def add_source_note(figure: Figure, source_text: str) -> None:
         source_note(source_text),
         ha="left",
         va="bottom",
-        fontsize=9.5,
+        fontsize=14,
         color="#222222",
         fontfamily=CHINESE_FONT_FAMILY,
         clip_on=False,
@@ -105,7 +106,11 @@ def add_bottom_legend(
     ncol: int,
     y: float = 0.115,
 ) -> None:
-    """在图形底部添加统一的水平图例。"""
+    """在图形底部添加统一的水平图例（字号对齐模板 LEGEND_FONTSIZE）。
+
+    仅手动绘制的图表（如外籍劳动力双柱图）使用；走模板的图表由
+    ``plot_series`` 的 ``BottomLegend`` 托管。
+    """
 
     figure.legend(
         handles=handles,
@@ -113,21 +118,9 @@ def add_bottom_legend(
         loc="lower center",
         bbox_to_anchor=(0.5, y),
         frameon=False,
-        prop={"family": CHINESE_FONT_FAMILY[0], "size": 10},
+        prop={"family": CHINESE_FONT_FAMILY[0], "size": 15},
         ncol=ncol,
     )
-
-
-def matching_line_handles(axis: Axes, labels: Sequence[str]) -> list[Line2D]:
-    """按标签返回轴上的数据线句柄（顺序与 ``labels`` 一致）。
-
-    Ts ``plot_series`` 会在轴上额外放置未命名（``_childN``）的占位/参考线
-    （如战争线），不能直接取 ``axis.get_lines()[:n]``；按标签过滤才能保证
-    图例中的线与图中实际数据线一一对应。
-    """
-
-    by_label = {line.get_label(): line for line in axis.get_lines()}
-    return [by_label[label] for label in labels if label in by_label]
 
 
 def annotate_war(axis: Axes) -> None:
@@ -238,17 +231,33 @@ def finish_dual_axis_figure(
         bottom=0.30,
         top=top,
     )
+    apply_htfa_fonts(figure)
+
+
+def apply_htfa_fonts(figure: Figure) -> None:
+    """把 Ts 模板默认字体（Times New Roman + 仿宋）统一覆盖为微软雅黑。
+
+    模板在 ``plot_series`` 内部通过 ``apply_fonts`` 配置 rcParams；本项目
+    豁免项要求全图使用微软雅黑，此函数在图完成后把坐标轴标题、刻度、
+    轴内文字、图例与图注一并改为 ``CHINESE_FONT_FAMILY``。
+    """
+
     for axis in figure.axes:
-        axis.tick_params(axis="both", labelsize=10.5)
         axis.title.set_fontfamily(CHINESE_FONT_FAMILY)
         axis.xaxis.label.set_fontfamily(CHINESE_FONT_FAMILY)
         axis.yaxis.label.set_fontfamily(CHINESE_FONT_FAMILY)
-        axis.xaxis.label.set_size(12)
-        axis.yaxis.label.set_size(12)
         for label in (*axis.get_xticklabels(), *axis.get_yticklabels()):
             label.set_fontfamily(CHINESE_FONT_FAMILY)
         for text in axis.texts:
             text.set_fontfamily(CHINESE_FONT_FAMILY)
+    for legend in figure.legends:
+        for text in legend.get_texts():
+            text.set_fontfamily(CHINESE_FONT_FAMILY)
+        legend_title = legend.get_title()
+        if legend_title.get_text():
+            legend_title.set_fontfamily(CHINESE_FONT_FAMILY)
+    for text in figure.texts:
+        text.set_fontfamily(CHINESE_FONT_FAMILY)
 
 
 __all__ = [
@@ -259,9 +268,9 @@ __all__ = [
     "WAR_START_DATE",
     "add_source_note",
     "annotate_war",
+    "apply_htfa_fonts",
     "apply_strict_month_ticks",
     "finish_dual_axis_figure",
-    "matching_line_handles",
     "new_ts_figure_axis",
     "normalize_ts_axis",
     "source_note",

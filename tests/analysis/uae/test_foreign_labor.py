@@ -93,9 +93,10 @@ def test_chart_uses_the_latest_common_month_and_two_requested_lines() -> None:
     ]
     assert nepal_axis.get_ylabel() == "人数（人）"
     assert bangladesh_axis.get_ylabel() == "人数（人）"
-    assert nepal_axis.yaxis.label.get_color() == "#000000"
-    assert bangladesh_axis.yaxis.label.get_color() == "#000000"
-    assert nepal_axis.spines["top"].get_visible()
+    assert nepal_axis.yaxis.label.get_color() in ("#000000", "black")
+    assert bangladesh_axis.yaxis.label.get_color() in ("#000000", "black")
+    # 脊线与模板默认对齐：主轴保留下/左，右轴保留右，上脊线隐藏
+    assert not nepal_axis.spines["top"].get_visible()
     assert nepal_axis.spines["bottom"].get_visible()
     assert nepal_axis.spines["left"].get_visible()
     assert bangladesh_axis.spines["right"].get_visible()

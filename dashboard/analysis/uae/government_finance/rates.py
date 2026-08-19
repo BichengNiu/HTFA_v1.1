@@ -15,14 +15,11 @@ from matplotlib.figure import Figure
 from Ts.TsPlots import plot_series
 
 from dashboard.analysis.uae.plot_helpers import (
-    WAR_LINE_COLOR,
     WAR_START_DATE,
-    add_bottom_legend,
-    add_source_note,
     annotate_war,
-    finish_dual_axis_figure,
-    matching_line_handles,
+    apply_htfa_fonts,
     normalize_ts_axis,
+    source_note,
 )
 from dashboard.analysis.uae.sheet_reader import (
     SheetSeriesMetadata,
@@ -49,19 +46,13 @@ RATES_INDICATORS: tuple[tuple[str, str], ...] = (
     (US_SOFR_12M_DISPLAY, US_SOFR_12M_INDICATOR),
 )
 
-# 阿联酋两条黑线（隔夜实线、1年虚线），美国两条深蓝线（隔夜实线、SOFR 1年虚线）
+# 序列名即图例文本；颜色与线型由模板色板/循环接管。
 RATES_SERIES = (
-    (EIBOR_OVERNIGHT_DISPLAY, "#000000"),
-    (EIBOR_ONEYEAR_DISPLAY, "#000000"),
-    (US_OVERNIGHT_DISPLAY, "#1F4E79"),
-    (US_SOFR_12M_DISPLAY, "#1F4E79"),
+    EIBOR_OVERNIGHT_DISPLAY,
+    EIBOR_ONEYEAR_DISPLAY,
+    US_OVERNIGHT_DISPLAY,
+    US_SOFR_12M_DISPLAY,
 )
-LINE_STYLES = {
-    EIBOR_OVERNIGHT_DISPLAY: "-",
-    EIBOR_ONEYEAR_DISPLAY: "--",
-    US_OVERNIGHT_DISPLAY: "-",
-    US_SOFR_12M_DISPLAY: "--",
-}
 
 ALLOWED_FREQUENCIES = {"日", "日度", "月", "月度"}
 
@@ -119,12 +110,7 @@ def build_rates_figure(
     periods = pd.PeriodIndex(pd.DatetimeIndex(selected.index), freq="M")
     last_month = periods.max()
     display_values = selected.loc[periods >= last_month - 36]
-    frame = pd.DataFrame(
-        {
-            display_name: display_values[display_name]
-            for display_name, _ in RATES_SERIES
-        }
-    )
+    frame = pd.DataFrame({name: display_values[name] for name in RATES_SERIES})
     figure, returned_axis = plot_series(
         frame,
         facet=False,
@@ -132,44 +118,17 @@ def build_rates_figure(
         xtitle="",
         ytitle="％",
         ytitle_position="side",
-        colors=[color for _, color in RATES_SERIES],
-        linewidth=2.2,
-        markersize=0,
-        max_ticks=8,
         year_ruler=True,
-        vlines=WAR_START_DATE,
-        vline_color=WAR_LINE_COLOR,
-        vline_linestyle="--",
-        vline_linewidth=1.5,
-        show_legend=False,
-        note=None,
         grid=True,
-        title_loc="center",
-        title_pad=14,
+        vlines=WAR_START_DATE,
+        show_legend=True,
+        note=source_note(source_text),
+        note_loc="left",
+        figsize=(9.4, 6.2),
     )
     axis = normalize_ts_axis(returned_axis)
-    axis.title.set_fontweight("normal")
-    axis.set_ylabel("％", fontsize=12)
-    for spine in axis.spines.values():
-        spine.set_visible(True)
-        spine.set_color("#6B7280")
-        spine.set_linewidth(0.9)
-    # Ts 自动循环线型；按标签取真实数据线后手工指定 实线/虚线
-    lines = matching_line_handles(
-        axis,
-        [display_name for display_name, _ in RATES_SERIES],
-    )
-    for line, (display_name, _) in zip(lines, RATES_SERIES, strict=True):
-        line.set_linestyle(LINE_STYLES[display_name])
     annotate_war(axis)
-    add_bottom_legend(
-        figure,
-        lines,
-        [display_name for display_name, _ in RATES_SERIES],
-        ncol=2,
-    )
-    finish_dual_axis_figure(figure, top=0.90)
-    add_source_note(figure, source_text)
+    apply_htfa_fonts(figure)
     return figure
 
 
@@ -178,7 +137,6 @@ __all__ = [
     "EIBOR_ONEYEAR_INDICATOR",
     "EIBOR_OVERNIGHT_DISPLAY",
     "EIBOR_OVERNIGHT_INDICATOR",
-    "LINE_STYLES",
     "RATES_INDICATORS",
     "RATES_SERIES",
     "RATES_SHEET",

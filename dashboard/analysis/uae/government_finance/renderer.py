@@ -77,6 +77,41 @@ from dashboard.analysis.uae.metrics import (
 from dashboard.analysis.uae.oil.alignment import within_month_window
 from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
 
+FINANCE_EXPLANATION = """
+- **利率**：EIBOR 隔夜/1 年期为日度拆借利率，美国对照为有效联邦基金利率（EFFR）与 SOFR 12 个月期限利率；
+  四条序列统一按自然月取算术平均（单位 %）。
+- **政府贷款 / 政府控股企业贷款增速**：CBUAE 月度存量（百万迪拉姆），按**完整月历**同比（%），缺月补空、
+  不误用间隔超过 12 个月的相邻观测；指标卡 delta 为「较上月同比变化」（百分点）。
+- **外资流入**：银行外债、外币存款与「外国主体存款」三指标的月度存量同比。外国主体存款 =
+  非居民私人企业 + 个人 + 政府及非商业实体三个互斥分项之和。存量同比只能说明境外负债规模扩张，
+  归因「流入」需结合环比增量，且不含 FDI。
+- **企业及居民信贷**：私人企业信贷、个人信贷与商业及工业部门信贷，同一完整月历同比口径。
+- **窗口与参考线**：各图取最新完整月往前 36 个月；红色虚线为
+  2026 年 3 月美伊战争起始基准线。
+""".strip()
+
+BUSINESS_ACTIVITY_EXPLANATION = """
+- **DED 企业发证**：迪拜经济局月度快照。「有发证活动企业数」按企业号筛重（家）、「当月新发执照数」
+  按执照号筛重（张）；指标卡显示环比变化，图仅展示「当月新发执照数」柱。
+- **锚定口径**：图表与指标卡锚定最新**数据完整**月份（避开 DED 快照尾部欠计噪声月），非工作簿最末月；
+  「发证活动企业同比」按整月历同比（%）。
+- **PMI**：阿联酋非油私营部门采购经理人指数（月度_LSEG，点）；50 为荣枯分界，高于 50 表示
+  非油私营部门扩张、低于 50 为收缩（图中未画参考线）；指标卡为最新值与上月的水平差（点），
+  图表展示最近 37 个月。
+- **解读**：PMI 反映当期非油景气，DED 新发执照反映企业进入动能，两者互补判断企业活动扩张的真实性。
+""".strip()
+
+LABOR_EMPLOYMENT_EXPLANATION = """
+- **外籍劳动力**：尼泊尔 DoFE「批准（含再入境）」与孟加拉国 BMET「出境许可」人数（月度，人），
+  作为外来劳动力到港的代理序列；两者均为官方批准/许可口径、反映离境准备而非实际入境，
+  与真实到港存在时间滞后；指标卡显示环比变化。
+- **谷歌工作搜索热度**：Google 趋势「在迪拜工作 / 在阿联酋工作」月度搜索指数（0—100 相对强度）；
+  指标卡显示原始指数环比；图中曲线先 Savitzky-Golay 平滑（窗口 7、2 阶）再 Z-score 标准化，
+  使两条关键词可在同一坐标轴比较相对强弱。
+- **解读**：搜索热度通常领先实际到港；两者结合判断外籍劳动力供给动能。红色虚线为
+  2026 年 3 月美伊战争起始基准线。
+""".strip()
+
 
 @st.cache_data(show_spinner=False)
 def _load_government_finance_cached(
@@ -339,6 +374,7 @@ def _render_charts(
             source_text=source_text,
         ),
         bbox_inches=None,
+        place_legend_bottom=False,
     )
     render_chart_download(
         st_obj,
@@ -371,6 +407,7 @@ def _render_rates_chart(
             source_text=source_text,
         ),
         bbox_inches=None,
+        place_legend_bottom=False,
     )
     render_chart_download(
         st_obj,
@@ -403,6 +440,7 @@ def _render_foreign_inflow_chart(
             source_text=source_text,
         ),
         bbox_inches=None,
+        place_legend_bottom=False,
     )
     chart_frame = calculate_calendar_yoy(display_values).rename(
         columns=lambda name: f"{name}同比（%）"
@@ -441,6 +479,7 @@ def _render_private_credit_chart(
             source_text=source_text,
         ),
         bbox_inches=None,
+        place_legend_bottom=False,
     )
     render_chart_download(
         st_obj,
@@ -474,6 +513,7 @@ def _render_ded_chart(
             last_month=last_month,
         ),
         bbox_inches=None,
+        place_legend_bottom=False,
     )
     render_chart_download(
         st_obj,
@@ -528,6 +568,7 @@ def _render_search_index_chart(
             source_text=SEARCH_SOURCE_TEXT,
         ),
         bbox_inches=None,
+        place_legend_bottom=False,
     )
     render_chart_download(
         st_obj,
@@ -554,6 +595,7 @@ def _render_pmi_chart(
             source_text=source_text,
         ),
         bbox_inches=None,
+        place_legend_bottom=False,
     )
     render_chart_download(
         st_obj,
@@ -584,6 +626,8 @@ def render_government_finance_section(
             content,
             file_name,
         )
+        with st_obj.expander("指标算法与解读", expanded=False):
+            st_obj.markdown(FINANCE_EXPLANATION)
         _render_business_activity_charts(
             st_obj,
             latest_date,
@@ -625,6 +669,8 @@ def _render_business_activity_charts(
         _render_pmi_chart(pmi_column, pmi)
     except (KeyError, TypeError, ValueError) as exc:
         pmi_column.warning(f"PMI 图表未加载：{exc}")
+    with st_obj.expander("指标算法与解读", expanded=False):
+        st_obj.markdown(BUSINESS_ACTIVITY_EXPLANATION)
 
 
 def _render_quad_finance_charts(
@@ -695,6 +741,8 @@ def _render_labor_employment_charts(
         _render_foreign_labor_chart(labor_column, foreign_labor)
     except (KeyError, TypeError, ValueError) as exc:
         labor_column.warning(f"外籍劳动力图表未加载：{exc}")
+    with st_obj.expander("指标算法与解读", expanded=False):
+        st_obj.markdown(LABOR_EMPLOYMENT_EXPLANATION)
 
 
 __all__ = ["render_government_finance_section"]

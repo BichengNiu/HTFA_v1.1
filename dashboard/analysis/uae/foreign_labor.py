@@ -241,15 +241,9 @@ def build_foreign_labor_figure(
         )
         axis.set_ylabel(
             "人数（人）",
-            fontsize=12,
-            color="#000000",
-            fontfamily=CHINESE_FONT_FAMILY,
+            fontsize=15,
         )
         axis.set_ylim(bottom=0)
-        axis.tick_params(axis="y", colors="#000000")
-        axis.spines["left" if axis is nepal_axis else "right"].set_color(
-            "#000000"
-        )
         handles.append(Patch(facecolor=color, label=label))
 
     nepal_axis.tick_params(
@@ -275,24 +269,21 @@ def build_foreign_labor_figure(
         title,
         fontsize=14,
         pad=14,
+        fontweight="bold",
         fontfamily=CHINESE_FONT_FAMILY,
     )
-    # 主轴使用 Ts 统一网格样式；右轴不画网格，避免穿过双柱。
+    # 主轴使用 Ts 统一网格样式（豁免 grid=True）；右轴不画网格，避免穿过双柱。
     style_axes(nepal_axis, grid=True)
     bangladesh_axis.grid(False)
-    for spine_name in ("top", "bottom", "left"):
-        spine = nepal_axis.spines[spine_name]
-        spine.set_visible(True)
-        spine.set_color("#6B7280")
-        spine.set_linewidth(0.9)
-    nepal_axis.spines["left"].set_color("#000000")
+    # 脊线与模板默认对齐：主轴保留左/下，右轴保留右；上/对侧脊线隐藏。
+    nepal_axis.spines["top"].set_visible(False)
     nepal_axis.spines["right"].set_visible(False)
-    bangladesh_axis.spines["right"].set_visible(True)
-    bangladesh_axis.spines["right"].set_color("#000000")
-    bangladesh_axis.spines["right"].set_linewidth(0.9)
     bangladesh_axis.spines["top"].set_visible(False)
-    bangladesh_axis.spines["bottom"].set_visible(False)
     bangladesh_axis.spines["left"].set_visible(False)
+    bangladesh_axis.spines["right"].set_visible(True)
+    # 手动双轴图中刻度字号对齐模板 TICK_LABELSIZE。
+    for axis in axes:
+        axis.tick_params(axis="both", labelsize=14)
     apply_strict_month_ticks(nepal_axis, display_values.index)
     annotate_war(nepal_axis)
     # Leave enough room for the paired bars at the first and last month.

@@ -20,7 +20,6 @@ from dashboard.analysis.uae.oil.charts import (
     plot_series,
 )
 from dashboard.analysis.uae.oil.data import load_oil_market_data
-from dashboard.analysis.uae.plot_helpers import WAR_LINE_COLOR
 from dashboard.analysis.uae.oil.revenue import (
     DAYS_COLUMN,
     PRICE_CONTRIBUTION_COLUMN,
@@ -264,7 +263,7 @@ def test_oil_market_figure_combines_production_and_rigs() -> None:
     assert len(rig_axis.get_lines()) == 1
     assert (
         rig_axis.get_lines()[0].get_label()
-        == "阿联酋石油活跃钻机数（右轴）"
+        == "阿联酋石油活跃钻机数"
     )
     assert rig_axis.get_lines()[0].get_ydata()[-1] == 59
     assert production_axis.get_ylabel() == "万桶/天"
@@ -272,16 +271,19 @@ def test_oil_market_figure_combines_production_and_rigs() -> None:
     assert production_axis.get_title() == "原油产量及活动钻机数"
     assert figure._suptitle is None
     assert production_axis.get_xticklabels()[-1].get_text() == "12月"
+    # 模板 BottomLegend 挂在参考轴（主轴）上，双轴叠加自动追加（左轴/右轴）后缀
+    bottom_legend = production_axis.get_legend()
     legend_labels = {
         text.get_text()
-        for text in figure.legends[0].get_texts()
+        for text in bottom_legend.get_texts()
     }
     assert legend_labels == {
         "阿联酋原油产量（左轴）",
         "阿联酋石油活跃钻机数（右轴）",
     }
-    assert figure.legends[0].get_bbox_to_anchor()._bbox.y0 < 0.2
-    assert figure.subplotpars.bottom >= 0.30
+    assert bottom_legend.get_bbox_to_anchor()._bbox.y0 < 0.2
+    # 模板 draw_note_and_bottom_title 按图例/图注实测撑开底部边距。
+    assert figure.subplotpars.bottom >= 0.25
     assert {text.get_text().strip() for text in production_axis.texts} >= {
         "2025年"
     }
@@ -302,8 +304,9 @@ def test_oil_market_figure_marks_war_start_with_red_dashed_line() -> None:
     figure = build_oil_market_figure(production, "OPEC")
 
     from matplotlib.colors import to_rgba
+    from Ts.TsPlots.style import REFERENCE_LINE_COLOR
 
-    expected = to_rgba(WAR_LINE_COLOR)
+    expected = to_rgba(REFERENCE_LINE_COLOR)
     production_axis = figure.axes[0]
     war_lines = [
         line
@@ -312,7 +315,7 @@ def test_oil_market_figure_marks_war_start_with_red_dashed_line() -> None:
     ]
     assert war_lines
     assert all(line.get_linestyle() == "--" for line in war_lines)
-    assert figure.subplotpars.bottom >= 0.30
+    assert figure.subplotpars.bottom >= 0.25
     assert any(
         text.get_text() == "<- 战争 ->"
         for text in production_axis.texts
@@ -330,8 +333,9 @@ def test_oil_market_figure_skips_war_line_before_march_2026() -> None:
     figure = build_oil_market_figure(production, "OPEC")
 
     from matplotlib.colors import to_rgba
+    from Ts.TsPlots.style import REFERENCE_LINE_COLOR
 
-    expected = to_rgba(WAR_LINE_COLOR)
+    expected = to_rgba(REFERENCE_LINE_COLOR)
     production_axis = figure.axes[0]
     assert not [
         line
@@ -423,8 +427,9 @@ def test_monthly_revenue_calculates_yoy_and_chart_axes() -> None:
     assert revenue[YTD_COLUMN].iloc[-1] == pytest.approx(40.92)
     assert revenue[YTD_YOY_COLUMN].iloc[-1] == pytest.approx(32.0)
     price_axis, revenue_axis = figure.axes
+    # 序列名为裸变量名，图例的（左轴/右轴）后缀由模板自动追加
     assert [line.get_label() for line in price_axis.get_lines()] == [
-        "布伦特原油现货价（左轴）",
+        "布伦特原油现货价",
     ]
     assert len(revenue_axis.patches) == len(revenue)
     assert revenue_axis.patches[-1].get_height() == pytest.approx(40.92)
@@ -433,13 +438,15 @@ def test_monthly_revenue_calculates_yoy_and_chart_axes() -> None:
     assert price_axis.get_title() == "石油价格与阿联酋石油收入"
     assert figure._suptitle is None
     assert price_axis.get_xticklabels()[-1].get_text() == "12月"
-    legend_labels = {text.get_text() for text in figure.legends[0].get_texts()}
+    legend_labels = {
+        text.get_text() for text in price_axis.get_legend().get_texts()
+    }
     assert legend_labels == {
         "布伦特原油现货价（左轴）",
         "石油收入（右轴）",
     }
-    assert figure.legends[0].get_bbox_to_anchor()._bbox.y0 < 0.2
-    assert figure.subplotpars.bottom >= 0.30
+    assert price_axis.get_legend().get_bbox_to_anchor()._bbox.y0 < 0.2
+    assert figure.subplotpars.bottom >= 0.25
     assert len(price_axis.get_xticklabels()) <= 4
     assert {text.get_text().strip() for text in price_axis.texts} >= {
         "2024年",

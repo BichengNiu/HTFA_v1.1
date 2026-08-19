@@ -31,7 +31,15 @@ from dashboard.analysis.uae.government_finance.credit import (
     load_foreign_inflow_data,
     load_private_credit_data,
 )
-from dashboard.analysis.uae.plot_helpers import matching_line_handles
+
+
+def _data_lines(axis):
+    """轴上带标签的真实数据线（排除模板自动命名的占位线条）。"""
+    return [
+        line
+        for line in axis.get_lines()
+        if line.get_label() and not line.get_label().startswith("_")
+    ]
 
 
 def _workbook_bytes() -> bytes:
@@ -131,28 +139,26 @@ def test_foreign_inflow_figure_renders_yoy() -> None:
     )
 
     axis = figure.axes[0]
-    lines = matching_line_handles(
-        axis, [display_name for display_name, _ in FOREIGN_SERIES]
-    )
-    assert [line.get_label() for line in lines] == [
-        f"{FOREIGN_LIABILITIES_DISPLAY}同比",
-        f"{FOREIGN_CURRENCIES_DISPLAY}同比",
-        f"{NONRESIDENT_DEPOSITS}同比",
-    ]
+    lines = _data_lines(axis)
+    assert [line.get_label() for line in lines] == list(FOREIGN_SERIES)
+    # 模板色板接管配色：黑 / 深蓝 / 灰
     assert [line.get_color() for line in lines] == [
-        "#000000",
-        "#1F4E79",
-        "#6B7280",
+        "#141414",
+        "#1f4e79",
+        "#888888",
     ]
     assert axis.get_ylabel() == "同比（%）"
     assert [line.get_ydata()[-1] for line in lines] == pytest.approx(
         [10.0, 10.0, 10.0]
     )
     assert any(text.get_text() == "数据来源：阿联酋央行" for text in figure.texts)
-    # 同比图保留 0 参考线
-    assert any(line.get_ydata()[-1] == 0 for line in axis.get_lines())
-    # 图例线条必须与图中数据线一一对应（颜色、线型完全一致）
-    legend_handles = figure.legends[0].get_lines()
+    # 严格遵从模板：同比图不再画 y=0 参考线
+    assert not any(
+        len(line.get_ydata()) >= 2 and set(line.get_ydata()) == {0.0}
+        for line in axis.get_lines()
+    )
+    # 模板图例挂在参考轴上，图例线型与数据线一一对应
+    legend_handles = axis.get_legend().get_lines()
     assert len(legend_handles) == len(lines)
     assert [h.get_color() for h in legend_handles] == [l.get_color() for l in lines]
     assert [h.get_linestyle() for h in legend_handles] == [
@@ -170,27 +176,25 @@ def test_private_credit_figure_renders_yoy() -> None:
     )
 
     axis = figure.axes[0]
-    lines = matching_line_handles(
-        axis, [display_name for display_name, _ in PRIVATE_CREDIT_SERIES]
-    )
-    assert [line.get_label() for line in lines] == [
-        f"{PRIVATE_CORPORATE_DISPLAY}同比",
-        f"{INDIVIDUAL_DISPLAY}同比",
-        f"{BUSINESS_INDUSTRIAL_DISPLAY}同比",
-    ]
+    lines = _data_lines(axis)
+    assert [line.get_label() for line in lines] == list(PRIVATE_CREDIT_SERIES)
+    # 模板色板接管配色：黑 / 深蓝 / 灰
     assert [line.get_color() for line in lines] == [
-        "#000000",
-        "#1F4E79",
-        "#6B7280",
+        "#141414",
+        "#1f4e79",
+        "#888888",
     ]
     assert axis.get_ylabel() == "同比（%）"
     assert [line.get_ydata()[-1] for line in lines] == pytest.approx(
         [10.0, 10.0, 10.0]
     )
-    # 同比图保留 0 参考线
-    assert any(line.get_ydata()[-1] == 0 for line in axis.get_lines())
-    # 图例线条必须与图中数据线一一对应
-    legend_handles = figure.legends[0].get_lines()
+    # 严格遵从模板：同比图不再画 y=0 参考线
+    assert not any(
+        len(line.get_ydata()) >= 2 and set(line.get_ydata()) == {0.0}
+        for line in axis.get_lines()
+    )
+    # 模板图例挂在参考轴上，图例线型与数据线一一对应
+    legend_handles = axis.get_legend().get_lines()
     assert len(legend_handles) == len(lines)
     assert [h.get_color() for h in legend_handles] == [l.get_color() for l in lines]
     assert [h.get_linestyle() for h in legend_handles] == [

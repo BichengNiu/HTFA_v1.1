@@ -19,7 +19,15 @@ from dashboard.analysis.uae.government_finance.rates import (
     build_rates_figure,
     load_rates_data,
 )
-from dashboard.analysis.uae.plot_helpers import matching_line_handles
+
+
+def _data_lines(axis):
+    """轴上带标签的真实数据线（排除模板占位/参考线，如空标签的 0 参考线）。"""
+    return [
+        line
+        for line in axis.get_lines()
+        if line.get_label() and not line.get_label().startswith("_")
+    ]
 
 
 def _workbook_bytes() -> bytes:
@@ -93,34 +101,27 @@ def test_rates_figure_renders_four_monthly_mean_lines() -> None:
 
     assert len(figure.axes) == 1
     axis = figure.axes[0]
-    lines = matching_line_handles(
-        axis, [display_name for display_name, _ in RATES_SERIES]
-    )
-    assert [line.get_label() for line in lines] == [
-        EIBOR_OVERNIGHT_DISPLAY,
-        EIBOR_ONEYEAR_DISPLAY,
-        US_OVERNIGHT_DISPLAY,
-        US_SOFR_12M_DISPLAY,
-    ]
-    # 阿联酋两条黑线（隔夜实线、1年虚线），美国两条深蓝线（隔夜实线、SOFR 1年虚线）
+    lines = _data_lines(axis)
+    assert [line.get_label() for line in lines] == list(RATES_SERIES)
+    # 模板色板与线型循环接管：黑/深蓝/灰/深红，实/虚/点划/点
     assert [line.get_color() for line in lines] == [
-        "#000000",
-        "#000000",
-        "#1F4E79",
-        "#1F4E79",
+        "#141414",
+        "#1f4e79",
+        "#888888",
+        "#8b1a1a",
     ]
     assert [line.get_linestyle() for line in lines] == [
         "-",
         "--",
-        "-",
-        "--",
+        "-.",
+        ":",
     ]
     assert axis.get_ylabel() == "％"
     assert axis.get_title() == "阿联酋与美国市场利率（隔夜、1年期）"
     assert lines[0].get_ydata()[-1] == pytest.approx(7.0)
     assert any(text.get_text() == "数据来源：阿联酋央行" for text in figure.texts)
-    # 图例线条必须与图中数据线一一对应（颜色、线型完全一致）
-    legend_handles = figure.legends[0].get_lines()
+    # 模板图例挂在参考轴上，图例线型与数据线一一对应
+    legend_handles = axis.get_legend().get_lines()
     assert len(legend_handles) == len(lines)
     assert [handle.get_color() for handle in legend_handles] == [
         line.get_color() for line in lines

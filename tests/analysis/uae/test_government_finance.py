@@ -20,7 +20,15 @@ from dashboard.analysis.uae.government_finance.data import (
     load_government_finance_data,
 )
 from dashboard.analysis.uae.government_finance.renderer import _render_charts
-from dashboard.analysis.uae.plot_helpers import matching_line_handles
+
+
+def _data_lines(axis):
+    """轴上带标签的真实数据线（排除模板占位/参考线，如空标签的 0 参考线）。"""
+    return [
+        line
+        for line in axis.get_lines()
+        if line.get_label() and not line.get_label().startswith("_")
+    ]
 
 
 def _workbook_bytes() -> bytes:
@@ -124,18 +132,23 @@ def test_yoy_chart_renders_two_government_credit_growth_lines() -> None:
 
     assert len(figure.axes) == 1
     axis = figure.axes[0]
-    lines = matching_line_handles(axis, [spec[1] for spec in YOY_SERIES])
-    assert [line.get_label() for line in lines] == [spec[1] for spec in YOY_SERIES]
-    assert [line.get_color() for line in lines] == [spec[2] for spec in YOY_SERIES]
-    assert [line.get_linestyle() for line in lines] == [spec[3] for spec in YOY_SERIES]
+    lines = _data_lines(axis)
+    assert [line.get_label() for line in lines] == [
+        spec[1] for spec in YOY_SERIES
+    ]
+    # 模板色板与线型循环接管：黑/深蓝，实/虚
+    assert [line.get_color() for line in lines] == ["#141414", "#1f4e79"]
+    assert [line.get_linestyle() for line in lines] == ["-", "--"]
     # 政府信贷 300k→390k = +30%；政府控制企业信贷 400k→500k = +25%
     assert [line.get_ydata()[-1] for line in lines] == pytest.approx(
         [30.0, 25.0]
     )
     assert axis.get_ylabel() == "同比（%）"
     assert axis.get_title() == "政府贷款与政府控制企业贷款增长"
-    assert all(spine.get_visible() for spine in axis.spines.values())
-    assert {text.get_text() for text in figure.legends[0].get_texts()} == {
+    # 模板 style_axes 隐藏上/右脊线
+    assert not axis.spines["top"].get_visible()
+    assert not axis.spines["right"].get_visible()
+    assert {text.get_text() for text in axis.get_legend().get_texts()} == {
         spec[1] for spec in YOY_SERIES
     }
     assert any(text.get_text() == "数据来源：阿联酋央行" for text in figure.texts)
@@ -159,9 +172,7 @@ def test_yoy_chart_calculates_yoy_before_applying_three_year_window() -> None:
         source_text="CBUAE",
     )
 
-    lines = matching_line_handles(
-        figure.axes[0], [spec[1] for spec in YOY_SERIES]
-    )
+    lines = _data_lines(figure.axes[0])
     assert {len(line.get_xdata()) for line in lines} == {37}
     assert all(pd.notna(line.get_ydata()[0]) for line in lines)
 
@@ -185,9 +196,7 @@ def test_chart_row_renders_one_yoy_view_and_downloads_only_yoy_data() -> None:
     assert len(figure.axes) == 1
     assert {
         len(line.get_xdata())
-        for line in matching_line_handles(
-            figure.axes[0], [spec[1] for spec in YOY_SERIES]
-        )
+        for line in _data_lines(figure.axes[0])
     } == {13}
 
 

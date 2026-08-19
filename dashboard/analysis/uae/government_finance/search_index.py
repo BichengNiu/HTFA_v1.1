@@ -6,18 +6,15 @@ from pathlib import Path
 
 import pandas as pd
 from matplotlib.figure import Figure
-from matplotlib.lines import Line2D
-from Ts.TsPlots.style import style_axes
+from Ts.TsPlots import plot_series
 from scipy.signal import savgol_filter
 
 from dashboard.analysis.uae.plot_helpers import (
-    CHINESE_FONT_FAMILY,
-    add_bottom_legend,
-    add_source_note,
+    WAR_START_DATE,
     annotate_war,
-    apply_strict_month_ticks,
-    finish_dual_axis_figure,
-    new_ts_figure_axis,
+    apply_htfa_fonts,
+    normalize_ts_axis,
+    source_note,
 )
 
 SMOOTH_WINDOW = 7
@@ -33,8 +30,8 @@ WORK_DUBAI_LABEL = "搜索“在迪拜工作”"
 WORK_UAE_LABEL = "搜索“在阿联酋工作”"
 
 SEARCH_SERIES = (
-    (WORK_DUBAI_COLUMN, WORK_DUBAI_LABEL, "#000000", "-"),
-    (WORK_UAE_COLUMN, WORK_UAE_LABEL, "#1F4E79", "--"),
+    (WORK_DUBAI_COLUMN, WORK_DUBAI_LABEL),
+    (WORK_UAE_COLUMN, WORK_UAE_LABEL),
 )
 
 START_YEAR = 2023
@@ -106,53 +103,30 @@ def build_search_index_figure(
     if display_values.dropna(how="all").empty:
         raise ValueError(f"{title}没有可绘制的有效数据")
 
-    figure, axis = new_ts_figure_axis()
-    for column, label, color, linestyle in SEARCH_SERIES:
-        axis.plot(
-            _standardize_series(_smooth_series(display_values[column])),
-            color=color,
-            linewidth=2.2,
-            linestyle=linestyle,
-            label=label,
-            zorder=3,
-        )
-    axis.axhline(0, color="#9CA3AF", linewidth=0.8, linestyle=":", zorder=1)
-    axis.set_ylabel("标准化搜索指数", fontsize=12)
-    style_axes(axis, grid=True)
-    axis.tick_params(
-        axis="y",
-        left=True,
-        labelleft=True,
-        right=False,
-        labelright=False,
+    frame = pd.DataFrame(
+        {
+            label: _standardize_series(_smooth_series(display_values[column]))
+            for column, label in SEARCH_SERIES
+        }
     )
-    axis.set_title(
-        title,
-        fontsize=14,
-        pad=14,
-        fontfamily=CHINESE_FONT_FAMILY,
+    figure, returned_axis = plot_series(
+        frame,
+        facet=False,
+        title=title,
+        xtitle="",
+        ytitle="标准化搜索指数",
+        ytitle_position="side",
+        year_ruler=True,
+        grid=True,
+        vlines=WAR_START_DATE,
+        show_legend=True,
+        note=source_note(source_text),
+        note_loc="left",
+        figsize=(9.4, 6.2),
     )
-    for spine_name in ("top", "bottom", "left", "right"):
-        spine = axis.spines[spine_name]
-        spine.set_visible(True)
-        spine.set_color("#6B7280")
-        spine.set_linewidth(0.9)
-    axis.spines["left"].set_color("#000000")
-    apply_strict_month_ticks(axis, display_values.index)
+    axis = normalize_ts_axis(returned_axis)
     annotate_war(axis)
-
-    handles = [
-        Line2D([0], [0], color=color, linewidth=2.2, linestyle=linestyle, label=label)
-        for _, label, color, linestyle in SEARCH_SERIES
-    ]
-    add_bottom_legend(
-        figure,
-        handles,
-        [label for _, label, *_ in SEARCH_SERIES],
-        ncol=len(handles),
-    )
-    finish_dual_axis_figure(figure, top=0.90)
-    add_source_note(figure, source_text)
+    apply_htfa_fonts(figure)
     return figure
 
 

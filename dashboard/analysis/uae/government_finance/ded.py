@@ -14,15 +14,15 @@ from typing import Any
 
 import pandas as pd
 from matplotlib.figure import Figure
+from Ts.TsPlots import plot_series
 
 from dashboard.analysis.uae.oil.alignment import within_month_window
 from dashboard.analysis.uae.plot_helpers import (
-    CHINESE_FONT_FAMILY,
-    add_source_note,
+    WAR_START_DATE,
     annotate_war,
-    apply_strict_month_ticks,
-    finish_dual_axis_figure,
-    new_ts_figure_axis,
+    apply_htfa_fonts,
+    normalize_ts_axis,
+    source_note,
 )
 from dashboard.analysis.uae.sheet_reader import (
     METADATA_LABELS,
@@ -32,6 +32,7 @@ from dashboard.analysis.uae.sheet_reader import (
     optional_text,
 )
 from dashboard.preview.core.workbook_parser import normalize_indicator_name
+from Ts.TsPlots.style import GRAY
 
 
 DED_SHEET = "月度_DED"
@@ -45,9 +46,7 @@ DED_INDICATORS: tuple[tuple[str, str], ...] = (
     (ENTERPRISES_DISPLAY, ENTERPRISES_INDICATOR),
     (LICENCES_DISPLAY, LICENCES_INDICATOR),
 )
-LICENCES_COLOR = "#1F4E79"
 ALLOWED_UNITS = {"家", "张"}
-BAR_WIDTH = 26
 
 
 @dataclass(frozen=True)
@@ -204,44 +203,37 @@ def build_ded_figure(
     if display_values[LICENCES_DISPLAY].dropna().empty:
         raise ValueError(f"{title}没有可绘制的有效数据")
 
-    figure, axis = new_ts_figure_axis()
-    axis.bar(
-        display_values.index,
-        display_values[LICENCES_DISPLAY],
-        width=BAR_WIDTH,
-        color=LICENCES_COLOR,
-        edgecolor="#6B7280",
-        linewidth=0.6,
-        alpha=0.72,
-        zorder=2,
+    frame = display_values[[LICENCES_DISPLAY]].dropna(how="all")
+    figure, returned_axis = plot_series(
+        frame,
+        facet=False,
+        title=title,
+        xtitle="",
+        ytitle="张",
+        ytitle_position="side",
+        year_ruler=True,
+        grid=True,
+        bar_series=[LICENCES_DISPLAY],
+        bar_face_color=GRAY,
+        vlines=WAR_START_DATE,
+        show_legend=True,
+        note=source_note(source_text),
+        note_loc="left",
+        figsize=(9.4, 6.2),
     )
-
-    axis.set_ylabel("张", fontsize=12, color="#000000")
-    axis.set_ylim(bottom=0)
-    axis.tick_params(axis="y", colors="#000000")
-    axis.spines["left"].set_color("#000000")
-    axis.set_title(
-        title,
-        fontsize=14,
-        pad=14,
-        fontfamily=CHINESE_FONT_FAMILY,
-    )
-    apply_strict_month_ticks(axis, display_values.index)
+    axis = normalize_ts_axis(returned_axis)
     annotate_war(axis)
-    finish_dual_axis_figure(figure, top=0.90)
-    add_source_note(figure, source_text)
+    apply_htfa_fonts(figure)
     return figure
 
 
 __all__ = [
     "ALLOWED_UNITS",
-    "BAR_WIDTH",
     "DED_INDICATORS",
     "DED_SHEET",
     "DedData",
     "ENTERPRISES_DISPLAY",
     "ENTERPRISES_INDICATOR",
-    "LICENCES_COLOR",
     "LICENCES_DISPLAY",
     "LICENCES_INDICATOR",
     "build_ded_figure",

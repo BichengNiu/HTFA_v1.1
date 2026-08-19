@@ -12,24 +12,15 @@ from plotly.graph_objects import Figure as PlotlyFigure
 
 PLOTLY_LEGEND_Y = -0.14
 
-# 图例区物理尺寸（英寸）预留，按图高换算为比例：X 轴标题（时间列名）
-# 与图例各占一段并留出安全间距，任何图高下两者都不重叠、也不远离轴。
-_XLABEL_INCHES = 0.32
+# 图例顶部在时间轴（参考轴 x 轴）下方的轴分数偏移。锚定在轴坐标系里，
+# 跟随轴移动：year_ruler 年份标尺文字约在轴下方 -0.18（轴分数）处，
+# -0.22 让图例顶紧贴其下，任何轴位置下都不会悬空或重叠。
+_LEGEND_BELOW_AXIS_OFFSET = 0.22
+# 底部留白上限：来源注释（y=0.025，va="bottom"）加字高与安全间距。
+_NOTE_TOP_FRAC = 0.055
+# 无渲染器环境（纯 Figure() 作图）下经验估算的图例行高（英寸）与安全间距。
 _LEGEND_ROW_INCHES = 0.60
 _LEGEND_BAND_PAD_INCHES = 0.45
-
-
-def _legend_band_height(figure: MatplotlibFigure, rows: int) -> float:
-    """底部留白比例：X 轴标题 + 图例区 + 安全间距。"""
-    inches = (
-        _XLABEL_INCHES + _LEGEND_ROW_INCHES * rows + _LEGEND_BAND_PAD_INCHES
-    )
-    return inches / figure.get_figheight()
-
-
-def _legend_anchor_y(figure: MatplotlibFigure, rows: int) -> float:
-    """图例下边缘锚点比例：紧贴 X 轴标题下方，互不重叠。"""
-    return _XLABEL_INCHES / figure.get_figheight()
 
 
 def _place_plotly_legend_at_bottom(figure: PlotlyFigure) -> None:
@@ -81,7 +72,7 @@ def _place_matplotlib_legend_at_bottom(
             handles,
             labels,
             loc="lower center",
-            bbox_to_anchor=(0.5, _legend_anchor_y(figure, rows)),
+            bbox_to_anchor=(0.5, 0.0),
             ncol=ncol,
             frameon=False,
             fontsize=15,
@@ -91,20 +82,48 @@ def _place_matplotlib_legend_at_bottom(
             title_fontsize=15,
         )
 
+    visible = [axis for axis in figure.axes if axis.get_visible()]
+    if not figure.legends or not visible:
+        return
+
+    # 图例顶部锚在最低参考轴的时间轴下方（轴坐标），与 Ts 模板
+    # ``BottomLegend`` 同款锚定：图例随轴联动，永远不会悬在底部远处。
+    ref_ax = min(visible, key=lambda axis: axis.get_position().y0)
     for legend in figure.legends:
         if hasattr(legend, "set_loc"):
-            legend.set_loc("lower center")
+            legend.set_loc("upper center")
         legend.set_bbox_to_anchor(
-            (0.5, _legend_anchor_y(figure, rows)),
-            transform=figure.transFigure,
+            (0.5, -_LEGEND_BELOW_AXIS_OFFSET),
+            transform=ref_ax.transAxes,
         )
 
-    if figure.legends:
-        # 底部留白只占轴标题与图例区的实际所需：宽幅图下既不出现
-        # 大段空白，图例也不会压到 X 轴标题。
-        figure.subplots_adjust(
-            bottom=max(figure.subplotpars.bottom, _legend_band_height(figure, rows))
-        )
+    renderer = None
+    try:
+        figure.canvas.draw()
+        renderer = figure.canvas.get_renderer()
+    except (AttributeError, NotImplementedError):
+        renderer = None
+
+    if renderer is None:
+        # 无渲染器环境（纯 Figure() 作图）：只保证底部空间够用，不缩小。
+        band = (
+            _LEGEND_ROW_INCHES * rows + _LEGEND_BAND_PAD_INCHES
+        ) / figure.get_figheight() + _NOTE_TOP_FRAC
+        figure.subplots_adjust(bottom=max(figure.subplotpars.bottom, band))
+        return
+
+    # 图例锚在轴坐标系：调整 bottom 时图例随参考轴以 (1+offset) 倍同步
+    # 移动，因此一次线性配平即可让图例底精确落在来源注释上方——双向
+    # 收紧，图自身显式的大 bottom（如 bottom=0.30/0.32）不再把图例压远。
+    inv = figure.transFigure.inverted()
+    legend_bottom_frac = min(
+        inv.transform(legend.get_window_extent(renderer).corners())[:, 1].min()
+        for legend in figure.legends
+    )
+    raise_by = (_NOTE_TOP_FRAC - legend_bottom_frac) / (
+        1 + _LEGEND_BELOW_AXIS_OFFSET
+    )
+    figure.subplots_adjust(bottom=figure.subplotpars.bottom + raise_by)
 
 
 def place_chart_legend_at_bottom(

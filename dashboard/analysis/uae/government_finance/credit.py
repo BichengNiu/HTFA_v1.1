@@ -20,14 +20,11 @@ from Ts.TsPlots import plot_series
 
 from dashboard.analysis.uae.government_finance.data import calculate_calendar_yoy
 from dashboard.analysis.uae.plot_helpers import (
-    WAR_LINE_COLOR,
     WAR_START_DATE,
-    add_bottom_legend,
-    add_source_note,
     annotate_war,
-    finish_dual_axis_figure,
-    matching_line_handles,
+    apply_htfa_fonts,
     normalize_ts_axis,
+    source_note,
 )
 from dashboard.analysis.uae.sheet_reader import (
     SheetSeriesMetadata,
@@ -72,14 +69,14 @@ PRIVATE_CREDIT_INDICATORS: tuple[tuple[str, str], ...] = (
 )
 
 FOREIGN_SERIES = (
-    (f"{FOREIGN_LIABILITIES_DISPLAY}同比", "#000000"),
-    (f"{FOREIGN_CURRENCIES_DISPLAY}同比", "#1F4E79"),
-    (f"{NONRESIDENT_DEPOSITS}同比", "#6B7280"),
+    f"{FOREIGN_LIABILITIES_DISPLAY}同比",
+    f"{FOREIGN_CURRENCIES_DISPLAY}同比",
+    f"{NONRESIDENT_DEPOSITS}同比",
 )
 PRIVATE_CREDIT_SERIES = (
-    (f"{PRIVATE_CORPORATE_DISPLAY}同比", "#000000"),
-    (f"{INDIVIDUAL_DISPLAY}同比", "#1F4E79"),
-    (f"{BUSINESS_INDUSTRIAL_DISPLAY}同比", "#6B7280"),
+    f"{PRIVATE_CORPORATE_DISPLAY}同比",
+    f"{INDIVIDUAL_DISPLAY}同比",
+    f"{BUSINESS_INDUSTRIAL_DISPLAY}同比",
 )
 
 
@@ -174,7 +171,7 @@ def _load_cbuae_series(
 
 def _common_line_setup(
     frame: pd.DataFrame,
-    series_specs: tuple[tuple[str, str], ...],
+    series_specs: tuple[str, ...],
     *,
     title: str,
     source_text: str,
@@ -187,40 +184,17 @@ def _common_line_setup(
         xtitle="",
         ytitle=ytitle,
         ytitle_position="side",
-        colors=[color for _, color in series_specs],
-        linewidth=2.2,
-        markersize=0,
-        max_ticks=8,
         year_ruler=True,
-        vlines=WAR_START_DATE,
-        vline_color=WAR_LINE_COLOR,
-        vline_linestyle="--",
-        vline_linewidth=1.5,
-        show_legend=False,
-        note=None,
         grid=True,
-        title_loc="center",
-        title_pad=14,
+        vlines=WAR_START_DATE,
+        show_legend=True,
+        note=source_note(source_text),
+        note_loc="left",
+        figsize=(9.4, 6.2),
     )
     axis = normalize_ts_axis(returned_axis)
-    axis.title.set_fontweight("normal")
-    axis.set_ylabel(ytitle, fontsize=12)
-    for spine in axis.spines.values():
-        spine.set_visible(True)
-        spine.set_color("#6B7280")
-        spine.set_linewidth(0.9)
     annotate_war(axis)
-    add_bottom_legend(
-        figure,
-        matching_line_handles(
-            axis,
-            [display_name for display_name, _ in series_specs],
-        ),
-        [display_name for display_name, _ in series_specs],
-        ncol=len(series_specs),
-    )
-    finish_dual_axis_figure(figure, top=0.90)
-    add_source_note(figure, source_text)
+    apply_htfa_fonts(figure)
     return figure, axis
 
 
@@ -256,7 +230,6 @@ def build_foreign_inflow_figure(
         source_text=source_text,
         ytitle="同比（%）",
     )
-    axis.axhline(0, color="#6B7280", linewidth=0.8, zorder=0)
     return figure
 
 
@@ -295,7 +268,6 @@ def build_private_credit_yoy_figure(
         source_text=source_text,
         ytitle="同比（%）",
     )
-    axis.axhline(0, color="#6B7280", linewidth=0.8, zorder=0)
     return figure
 
 

@@ -9,12 +9,12 @@ import pytest
 from dashboard.analysis.uae.government_finance.ded import (
     ENTERPRISES_DISPLAY,
     ENTERPRISES_INDICATOR,
-    LICENCES_COLOR,
     LICENCES_DISPLAY,
     LICENCES_INDICATOR,
     build_ded_figure,
     load_ded_data,
 )
+from Ts.TsPlots.style import GRAY
 
 
 def _workbook_bytes() -> bytes:
@@ -98,14 +98,16 @@ def test_ded_figure_renders_single_licence_bar_without_legend() -> None:
     licence_bars = axis.containers[0].get_children()
     # 窗口 2022-06..2024-06 → 夹具中 2024-01..2024-06 共 6 个月
     assert len(licence_bars) == 6
-    # 柱色与系列定义一致（深蓝）
+    # 柱色统一为灰色（bar_face_color 覆盖模板首色）
     assert licence_bars[0].get_facecolor()[:3] == pytest.approx(
-        matplotlib.colors.to_rgb(LICENCES_COLOR)
+        matplotlib.colors.to_rgb(GRAY)
     )
     assert axis.get_ylabel() == "张"
     assert axis.get_ylim()[0] == 0
-    # 单序列图不需要图例
-    assert len(figure.legends) == 0
+    # 单序列图模板仍展示一个图例条目（挂在参考轴上）
+    assert [text.get_text() for text in axis.get_legend().get_texts()] == [
+        LICENCES_DISPLAY
+    ]
     assert any(
         text.get_text() == "数据来源：DED" for text in figure.texts
     )

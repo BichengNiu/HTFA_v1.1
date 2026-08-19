@@ -122,7 +122,7 @@ def test_search_index_figure_standardizes_series_on_one_axis() -> None:
     lines = [
         line
         for line in axis.get_lines()
-        if not line.get_label().startswith("_")
+        if line.get_label() and not line.get_label().startswith("_")
     ]
     assert [line.get_label() for line in lines] == [
         "搜索“在迪拜工作”",

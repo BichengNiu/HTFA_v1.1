@@ -29,6 +29,22 @@ from dashboard.analysis.uae.oil.revenue import (
 from dashboard.core.ui.utils.shared_dataset import get_shared_dataset_file
 from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
 
+OIL_FISCAL_EXPLANATION = """
+- **油价**：布伦特期货/现货取自「日度_Wind」sheet（美元/桶，日/周度源序列）；
+  指标卡取最新值与 **30 日前**对比的变化率。
+- **原油产量**：月度平均桶/天；指标卡为最新月**环比**变化；图中为最近 36 个月，左轴万桶/天柱。
+- **活跃钻机数**：贝克休斯月度活跃钻机数（台），环比变化；数据缺失时显示「—」。
+- **收入估算**：`月度石油收入(亿美元) = 布伦特现货月均价(美元/桶) × 月均产量(桶/天) × 当月天数 ÷ 1亿`；
+  价格或产量缺失的月份不生成收入，也不跨月填充。
+- **同比与累计**：月度同比 = 对上年同月收入的变动率；本年度累计收入 = 年内逐月累加；
+  年度累计同比 = 对上年同期累计值。
+- **价格/产量拉动率**：按中点法把收入同比分解为价格拉动与产量拉动
+  `(ΔP·V̄ + ΔV·P̄) ÷ (P₋₁₂·V₋₁₂)`，其中 `P̄=(P+P₋₁₂)/2`、`V̄=(V+V₋₁₂)/2`，
+  两者之和恰好等于收入同比，用于判断收入变动主要来自价格还是产量。
+- **解读**：收入先区分价格驱动还是产量驱动；产量受 OPEC+ 配额约束，价格受全球供需与地缘事件影响。
+- 图中红色虚线为 2026 年 3 月美伊战争起始基准线。
+""".strip()
+
 
 def _source_payload() -> tuple[bytes, str] | None:
     """返回当前会话上传的共享工作簿。"""
@@ -221,6 +237,7 @@ def _render_charts(
                 market_rig_count,
             ),
             bbox_inches=None,
+            place_legend_bottom=False,
         )
         render_chart_download(
             st_obj,
@@ -236,6 +253,7 @@ def _render_charts(
                 revenue_sources,
             ),
             bbox_inches=None,
+            place_legend_bottom=False,
         )
         render_chart_download(
             st_obj,
@@ -263,6 +281,8 @@ def render_oil_fiscal_panel(st_obj: Any = st) -> dict[str, Any]:
         revenue = estimate_monthly_oil_revenue(data.prices, data.production)
         _render_revenue_metrics(st_obj, revenue)
         _render_charts(st_obj, data, revenue)
+        with st_obj.expander("指标算法与解读", expanded=False):
+            st_obj.markdown(OIL_FISCAL_EXPLANATION)
         from dashboard.analysis.uae.government_finance import (
             render_government_finance_section,
         )
@@ -272,6 +292,16 @@ def render_oil_fiscal_panel(st_obj: Any = st) -> dict[str, Any]:
             content,
             file_name,
         )
+        from dashboard.analysis.uae.real_estate import (
+            render_real_estate_section,
+        )
+
+        real_estate = render_real_estate_section(st_obj, content, file_name)
+        from dashboard.analysis.uae.transport import (
+            render_transport_section,
+        )
+
+        transport = render_transport_section(st_obj, content, file_name)
     except (KeyError, TypeError, ValueError) as exc:
         st_obj.error(f"油价与产量数据加载失败：{exc}")
         return {"status": "error", "message": str(exc)}
@@ -279,6 +309,8 @@ def render_oil_fiscal_panel(st_obj: Any = st) -> dict[str, Any]:
         "status": "success",
         "source": file_name,
         "government_finance": government_finance,
+        "real_estate": real_estate,
+        "transport": transport,
     }
 
 

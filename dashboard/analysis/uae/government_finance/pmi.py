@@ -11,12 +11,11 @@ from Ts.TsPlots import plot_series
 
 from dashboard.analysis.uae.oil.alignment import within_month_window
 from dashboard.analysis.uae.plot_helpers import (
-    add_source_note,
+    WAR_START_DATE,
     annotate_war,
-    apply_strict_month_ticks,
-    finish_dual_axis_figure,
-    new_ts_figure_axis,
+    apply_htfa_fonts,
     normalize_ts_axis,
+    source_note,
 )
 from dashboard.analysis.uae.sheet_reader import (
     SheetSeriesMetadata,
@@ -28,7 +27,6 @@ from dashboard.analysis.uae.sheet_reader import (
 PMI_SHEET = "月度_LSEG"
 PMI_LABEL = "阿联酋非油私营部门采购经理人指数(PMI)"
 PMI_INDICATOR = PMI_LABEL
-PMI_COLOR = "#000000"
 
 DISPLAY_MONTHS = 37
 
@@ -91,39 +89,28 @@ def build_pmi_figure(
     if display_values.dropna(how="all").empty:
         raise ValueError(f"{title}没有可绘制的有效数据")
 
-    figure, axis = new_ts_figure_axis()
     figure, returned_axis = plot_series(
         display_values[PMI_LABEL].rename(PMI_LABEL),
-        title=None,
+        facet=False,
+        title=title,
         xtitle="",
         ytitle="点",
         ytitle_position="side",
-        colors=[PMI_COLOR],
-        linewidth=2.2,
-        markersize=0,
-        max_ticks=8,
-        show_legend=False,
-        note=None,
+        year_ruler=True,
         grid=True,
-        ax=axis,
+        vlines=WAR_START_DATE,
+        show_legend=True,
+        note=source_note(source_text),
+        note_loc="left",
+        figsize=(9.4, 6.2),
     )
     axis = normalize_ts_axis(returned_axis)
-
-    axis.set_title(title, fontsize=14, pad=14)
-    axis.set_ylabel("点", fontsize=12)
-    for spine in axis.spines.values():
-        spine.set_visible(True)
-        spine.set_color("#6B7280")
-        spine.set_linewidth(0.9)
-    apply_strict_month_ticks(axis, display_values.index)
     annotate_war(axis)
-    finish_dual_axis_figure(figure, top=0.90)
-    add_source_note(figure, source_text)
+    apply_htfa_fonts(figure)
     return figure
 
 
 __all__ = [
-    "PMI_COLOR",
     "PMI_INDICATOR",
     "PMI_LABEL",
     "PMI_SHEET",
