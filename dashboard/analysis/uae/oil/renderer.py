@@ -14,12 +14,17 @@ from dashboard.analysis.uae.oil.alignment import (
     within_month_window,
 )
 from dashboard.analysis.uae.oil.charts import (
+    MARKET_PRODUCTION_LABEL,
+    MARKET_RIG_COUNT_LABEL,
+    REVENUE_LABEL,
+    REVENUE_PRICE_LABEL,
     build_oil_market_figure,
     build_oil_revenue_figure,
 )
 from dashboard.analysis.uae.oil.data import OilMarketData, load_oil_market_data
 from dashboard.analysis.uae.oil.revenue import (
     PRICE_BENCHMARK_COLUMN,
+    REVENUE_PRICE_BENCHMARK,
     REVENUE_COLUMN,
     YOY_COLUMN,
     YTD_COLUMN,
@@ -235,6 +240,18 @@ def _render_charts(
                 market_production,
                 market_sources,
                 market_rig_count,
+                units={
+                    MARKET_PRODUCTION_LABEL: "万桶/天",
+                    **(
+                        {
+                            MARKET_RIG_COUNT_LABEL: data.metadata[
+                                data.rig_count.name
+                            ].unit
+                        }
+                        if data.rig_count is not None
+                        else {}
+                    ),
+                },
             ),
             bbox_inches=None,
             place_legend_bottom=False,
@@ -251,6 +268,12 @@ def _render_charts(
             build_oil_revenue_figure(
                 revenue_download,
                 revenue_sources,
+                units={
+                    REVENUE_PRICE_LABEL: data.metadata[
+                        REVENUE_PRICE_BENCHMARK
+                    ].unit,
+                    REVENUE_LABEL: "亿美元",
+                },
             ),
             bbox_inches=None,
             place_legend_bottom=False,

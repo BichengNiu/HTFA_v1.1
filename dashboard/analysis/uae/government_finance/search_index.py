@@ -114,7 +114,6 @@ def build_search_index_figure(
         facet=False,
         title=title,
         xtitle="",
-        ytitle="标准化搜索指数",
         ytitle_position="side",
         year_ruler=True,
         grid=True,
@@ -123,6 +122,7 @@ def build_search_index_figure(
         note=source_note(source_text),
         note_loc="left",
         figsize=(9.4, 6.2),
+        units={label: "标准化指数" for _, label in SEARCH_SERIES},
     )
     axis = normalize_ts_axis(returned_axis)
     annotate_war(axis)

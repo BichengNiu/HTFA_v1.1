@@ -2,23 +2,21 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
 import pandas as pd
 from matplotlib.figure import Figure
-from matplotlib.patches import Patch
-from Ts.TsPlots.style import style_axes
+from Ts.TsPlots import plot_series
 
 from dashboard.analysis.uae.oil.alignment import within_month_window
 from dashboard.analysis.uae.plot_helpers import (
-    CHINESE_FONT_FAMILY,
-    add_bottom_legend,
-    add_source_note,
+    WAR_START_DATE,
     annotate_war,
-    apply_strict_month_ticks,
-    finish_dual_axis_figure,
-    new_ts_figure_axis,
+    apply_htfa_fonts,
+    normalize_ts_axis,
+    source_note,
 )
 from dashboard.analysis.uae.sheet_reader import (
     SheetSeriesMetadata,
@@ -33,16 +31,13 @@ FOREIGN_LABOR_SHEET = "月度_外籍劳动力"
 NEPAL_APPROVALS = "尼泊尔_DoFE批准_含再入境"
 BANGLADESH_CLEARANCES = "孟加拉国_BMET出境许可"
 
-NEPAL_LABEL = "尼泊尔劳工人数（左轴）"
-BANGLADESH_LABEL = "孟加拉国劳工人数（右轴）"
+# 作图用裸变量名（模板双轴时会自动追加（左轴/右轴）后缀）。
+NEPAL_LABEL = "尼泊尔劳工人数"
+BANGLADESH_LABEL = "孟加拉国劳工人数"
 
 SERIES_SPECS = (
-    (NEPAL_APPROVALS, NEPAL_LABEL, "#B8BDC6"),
-    (
-        BANGLADESH_CLEARANCES,
-        BANGLADESH_LABEL,
-        "#1F4E79",
-    ),
+    (NEPAL_APPROVALS, NEPAL_LABEL),
+    (BANGLADESH_CLEARANCES, BANGLADESH_LABEL),
 )
 
 DISPLAY_MONTHS = 37
@@ -210,97 +205,41 @@ def build_foreign_labor_figure(
     *,
     title: str,
     source_text: str,
+    units: Mapping[str, str | None] | None = None,
 ) -> Figure:
-    """Compare common monthly labour counts using separate left and right axes."""
+    """用 Ts 默认模板绘制尼泊尔与孟加拉国月度劳工人数（双柱、分居左右轴）。"""
 
     display_values = _recent_common_observations(values)
+    frame = pd.DataFrame(
+        {
+            NEPAL_LABEL: display_values[NEPAL_APPROVALS],
+            BANGLADESH_LABEL: display_values[BANGLADESH_CLEARANCES],
+        }
+    )
+    axis_units = {NEPAL_LABEL: "人", BANGLADESH_LABEL: "人"}
+    if units is not None:
+        axis_units.update(units)
 
-    figure, nepal_axis = new_ts_figure_axis()
-    bangladesh_axis = nepal_axis.twinx()
-    axes = (nepal_axis, bangladesh_axis)
-    # Two monthly bars occupy roughly the same footprint as the oil chart's
-    # single 20-day bar, so adjacent months remain visually distinct.
-    offsets = (-7, 7)
-    handles: list[Patch] = []
-    for axis, offset, (column, label, color) in zip(
-        axes,
-        offsets,
-        SERIES_SPECS,
-        strict=True,
-    ):
-        axis.bar(
-            display_values.index + pd.Timedelta(days=offset),
-            display_values[column],
-            width=12,
-            color=color,
-            edgecolor="#6B7280",
-            linewidth=0.6,
-            alpha=0.72,
-            label=label,
-            zorder=2,
-        )
-        axis.set_ylabel(
-            "人数（人）",
-            fontsize=15,
-        )
-        axis.set_ylim(bottom=0)
-        handles.append(Patch(facecolor=color, label=label))
-
-    nepal_axis.tick_params(
-        axis="y",
-        left=True,
-        labelleft=True,
-        right=False,
-        labelright=False,
+    figure, returned_axis = plot_series(
+        frame,
+        facet=False,
+        axis_groups={NEPAL_LABEL: "left", BANGLADESH_LABEL: "right"},
+        title=title,
+        xtitle="",
+        ytitle_position="side",
+        year_ruler=True,
+        grid=True,
+        bar_series=[NEPAL_LABEL, BANGLADESH_LABEL],
+        vlines=WAR_START_DATE,
+        show_legend=True,
+        note=source_note(source_text),
+        note_loc="left",
+        figsize=(9.4, 6.2),
+        units=axis_units,
     )
-    bangladesh_axis.tick_params(
-        axis="y",
-        left=False,
-        labelleft=False,
-        right=True,
-        labelright=True,
-    )
-    nepal_axis.patch.set_visible(False)
-    bangladesh_axis.patch.set_visible(False)
-    nepal_axis.set_zorder(2)
-    bangladesh_axis.set_zorder(1)
-
-    nepal_axis.set_title(
-        title,
-        fontsize=14,
-        pad=14,
-        fontweight="bold",
-        fontfamily=CHINESE_FONT_FAMILY,
-    )
-    # 主轴使用 Ts 统一网格样式（豁免 grid=True）；右轴不画网格，避免穿过双柱。
-    style_axes(nepal_axis, grid=True)
-    bangladesh_axis.grid(False)
-    # 脊线与模板默认对齐：主轴保留左/下，右轴保留右；上/对侧脊线隐藏。
-    nepal_axis.spines["top"].set_visible(False)
-    nepal_axis.spines["right"].set_visible(False)
-    bangladesh_axis.spines["top"].set_visible(False)
-    bangladesh_axis.spines["left"].set_visible(False)
-    bangladesh_axis.spines["right"].set_visible(True)
-    # 手动双轴图中刻度字号对齐模板 TICK_LABELSIZE。
-    for axis in axes:
-        axis.tick_params(axis="both", labelsize=14)
-    apply_strict_month_ticks(nepal_axis, display_values.index)
-    annotate_war(nepal_axis)
-    # Leave enough room for the paired bars at the first and last month.
-    first_month = pd.Timestamp(display_values.index.min())
-    last_month = pd.Timestamp(display_values.index.max())
-    nepal_axis.set_xlim(
-        first_month - pd.Timedelta(days=16),
-        last_month + pd.Timedelta(days=16),
-    )
-    add_bottom_legend(
-        figure,
-        handles,
-        [spec[1] for spec in SERIES_SPECS],
-        ncol=2,
-    )
-    finish_dual_axis_figure(figure, top=0.90, right=0.88)
-    add_source_note(figure, source_text)
+    axis = normalize_ts_axis(returned_axis)
+    annotate_war(axis)
+    apply_htfa_fonts(figure)
     return figure
 
 

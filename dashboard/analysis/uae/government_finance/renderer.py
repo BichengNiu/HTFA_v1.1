@@ -10,7 +10,9 @@ import streamlit as st
 from dashboard.analysis.uae.downloads import render_chart_download
 from dashboard.analysis.uae.foreign_labor import (
     BANGLADESH_CLEARANCES,
+    BANGLADESH_LABEL,
     NEPAL_APPROVALS,
+    NEPAL_LABEL,
     ForeignLaborData,
     build_foreign_labor_figure,
     common_observations,
@@ -53,6 +55,7 @@ from dashboard.analysis.uae.government_finance.rates import (
     EIBOR_ONEYEAR_DISPLAY,
     EIBOR_OVERNIGHT_DISPLAY,
     RatesData,
+    RATES_SERIES,
     build_rates_figure,
     load_rates_data,
 )
@@ -405,6 +408,10 @@ def _render_rates_chart(
             data.values,
             title=title,
             source_text=source_text,
+            units={
+                name: data.metadata[name].unit
+                for name in RATES_SERIES
+            },
         ),
         bbox_inches=None,
         place_legend_bottom=False,
@@ -511,6 +518,7 @@ def _render_ded_chart(
             title=title,
             source_text=source_text,
             last_month=last_month,
+            units={LICENCES_DISPLAY: data.metadata[LICENCES_DISPLAY].unit},
         ),
         bbox_inches=None,
         place_legend_bottom=False,
@@ -543,6 +551,10 @@ def _render_foreign_labor_chart(
             display_values,
             title=title,
             source_text=source_text,
+            units={
+                NEPAL_LABEL: data.metadata[NEPAL_APPROVALS].unit,
+                BANGLADESH_LABEL: data.metadata[BANGLADESH_CLEARANCES].unit,
+            },
         ),
         bbox_inches=None,
     )
@@ -593,6 +605,7 @@ def _render_pmi_chart(
             data.values,
             title=title,
             source_text=source_text,
+            units={PMI_LABEL: data.metadata[PMI_LABEL].unit},
         ),
         bbox_inches=None,
         place_legend_bottom=False,

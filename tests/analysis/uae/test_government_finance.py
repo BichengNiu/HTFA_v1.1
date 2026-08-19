@@ -143,7 +143,7 @@ def test_yoy_chart_renders_two_government_credit_growth_lines() -> None:
     assert [line.get_ydata()[-1] for line in lines] == pytest.approx(
         [30.0, 25.0]
     )
-    assert axis.get_ylabel() == "同比（%）"
+    assert axis.get_ylabel() == "%"
     assert axis.get_title() == "政府贷款与政府控制企业贷款增长"
     # 模板 style_axes 隐藏上/右脊线
     assert not axis.spines["top"].get_visible()

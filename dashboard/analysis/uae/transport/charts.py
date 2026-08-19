@@ -12,6 +12,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import pandas as pd
 from matplotlib.figure import Figure
 from Ts.TsPlots import plot_series
@@ -37,10 +39,10 @@ MT_FACTOR = 1_000_000
 HORMUZ_CHANNEL_TITLE = "霍尔木兹海峡月度过境与载货容量"
 PORT_LINKAGE_TITLE = "UAE 港口到港与霍尔木兹油轮容量联动"
 
-HORMUZ_CALLS_LABEL = "霍尔木兹油轮过境（艘次）"
-UAE_CALLS_LABEL = "UAE 港口总到港（艘次）"
-HORMUZ_CAPACITY_LABEL = "霍尔木兹载货总容量（百万吨）"
-HORMUZ_TANKER_CAPACITY_LABEL = "霍尔木兹油轮容量（百万吨）"
+HORMUZ_CALLS_LABEL = HORMUZ_TANKER_CALLS
+UAE_CALLS_LABEL = UAE_PORT_CALLS
+HORMUZ_CAPACITY_LABEL = HORMUZ_CAPACITY
+HORMUZ_TANKER_CAPACITY_LABEL = HORMUZ_TANKER_CAPACITY
 
 
 def _windowed(
@@ -59,6 +61,7 @@ def build_hormuz_channel_figure(
     *,
     source_text: str,
     last_month: pd.Period,
+    units: Mapping[str, str | None] | None = None,
 ) -> Figure:
     """图1：霍尔木兹油轮过境（左轴）与总/油轮容量（右轴）三线双轴图。"""
 
@@ -74,6 +77,13 @@ def build_hormuz_channel_figure(
             ),
         }
     )
+    axis_units = {
+        HORMUZ_CALLS_LABEL: "艘次",
+        HORMUZ_CAPACITY_LABEL: "百万吨",
+        HORMUZ_TANKER_CAPACITY_LABEL: "百万吨",
+    }
+    if units is not None:
+        axis_units.update(units)
 
     figure, returned_axis = plot_series(
         frame,
@@ -85,22 +95,14 @@ def build_hormuz_channel_figure(
         },
         title=HORMUZ_CHANNEL_TITLE,
         xtitle="",
-        ytitle=HORMUZ_CALLS_LABEL,
         ytitle_position="side",
         year_ruler=True,
         vlines=WAR_START_DATE,
         show_legend=True,
-        legend_labels=[
-            HORMUZ_CALLS_LABEL,
-            HORMUZ_TANKER_CAPACITY_LABEL,
-            HORMUZ_CAPACITY_LABEL,
-        ],
         note=source_note(source_text),
         note_loc="left",
         figsize=(9.4, 6.2),
-        second_axis_title=(
-            f"{HORMUZ_CAPACITY_LABEL} / {HORMUZ_TANKER_CAPACITY_LABEL}"
-        ),
+        units=axis_units,
     )
     axis = normalize_ts_axis(returned_axis)
     axis.set_ylim(bottom=0)
@@ -116,6 +118,7 @@ def build_port_linkage_figure(
     *,
     source_text: str,
     last_month: pd.Period,
+    units: Mapping[str, str | None] | None = None,
 ) -> Figure:
     """图2：UAE 港口总到港（左轴）与霍尔木兹油轮容量（右轴）联动图。"""
 
@@ -130,6 +133,12 @@ def build_port_linkage_figure(
             ),
         }
     )
+    axis_units = {
+        UAE_CALLS_LABEL: "艘次",
+        HORMUZ_TANKER_CAPACITY_LABEL: "百万吨",
+    }
+    if units is not None:
+        axis_units.update(units)
 
     figure, returned_axis = plot_series(
         frame,
@@ -140,7 +149,6 @@ def build_port_linkage_figure(
         },
         title=PORT_LINKAGE_TITLE,
         xtitle="",
-        ytitle=UAE_CALLS_LABEL,
         ytitle_position="side",
         year_ruler=True,
         vlines=WAR_START_DATE,
@@ -148,7 +156,7 @@ def build_port_linkage_figure(
         note=source_note(source_text),
         note_loc="left",
         figsize=(9.4, 6.2),
-        second_axis_title=HORMUZ_TANKER_CAPACITY_LABEL,
+        units=axis_units,
     )
     axis = normalize_ts_axis(returned_axis)
     axis.set_ylim(bottom=0)

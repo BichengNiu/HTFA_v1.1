@@ -57,7 +57,12 @@ def _place_matplotlib_legend_at_bottom(
         legend = axis.get_legend()
         if legend is None:
             continue
-        axis_handles, axis_labels = axis.get_legend_handles_labels()
+        axis_handles = getattr(legend, "legend_handles", None)
+        if axis_handles is None:
+            axis_handles = getattr(legend, "legendHandles", None)
+        axis_labels = [text.get_text() for text in legend.get_texts()]
+        if axis_handles is None or len(axis_handles) != len(axis_labels):
+            axis_handles, axis_labels = axis.get_legend_handles_labels()
         for handle, label in zip(axis_handles, axis_labels):
             if label and label not in labels:
                 handles.append(handle)

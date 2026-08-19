@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -82,6 +83,7 @@ def build_pmi_figure(
     *,
     title: str,
     source_text: str,
+    units: Mapping[str, str | None] | None = None,
 ) -> Figure:
     """绘制阿联酋非油私营部门 PMI 的月度线图。"""
 
@@ -89,12 +91,14 @@ def build_pmi_figure(
     if display_values.dropna(how="all").empty:
         raise ValueError(f"{title}没有可绘制的有效数据")
 
+    axis_units = {PMI_LABEL: "点"}
+    if units is not None:
+        axis_units.update(units)
     figure, returned_axis = plot_series(
         display_values[PMI_LABEL].rename(PMI_LABEL),
         facet=False,
         title=title,
         xtitle="",
-        ytitle="点",
         ytitle_position="side",
         year_ruler=True,
         grid=True,
@@ -103,6 +107,7 @@ def build_pmi_figure(
         note=source_note(source_text),
         note_loc="left",
         figsize=(9.4, 6.2),
+        units=axis_units,
     )
     axis = normalize_ts_axis(returned_axis)
     annotate_war(axis)

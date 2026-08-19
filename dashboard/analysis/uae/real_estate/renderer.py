@@ -9,6 +9,8 @@ import streamlit as st
 
 from dashboard.analysis.uae.downloads import render_chart_download
 from dashboard.analysis.uae.real_estate.charts import (
+    AMOUNT_LABEL,
+    COUNT_LABEL,
     DEFAULT_TITLES,
     build_sales_figure,
     sales_display_values,
@@ -60,6 +62,7 @@ def _render_sales_chart(
     market: str,
 ) -> None:
     title = DEFAULT_TITLES[market]
+    count_column, amount_column = _market_columns(market)
     source_text = "、".join(
         dict.fromkeys(metadata.source for metadata in data.metadata.values())
     )
@@ -71,11 +74,14 @@ def _render_sales_chart(
             title=title,
             source_text=source_text,
             last_month=last_month,
+            units={
+                COUNT_LABEL: data.metadata[count_column].unit,
+                AMOUNT_LABEL: "亿迪拉姆",
+            },
         ),
         bbox_inches=None,
         place_legend_bottom=False,
     )
-    count_column, amount_column = _market_columns(market)
     chart_frame = sales_display_values(
         data.values,
         last_month=last_month,

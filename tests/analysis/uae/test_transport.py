@@ -174,7 +174,7 @@ def test_hormuz_channel_figure_dual_axis() -> None:
     # 模板图例挂在参考轴（主轴）上
     legend_labels = {text.get_text() for text in axis.get_legend().get_texts()}
     assert len(legend_labels) == 3
-    assert any("载货" in label for label in legend_labels)
+    assert any("总容量" in label for label in legend_labels)
     assert any("油轮容量" in label for label in legend_labels)
     assert any("过境" in label for label in legend_labels)
     assert any("IMF PortWatch" in text.get_text() for text in figure.texts)
@@ -368,7 +368,15 @@ def test_cell_failure_warns_cell_and_keeps_other_chart(monkeypatch) -> None:
 
     original_render = renderer._render_chart
 
-    def _fail_left(st_obj, data, last_month, title, figure_builder, download_columns):
+    def _fail_left(
+        st_obj,
+        data,
+        last_month,
+        title,
+        figure_builder,
+        download_columns,
+        units=None,
+    ):
         if title == HORMUZ_CHANNEL_TITLE:
             raise KeyError("霍尔木兹容量列缺失")
         return original_render(
@@ -378,6 +386,7 @@ def test_cell_failure_warns_cell_and_keeps_other_chart(monkeypatch) -> None:
             title=title,
             figure_builder=figure_builder,
             download_columns=download_columns,
+            units=units,
         )
 
     monkeypatch.setattr(renderer, "_render_chart", _fail_left)

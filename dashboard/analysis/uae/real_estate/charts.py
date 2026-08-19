@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import pandas as pd
 from matplotlib.figure import Figure
 from Ts.TsPlots import plot_series
@@ -27,8 +29,8 @@ from dashboard.analysis.uae.real_estate.data import (
 )
 from Ts.TsPlots.style import GRAY
 
-COUNT_LABEL = "销售笔数（笔）"
-AMOUNT_LABEL = "销售金额（亿迪拉姆）"
+COUNT_LABEL = "销售笔数"
+AMOUNT_LABEL = "销售金额"
 
 # 工作簿金额单位为百万 AED；图表统一折算为亿 AED（÷100）。
 AMOUNT_UNIT_FACTOR = 100
@@ -69,6 +71,7 @@ def build_sales_figure(
     title: str,
     source_text: str,
     last_month: pd.Period,
+    units: Mapping[str, str | None] | None = None,
 ) -> Figure:
     """绘制某市场（期房/现房）的笔数柱 + 金额线双轴图（Ts 默认模板）。
 
@@ -92,6 +95,12 @@ def build_sales_figure(
             AMOUNT_LABEL: display_values[amount_col],
         }
     )
+    axis_units = {
+        COUNT_LABEL: "笔",
+        AMOUNT_LABEL: "亿迪拉姆",
+    }
+    if units is not None:
+        axis_units.update(units)
 
     figure, returned_axis = plot_series(
         frame,
@@ -99,7 +108,6 @@ def build_sales_figure(
         axis_groups={COUNT_LABEL: "left", AMOUNT_LABEL: "right"},
         title=title,
         xtitle="",
-        ytitle=COUNT_LABEL,
         ytitle_position="side",
         year_ruler=True,
         grid=True,
@@ -110,7 +118,7 @@ def build_sales_figure(
         note=source_note(source_text),
         note_loc="left",
         figsize=(9.4, 6.2),
-        second_axis_title=AMOUNT_LABEL,
+        units=axis_units,
     )
     count_axis = normalize_ts_axis(returned_axis)
     count_axis.set_ylim(bottom=0)

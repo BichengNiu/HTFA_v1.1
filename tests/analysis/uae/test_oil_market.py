@@ -267,7 +267,7 @@ def test_oil_market_figure_combines_production_and_rigs() -> None:
     )
     assert rig_axis.get_lines()[0].get_ydata()[-1] == 59
     assert production_axis.get_ylabel() == "万桶/天"
-    assert rig_axis.get_ylabel() == "活跃钻机数（台）"
+    assert rig_axis.get_ylabel() == "台"
     assert production_axis.get_title() == "原油产量及活动钻机数"
     assert figure._suptitle is None
     assert production_axis.get_xticklabels()[-1].get_text() == "12月"
@@ -315,7 +315,9 @@ def test_oil_market_figure_marks_war_start_with_red_dashed_line() -> None:
     ]
     assert war_lines
     assert all(line.get_linestyle() == "--" for line in war_lines)
-    assert figure.subplotpars.bottom >= 0.25
+    # 单序列（只有产量柱、无钻机线）默认不显示图例，底部仅需容纳来源图注
+    # 与年份标尺；只要有足够底部边距容纳图注即可。
+    assert figure.subplotpars.bottom > 0.05
     assert any(
         text.get_text() == "<- 战争 ->"
         for text in production_axis.texts

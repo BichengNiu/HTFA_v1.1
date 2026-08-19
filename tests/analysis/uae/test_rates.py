@@ -116,7 +116,7 @@ def test_rates_figure_renders_four_monthly_mean_lines() -> None:
         "-.",
         ":",
     ]
-    assert axis.get_ylabel() == "％"
+    assert axis.get_ylabel() == "%"
     assert axis.get_title() == "阿联酋与美国市场利率（隔夜、1年期）"
     assert lines[0].get_ydata()[-1] == pytest.approx(7.0)
     assert any(text.get_text() == "数据来源：阿联酋央行" for text in figure.texts)

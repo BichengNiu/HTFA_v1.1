@@ -177,8 +177,8 @@ def test_build_sales_figure_renders_bar_and_amount_line_for_both_markets() -> No
         assert len(figure.axes) == 2
         axis, amount_axis = figure.axes
         assert axis.get_title() == renderer.DEFAULT_TITLES[market]
-        assert axis.get_ylabel() == COUNT_LABEL
-        assert amount_axis.get_ylabel() == AMOUNT_LABEL
+        assert axis.get_ylabel() == "笔"
+        assert amount_axis.get_ylabel() == "亿迪拉姆"
         # 默认模板：网格开启、柱自 0 起
         assert len(axis.get_ygridlines()) > 0
         assert axis.get_ylim()[0] == 0

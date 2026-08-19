@@ -147,7 +147,7 @@ def test_foreign_inflow_figure_renders_yoy() -> None:
         "#1f4e79",
         "#888888",
     ]
-    assert axis.get_ylabel() == "同比（%）"
+    assert axis.get_ylabel() == "%"
     assert [line.get_ydata()[-1] for line in lines] == pytest.approx(
         [10.0, 10.0, 10.0]
     )
@@ -184,7 +184,7 @@ def test_private_credit_figure_renders_yoy() -> None:
         "#1f4e79",
         "#888888",
     ]
-    assert axis.get_ylabel() == "同比（%）"
+    assert axis.get_ylabel() == "%"
     assert [line.get_ydata()[-1] for line in lines] == pytest.approx(
         [10.0, 10.0, 10.0]
     )

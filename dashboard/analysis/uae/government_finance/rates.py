@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -100,6 +101,7 @@ def build_rates_figure(
     *,
     title: str,
     source_text: str,
+    units: Mapping[str, str | None] | None = None,
 ) -> Figure:
     """绘制阿联酋与美国隔夜/1年期利率的月度均值四线图（单位 %），内部取最近 36 个月。"""
 
@@ -111,12 +113,14 @@ def build_rates_figure(
     last_month = periods.max()
     display_values = selected.loc[periods >= last_month - 36]
     frame = pd.DataFrame({name: display_values[name] for name in RATES_SERIES})
+    axis_units = {name: "%" for name in RATES_SERIES}
+    if units is not None:
+        axis_units.update(units)
     figure, returned_axis = plot_series(
         frame,
         facet=False,
         title=title,
         xtitle="",
-        ytitle="％",
         ytitle_position="side",
         year_ruler=True,
         grid=True,
@@ -125,6 +129,7 @@ def build_rates_figure(
         note=source_note(source_text),
         note_loc="left",
         figsize=(9.4, 6.2),
+        units=axis_units,
     )
     axis = normalize_ts_axis(returned_axis)
     annotate_war(axis)

@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -175,7 +176,8 @@ def _common_line_setup(
     *,
     title: str,
     source_text: str,
-    ytitle: str,
+    ytitle: str | None,
+    units: Mapping[str, str | None] | None,
 ) -> tuple[Figure, object]:
     figure, returned_axis = plot_series(
         frame,
@@ -191,6 +193,7 @@ def _common_line_setup(
         note=source_note(source_text),
         note_loc="left",
         figsize=(9.4, 6.2),
+        units=units,
     )
     axis = normalize_ts_axis(returned_axis)
     annotate_war(axis)
@@ -203,6 +206,7 @@ def build_foreign_inflow_figure(
     *,
     title: str,
     source_text: str,
+    units: Mapping[str, str | None] | None = None,
 ) -> Figure:
     """绘制银行外债、外币存款与外国主体存款的同比三线图（%），先算同比再取最近 36 个月。"""
 
@@ -223,12 +227,16 @@ def build_foreign_inflow_figure(
     frame = pd.DataFrame(
         {f"{column}同比": display_yoy[column] for column in inflow_columns}
     )
+    axis_units = {name: "%" for name in FOREIGN_SERIES}
+    if units is not None:
+        axis_units.update(units)
     figure, axis = _common_line_setup(
         frame,
         FOREIGN_SERIES,
         title=title,
         source_text=source_text,
-        ytitle="同比（%）",
+        ytitle=None,
+        units=axis_units,
     )
     return figure
 
@@ -238,6 +246,7 @@ def build_private_credit_yoy_figure(
     *,
     title: str,
     source_text: str,
+    units: Mapping[str, str | None] | None = None,
 ) -> Figure:
     """绘制私人企业信贷与个人信贷的同比双线图（%），先算同比再取最近 36 个月。"""
 
@@ -261,12 +270,16 @@ def build_private_credit_yoy_figure(
             for column in credit_columns
         }
     )
+    axis_units = {name: "%" for name in PRIVATE_CREDIT_SERIES}
+    if units is not None:
+        axis_units.update(units)
     figure, axis = _common_line_setup(
         frame,
         PRIVATE_CREDIT_SERIES,
         title=title,
         source_text=source_text,
-        ytitle="同比（%）",
+        ytitle=None,
+        units=axis_units,
     )
     return figure
 

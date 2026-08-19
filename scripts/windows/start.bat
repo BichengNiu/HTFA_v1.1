@@ -26,6 +26,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\free_port.ps1 -Port 
 if errorlevel 1 goto :failed
 echo.
 
+echo Clearing __pycache__ so the latest code always loads...
+for /d /r ".\runtime" %%D in (__pycache__) do ( if exist "%%D" rmdir /s /q "%%D" )
+for /d /r ".\dashboard" %%D in (__pycache__) do ( if exist "%%D" rmdir /s /q "%%D" )
+if exist ".\__pycache__" rmdir /s /q ".\__pycache__"
+echo.
+
 echo [2/2] Starting HTFA...
 if not defined HTFA_DEBUG_MODE set "HTFA_DEBUG_MODE=true"
 echo [INFO] Debug mode: %HTFA_DEBUG_MODE%

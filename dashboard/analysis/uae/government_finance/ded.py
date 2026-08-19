@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -192,6 +193,7 @@ def build_ded_figure(
     title: str,
     source_text: str,
     last_month: pd.Period,
+    units: Mapping[str, str | None] | None = None,
 ) -> Figure:
     """绘制当月新发执照数的月度柱状图（窗口 [last_month-36, last_month]，单序列无图例）。"""
 
@@ -204,12 +206,14 @@ def build_ded_figure(
         raise ValueError(f"{title}没有可绘制的有效数据")
 
     frame = display_values[[LICENCES_DISPLAY]].dropna(how="all")
+    axis_units = {LICENCES_DISPLAY: "张"}
+    if units is not None:
+        axis_units.update(units)
     figure, returned_axis = plot_series(
         frame,
         facet=False,
         title=title,
         xtitle="",
-        ytitle="张",
         ytitle_position="side",
         year_ruler=True,
         grid=True,
@@ -220,6 +224,7 @@ def build_ded_figure(
         note=source_note(source_text),
         note_loc="left",
         figsize=(9.4, 6.2),
+        units=axis_units,
     )
     axis = normalize_ts_axis(returned_axis)
     annotate_war(axis)

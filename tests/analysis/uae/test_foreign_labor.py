@@ -14,6 +14,7 @@ from dashboard.analysis.uae.foreign_labor import (
     latest_common_month,
     load_foreign_labor_data,
 )
+from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
 
 
 def _workbook_bytes() -> bytes:
@@ -87,37 +88,53 @@ def test_chart_uses_the_latest_common_month_and_two_requested_lines() -> None:
     assert len(bangladesh_axis.containers) == 1
     assert len(nepal_axis.containers[0]) == 37
     assert len(bangladesh_axis.containers[0]) == 37
-    assert [text.get_text() for text in figure.legends[0].get_texts()] == [
-        NEPAL_LABEL,
-        BANGLADESH_LABEL,
+    # 模板（走 Ts plot_series 默认模板）：双轴图例为「变量名（左轴/右轴）」。
+    legend = nepal_axis.get_legend()
+    assert legend is not None
+    assert [text.get_text() for text in legend.get_texts()] == [
+        f"{NEPAL_LABEL}（左轴）",
+        f"{BANGLADESH_LABEL}（右轴）",
     ]
-    assert nepal_axis.get_ylabel() == "人数（人）"
-    assert bangladesh_axis.get_ylabel() == "人数（人）"
-    assert nepal_axis.yaxis.label.get_color() in ("#000000", "black")
-    assert bangladesh_axis.yaxis.label.get_color() in ("#000000", "black")
-    # 脊线与模板默认对齐：主轴保留下/左，右轴保留右，上脊线隐藏
+    assert nepal_axis.get_ylabel() == "人"
+    assert bangladesh_axis.get_ylabel() == "人"
+    # 双柱模板化：两根柱在同一时间点并排错开（x 起点不同），而不重叠。
+    assert _bars_side_by_side(nepal_axis, bangladesh_axis)
+    # 模板默认脊线：主轴保留下/左，右轴保留右，上脊线隐藏。
     assert not nepal_axis.spines["top"].get_visible()
-    assert nepal_axis.spines["bottom"].get_visible()
-    assert nepal_axis.spines["left"].get_visible()
+    assert not bangladesh_axis.spines["top"].get_visible()
     assert bangladesh_axis.spines["right"].get_visible()
     assert any(
         text.get_text() == "数据来源：尼泊尔外国就业局、孟加拉国人力就业培训局"
         for text in figure.texts
     )
-    assert _war_line_on(nepal_axis)
+    # 战争起始基准线由模板 vlines 提供（参考线风格），并带红字战争标注。
+    assert any("<-" in text.get_text() for text in nepal_axis.texts)
 
 
-def _war_line_on(axis) -> bool:
-    from matplotlib.colors import to_rgba
+def _bars_side_by_side(left_axis, right_axis) -> bool:
+    """双轴双柱：同一时间点上两根柱的 x 起点应错开（并排而非重叠）。"""
+    left_x = [p.get_x() for p in left_axis.patches]
+    right_x = [p.get_x() for p in right_axis.patches]
+    if not left_x or not right_x:
+        return False
+    return any(l != r for l, r in zip(left_x, right_x))
 
-    from dashboard.analysis.uae.plot_helpers import WAR_LINE_COLOR
 
-    expected = to_rgba(WAR_LINE_COLOR)
-    return any(
-        tuple(to_rgba(line.get_color())) == expected
-        and line.get_linestyle() == "--"
-        for line in axis.get_lines()
+def test_bottom_legend_keeps_both_dual_axis_bar_series() -> None:
+    data = load_foreign_labor_data(_workbook_bytes(), file_name="test.xlsx")
+    figure = build_foreign_labor_figure(
+        data.values,
+        title="鍔冲伐浜烘暟",
+        source_text="娴嬭瘯鏉ユ簮",
     )
+
+    place_chart_legend_at_bottom(figure)
+
+    assert len(figure.legends) == 1
+    assert [text.get_text() for text in figure.legends[0].get_texts()] == [
+        f"{NEPAL_LABEL}（左轴）",
+        f"{BANGLADESH_LABEL}（右轴）",
+    ]
 
 
 def test_chart_limits_dense_monthly_bars_to_the_latest_three_years() -> None:

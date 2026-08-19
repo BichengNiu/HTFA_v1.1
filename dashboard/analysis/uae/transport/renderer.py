@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import pandas as pd
@@ -10,11 +11,17 @@ import streamlit as st
 from dashboard.analysis.uae.downloads import render_chart_download
 from dashboard.analysis.uae.transport.charts import (
     HORMUZ_CHANNEL_TITLE,
+    HORMUZ_CALLS_LABEL,
+    HORMUZ_CAPACITY_LABEL,
+    HORMUZ_TANKER_CAPACITY_LABEL,
     PORT_LINKAGE_TITLE,
+    UAE_CALLS_LABEL,
     build_hormuz_channel_figure,
     build_port_linkage_figure,
 )
 from dashboard.analysis.uae.transport.data import (
+    HORMUZ_TANKER_CALLS,
+    UAE_PORT_CALLS,
     TransportData,
     anchor_last_month,
     load_transport_data,
@@ -51,6 +58,7 @@ def _render_chart(
     title: str,
     figure_builder,
     download_columns: tuple[str, ...],
+    units: Mapping[str, str | None] | None = None,
 ) -> None:
     source_text = "、".join(
         dict.fromkeys(metadata.source for metadata in data.metadata.values())
@@ -61,6 +69,7 @@ def _render_chart(
             data.values,
             source_text=source_text,
             last_month=last_month,
+            units=units,
         ),
         bbox_inches=None,
         place_legend_bottom=False,
@@ -95,6 +104,11 @@ def render_transport_section(
                 title=HORMUZ_CHANNEL_TITLE,
                 figure_builder=build_hormuz_channel_figure,
                 download_columns=("霍尔木兹油轮过境", "霍尔木兹总容量", "霍尔木兹油轮容量"),
+                units={
+                    HORMUZ_CALLS_LABEL: data.metadata[HORMUZ_TANKER_CALLS].unit,
+                    HORMUZ_CAPACITY_LABEL: "百万吨",
+                    HORMUZ_TANKER_CAPACITY_LABEL: "百万吨",
+                },
             )
         except (KeyError, TypeError, ValueError) as exc:
             left.warning(f"霍尔木兹通道图未加载：{exc}")
@@ -106,6 +120,10 @@ def render_transport_section(
                 title=PORT_LINKAGE_TITLE,
                 figure_builder=build_port_linkage_figure,
                 download_columns=("UAE港口总到港", "霍尔木兹油轮容量"),
+                units={
+                    UAE_CALLS_LABEL: data.metadata[UAE_PORT_CALLS].unit,
+                    HORMUZ_TANKER_CAPACITY_LABEL: "百万吨",
+                },
             )
         except (KeyError, TypeError, ValueError) as exc:
             right.warning(f"港口联动图未加载：{exc}")

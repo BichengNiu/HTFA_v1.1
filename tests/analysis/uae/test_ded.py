@@ -104,10 +104,8 @@ def test_ded_figure_renders_single_licence_bar_without_legend() -> None:
     )
     assert axis.get_ylabel() == "张"
     assert axis.get_ylim()[0] == 0
-    # 单序列图模板仍展示一个图例条目（挂在参考轴上）
-    assert [text.get_text() for text in axis.get_legend().get_texts()] == [
-        LICENCES_DISPLAY
-    ]
+    # 单序列图默认不显示图例（模板规则：len(series)==1 且未显式 legend_labels）。
+    assert axis.get_legend() is None
     assert any(
         text.get_text() == "数据来源：DED" for text in figure.texts
     )

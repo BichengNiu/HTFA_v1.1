@@ -183,7 +183,7 @@ def render_chart_options_expander(
                         "第二纵轴标题",
                         value="",
                         key=_k("second_axis_title"),
-                        help="第二纵轴（右侧内层）的标题；留空自动用变量名。",
+                        help="第二纵轴（右侧内层）的标题；留空只显示单位。",
                     )
                     column_index += 1
                 if third_axis_on:
@@ -191,7 +191,7 @@ def render_chart_options_expander(
                         "第三纵轴标题",
                         value="",
                         key=_k("third_axis_title"),
-                        help="第三纵轴（最外层）的标题；留空自动用变量名。",
+                        help="第三纵轴（最外层）的标题；留空只显示单位。",
                     )
 
         with tab_axis:

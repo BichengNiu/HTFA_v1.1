@@ -132,5 +132,5 @@ def test_search_index_figure_standardizes_series_on_one_axis() -> None:
         ydata = pd.Series(line.get_ydata(), dtype=float).dropna()
         assert ydata.mean() == pytest.approx(0.0, abs=1e-9)
         assert ydata.std() == pytest.approx(1.0)
-    assert axis.get_ylabel() == "标准化搜索指数"
+    assert axis.get_ylabel() == "标准化指数"
     assert any(text.get_text() == "数据来源：Google 趋势" for text in figure.texts)

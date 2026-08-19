@@ -11,6 +11,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from matplotlib.figure import Figure
 import pandas as pd
 from Ts.TsPlots import plot_series
@@ -40,6 +42,7 @@ def build_oil_market_figure(
     production: pd.Series,
     source_text: str,
     rig_count: pd.Series | None = None,
+    units: Mapping[str, str | None] | None = None,
 ) -> Figure:
     """构建阿联酋原油产量和石油活跃钻机数的月度图（Ts 模板）。"""
 
@@ -63,13 +66,18 @@ def build_oil_market_figure(
         frame[MARKET_RIG_COUNT_LABEL] = rigs
         axis_groups[MARKET_RIG_COUNT_LABEL] = "right"
 
+    axis_units = {MARKET_PRODUCTION_LABEL: "万桶/天"}
+    if rigs is not None:
+        axis_units[MARKET_RIG_COUNT_LABEL] = "台"
+    if units is not None:
+        axis_units.update(units)
+
     figure, returned_axis = plot_series(
         frame,
         facet=False,
         axis_groups=axis_groups,
         title="原油产量及活动钻机数",
         xtitle="",
-        ytitle="万桶/天",
         ytitle_position="side",
         year_ruler=True,
         grid=True,
@@ -80,7 +88,7 @@ def build_oil_market_figure(
         note=source_note(source_text),
         note_loc="left",
         figsize=(9.4, 6.2),
-        second_axis_title="活跃钻机数（台）" if rigs is not None else None,
+        units=axis_units,
     )
     production_axis = normalize_ts_axis(returned_axis)
     annotate_war(production_axis)
@@ -91,6 +99,7 @@ def build_oil_market_figure(
 def build_oil_revenue_figure(
     revenue: pd.DataFrame,
     source_text: str,
+    units: Mapping[str, str | None] | None = None,
 ) -> Figure:
     """布伦特月均价线在左轴，石油收入柱在右轴（Ts 模板）。"""
 
@@ -102,6 +111,12 @@ def build_oil_revenue_figure(
     frame = pd.DataFrame(
         {REVENUE_PRICE_LABEL: price, REVENUE_LABEL: revenue[REVENUE_COLUMN]}
     )
+    axis_units = {
+        REVENUE_PRICE_LABEL: "美元/桶",
+        REVENUE_LABEL: "亿美元",
+    }
+    if units is not None:
+        axis_units.update(units)
 
     figure, returned_axis = plot_series(
         frame,
@@ -112,7 +127,6 @@ def build_oil_revenue_figure(
         },
         title="石油价格与阿联酋石油收入",
         xtitle="",
-        ytitle="美元/桶",
         ytitle_position="side",
         year_ruler=True,
         grid=True,
@@ -123,7 +137,7 @@ def build_oil_revenue_figure(
         note=source_note(source_text),
         note_loc="left",
         figsize=(9.4, 6.2),
-        second_axis_title="亿美元",
+        units=axis_units,
     )
     price_axis = normalize_ts_axis(returned_axis)
     annotate_war(price_axis)
