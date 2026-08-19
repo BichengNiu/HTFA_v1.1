@@ -37,6 +37,7 @@ import db  # noqa: E402
 SOURCES = (
     "baker_hughes",
     "cbuae",
+    "cloudflare_radar",
     "comtrade",
     "comtrade_vehicles",
     "ded",
@@ -50,8 +51,11 @@ SOURCES = (
     "gfs",
     "pmi",
     "portwatch",
+    "rta",
     "salik",
+    "scad",
     "steel",
+    "tdra",
     "uaewps",
 )
 

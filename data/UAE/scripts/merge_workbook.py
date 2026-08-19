@@ -39,6 +39,7 @@ WORKBOOK_PATH = DATA_DIR / "阿联酋.xlsx"
 SOURCES = (
     "baker_hughes",
     "cbuae",
+    "cloudflare_radar",
     "comtrade",
     "comtrade_vehicles",
     "ded",
@@ -49,7 +50,10 @@ SOURCES = (
     "gfs",
     "pmi",
     "portwatch",
+    "rta",
+    "scad",
     "steel",
+    "tdra",
     "uaewps",
 )
 

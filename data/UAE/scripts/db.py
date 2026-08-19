@@ -212,6 +212,109 @@ _BASE_DDL = (
         PRIMARY KEY (period, origin_city, destn_city, service)
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS tdra_telecom_monthly (
+        period      DATE           NOT NULL,
+        indicator   VARCHAR        NOT NULL,
+        value       DECIMAL(20, 4),
+        source_file VARCHAR,
+        PRIMARY KEY (period, indicator)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS cloudflare_radar_daily (
+        period      DATE           NOT NULL,
+        indicator   VARCHAR        NOT NULL,
+        value       DECIMAL(12, 3),
+        source_file VARCHAR,
+        PRIMARY KEY (period, indicator)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS rta_bus_trips_route_monthly (
+        period      DATE    NOT NULL,
+        route_name  VARCHAR NOT NULL,
+        trips       BIGINT,
+        PRIMARY KEY (period, route_name)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS rta_marine_trips_station_monthly (
+        period      DATE          NOT NULL,
+        station     VARCHAR       NOT NULL,
+        passengers  DECIMAL(18, 3),
+        marine_mode VARCHAR,
+        PRIMARY KEY (period, station)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS rta_taxi_trips_monthly (
+        period     DATE    NOT NULL,
+        carrier    VARCHAR NOT NULL,
+        fleet_size BIGINT,
+        trips      BIGINT,
+        PRIMARY KEY (period, carrier)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS rta_bus_speed_daily_detail (
+        txn_date        DATE,
+        time_period     VARCHAR,
+        service_type    VARCHAR,
+        route_name      VARCHAR,
+        route_direction VARCHAR,
+        average_speed   DOUBLE
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS rta_marine_ridership_raw (
+        txn_date  DATE,
+        txn_time  VARCHAR,
+        line_name VARCHAR,
+        location  VARCHAR,
+        txn_type  VARCHAR,
+        zone      VARCHAR,
+        txn_ts    VARCHAR
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS rta_bus_ridership_raw (
+        txn_date       DATE,
+        txn_time       VARCHAR,
+        route_name     VARCHAR,
+        start_location VARCHAR,
+        start_zone     VARCHAR,
+        end_location   VARCHAR,
+        end_zone       VARCHAR,
+        txn_type       VARCHAR,
+        txn_ts         VARCHAR
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS rta_transport_monthly (
+        period    DATE    NOT NULL,
+        indicator VARCHAR NOT NULL,
+        value     DECIMAL(20, 3),
+        PRIMARY KEY (period, indicator)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS rta_transport_daily (
+        period    DATE    NOT NULL,
+        indicator VARCHAR NOT NULL,
+        value     DECIMAL(20, 3),
+        PRIMARY KEY (period, indicator)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS scad_monthly (
+        period      DATE           NOT NULL,
+        indicator   VARCHAR        NOT NULL,
+        value       DECIMAL(28, 3),
+        source_file VARCHAR,
+        PRIMARY KEY (period, indicator)
+    )
+    """,
     # --- metadata ---
     """
     CREATE TABLE IF NOT EXISTS meta_indicator_dictionary (
