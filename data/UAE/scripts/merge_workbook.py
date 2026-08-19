@@ -40,6 +40,7 @@ SOURCES = (
     "baker_hughes",
     "cbuae",
     "comtrade",
+    "comtrade_vehicles",
     "ded",
     "dld",
     "employment",

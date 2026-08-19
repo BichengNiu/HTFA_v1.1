@@ -38,6 +38,7 @@ SOURCES = (
     "baker_hughes",
     "cbuae",
     "comtrade",
+    "comtrade_vehicles",
     "ded",
     "dld",
     "dot_t100",
@@ -49,6 +50,7 @@ SOURCES = (
     "gfs",
     "pmi",
     "portwatch",
+    "salik",
     "steel",
     "uaewps",
 )
