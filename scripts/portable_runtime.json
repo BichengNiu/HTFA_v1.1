@@ -1,9 +1,0 @@
-{
-  "python_version": "3.13.4",
-  "platform": "win_amd64",
-  "archive_url": "https://www.python.org/ftp/python/3.13.4/python-3.13.4-embed-amd64.zip",
-  "archive_sha256": "514ca14ec356ecb7749a7c0a1ef1eac9fd9c67d57af4812cb1f0822b0d3a85e8",
-  "pip_version": "26.1.2",
-  "pip_wheel_url": "https://files.pythonhosted.org/packages/5d/95/6b5cb3461ea5673ba0995989746db58eb18b91b54dbf331e72f569540946/pip-26.1.2-py3-none-any.whl",
-  "pip_wheel_sha256": "382ff9f685ee3bc25864f820aa50505825f10f5458ffff07e30a6d96e5715cab"
-}

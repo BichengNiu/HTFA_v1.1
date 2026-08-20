@@ -3,13 +3,13 @@
 HTFA 使用项目根目录中的 `runtime/`，因此复制整个项目目录后，无需另外安装 Python。正常启动运行：
 
 ```powershell
-scripts\windows\start.bat
+scripts\start.bat
 ```
 
 仅在 `runtime/` 缺失、损坏或依赖发生变化时重建：
 
 ```powershell
-scripts\windows\setup_runtime.bat
+python scripts\htfa.py setup-runtime
 ```
 
 重建脚本下载固定版本的 CPython 和依赖，校验下载文件，构建候选运行时，并在关键导入成功后替换现有 `runtime/`。替换失败会恢复旧运行时。

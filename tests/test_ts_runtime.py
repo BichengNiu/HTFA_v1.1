@@ -6,11 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from scripts.ts_runtime import (
+from scripts.htfa import (
     RuntimeUpdateError,
+    build_streamlit_argv,
     extract_runtime_archive,
     fetch_head_commit,
     install_ts_runtime,
+    load_pinned_metadata,
+    load_portable_spec,
     prepare_ts_runtime,
 )
 
@@ -196,3 +199,36 @@ def test_install_failure_restores_previous_ts(tmp_path, monkeypatch):
         (install_root / "Ts" / "HTFA_RUNTIME.json").read_text(encoding="utf-8")
     )
     assert metadata["commit"] == CURRENT_COMMIT
+
+
+def test_embedded_runtime_specs_are_valid():
+    pinned = load_pinned_metadata(PROJECT_ROOT)
+    portable = load_portable_spec(PROJECT_ROOT)
+
+    assert pinned["repository"] == "https://github.com/BichengNiu/Ts"
+    assert pinned["branch"] == "main"
+    assert len(pinned["commit"]) == 40
+    assert portable["python_version"] == "3.13.4"
+    assert portable["platform"] == "win_amd64"
+    assert portable["pip_version"] == "26.1.2"
+    assert portable["pip_wheel_url"].endswith(
+        "/pip-26.1.2-py3-none-any.whl"
+    )
+    assert len(portable["archive_sha256"]) == 64
+    assert len(portable["pip_wheel_sha256"]) == 64
+
+
+def test_streamlit_arguments_are_preserved():
+    assert build_streamlit_argv(
+        PROJECT_ROOT,
+        ["--server.port=8501", "--server.headless", "true"],
+    ) == [
+        "streamlit",
+        "run",
+        str(PROJECT_ROOT / "app.py"),
+        "--server.headless",
+        "false",
+        "--server.port=8501",
+        "--server.headless",
+        "true",
+    ]

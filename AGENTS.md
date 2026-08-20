@@ -21,7 +21,7 @@
 
 ## Run and test
 
-- Run HTFA with `scripts\windows\start.bat` (project-local runtime; do not rely on system Python).
+- Run HTFA with `scripts\start.bat` (project-local runtime; system Python is used only for first-time runtime setup).
 - Runtime Python: `runtime\python.exe`.
 - After a code change, run only the tests relevant to the changed behavior. Run the complete suite only for broad cross-module changes.
 - HTFA SARIMAX regression tests (12 passed):

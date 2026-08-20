@@ -4,7 +4,7 @@ rem 用法: 直接把本 .bat 填进“任务计划程序”的“程序或脚�
 cd /d "%~dp0..\.."
 if errorlevel 1 goto :failed
 if not exist "runtime\python.exe" (
-    echo [ERROR] runtime\python.exe not found. Run scripts\windows\setup_runtime.bat first.
+    echo [ERROR] runtime\python.exe not found. Run scripts\start.bat first.
     goto :failed
 )
 
