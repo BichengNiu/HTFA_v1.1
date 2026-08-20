@@ -33,6 +33,7 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import db  # noqa: E402
+from uae_metadata import sync_workbook_dictionary  # noqa: E402
 
 WORKBOOK_PATH = DATA_DIR / "阿联酋.xlsx"
 
@@ -55,6 +56,7 @@ SOURCES = (
     "steel",
     "tdra",
     "uaewps",
+    "extended",
 )
 
 
@@ -108,6 +110,22 @@ def main(argv: list[str] | None = None) -> int:
                 traceback.format_exception_only(type(exc), exc)
             ).strip()
             print(f"[merge_workbook] {name:<16} FAILED  {detail}", flush=True)
+    if failures == 0:
+        try:
+            dictionary = sync_workbook_dictionary(workbook_path)
+            print(
+                "[merge_workbook] metadata         ok       "
+                f"added={dictionary['added']} updated={dictionary['updated']} "
+                f"removed={dictionary['removed']} "
+                f"sheet_indicators={dictionary['sheet_indicators']}",
+                flush=True,
+            )
+        except Exception as exc:  # noqa: BLE001 - keep per-merge failure reporting
+            failures += 1
+            detail = "".join(
+                traceback.format_exception_only(type(exc), exc)
+            ).strip()
+            print(f"[merge_workbook] metadata         FAILED  {detail}", flush=True)
     print(
         f"[merge_workbook] done: {len(names) - failures} ok, {failures} failed; "
         f"workbook: {workbook_path}",

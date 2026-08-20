@@ -53,6 +53,13 @@ Any change touching plotting (chart style, axes, legend, titles, grid, multi-axi
 
 ## 推送规范（Push policy）
 
+### 主分支提交规则（强制）
+
+- 所有修改必须直接在本地 `main` 分支上完成并提交。
+- 严禁创建、切换或使用功能分支、临时分支、修复分支或 PR 分支；不得通过分支合并回 `main`。
+- 执行提交或推送前，必须确认 `git branch --show-current` 返回 `main`，并核对本地 `main` 与远端 `origin/main` 的关系。
+- 后续提交统一直接推送到远端 `main`；如发现当前不在 `main`，先停止并切回 `main`，不得在其他分支继续修改。
+
 仓库远端只应收到**正式源文件与两份数据文件**（`data/UAE/uae.duckdb` 经 Git LFS、
 `data/UAE/阿联酋.xlsx`）；任何缓存、临时、中间产物、调试文件一律**不入 git、不推送**。
 

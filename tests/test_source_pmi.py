@@ -9,9 +9,9 @@ from pathlib import Path
 import pytest
 from openpyxl import Workbook
 
-DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "UAE"
-if str(DATA_DIR) not in sys.path:
-    sys.path.insert(0, str(DATA_DIR))
+SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "data" / "UAE" / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
 
 import db  # noqa: E402
 import source_pmi as source  # noqa: E402

@@ -324,7 +324,7 @@ ORDER BY week_start
 """
 
 # ---------------------------------------------------------------------------
-# 列字典：dld.transactions 仅保留 KEEP_COLUMNS 八列（含义沿用旧
+# 列字典：dld.transactions 仅保留 KEEP_COLUMNS 九列（含义沿用旧
 # build_dld_database.sql 的 metadata.column_dictionary；land_registry 已不再建表,
 # 其字典行一并移除）。
 # ---------------------------------------------------------------------------
@@ -1834,7 +1834,7 @@ def _write_monthly_sheet(workbook_path: Path) -> int:
     ws.cell(row=4, column=1, value="单位")
     ws.cell(row=5, column=1, value="来源")
     ws.cell(row=6, column=1, value="更新时间")
-    for col, header in enumerate(headers, start=1):
+    for col, header in enumerate(headers[1:], start=2):
         ws.cell(row=2, column=col, value=header)
     for col, unit in enumerate(units, start=2):
         ws.cell(row=3, column=col, value="月")

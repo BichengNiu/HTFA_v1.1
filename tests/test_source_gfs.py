@@ -12,9 +12,9 @@ from decimal import Decimal
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = PROJECT_ROOT / "data" / "UAE"
-if str(DATA_DIR) not in sys.path:
-    sys.path.insert(0, str(DATA_DIR))
+SCRIPTS_DIR = PROJECT_ROOT / "data" / "UAE" / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
 
 import source_gfs as sg
 import db

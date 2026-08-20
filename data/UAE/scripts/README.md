@@ -20,6 +20,7 @@ runtime\python.exe data\UAE\scripts\merge_workbook.py   # 库→阿联酋.xlsx
 
 - `update_data.py` / `update_data.bat`：更新总控（全部源或按 `--source`）；
 - `merge_workbook.py` / `merge_workbook.bat`：合并总控（写回工作簿各 sheet）；
+- `source_extended.py` / `workbook_sheet_writer.py`：从 DuckDB 重建此前未接入工作簿的 Eurostat、DOT、Dubai Customs、Salik、搜索热度、Comtrade、DED 和外籍劳动力 sheet；
 - `db.py`：共享 DuckDB 连接 / 建表 / 运行日志；`_excel_helpers.py`：COM 写表基础设施；
 - `source_*.py`：每源一个模块（download → parse → load → merge）；
 - `write_*.ps1`：Excel COM 写表助手（baker_hughes/cbuae/emirates_post/portwatch/

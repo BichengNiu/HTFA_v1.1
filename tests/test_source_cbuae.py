@@ -1,4 +1,4 @@
-"""Tests for ``data/source_cbuae.py``（DuckDB 入库版）。"""
+"""Tests for the current CBUAE DuckDB source pipeline."""
 
 import sys
 from datetime import date
@@ -7,18 +7,24 @@ from pathlib import Path
 
 from openpyxl import Workbook
 
-DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "UAE"
-if str(DATA_DIR) not in sys.path:
-    sys.path.insert(0, str(DATA_DIR))
+SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "data" / "UAE" / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
 
 import db  # noqa: E402
 import source_cbuae as source  # noqa: E402
 
 
-def _bulletin_workbook(path: Path) -> None:
-    """构造一份模拟真实统计公报的迷你工作簿（2020-01、2020-02 两期）。"""
+def _bulletin_workbook(
+    path: Path,
+    *,
+    government_deposits: tuple[int, int] = (200, 201),
+) -> None:
+    """Build a minimal four-table CBUAE bulletin with two observation months."""
 
+    first_government, second_government = government_deposits
     workbook = Workbook()
+
     credit = workbook.active
     credit.title = "20 Dom Crd"
     credit.append(
@@ -27,37 +33,47 @@ def _bulletin_workbook(path: Path) -> None:
     credit.append([None, None, None])
     credit.append(["Government", 100, 101])
     credit.append(["Public Sector ( GREs )", 50, 51])
+    credit.append(["Corporate", 300, 301])
+    credit.append(["Other Financial Corporations", 40, 41])
+    credit.append(["Individual", 200, 201])
 
     deposit = workbook.create_sheet("25 Dep")
     deposit.append(
         [
             "Deposits distributed Residents / Non Residents ( All Banks )",
+            None,
+            None,
+            None,
             "January 2020",
             "February 2020",
         ]
     )
-    deposit.append([None, None, None])
-    deposit.append(["Government", 200, 201])
-    deposit.append(["GREs", 100, 101])
+    deposit.append([None, None, None, None, None, None])
+    deposit.append(["Government", None, None, None, first_government, second_government])
+    deposit.append(["GREs", None, None, None, 100, 101])
+    deposit.append([None, "(2)", None, None, None, None])
+    deposit.append([None, None, None, "Corporate", 300, 301])
+    deposit.append([None, None, None, "Individuals", 50, 51])
+    deposit.append(
+        [None, None, None, "Government and Non Commercial Entities", 60, 61]
+    )
+    deposit.append([None, None, None, "Other Financial Corporations", 40, 41])
 
-    workbook.save(path)
-    workbook.close()
+    currency = workbook.create_sheet("Curr")
+    currency.append(
+        ["Deposits by Type and Currency (All Banks)", "January 2020", "February 2020"]
+    )
+    currency.append([None, None, None])
+    currency.append(["Total Foreign Currencies", 400, 401])
 
+    foreign = workbook.create_sheet("FA")
+    foreign.append(
+        ["Foreign Assets and Liabilities (All Banks)", "January 2020", "February 2020"]
+    )
+    foreign.append([None, None, None])
+    foreign.append(["Foreign Assets", 500, 501])
+    foreign.append(["Foreign Liabilities", 600, 601])
 
-def _wind_workbook(path: Path) -> None:
-    """构造月度_Wind sheet：2019-12 可回填、2020-01 已存在主序列不应覆盖。"""
-
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "月度_Wind"
-    sheet.append(["Wind", None, None, None, None])
-    sheet.append(["指标名称", *source.WIND_FALLBACK_INDICATORS])
-    sheet.append(["频率", "月", "月", "月", "月"])
-    sheet.append(["单位", *("十亿阿联酋迪拉姆",) * 4])
-    sheet.append(["来源", *("Wind",) * 4])
-    sheet.append(["更新时间", *("2026-08-11",) * 4])
-    sheet.append([date(2019, 12, 31), 1.0, 2.0, 3.0, 4.0])
-    sheet.append([date(2020, 1, 31), 999.0, 999.0, 999.0, 999.0])
     workbook.save(path)
     workbook.close()
 
@@ -74,70 +90,55 @@ def test_extract_workbook_returns_both_periods(tmp_path) -> None:
         Decimal("100.000"),
         Decimal("100.000"),
         Decimal("50.000"),
+        Decimal("300.000"),
+        Decimal("260.000"),
+        Decimal("300.000"),
+        Decimal("260.000"),
+        Decimal("50.000"),
+        Decimal("60.000"),
+        Decimal("40.000"),
+        Decimal("400.000"),
+        Decimal("500.000"),
+        Decimal("600.000"),
+        Decimal("200.000"),
     )
     assert observations[0].source_period == "2020-03"
     assert observations[0].source_file == "2020-03.xlsx"
 
 
-def test_update_roundtrip_long_table_with_wind_fallback(
+def test_update_roundtrip_long_table_without_wind_dependency(
     tmp_path, monkeypatch
 ) -> None:
-    """解析 -> 入库往返：长表 3 期 × 4 指标；缺期由 Wind 回填且不覆盖主序列。"""
+    """Official bulletins populate the long table; no Excel fallback is read."""
 
     monkeypatch.setattr(source, "RAW_DIR", tmp_path)
-    monkeypatch.setattr(source, "WIND_PATH", tmp_path / "wind.xlsx")
     _bulletin_workbook(tmp_path / "2020-03.xlsx")
-    _wind_workbook(tmp_path / "wind.xlsx")
 
     con = db.connect(":memory:")
     db.init_schema(con)
     outcome = source.update(con, skip_download=True)
 
     assert outcome["status"] == "ok"
-    assert outcome["rows"] == 12  # 2019-12, 2020-01, 2020-02 × 4 指标
+    assert outcome["rows"] == 30  # 2020-01 and 2020-02 × 15 indicators
 
-    count = con.execute("SELECT COUNT(*) FROM cbuae_monthly").fetchone()[0]
     periods = con.execute(
         "SELECT DISTINCT period FROM cbuae_monthly ORDER BY period"
     ).fetchall()
-    assert periods == [(date(2019, 12, 31),), (date(2020, 1, 31),), (date(2020, 2, 29),)]
+    assert periods == [(date(2020, 1, 31),), (date(2020, 2, 29),)]
 
-    # 2019-12 由 Wind 回填：十亿 → 百万
-    wind_value = con.execute(
-        "SELECT value FROM cbuae_monthly "
-        "WHERE period = ? AND indicator = ?",
-        [date(2019, 12, 31), "阿联酋政府存款"],
-    ).fetchone()[0]
-    assert wind_value == Decimal("1000.000")
-    wind_source = con.execute(
-        "SELECT source_file FROM cbuae_monthly WHERE period = ? AND indicator = ?",
-        [date(2019, 12, 31), "阿联酋政府存款"],
-    ).fetchone()[0]
-    assert wind_source == "wind.xlsx"
-
-    # 2020-01 必须来自公报（Wind 同期待填值不覆盖主序列）
-    primary_value = con.execute(
-        "SELECT value FROM cbuae_monthly "
+    value, source_file = con.execute(
+        "SELECT value, source_file FROM cbuae_monthly "
         "WHERE period = ? AND indicator = ?",
         [date(2020, 1, 31), "阿联酋政府存款"],
-    ).fetchone()[0]
-    assert primary_value == Decimal("200.000")
-    primary_source = con.execute(
-        "SELECT source_file FROM cbuae_monthly WHERE period = ? AND indicator = ?",
-        [date(2020, 1, 31), "阿联酋政府信贷"],
-    ).fetchone()[0]
-    assert primary_source == "2020-03.xlsx"
-
+    ).fetchone()
+    assert value == Decimal("200.000")
+    assert source_file == "2020-03.xlsx"
     con.close()
 
 
-def test_update_writes_four_dictionary_rows(tmp_path, monkeypatch) -> None:
-    """指标字典应写入 CBUAE 的 4 行（名称/类型/行业/频率/单位/来源）。"""
-
+def test_update_writes_current_dictionary_rows(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(source, "RAW_DIR", tmp_path)
-    monkeypatch.setattr(source, "WIND_PATH", tmp_path / "wind.xlsx")
     _bulletin_workbook(tmp_path / "2020-03.xlsx")
-    _wind_workbook(tmp_path / "wind.xlsx")
 
     con = db.connect(":memory:")
     db.init_schema(con)
@@ -148,48 +149,39 @@ def test_update_writes_four_dictionary_rows(tmp_path, monkeypatch) -> None:
         "FROM meta_indicator_dictionary ORDER BY indicator_name"
     ).fetchall()
     con.close()
-    assert len(dictionary) == 4
-    assert ("阿联酋政府存款", "存款", "金融", "月", "百万迪拉姆", "CBUAE") in dictionary
-    assert ("阿联酋政府控股企业存款", "存款", "金融", "月", "百万迪拉姆", "CBUAE") in dictionary
-    assert ("阿联酋政府信贷", "信贷", "金融", "月", "百万迪拉姆", "CBUAE") in dictionary
-    assert ("阿联酋政府控股企业信贷", "信贷", "金融", "月", "百万迪拉姆", "CBUAE") in dictionary
+    assert len(dictionary) == len(source.CBUAE_INDICATORS)
+    assert (
+        "阿联酋政府存款",
+        "存款",
+        "金融",
+        "月",
+        "百万迪拉姆",
+        "CBUAE",
+    ) in dictionary
+    assert (
+        "阿联酋:国内信贷:个人信贷(Individual Credit)",
+        "信贷",
+        "金融",
+        "月",
+        "百万迪拉姆",
+        "CBUAE",
+    ) in dictionary
 
 
-def test_select_latest_vintages_prefers_newer_bulletin(tmp_path, monkeypatch) -> None:
-    """同一期间出现两个 vintage 时选择较新公报，并报告修订期数。"""
+def test_select_latest_vintages_prefers_newer_bulletin() -> None:
+    """The newer source vintage wins and the revision count is reported."""
 
-    old_bulletin = tmp_path / "2020-02.xlsx"
-    _bulletin_workbook(old_bulletin)
-    # 新公报覆盖同一期间且数值不同（政府存款 200 -> 250）
-    workbook = Workbook()
-    credit = workbook.active
-    credit.title = "20 Dom Crd"
-    credit.append(["Table 20: Domestic Credit (All Banks)", "January 2020"])
-    credit.append([None, None])
-    credit.append(["Government", 100])
-    credit.append(["Public Sector ( GREs )", 50])
-    deposit = workbook.create_sheet("25 Dep")
-    deposit.append(
-        ["Deposits distributed Residents / Non Residents ( All Banks )", "January 2020"]
+    old = source.Observation(
+        "2020-01", (Decimal("200"),), "2020-02", "2020-02.xlsx"
     )
-    deposit.append([None, None])
-    deposit.append(["Government", 250])
-    deposit.append(["GREs", 100])
-    workbook.save(tmp_path / "2020-03.xlsx")
-    workbook.close()
+    new = source.Observation(
+        "2020-01", (Decimal("250"),), "2020-03", "2020-03.xlsx"
+    )
 
-    monkeypatch.setattr(source, "RAW_DIR", tmp_path)
-    monkeypatch.setattr(source, "WIND_PATH", tmp_path / "wind.xlsx")
-    _wind_workbook(tmp_path / "wind.xlsx")
+    selected, missing, revised = source.select_latest_vintages(
+        [old, new], start_period="2020-01", end_period="2020-01"
+    )
 
-    con = db.connect(":memory:")
-    db.init_schema(con)
-    source.update(con, skip_download=True)
-
-    value = con.execute(
-        "SELECT value, source_period FROM cbuae_monthly "
-        "WHERE period = ? AND indicator = ?",
-        [date(2020, 1, 31), "阿联酋政府存款"],
-    ).fetchone()
-    con.close()
-    assert value == (Decimal("250.000"), "2020-03")
+    assert selected[0] is new
+    assert missing == []
+    assert revised == 1

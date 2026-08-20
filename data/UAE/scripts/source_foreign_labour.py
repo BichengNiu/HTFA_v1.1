@@ -760,8 +760,6 @@ def style_sheet(worksheet, rows: list[dict[str, Any]]) -> None:
     bold_font = Font(bold=True)
 
     headers = list(WORKBOOK_HEADERS)
-    frequencies = ["月"] * len(headers)
-    units = ["日期"] + ["人"] * 7
     sources = [
         "各国官方劳工输出登记/部署/审批数据",
         "菲律宾 DMW Monthly Compendium Tab 11",
@@ -775,10 +773,10 @@ def style_sheet(worksheet, rows: list[dict[str, Any]]) -> None:
     updated = max(row["date"] for row in rows)
 
     worksheet.append([sources[0]] + [None] * (len(headers) - 1))
-    worksheet.append(headers)
-    worksheet.append(frequencies)
-    worksheet.append(units)
-    worksheet.append(sources)
+    worksheet.append(["指标名称"] + headers[1:])
+    worksheet.append(["频率"] + ["月"] * (len(headers) - 1))
+    worksheet.append(["单位"] + ["人"] * (len(headers) - 1))
+    worksheet.append(["来源"] + sources[1:])
     worksheet.append(["更新时间"] + [updated] * (len(headers) - 1))
     for row in rows:
         worksheet.append(

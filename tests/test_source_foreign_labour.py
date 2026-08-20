@@ -4,9 +4,9 @@ import sys
 from datetime import date
 from pathlib import Path
 
-DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "UAE"
-if str(DATA_DIR) not in sys.path:
-    sys.path.insert(0, str(DATA_DIR))
+SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "data" / "UAE" / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
 
 import db  # noqa: E402
 import source_foreign_labour as source  # noqa: E402
@@ -30,6 +30,37 @@ def test_numeric_handles_dash_and_commas() -> None:
     assert source.numeric(None) == 0
     assert source.numeric("-") == 0
     assert source.numeric("1,234") == 1234
+
+
+def test_style_sheet_uses_workbook_metadata_protocol() -> None:
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    worksheet = workbook.active
+    source.style_sheet(
+        worksheet,
+        [
+            {
+                "date": date(2026, 7, 31),
+                "philippines_total": 10,
+                "philippines_new_hires": 4,
+                "philippines_rehires": 6,
+                "nepal_with_reentry": 20,
+                "nepal_without_reentry": 18,
+                "bangladesh_clearance": 30,
+                "proxy_sum": 60,
+                "proxy_index": 1.0,
+            }
+        ],
+    )
+
+    assert [worksheet.cell(row, 1).value for row in range(2, 7)] == [
+        "指标名称",
+        "频率",
+        "单位",
+        "来源",
+        "更新时间",
+    ]
 
 
 def test_parse_bangladesh_reads_complete_months(tmp_path, monkeypatch) -> None:

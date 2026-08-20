@@ -11,9 +11,9 @@ from pathlib import Path
 
 import pytest
 
-DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "UAE"
-if str(DATA_DIR) not in sys.path:
-    sys.path.insert(0, str(DATA_DIR))
+SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "data" / "UAE" / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
 
 import source_dld as dld  # noqa: E402
 
@@ -313,8 +313,32 @@ def test_indicator_dictionary_contract() -> None:
     )
 
 
+def test_monthly_sheet_preserves_metadata_labels(tmp_path, monkeypatch) -> None:
+    from openpyxl import Workbook, load_workbook
+
+    workbook_path = tmp_path / "workbook.xlsx"
+    Workbook().save(workbook_path)
+    monkeypatch.setattr(
+        dld,
+        "_query_monthly_rows",
+        lambda: [{"period": date(2026, 7, 31), "values": [1] * 13}],
+    )
+
+    assert dld._write_monthly_sheet(workbook_path) == 1
+
+    workbook = load_workbook(workbook_path, read_only=True, data_only=True)
+    worksheet = workbook[dld.MONTHLY_WORKSHEET_NAME]
+    assert [worksheet.cell(row, 1).value for row in range(2, 7)] == [
+        "指标名称",
+        "频率",
+        "单位",
+        "来源",
+        "更新时间",
+    ]
+
+
 def test_column_dictionary_contract() -> None:
-    assert len(dld.COLUMN_DICTIONARY) == len(dld.KEEP_COLUMNS) == 8
+    assert len(dld.COLUMN_DICTIONARY) == len(dld.KEEP_COLUMNS) == 9
     assert all(len(row) == 7 for row in dld.COLUMN_DICTIONARY)
     object_names = {row[0] for row in dld.COLUMN_DICTIONARY}
     # 2026-08 瘦身：只保留 transactions（land_registry 已不再入库）

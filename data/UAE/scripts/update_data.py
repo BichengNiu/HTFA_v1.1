@@ -33,6 +33,7 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import db  # noqa: E402
+from uae_metadata import complete_metadata  # noqa: E402
 
 SOURCES = (
     "baker_hughes",
@@ -137,6 +138,28 @@ def run_sources(
                 started_at=started,
                 note=detail,
             )
+    metadata_started = datetime.now()
+    try:
+        metadata = complete_metadata(con)
+        results["_metadata"] = {
+            "status": "ok",
+            "rows": metadata["indicator_rows"] + metadata["column_rows"],
+            "note": (
+                f"指标 {metadata['indicator_rows']} 行、字段 "
+                f"{metadata['column_rows']} 行已补齐"
+            ),
+        }
+        db.log_run(
+            con,
+            "metadata",
+            "ok",
+            started_at=metadata_started,
+            note=results["_metadata"]["note"],
+        )
+    except Exception as exc:  # noqa: BLE001 - metadata is part of the pipeline contract
+        detail = "".join(traceback.format_exception_only(type(exc), exc)).strip()
+        results["_metadata"] = {"status": "failed", "rows": 0, "note": detail}
+        db.log_run(con, "metadata", "failed", started_at=metadata_started, note=detail)
     con.close()
     return results
 
@@ -162,6 +185,17 @@ def main(argv: list[str] | None = None) -> int:
             flush=True,
         )
         if outcome["status"] != "ok":
+            failures += 1
+    metadata_outcome = results.get("_metadata")
+    if metadata_outcome is not None:
+        print(
+            f"[update_data] {'metadata':<16} "
+            f"{'OK' if metadata_outcome['status'] == 'ok' else 'FAIL':<4} "
+            f"rows={metadata_outcome.get('rows', 0):>8}  "
+            f"{metadata_outcome.get('note', '')}",
+            flush=True,
+        )
+        if metadata_outcome["status"] != "ok":
             failures += 1
     print(
         f"[update_data] done: {len(names) - failures} ok, {failures} failed; "
