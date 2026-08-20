@@ -80,6 +80,46 @@ def test_complete_metadata_is_idempotent() -> None:
         con.close()
 
 
+def test_legacy_workbook_indicators_have_source_metadata() -> None:
+    names = {
+        "阿联酋DFM综合股票指数",
+        "全球:现货均价:原油(阿联酋穆尔班)",
+        "期货结算价(连续):布伦特原油",
+        "全球:现货价:原油(英国布伦特Dtd)",
+        "全球:现货价:原油(阿联酋迪拜)",
+        "阿联酋:现货价(CIF,低端价):石脑油",
+        "阿联酋:现货价(CIF,低端价):汽油(优质无铅)",
+        "阿联酋:现货价(CIF,低端价):柴油(Gasoil.1)",
+        "阿联酋:现货价(CIF,低端价):煤油(航空)",
+        "中国:广州市场:市场价(主流价):线型低密度聚乙烯(FB2230膜料):阿联酋博禄化工",
+        "阿联酋:现货价(CIF,低端价):柴油(10ppm)",
+        "印度:出口数量:咖啡:阿联酋:累计值",
+        "阿联酋:银行间同业拆借利率(EIBOR):1年",
+        "美元兑阿联酋迪拉姆",
+        "人民币兑阿联酋迪拉姆",
+        "阿联酋:银行间同业拆借利率(EIBOR):隔夜",
+        "阿联酋:港口到港总次数:当月值",
+        "阿联酋:港口集装箱到港次数:当月值",
+        "阿联酋:港口油轮到港次数:当月值",
+        "阿联酋:港口进口总量:当月值",
+        "阿联酋:港口集装箱进口量:当月值",
+        "阿联酋:港口油轮进口量:当月值",
+        "阿联酋:港口出口总量:当月值",
+        "阿联酋:港口集装箱出口量:当月值",
+        "阿联酋:港口油轮出口量:当月值",
+        "霍尔木兹:过境总次数:当月值",
+        "霍尔木兹:载货容量:当月值",
+        "霍尔木兹:油轮过境次数:当月值",
+        "霍尔木兹:油轮载货容量:当月值",
+    }
+    definitions = {
+        row["indicator_name"]: row for row in uae_metadata.INDICATOR_DEFINITIONS
+    }
+
+    assert names <= definitions.keys()
+    assert all(definitions[name]["source"] for name in names)
+
+
 def test_sync_workbook_dictionary_removes_unbacked_rows(tmp_path, monkeypatch) -> None:
     from openpyxl import Workbook, load_workbook
 
