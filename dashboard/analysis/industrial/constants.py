@@ -28,7 +28,6 @@ PPI_COLUMN = "中国:PPI:累计同比"
 # 工作表名称
 SHEET_NAME_MACRO_DATA = "分行业工业增加值同比增速"
 SHEET_NAME_OVERALL_INDUSTRIAL = "总体工业增加值同比增速"
-SHEET_NAME_PROFIT_BREAKDOWN = "分上中下游利润拆解"
 SHEET_NAME_ENTERPRISE_PROFIT = "工业企业利润"
 SHEET_NAME_INDUSTRY_PROFIT = "分行业工业企业利润"
 

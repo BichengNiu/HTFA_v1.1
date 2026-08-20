@@ -21,7 +21,6 @@ from dashboard.analysis.industrial.constants import (
     SHEET_NAME_ENTERPRISE_PROFIT,
     SHEET_NAME_MACRO_DATA,
     SHEET_NAME_OVERALL_INDUSTRIAL,
-    SHEET_NAME_PROFIT_BREAKDOWN,
 )
 
 logger = logging.getLogger(__name__)
@@ -218,12 +217,6 @@ def load_overall_industrial_data(uploaded_file, sheet_name: str = SHEET_NAME_OVE
         logger.info(f"已将{TOTAL_INDUSTRIAL_GROWTH_COLUMN}的1月和2月数据设为NaN")
 
     return df
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def load_profit_breakdown_data(uploaded_file, sheet_name: str = SHEET_NAME_PROFIT_BREAKDOWN) -> Optional[pd.DataFrame]:
-    """使用统一格式读取分上中下游利润拆解数据：第一行是列名，第一列是时间列"""
-    return _load_excel_sheet(uploaded_file, sheet_name)
 
 
 @st.cache_data(ttl=3600, show_spinner=False)

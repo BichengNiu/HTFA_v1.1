@@ -172,7 +172,6 @@ def _load_cbuae_series(
 
 def _common_line_setup(
     frame: pd.DataFrame,
-    series_specs: tuple[str, ...],
     *,
     title: str,
     source_text: str,
@@ -232,7 +231,6 @@ def build_foreign_inflow_figure(
         axis_units.update(units)
     figure, axis = _common_line_setup(
         frame,
-        FOREIGN_SERIES,
         title=title,
         source_text=source_text,
         ytitle=None,
@@ -275,7 +273,6 @@ def build_private_credit_yoy_figure(
         axis_units.update(units)
     figure, axis = _common_line_setup(
         frame,
-        PRIVATE_CREDIT_SERIES,
         title=title,
         source_text=source_text,
         ytitle=None,

@@ -130,7 +130,7 @@ def parallel_process_frequencies(
     backend: str = 'loky'
 ) -> Tuple[Dict[str, pd.DataFrame], Dict, List[Dict]]:
     """
-    并行处理所有频率的数据
+    按 n_jobs 处理所有频率的数据；n_jobs=1 时使用当前进程串行执行。
 
     Args:
         data_by_freq: 按频率分类的数据
@@ -144,44 +144,49 @@ def parallel_process_frequencies(
     Returns:
         Tuple[Dict, Dict, List]: (对齐后的数据, 借调日志, 移除日志)
     """
-    from joblib import Parallel, delayed
-
     # 准备频率配置
     freq_configs = [
-        ('daily', 'D'),
-        ('weekly', 'W'),
-        ('dekad', 'K'),  # 旬度使用独立频率代码
-        ('monthly', 'M'),
-        ('quarterly', 'Q'),
-        ('yearly', 'Y')
+        'daily',
+        'weekly',
+        'dekad',
+        'monthly',
+        'quarterly',
+        'yearly',
     ]
 
     # 过滤出有数据的频率并序列化
     tasks = []
-    for freq_name, original_freq in freq_configs:
+    for freq_name in freq_configs:
         freq_data = data_by_freq.get(freq_name)
         if freq_data:
             serialized_data = _serialize_freq_data(freq_data)
             if serialized_data:
-                tasks.append((freq_name, serialized_data, original_freq))
+                tasks.append((freq_name, serialized_data))
 
     if not tasks:
         return {}, {}, []
 
     logger.info(f"  并行处理 {len(tasks)} 个频率 (n_jobs={n_jobs}, backend={backend})...")
 
-    # 并行执行
-    results = Parallel(n_jobs=n_jobs, backend=backend, prefer='processes')(
-        delayed(_process_single_frequency)(
+    task_args = [
+        (
             freq_name,
             freq_data,
             data_start_date,
             data_end_date,
             target_freq,
-            enable_borrowing
+            enable_borrowing,
         )
-        for freq_name, freq_data, original_freq in tasks
-    )
+        for freq_name, freq_data in tasks
+    ]
+    if n_jobs == 1:
+        results = [_process_single_frequency(*args) for args in task_args]
+    else:
+        from joblib import Parallel, delayed
+
+        results = Parallel(n_jobs=n_jobs, backend=backend, prefer='processes')(
+            delayed(_process_single_frequency)(*args) for args in task_args
+        )
 
     # 聚合结果
     aligned_data = {}

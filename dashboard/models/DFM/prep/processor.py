@@ -419,16 +419,27 @@ class DataPreparationProcessor:
 
         # 统计有数据的频率数量
         active_freqs = sum(1 for f in data_by_freq.values() if f)
+        use_parallel = self.parallel_config.should_use_parallel(active_freqs)
+        n_jobs = (
+            self.parallel_config.get_effective_n_jobs()
+            if use_parallel
+            else 1
+        )
 
-        # 使用并行频率处理（借调在缺失值检测之后执行）
-        logger.info(f"  使用并行频率处理 ({active_freqs}个频率, n_jobs={self.parallel_config.get_effective_n_jobs()})...")
+        # 频率处理统一走同一实现；n_jobs=1 时不启动进程池。
+        logger.info(
+            "  使用%s频率处理 (%s个频率, n_jobs=%s)...",
+            "并行" if use_parallel else "串行",
+            active_freqs,
+            n_jobs,
+        )
         aligned_data, all_borrowing_log, removal_log = parallel_process_frequencies(
             data_by_freq=data_by_freq,
             data_start_date=self.data_start_date,
             data_end_date=self.data_end_date,
             target_freq=self.target_freq,
             enable_borrowing=self.enable_borrowing,
-            n_jobs=self.parallel_config.get_effective_n_jobs(),
+            n_jobs=n_jobs,
             backend=self.parallel_config.backend
         )
         self.removal_log.extend(removal_log)

@@ -133,7 +133,6 @@ def render_training_section(st_obj) -> None:
         series,
         exog,
         config,
-        auto=isinstance(config, AutoSARIMAXConfig),
     )
     for problem in problems:
         st_obj.warning(problem)

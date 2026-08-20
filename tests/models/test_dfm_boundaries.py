@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from dashboard.models.DFM.prep import processor as processor_module
+from dashboard.models.DFM.prep.processor import DataPreparationProcessor
 from dashboard.models.DFM.decomp.core.impact_analyzer import (
     DataRelease,
     ImpactAnalyzer,
@@ -11,6 +13,7 @@ from dashboard.models.DFM.decomp.core.impact_analyzer import (
 from dashboard.models.DFM.decomp.core.model_loader import SavedNowcastData
 from dashboard.models.DFM.train.training.config import TrainingConfig
 from dashboard.models.DFM.train.utils.data_utils import load_and_validate_data
+from dashboard.models.DFM.utils.parallel_config import ParallelConfig
 
 
 def test_training_data_stays_in_memory():
@@ -97,3 +100,65 @@ def test_news_impact_pipeline_uses_saved_nowcast_data_directly(monkeypatch):
     assert not Path(
         "dashboard/models/DFM/decomp/core/nowcast_extractor.py"
     ).exists()
+
+
+def test_frequency_alignment_honors_disabled_parallel_config(monkeypatch):
+    processor = object.__new__(DataPreparationProcessor)
+    processor.enable_freq_alignment = True
+    processor.parallel_config = ParallelConfig(enabled=False)
+    processor.data_start_date = None
+    processor.data_end_date = None
+    processor.target_freq = "W-FRI"
+    processor.enable_borrowing = True
+    processor.removal_log = []
+
+    captured = {}
+
+    def fake_process_frequencies(**kwargs):
+        captured.update(kwargs)
+        return {"monthly": pd.DataFrame()}, {}, []
+
+    monkeypatch.setattr(
+        processor_module,
+        "parallel_process_frequencies",
+        fake_process_frequencies,
+    )
+
+    processor._step5_smart_missing_detection_and_align(
+        {"monthly": {"combined": pd.DataFrame({"A": [1.0]})}}
+    )
+
+    assert captured["n_jobs"] == 1
+
+
+def test_frequency_alignment_uses_threshold_before_parallel(monkeypatch):
+    processor = object.__new__(DataPreparationProcessor)
+    processor.enable_freq_alignment = True
+    processor.parallel_config = ParallelConfig(
+        enabled=True,
+        n_jobs=2,
+        min_variables_for_parallel=2,
+    )
+    processor.data_start_date = None
+    processor.data_end_date = None
+    processor.target_freq = "W-FRI"
+    processor.enable_borrowing = True
+    processor.removal_log = []
+
+    captured = {}
+
+    def fake_process_frequencies(**kwargs):
+        captured.update(kwargs)
+        return {}, {}, []
+
+    monkeypatch.setattr(
+        processor_module,
+        "parallel_process_frequencies",
+        fake_process_frequencies,
+    )
+
+    processor._step5_smart_missing_detection_and_align(
+        {"monthly": {"combined": pd.DataFrame({"A": [1.0]})}}
+    )
+
+    assert captured["n_jobs"] == 1

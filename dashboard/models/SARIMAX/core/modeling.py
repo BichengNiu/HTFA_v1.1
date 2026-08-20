@@ -71,8 +71,6 @@ def validate_fit_inputs(
     series: pd.Series,
     exog: pd.DataFrame | None,
     config: SARIMAXConfig | AutoSARIMAXConfig,
-    *,
-    auto: bool = False,
 ) -> list[str]:
     """拟合前预检，返回用户可读的问题列表；空列表表示可以拟合。"""
     problems: list[str] = []

@@ -10,7 +10,7 @@ import streamlit as st
 from Ts.TsModels import AutoModelResult
 
 from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
-from dashboard.explore.analysis.stationarity import matplotlib_date_compatibility
+from dashboard.core.ui.utils.matplotlib_compat import matplotlib_date_compatibility
 from dashboard.models.SARIMAX.core.modeling import (
     build_prediction_table,
     future_dates,

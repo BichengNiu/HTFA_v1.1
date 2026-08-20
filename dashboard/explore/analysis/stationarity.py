@@ -7,9 +7,7 @@
 from __future__ import annotations
 
 import logging
-import warnings
 from collections.abc import Iterable
-from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
@@ -36,6 +34,7 @@ from dashboard.explore.core.series_utils import (
 from dashboard.explore.core.validation import (
     validate_real_series as _validate_numeric_series,
 )
+from dashboard.core.ui.utils.matplotlib_compat import matplotlib_date_compatibility
 
 logger = logging.getLogger(__name__)
 
@@ -45,19 +44,6 @@ _GRID_LINE_STYLES = {
     "dotted": ":",
     "dashdot": "-.",
 }
-
-
-@contextmanager
-def matplotlib_date_compatibility():
-    """隔离 Matplotlib 与 NumPy 2.5 日期转换的第三方弃用警告。"""
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore",
-            message=r"The 'generic' unit for NumPy timedelta is deprecated",
-            category=DeprecationWarning,
-            module=r"matplotlib\.dates",
-        )
-        yield
 
 
 @dataclass(frozen=True)
