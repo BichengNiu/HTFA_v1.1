@@ -23,6 +23,7 @@ from dashboard.analysis.uae.sheet_reader import (
     format_updated_at,
     open_uae_workbook,
     optional_text,
+    parse_target_sheet,
 )
 from dashboard.preview.core.workbook_parser import normalize_indicator_name
 
@@ -83,6 +84,22 @@ def _parse_foreign_labor_sheet(
     raw = pd.read_excel(excel_file, sheet_name=FOREIGN_LABOR_SHEET, header=None)
     if raw.shape[0] < 7 or raw.shape[1] < 3:
         raise ValueError(f"sheet“{FOREIGN_LABOR_SHEET}”不符合前六行元数据协议")
+
+    # 工作簿历史上存在两种正式布局：旧版专用写表器使用 A2=日期，
+    # 当前写表器及 source_extended 的旧版通用写表器使用标准元数据标签。
+    # 两种布局都按目标指标读取，避免已有工作簿在管线修复后失效。
+    if optional_text(raw.iloc[1, 0]) == "指标名称":
+        return parse_target_sheet(
+            excel_file,
+            sheet_name=FOREIGN_LABOR_SHEET,
+            targets=(
+                (NEPAL_APPROVALS, NEPAL_APPROVALS),
+                (BANGLADESH_CLEARANCES, BANGLADESH_CLEARANCES),
+            ),
+            allowed_frequencies={"月", "月度"},
+            expected_unit="人",
+        )
+
     expected_labels = {1: "日期", 2: "月", 3: "日期"}
     for row_index, expected in expected_labels.items():
         actual = optional_text(raw.iloc[row_index, 0])

@@ -25,7 +25,6 @@ EMPLOYMENT_SHEET = "月度_工作搜索热度"
 COMTRADE_SHEET = "月度_UNComtrade"
 VEHICLES_SHEET = "月度_汽车进口"
 DED_SHEET = "月度_DED"
-FOREIGN_LABOUR_SHEET = "月度_外籍劳动力"
 
 
 def _metadata(con, names: list[str]) -> dict[str, dict[str, Any]]:
@@ -214,28 +213,6 @@ def _ded(con) -> dict[str, Any]:
     return {"name": DED_SHEET, "title": "DED 迪拜商业注册月度指标", "indicators": list(series_names.values()), "rows": rows}
 
 
-def _foreign_labour(con) -> dict[str, Any]:
-    series_names = {
-        "philippines_total": "菲律宾_DMW部署_总计",
-        "philippines_new_hires": "菲律宾_DMW部署_新雇",
-        "philippines_rehires": "菲律宾_DMW部署_再雇",
-        "nepal_with_reentry": "尼泊尔_DoFE批准_含再入境",
-        "nepal_without_reentry": "尼泊尔_DoFE批准_不含再入境",
-        "bangladesh_clearance": "孟加拉国_BMET出境许可",
-        "proxy_sum": "重点三国合计_可比月",
-        "proxy_index": "阿联酋:外籍劳动力:三国综合代理指数",
-        "source_count": "阿联酋:外籍劳动力:来源覆盖数",
-    }
-    rows = _long_to_wide(
-        con.execute(
-            "SELECT period, series, value FROM foreign_labour_monthly "
-            "WHERE series <> 'quality_flag'"
-        ).fetchall(),
-        lambda series: series_names[series],
-    )
-    return {"name": FOREIGN_LABOUR_SHEET, "title": "各国官方外籍劳动力月度指标", "indicators": list(series_names.values()), "rows": rows}
-
-
 def _long_to_wide(records, name_builder, period_transform=lambda value: value):
     periods: dict[date, dict[str, Any]] = defaultdict(dict)
     for record in records:
@@ -251,7 +228,6 @@ def merge(workbook_path: Path) -> dict[str, Any]:
         raw_specs = [
             _eurostat(con), _dot(con), _dubai_customs(con), _salik(con),
             _employment(con), _comtrade(con), _vehicles(con), _ded(con),
-            _foreign_labour(con),
         ]
         for spec in raw_specs:
             spec["metadata"] = _metadata(con, spec["indicators"])
