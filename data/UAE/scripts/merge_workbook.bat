@@ -6,7 +6,7 @@ cd /d "%~dp0..\..\.."
 if errorlevel 1 goto :failed
 if not exist "runtime\python.exe" (
     echo [ERROR] Bundled runtime\python.exe was not found.
-    echo [HINT] Run scripts\windows\setup_runtime.bat first.
+    echo [HINT] Run scripts\start.bat first.
     goto :failed
 )
 "runtime\python.exe" -u "data\UAE\scripts\merge_workbook.py" %*

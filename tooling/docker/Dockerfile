@@ -28,7 +28,7 @@ RUN pip install --no-cache-dir -r requirements-py313.lock
 
 # 安装固定版本的Ts运行时到当前Python环境
 COPY scripts/ ./scripts/
-RUN python scripts/install_ts.py
+RUN python scripts/htfa.py install-ts
 
 # 复制项目文件
 COPY app.py .
@@ -46,4 +46,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8501/_stcore/health || exit 1
 
 # 运行Streamlit应用
-CMD ["python", "scripts/run_htfa.py", "--server.headless", "true", "--server.address", "0.0.0.0", "--server.port", "8501"]
+CMD ["python", "scripts/htfa.py", "start", "--server.headless", "true", "--server.address", "0.0.0.0", "--server.port", "8501"]
