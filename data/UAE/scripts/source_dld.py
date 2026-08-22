@@ -1,7 +1,7 @@
 """Dubai Land Department（DLD）数据源模块。
 
 职责（对应 ``update()`` 一个入口）：
-1. 建库：确保 ``dld`` schema、``dld.transactions`` 基表（优先从
+1. 建库：确保 ``detail.dld_transactions`` 细粒度派生表（优先从
    ``data/UAE/raw/dld/DLD.duckdb`` 旧库迁移，否则按 ``build_dld_database.sql``
    的 TRY_CAST 逻辑从 CSV 建表）、三个只读视图、唯一索引，以及
    ``meta_column_dictionary`` / ``meta_indicator_dictionary``。
@@ -11,7 +11,7 @@
 3. 周度指标：移植 ``generate_dld_investment_indices.py`` 的全部分析逻辑
    （RAW_WEEKLY_SQL + build_rows），结果事务内写入 ``dld_investment_pipeline_weekly``。
 4. 月度指标：
-   a) 销售指标（``dld_sales_monthly``）：从 dld.transactions 按月聚合
+   a) 销售指标（``dld_sales_monthly``）：从 detail.dld_transactions 按月聚合
       Sales × (Off-Plan/Existing) × (Residential/Commercial) 的笔数与金额
       （4 个指标 × 笔数+金额，2009 起全历史，本地精确）；
    b) 租赁合同指标（``dld_lease_monthly``）：抓取 Property Finder 镜像的
@@ -19,7 +19,7 @@
       解析官方边缘口径：租赁合同总数、新签占比、续签占比、住宅占比、商业占比。
       官方从不发布「住宅×新签」等交叉绝对数，故只入边缘口径；缺报月份留空。
 
-表结构瘦身（2026-08）：``dld.transactions`` 只保留被周度/月度指标与三个视图
+表结构分层（2026-08）：``detail.dld_transactions`` 只保留被周度/月度指标与三个视图
 消费的列（``KEEP_COLUMNS``，47 → 9，2026-08+1 回补 property_usage_en 供月度
 销售指标分市场）；``dld.land_registry`` 仓库内零消费，不再建表入库（原始
 CSV / 旧库仍保留在 ``data/UAE/raw/dld/``，需要时可单独重建）。
@@ -76,7 +76,7 @@ MIN_BASELINE_OBSERVATIONS = 104
 # 原始 CSV / 旧库所在目录（与 data/UAE/raw/dld/ 一致）
 RAW_DLD_DIR = DATA_DIR / "raw" / "dld"
 
-# dld.transactions 仅保留被周度/月度指标与三个视图消费的列（47 → 9）。
+# detail.dld_transactions 仅保留被周度/月度指标与三个视图消费的列（47 → 9）。
 # 「保留 = 被查询」：transaction_id(计数/主键)、instance_date(周/月分组)、
 # trans_group_en/reg_type_en(Sales/Off-Plan 过滤)、project_number(项目维度)、
 # actual_worth(金额)、property_type_en(Land 视图/年汇总)、
@@ -100,7 +100,7 @@ WORKBOOK_MERGER = SCRIPTS_DIR / "merge_dld_indices_into_uae_workbook.ps1"
 
 # ---------------------------------------------------------------------------
 # 周度原始口径 SQL：移植自 generate_dld_investment_indices.py 的 RAW_WEEKLY_SQL，
-# 唯一差异是数据库引用改为统一库的 dld.transactions（原为裸表名）。
+# 唯一差异是数据库引用改为统一库的 detail.dld_transactions（原为裸表名）。
 # ---------------------------------------------------------------------------
 
 RAW_WEEKLY_SQL = r"""
@@ -114,7 +114,7 @@ bounds AS (
             ELSE CAST(date_trunc('week', max(instance_date)) AS DATE) - 7
         END AS last_complete_week,
         max(instance_date) AS source_data_through
-    FROM dld.transactions
+    FROM detail.dld_transactions
 ),
 calendar AS (
     SELECT
@@ -131,7 +131,7 @@ offplan_sales AS (
         CAST(date_trunc('week', instance_date) AS DATE) AS week_start,
         project_number,
         actual_worth
-    FROM dld.transactions
+    FROM detail.dld_transactions
     WHERE trans_group_en = 'Sales'
       AND reg_type_en = 'Off-Plan Properties'
       AND instance_date >= DATE '2009-01-05' - INTERVAL 27 DAY
@@ -187,7 +187,7 @@ project_launch AS (
     SELECT
         project_number,
         min(instance_date) AS first_offplan_sale_date
-    FROM dld.transactions
+    FROM detail.dld_transactions
     WHERE trans_group_en = 'Sales'
       AND reg_type_en = 'Off-Plan Properties'
       AND project_number IS NOT NULL
@@ -199,7 +199,7 @@ project_launch_confirmed AS (
         p.first_offplan_sale_date,
         count(t.transaction_id) AS sales_first_28d
     FROM project_launch p
-    LEFT JOIN dld.transactions t
+    LEFT JOIN detail.dld_transactions t
       ON t.project_number = p.project_number
      AND t.trans_group_en = 'Sales'
      AND t.reg_type_en = 'Off-Plan Properties'
@@ -233,7 +233,7 @@ project_dates AS (
         min(instance_date) FILTER (
             WHERE reg_type_en = 'Existing Properties'
         ) AS first_existing_sale
-    FROM dld.transactions
+    FROM detail.dld_transactions
     WHERE trans_group_en = 'Sales'
       AND project_number IS NOT NULL
     GROUP BY project_number
@@ -245,7 +245,7 @@ project_transition AS (
         p.first_existing_sale,
         count(t.transaction_id) AS offplan_sales_before_existing
     FROM project_dates p
-    LEFT JOIN dld.transactions t
+    LEFT JOIN detail.dld_transactions t
       ON t.project_number = p.project_number
      AND t.trans_group_en = 'Sales'
      AND t.reg_type_en = 'Off-Plan Properties'
@@ -324,21 +324,21 @@ ORDER BY week_start
 """
 
 # ---------------------------------------------------------------------------
-# 列字典：dld.transactions 仅保留 KEEP_COLUMNS 九列（含义沿用旧
+# 列字典：detail.dld_transactions 仅保留 KEEP_COLUMNS 九列（含义沿用旧
 # build_dld_database.sql 的 metadata.column_dictionary；land_registry 已不再建表,
 # 其字典行一并移除）。
 # ---------------------------------------------------------------------------
 
 COLUMN_DICTIONARY = (
-    ('dld.transactions', 'actual_worth', 'DECIMAL(24,2)', '金额面积', '交易金额或实际价值', None, '通常按AED理解；源文件未单列单位'),
-    ('dld.transactions', 'instance_date', 'DATE', '时间', '交易登记日期', 'transaction_year_summary.transaction_year', '官方源含4条1900年以前异常日期'),
-    ('dld.transactions', 'load_timestamp', 'TIMESTAMPTZ', '时间', 'Data Dubai生成bulk快照的时间', None, '不是交易发生时间'),
-    ('dld.transactions', 'project_number', 'VARCHAR', '项目建筑', '交易数据中的项目编号', None, 'RAW_WEEKLY_SQL 按项目编号聚合期房窗口'),
-    ('dld.transactions', 'property_type_en', 'VARCHAR', '房产分类', '房产大类英文名', 'land_transactions', 'Land决定是否进入land_transactions视图'),
-    ('dld.transactions', 'property_usage_en', 'VARCHAR', '用途分类', '住宅/商业/酒店/其他等用途英文名', 'dld_sales_monthly', '月度销售指标按 Residential/Commercial 分市场；含阿语“أخرى”等脏值需归一化'),
-    ('dld.transactions', 'reg_type_en', 'VARCHAR', '登记类型', 'Existing或Off-Plan英文名', None, '现房/期房过滤键（RAW_WEEKLY_SQL）'),
-    ('dld.transactions', 'trans_group_en', 'VARCHAR', '交易分类', 'Sales/Mortgages/Gifts', None, '交易大类过滤键（RAW_WEEKLY_SQL）'),
-    ('dld.transactions', 'transaction_id', 'VARCHAR', '主键', '交易记录唯一编号', 'land_transactions.transaction_id', '本表唯一主键'),
+    ('detail.dld_transactions', 'actual_worth', 'DECIMAL(24,2)', '金额面积', '交易金额或实际价值', None, '通常按AED理解；源文件未单列单位'),
+    ('detail.dld_transactions', 'instance_date', 'DATE', '时间', '交易登记日期', 'dld.transaction_year_summary.transaction_year', '官方源含4条1900年以前异常日期'),
+    ('detail.dld_transactions', 'load_timestamp', 'TIMESTAMPTZ', '时间', 'Data Dubai生成bulk快照的时间', None, '不是交易发生时间'),
+    ('detail.dld_transactions', 'project_number', 'VARCHAR', '项目建筑', '交易数据中的项目编号', None, 'RAW_WEEKLY_SQL 按项目编号聚合期房窗口'),
+    ('detail.dld_transactions', 'property_type_en', 'VARCHAR', '房产分类', '房产大类英文名', 'dld.land_transactions', 'Land决定是否进入land_transactions视图'),
+    ('detail.dld_transactions', 'property_usage_en', 'VARCHAR', '用途分类', '住宅/商业/酒店/其他等用途英文名', 'dld_sales_monthly', '月度销售指标按 Residential/Commercial 分市场；含阿语“أخرى”等脏值需归一化'),
+    ('detail.dld_transactions', 'reg_type_en', 'VARCHAR', '登记类型', 'Existing或Off-Plan英文名', None, '现房/期房过滤键（RAW_WEEKLY_SQL）'),
+    ('detail.dld_transactions', 'trans_group_en', 'VARCHAR', '交易分类', 'Sales/Mortgages/Gifts', None, '交易大类过滤键（RAW_WEEKLY_SQL）'),
+    ('detail.dld_transactions', 'transaction_id', 'VARCHAR', '主键', '交易记录唯一编号', 'dld.land_transactions.transaction_id', '本表唯一主键'),
 )
 
 # ---------------------------------------------------------------------------
@@ -703,7 +703,7 @@ def _transactions_ddl(csv_path: Path) -> str:
 
     path = csv_path.resolve().as_posix()
     return rf"""
-    CREATE TABLE dld.transactions AS
+    CREATE TABLE detail.dld_transactions AS
     SELECT
         TRY_CAST(actual_worth AS DECIMAL(24, 2)) AS actual_worth,
         TRY_CAST(instance_date AS DATE) AS instance_date,
@@ -733,25 +733,25 @@ def _assert_transaction_id_unique(con) -> None:
     """
 
     total, distinct = con.execute(
-        "SELECT count(*), count(DISTINCT transaction_id) FROM dld.transactions"
+        "SELECT count(*), count(DISTINCT transaction_id) FROM detail.dld_transactions"
     ).fetchone()
     if total != distinct:
         raise RuntimeError(
-            "dld.transactions 主键不唯一："
+            "detail.dld_transactions 主键不唯一："
             f"{total} 行 / {distinct} 个不同 transaction_id"
         )
 
 
 def _migrate_from_old_db(con) -> str:
-    """从 data/UAE/raw/dld/DLD.duckdb 迁移 dld.transactions（只保留必需列）。"""
+    """从 data/UAE/raw/dld/DLD.duckdb 迁移 detail.dld_transactions（只保留必需列）。"""
 
     old_db = RAW_DLD_DIR / "DLD.duckdb"
     attach = old_db.resolve().as_posix()
     con.execute(f"ATTACH '{attach}' AS old_dld (READ_ONLY)")
     try:
-        if not db.table_exists(con, "dld.transactions"):
+        if not db.table_exists(con, "detail.dld_transactions"):
             con.execute(
-                "CREATE TABLE dld.transactions AS "
+                "CREATE TABLE detail.dld_transactions AS "
                 "SELECT " + ", ".join(KEEP_COLUMNS) + " FROM old_dld.transactions"
             )
             _assert_transaction_id_unique(con)
@@ -767,7 +767,7 @@ def _migrate_from_old_db(con) -> str:
             pass
     for row in dictionary:
         if row[1] in KEEP_COLUMNS:
-            _upsert_column_dictionary_row(con, ("dld.transactions", *row[1:]))
+            _upsert_column_dictionary_row(con, ("detail.dld_transactions", *row[1:]))
     return f"迁移旧库 {old_db.name}"
 
 
@@ -777,7 +777,7 @@ def _build_base_from_csv(con) -> str:
     txn_csv = RAW_DLD_DIR / "DLD_Transactions_ALL.csv"
     if not txn_csv.exists():
         raise RuntimeError(f"缺少原始 CSV：{txn_csv.name}")
-    if not db.table_exists(con, "dld.transactions"):
+    if not db.table_exists(con, "detail.dld_transactions"):
         con.execute(_transactions_ddl(txn_csv))
         _assert_transaction_id_unique(con)
     return "从原始 CSV 全量建表"
@@ -789,7 +789,7 @@ def _create_dld_views(con) -> None:
     kept = ", ".join(KEEP_COLUMNS)
     con.execute(
         "CREATE OR REPLACE VIEW dld.land_transactions AS "
-        f"SELECT {kept} FROM dld.transactions WHERE property_type_en = 'Land'"
+        f"SELECT {kept} FROM detail.dld_transactions WHERE property_type_en = 'Land'"
     )
     con.execute(
         """
@@ -802,13 +802,13 @@ def _create_dld_views(con) -> None:
             count(*) AS transaction_count,
             sum(actual_worth) AS total_worth,
             median(actual_worth) AS median_worth
-        FROM dld.transactions
+        FROM detail.dld_transactions
         GROUP BY ALL
         """
     )
     con.execute(
         "CREATE OR REPLACE VIEW dld.transaction_date_quality_issues AS "
-        f"SELECT {kept} FROM dld.transactions "
+        f"SELECT {kept} FROM detail.dld_transactions "
         "WHERE instance_date < DATE '1900-01-01' OR instance_date IS NULL"
     )
 
@@ -863,12 +863,12 @@ def _fetch_raw_weekly(con) -> list[dict]:
 
 # ---------------------------------------------------------------------------
 # 月度指标（2026-08 新增）
-# a) 销售指标：dld.transactions 按月聚合 Sales × 现房/期房 × 住宅/商业
+# a) 销售指标：detail.dld_transactions 按月聚合 Sales × 现房/期房 × 住宅/商业
 # b) 租赁合同指标：DLD Mo'asher Rental Performance Index 官方边缘口径
 # ---------------------------------------------------------------------------
 
 def build_sales_monthly(con) -> list[dict]:
-    """从 dld.transactions 按月聚合 4 个销售指标（笔数 + 金额）。
+    """从 detail.dld_transactions 按月聚合 4 个销售指标（笔数 + 金额）。
 
     口径：trans_group_en='Sales'；用途只取 Residential / Commercial；
     登记类型只取 Off-Plan Properties（期房）与 Existing Properties（现房）。
@@ -884,7 +884,7 @@ def build_sales_monthly(con) -> list[dict]:
             reg_type_en,
             count(*) AS cnt,
             sum(actual_worth) AS val
-        FROM dld.transactions
+        FROM detail.dld_transactions
         WHERE trans_group_en = 'Sales'
           AND property_usage_en IN ('Residential', 'Commercial')
           AND reg_type_en IN ('Off-Plan Properties', 'Existing Properties')
@@ -1154,7 +1154,7 @@ def build_lease_monthly(con, *, force: bool = False, skip_download: bool = False
 
 
 def _upgrade_transactions_columns(con) -> bool:
-    """把 dld.transactions 升级到当前 KEEP_COLUMNS（缺列时重建）。
+    """把 detail.dld_transactions 升级到当前 KEEP_COLUMNS（缺列时重建）。
 
     2026-08 瘦身到 8 列后，月度销售指标需要回补 property_usage_en（第 9 列）。
     列缺失时从旧库（优先）或原始 CSV 整表重建（先删视图→删表→重建，update()
@@ -1164,26 +1164,27 @@ def _upgrade_transactions_columns(con) -> bool:
     missing = [
         column
         for column in KEEP_COLUMNS
-        if not db.table_exists(con, "dld.transactions")
+        if not db.table_exists(con, "detail.dld_transactions")
         or column
         not in {
             row[0]
             for row in con.execute(
                 "SELECT column_name FROM information_schema.columns "
-                "WHERE table_schema='dld' AND table_name='transactions'"
+                "WHERE table_schema='detail' AND table_name='dld_transactions'"
             ).fetchall()
         }
     ]
     if not missing:
         return False
-    if db.table_exists(con, "dld.transactions"):
+    if db.table_exists(con, "detail.dld_transactions"):
         for view in (
+            "dld.transactions",
             "dld.land_transactions",
             "dld.transaction_year_summary",
             "dld.transaction_date_quality_issues",
         ):
             con.execute(f"DROP VIEW IF EXISTS {view}")
-        con.execute("DROP TABLE dld.transactions")
+        con.execute("DROP TABLE detail.dld_transactions")
     old_db = RAW_DLD_DIR / "DLD.duckdb"
     txn_csv = RAW_DLD_DIR / "DLD_Transactions_ALL.csv"
     if old_db.exists():
@@ -1192,7 +1193,7 @@ def _upgrade_transactions_columns(con) -> bool:
         _build_base_from_csv(con)
     else:
         raise RuntimeError(
-            "dld.transactions 需要重建（缺列："
+            "detail.dld_transactions 需要重建（缺列："
             + ", ".join(missing)
             + "），但旧库与原始 CSV 均缺失"
         )
@@ -1200,7 +1201,7 @@ def _upgrade_transactions_columns(con) -> bool:
 
 
 def _ensure_base_tables(con, *, force: bool, skip_download: bool) -> str:
-    """确保 dld.transactions 存在，必要时触发下载。
+    """确保 detail.dld_transactions 存在，必要时触发下载。
 
     land_registry 自 2026-08 起不再入库（仓库内零消费，瘦身）；原始 CSV / 旧库
     仍保留在 data/UAE/raw/dld/ 供需要时单独重建。
@@ -1212,7 +1213,7 @@ def _ensure_base_tables(con, *, force: bool, skip_download: bool) -> str:
 
     txn_csv = RAW_DLD_DIR / "DLD_Transactions_ALL.csv"
     old_db = RAW_DLD_DIR / "DLD.duckdb"
-    txn_ready = db.table_exists(con, "dld.transactions")
+    txn_ready = db.table_exists(con, "detail.dld_transactions")
     csv_ready = txn_csv.exists()
 
     downloaded = False
@@ -1238,7 +1239,7 @@ def _ensure_base_tables(con, *, force: bool, skip_download: bool) -> str:
             "请检查下载日志"
         )
     raise RuntimeError(
-        "dld.transactions 不存在，且 data/UAE/raw/dld/ 下"
+        "detail.dld_transactions 不存在，且 data/UAE/raw/dld/ 下"
         "既无旧库（DLD.duckdb）也无原始 CSV；请先去下载（不带 --skip-download）"
     )
 
@@ -1729,7 +1730,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         # 字典行一并清理（保证 update 幂等，不以库内旧行为准）。
         con.execute(
             "DELETE FROM meta_column_dictionary "
-            "WHERE object_name IN ('dld.transactions', 'dld.land_registry')"
+            "WHERE object_name IN ('detail.dld_transactions', 'dld.land_registry')"
         )
         _upsert_column_dictionary(con)
         _upsert_indicator_dictionary(con)
@@ -2001,7 +2002,7 @@ def self_check() -> str:
     assert all(len(row) == 7 for row in COLUMN_DICTIONARY)
     assert {row[1] for row in COLUMN_DICTIONARY} == set(KEEP_COLUMNS)
     assert [row[0] for row in INDICATOR_DICTIONARY] == list(WEEKLY_CSV_HEADERS[1:])
-    assert "FROM dld.transactions" in RAW_WEEKLY_SQL
+    assert "FROM detail.dld_transactions" in RAW_WEEKLY_SQL
     # 周度 SQL 与视图所需列必须全部属于保留列
     required = {
         "actual_worth",

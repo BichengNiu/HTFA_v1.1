@@ -112,6 +112,7 @@ def parse_target_sheet(
     targets: tuple[tuple[str, str], ...],
     allowed_frequencies: set[str],
     expected_unit: str,
+    zero_is_missing: bool = True,
 ) -> tuple[pd.DataFrame, dict[str, SheetSeriesMetadata]]:
     if sheet_name not in excel_file.sheet_names:
         raise ValueError(f"工作簿缺少“{sheet_name}”sheet")
@@ -210,8 +211,9 @@ def parse_target_sheet(
                 f"第{row_number}行不是数值"
             )
 
+        values = numeric.mask(numeric.eq(0)) if zero_is_missing else numeric
         series = pd.Series(
-            numeric.mask(numeric.eq(0)).to_numpy(),
+            values.to_numpy(),
             index=pd.DatetimeIndex(dates),
             name=display_name,
         ).dropna().sort_index()

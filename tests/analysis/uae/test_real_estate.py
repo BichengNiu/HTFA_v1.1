@@ -231,6 +231,14 @@ def test_section_renders_two_charts_and_explanation(monkeypatch) -> None:
     st_obj = MagicMock()
     left, right = MagicMock(), MagicMock()
     st_obj.columns.return_value = (left, right)
+    markets = []
+    original_render = renderer._render_sales_chart
+
+    def _record_market(st_obj, data, last_month, market):
+        markets.append((st_obj, market))
+        return original_render(st_obj, data, last_month, market=market)
+
+    monkeypatch.setattr(renderer, "_render_sales_chart", _record_market)
 
     result = renderer.render_real_estate_section(
         st_obj,
@@ -245,6 +253,7 @@ def test_section_renders_two_charts_and_explanation(monkeypatch) -> None:
     assert calls.count("subheader") == 1
     assert st_obj.subheader.call_args.args[0] == "房地产"
     assert st_obj.columns.call_args.kwargs["gap"] == "small"
+    assert markets == [(left, "现房"), (right, "期房")]
     # 两图分别渲染进左右两列
     assert left.pyplot.call_count == 1
     assert right.pyplot.call_count == 1
@@ -303,9 +312,9 @@ def test_cell_failure_warns_cell_and_keeps_other_chart(monkeypatch) -> None:
     )
 
     assert result["status"] == "success"
-    assert left.warning.call_count == 1
-    assert right.warning.call_count == 0
+    assert left.warning.call_count == 0
+    assert right.warning.call_count == 1
     # 现房格走真实渲染路径
-    assert right.pyplot.call_count == 1
-    assert right.download_button.call_count == 1
+    assert left.pyplot.call_count == 1
+    assert left.download_button.call_count == 1
     assert st_obj.error.call_count == 0

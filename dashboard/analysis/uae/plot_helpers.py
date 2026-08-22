@@ -12,6 +12,7 @@ import pandas as pd
 from matplotlib.axes import Axes
 from matplotlib.dates import date2num
 from matplotlib.figure import Figure
+from matplotlib.ticker import FuncFormatter
 from matplotlib.transforms import blended_transform_factory
 import numpy as np
 from Ts.TsPlots.style import apply_fonts
@@ -21,6 +22,12 @@ CHINESE_FONT_FAMILY = ["Microsoft YaHei", "SimHei"]
 SOURCE_NOTE_Y = 0.025
 WAR_START_DATE = pd.Timestamp("2026-03-01")
 WAR_LINE_COLOR = "#C0392B"
+
+COMPACT_Y_AXIS_SCALES = (
+    (1_000_000_000_000, "万亿"),
+    (100_000_000, "亿"),
+    (10_000, "万"),
+)
 
 SOURCE_DISPLAY_NAMES = {
     "OPEC": "欧佩克",
@@ -243,6 +250,7 @@ def apply_htfa_fonts(figure: Figure) -> None:
     """
 
     for axis in figure.axes:
+        format_compact_y_axis(axis)
         axis.title.set_fontfamily(CHINESE_FONT_FAMILY)
         axis.xaxis.label.set_fontfamily(CHINESE_FONT_FAMILY)
         axis.yaxis.label.set_fontfamily(CHINESE_FONT_FAMILY)
@@ -260,6 +268,37 @@ def apply_htfa_fonts(figure: Figure) -> None:
         text.set_fontfamily(CHINESE_FONT_FAMILY)
 
 
+def format_compact_y_axis(axis: Axes) -> None:
+    """用中文数量级单位压缩超过四位的纵轴刻度。
+
+    纵轴数据本身不缩放，只改变刻度显示和轴单位：例如原始值 120000
+    会显示为 12，轴单位显示为“万”。刻度数字最多保留四位有效数字。
+    """
+
+    if getattr(axis, "_htfa_compact_y_axis", False):
+        return
+    lower, upper = axis.get_ylim()
+    maximum = max(abs(float(lower)), abs(float(upper)))
+    scale, prefix = next(
+        ((scale, prefix) for scale, prefix in COMPACT_Y_AXIS_SCALES if maximum >= scale),
+        (1, ""),
+    )
+    if scale == 1:
+        return
+
+    def _format_tick(value: float, _position: int) -> str:
+        scaled = value / scale
+        if abs(scaled) < 1e-12:
+            scaled = 0
+        return f"{scaled:.4g}"
+
+    axis.yaxis.set_major_formatter(FuncFormatter(_format_tick))
+    label = axis.get_ylabel().strip()
+    if not label.startswith(prefix):
+        axis.set_ylabel(f"{prefix}{label}" if label else prefix)
+    axis._htfa_compact_y_axis = True
+
+
 __all__ = [
     "CHINESE_FONT_FAMILY",
     "SOURCE_DISPLAY_NAMES",
@@ -271,6 +310,7 @@ __all__ = [
     "apply_htfa_fonts",
     "apply_strict_month_ticks",
     "finish_dual_axis_figure",
+    "format_compact_y_axis",
     "new_ts_figure_axis",
     "normalize_ts_axis",
     "source_note",

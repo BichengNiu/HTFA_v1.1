@@ -11,10 +11,12 @@ parser reject an otherwise valid workbook.
 from __future__ import annotations
 
 import copy
+import math
 import os
+import re
 import sys
 import tempfile
-from datetime import date
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -421,6 +423,11 @@ _COLUMN_MEANINGS: dict[str, tuple[str, str, str | None, str | None]] = {
     "keyword": ("搜索维度", "Google Trends 搜索关键词", "employment_search_index.value", None),
     "legal_form": ("法律形式", "企业法律形式分类", "ded_monthly_by_type.records", None),
     "records": ("记录数", "该月份/法律形式的原始记录数", None, "缺行不等于零"),
+    "origin_city": ("城市维度", "邮政服务寄出城市", None, None),
+    "destn_city": ("城市维度", "邮政服务寄达城市", None, None),
+    "service": ("服务维度", "邮政服务类型", None, None),
+    "volume": ("数量", "邮政服务发运件数", None, "已按同键重复源行求和"),
+    "raw_rows": ("审计字段", "同一明细键对应的源文件行数", None, "用于追溯源文件重复键"),
     "category": ("分类维度", "资本品或设备类别", None, None),
     "reporter": ("申报国", "UN Comtrade 申报国", None, None),
     "partner": ("贸易伙伴", "UN Comtrade 贸易伙伴", None, None),
@@ -454,12 +461,13 @@ _DETAIL_OBJECTS = (
     "ded_monthly",
     "ded_monthly_by_type",
     "employment_search_index",
-    "comtrade_partner_detail",
-    "comtrade_quantity_detail",
-    "eurostat_air_monthly",
-    "portwatch_uae_daily",
-    "portwatch_chokepoint_daily",
-    "dld.transactions",
+    "detail.comtrade_partner_detail",
+    "detail.comtrade_quantity_detail",
+    "detail.eurostat_air_monthly",
+    "detail.emirates_post_monthly",
+    "detail.portwatch_uae_daily",
+    "detail.portwatch_chokepoint_daily",
+    "detail.dld_transactions",
 )
 
 _PORTWATCH_VALUE_PREFIXES = {
@@ -560,6 +568,189 @@ def _row_values(worksheet, row_number: int) -> list[Any]:
     return [cell.value for cell in worksheet[row_number]]
 
 
+_LEGACY_DICTIONARY_HEADERS = ["指标名称", "类型", "行业", "数据来源", "预测变量"]
+_MERGED_EXTENDED_DICTIONARY_HEADERS = [
+    "指标名称", "类型", "行业", "频率", "起止时间", "缺失期数",
+    "数据来源", "预测变量",
+]
+_TIME_EXTENDED_DICTIONARY_HEADERS = [
+    "指标名称", "类型", "行业", "频率", "开始时间", "结束时间",
+    "缺失期数", "数据来源", "预测变量",
+]
+_EXTENDED_DICTIONARY_HEADERS = [
+    "指标名称", "类型", "行业", "频率", "开始日期", "最新日期",
+    "缺失期数", "数据来源", "预测变量",
+]
+
+
+def _split_dictionary_date_range(value: Any, *, row_number: int) -> tuple[Any, Any]:
+    """Split one legacy ``起止时间`` cell into start and end values."""
+
+    if value is None or value == "":
+        return None, None
+    if isinstance(value, date):
+        formatted = value.strftime("%Y-%m-%d")
+        return formatted, formatted
+
+    text = str(value).strip()
+    parts = re.split(r"\s*至\s*", text, maxsplit=1)
+    if len(parts) != 2 or not all(parts):
+        raise ValueError(
+            f"指标字典第{row_number}行的起止时间无法拆分：{value!r}"
+        )
+    return parts[0], parts[1]
+
+
+def _migrate_merged_dictionary_date_columns(dictionary) -> bool:
+    """Migrate the old extended dictionary layout to two date columns."""
+
+    headers = [
+        dictionary.cell(1, column).value
+        for column in range(1, dictionary.max_column + 1)
+    ]
+    if headers[: len(_MERGED_EXTENDED_DICTIONARY_HEADERS)] != (
+        _MERGED_EXTENDED_DICTIONARY_HEADERS
+    ):
+        return False
+
+    old_date_width = dictionary.column_dimensions["E"].width
+    dictionary.insert_cols(6, 1)
+    if old_date_width is not None:
+        dictionary.column_dimensions["F"].width = old_date_width
+
+    for row_number in range(1, dictionary.max_row + 1):
+        source_cell = dictionary.cell(row_number, 5)
+        target_cell = dictionary.cell(row_number, 6)
+        target_cell._style = copy.copy(source_cell._style)
+        if source_cell.has_style:
+            target_cell.number_format = source_cell.number_format
+        if source_cell.alignment:
+            target_cell.alignment = copy.copy(source_cell.alignment)
+        if source_cell.protection:
+            target_cell.protection = copy.copy(source_cell.protection)
+
+    dictionary.cell(1, 5).value = "开始日期"
+    dictionary.cell(1, 6).value = "最新日期"
+    for row_number in range(2, dictionary.max_row + 1):
+        start, end = _split_dictionary_date_range(
+            dictionary.cell(row_number, 5).value,
+            row_number=row_number,
+        )
+        dictionary.cell(row_number, 5).value = start
+        dictionary.cell(row_number, 6).value = end
+    return True
+
+
+def _migrate_time_dictionary_date_headers(dictionary) -> bool:
+    """Rename the intermediate time-column headers to the final protocol."""
+
+    headers = [
+        dictionary.cell(1, column).value
+        for column in range(1, dictionary.max_column + 1)
+    ]
+    if headers[: len(_TIME_EXTENDED_DICTIONARY_HEADERS)] != (
+        _TIME_EXTENDED_DICTIONARY_HEADERS
+    ):
+        return False
+    dictionary.cell(1, 5).value = "开始日期"
+    dictionary.cell(1, 6).value = "最新日期"
+    return True
+
+
+def _parse_workbook_date(value: Any) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value).strip() if value is not None else ""
+    if not text:
+        return None
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y-%m", "%Y/%m"):
+        try:
+            parsed = datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+        return parsed.date()
+    return None
+
+
+def _has_valid_observation(value: Any) -> bool:
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return False
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return False
+    return math.isfinite(numeric) and numeric != 0
+
+
+def _canonical_frequency(value: Any) -> str:
+    labels = {
+        "日": "日度", "日度": "日度",
+        "周": "周度", "周度": "周度",
+        "旬": "旬度", "旬度": "旬度",
+        "月": "月度", "月度": "月度",
+        "季": "季度", "季度": "季度",
+        "年": "年度", "年度": "年度",
+    }
+    text = str(value).strip() if value is not None else ""
+    return labels.get(text, text)
+
+
+def _last_complete_period_end(frequency: str, as_of: date) -> date:
+    if frequency == "月度":
+        return date(as_of.year, as_of.month, 1) - timedelta(days=1)
+    if frequency == "季度":
+        quarter_start_month = ((as_of.month - 1) // 3) * 3 + 1
+        return date(as_of.year, quarter_start_month, 1) - timedelta(days=1)
+    if frequency == "年度":
+        return date(as_of.year - 1, 12, 31)
+    return as_of
+
+
+def _workbook_indicator_coverage(
+    workbook,
+    *,
+    as_of: date | None = None,
+) -> dict[str, tuple[str, date, date]]:
+    """Return observed coverage, capped at complete low-frequency periods."""
+
+    as_of = as_of or date.today()
+    coverage: dict[str, tuple[str, date, date]] = {}
+    for worksheet in workbook.worksheets[1:]:
+        for column in range(2, worksheet.max_column + 1):
+            name = worksheet.cell(2, column).value
+            if not isinstance(name, str) or not name.strip():
+                continue
+            frequency = _canonical_frequency(worksheet.cell(3, column).value)
+            observations: list[date] = []
+            for row_number in range(7, worksheet.max_row + 1):
+                period = _parse_workbook_date(worksheet.cell(row_number, 1).value)
+                value = worksheet.cell(row_number, column).value
+                if period is not None and _has_valid_observation(value):
+                    observations.append(period)
+            if not observations:
+                continue
+            cutoff = _last_complete_period_end(frequency, as_of)
+            complete_observations = [
+                period for period in observations if period <= cutoff
+            ]
+            if not complete_observations:
+                continue
+            start = min(complete_observations)
+            latest = max(complete_observations)
+            current = coverage.get(name.strip())
+            if current is None:
+                coverage[name.strip()] = (frequency, start, latest)
+            else:
+                coverage[name.strip()] = (
+                    current[0],
+                    min(current[1], start),
+                    max(current[2], latest),
+                )
+    return coverage
+
+
 def _workbook_indicator_names(workbook) -> set[str]:
     names: set[str] = set()
     for worksheet in workbook.worksheets[1:]:
@@ -576,7 +767,11 @@ def _workbook_indicator_names(workbook) -> set[str]:
     return names
 
 
-def sync_workbook_dictionary(workbook_path: Path) -> dict[str, int]:
+def sync_workbook_dictionary(
+    workbook_path: Path,
+    *,
+    as_of: date | None = None,
+) -> dict[str, int]:
     """Sync DB metadata for indicators present in workbook data sheets.
 
     Dictionary rows without a matching indicator column in any data sheet are
@@ -606,11 +801,21 @@ def sync_workbook_dictionary(workbook_path: Path) -> dict[str, int]:
 
     workbook = load_workbook(workbook_path, keep_links=True)
     dictionary = workbook.worksheets[0]
-    headers = [dictionary.cell(1, column).value for column in range(1, 6)]
-    if headers != ["指标名称", "类型", "行业", "数据来源", "预测变量"]:
+    _migrate_merged_dictionary_date_columns(dictionary)
+    _migrate_time_dictionary_date_headers(dictionary)
+    headers = [
+        dictionary.cell(1, column).value
+        for column in range(1, dictionary.max_column + 1)
+    ]
+    if headers[: len(_LEGACY_DICTIONARY_HEADERS)] == _LEGACY_DICTIONARY_HEADERS:
+        source_column = 4
+    elif headers[: len(_EXTENDED_DICTIONARY_HEADERS)] == _EXTENDED_DICTIONARY_HEADERS:
+        source_column = 8
+    else:
         raise ValueError("指标字典表头不符合工作簿协议")
 
     sheet_names = _workbook_indicator_names(workbook)
+    coverage = _workbook_indicator_coverage(workbook, as_of=as_of)
     dictionary_rows: dict[str, int] = {}
     for row_number in range(2, dictionary.max_row + 1):
         value = dictionary.cell(row_number, 1).value
@@ -661,13 +866,18 @@ def sync_workbook_dictionary(workbook_path: Path) -> dict[str, int]:
         if (
             dictionary.cell(row_number, 2).value != type_
             or dictionary.cell(row_number, 3).value != industry
-            or dictionary.cell(row_number, 4).value != source
+            or dictionary.cell(row_number, source_column).value != source
         ):
             updated += 1
         dictionary.cell(row_number, 1).value = name
         dictionary.cell(row_number, 2).value = type_
         dictionary.cell(row_number, 3).value = industry
-        dictionary.cell(row_number, 4).value = source
+        dictionary.cell(row_number, source_column).value = source
+        if source_column == 8 and name in coverage:
+            frequency, start, latest = coverage[name]
+            dictionary.cell(row_number, 4).value = frequency
+            dictionary.cell(row_number, 5).value = start.isoformat()
+            dictionary.cell(row_number, 6).value = latest.isoformat()
 
     temporary = None
     try:

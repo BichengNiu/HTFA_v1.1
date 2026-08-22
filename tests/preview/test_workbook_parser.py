@@ -11,13 +11,28 @@ def _build_workbook(
     *,
     dictionary_sheet_name: str = "指标字典",
     frequency_label: str = "频率",
+    extended_dictionary: bool = False,
 ) -> BytesIO:
     workbook = Workbook()
     dictionary = workbook.active
     dictionary.title = dictionary_sheet_name
-    dictionary.append(["指标名称", "类型", "行业", "数据来源", "预测变量"])
-    dictionary.append(["指标A", "指数", "金融", "Wind", "是"])
-    dictionary.append(["指标B", "产量", "能源", "Wind", None])
+    if extended_dictionary:
+        dictionary.append([
+            "指标名称", "类型", "行业", "频率", "开始日期", "最新日期",
+            "缺失期数", "数据来源", "预测变量",
+        ])
+        dictionary.append([
+            "指标A", "指数", "金融", "日度", "2026-07-24", "2026-07-25",
+            0, "Wind", "是",
+        ])
+        dictionary.append([
+            "指标B", "产量", "能源", "月度", "2026-06-30", "2026-06-30",
+            0, "Wind", None,
+        ])
+    else:
+        dictionary.append(["指标名称", "类型", "行业", "数据来源", "预测变量"])
+        dictionary.append(["指标A", "指数", "金融", "Wind", "是"])
+        dictionary.append(["指标B", "产量", "能源", "Wind", None])
 
     daily = workbook.create_sheet("日度_Wind")
     daily.append(["Wind", None])
@@ -71,6 +86,17 @@ def test_parse_workbook_merges_dictionary_and_sheet_metadata():
     assert result.source_map["指标A"] == "测试数据库|日度_Wind"
     assert result.indicator_unit_map["指标B"] == "万吨"
     assert result.indicator_freq_map["指标B"] == "monthly"
+
+
+def test_parse_workbook_reads_source_and_forecast_after_date_columns():
+    result = parse_preview_workbook(
+        _build_workbook(extended_dictionary=True),
+        module_name="test",
+    )
+
+    metadata = result.indicator_metadata_map["指标A"]
+    assert metadata.dictionary_source == "Wind"
+    assert metadata.forecast_variable == "是"
 
 
 def test_parse_workbook_requires_named_dictionary_sheet():

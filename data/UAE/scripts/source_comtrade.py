@@ -3,8 +3,8 @@
 逻辑移植自 ``data/capitalImports/``（download_comtrade.py 下载 +
 process_and_merge.py 聚合/质检 + merge_with_excel.ps1 写表）。原始 JSON 缓存
 写入 ``data/UAE/raw/comtrade/``；API 密钥读 ``data/UAE/.env``。入库表三张：
-comtrade_monthly（五类金额/台数）、comtrade_partner_detail（镜像申报国明细）、
-comtrade_quantity_detail（HS6 数量明细）。工作簿 sheet 为 ``月度_UNComtrade``。
+comtrade_monthly（五类金额/台数）、detail.comtrade_partner_detail（镜像申报国明细）、
+detail.comtrade_quantity_detail（HS6 数量明细）。工作簿 sheet 为 ``月度_UNComtrade``。
 """
 
 from __future__ import annotations

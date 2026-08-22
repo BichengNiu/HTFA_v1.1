@@ -17,6 +17,37 @@ SCRIPTS_DIR = Path(__file__).resolve().parent
 DATA_DIR = SCRIPTS_DIR.parent
 DB_PATH = DATA_DIR / "uae.duckdb"
 
+# 这些表保留的是可追溯的细粒度派生数据，而不是仪表盘最终指标。
+# 物理表统一放入 detail schema；旧名称由只读兼容视图承接。
+DETAIL_TABLE_ALIASES = {
+    "comtrade_partner_detail": "detail.comtrade_partner_detail",
+    "comtrade_quantity_detail": "detail.comtrade_quantity_detail",
+    "eurostat_air_monthly": "detail.eurostat_air_monthly",
+    "emirates_post_monthly": "detail.emirates_post_monthly",
+    "portwatch_uae_daily": "detail.portwatch_uae_daily",
+    "portwatch_chokepoint_daily": "detail.portwatch_chokepoint_daily",
+    "dld.transactions": "detail.dld_transactions",
+}
+
+_DETAIL_MIGRATIONS = (
+    ("main", "comtrade_partner_detail", "comtrade_partner_detail"),
+    ("main", "comtrade_quantity_detail", "comtrade_quantity_detail"),
+    ("main", "eurostat_air_monthly", "eurostat_air_monthly"),
+    ("main", "emirates_post_monthly", "emirates_post_monthly"),
+    ("main", "portwatch_uae_daily", "portwatch_uae_daily"),
+    ("main", "portwatch_chokepoint_daily", "portwatch_chokepoint_daily"),
+    ("dld", "transactions", "dld_transactions"),
+)
+
+_DETAIL_PRIMARY_KEYS = {
+    "comtrade_partner_detail": "period, category, reporter, partner",
+    "comtrade_quantity_detail": "period, hs6",
+    "eurostat_air_monthly": "period, dataset, geo, partner, schedule, unit, tra_meas",
+    "emirates_post_monthly": "period, origin_city, destn_city, service",
+    "portwatch_uae_daily": "date, portid",
+    "portwatch_chokepoint_daily": "date, portid",
+}
+
 # --------------------------------------------------------------------------
 # Base DDL.  Each statement is idempotent; dld.* objects live in
 # source_dld.py because their full typed schema is large.
@@ -84,7 +115,7 @@ _BASE_DDL = (
     )
     """,
     """
-    CREATE TABLE IF NOT EXISTS comtrade_partner_detail (
+    CREATE TABLE IF NOT EXISTS detail.comtrade_partner_detail (
         period   DATE    NOT NULL,
         category VARCHAR NOT NULL,
         reporter VARCHAR NOT NULL,
@@ -94,7 +125,7 @@ _BASE_DDL = (
     )
     """,
     """
-    CREATE TABLE IF NOT EXISTS comtrade_quantity_detail (
+    CREATE TABLE IF NOT EXISTS detail.comtrade_quantity_detail (
         period                DATE    NOT NULL,
         hs6                   VARCHAR NOT NULL,
         item_count            DOUBLE,
@@ -180,7 +211,7 @@ _BASE_DDL = (
     """,
     # --- EU↔UAE / US↔UAE 航空客货运（月度） ---
     """
-    CREATE TABLE IF NOT EXISTS eurostat_air_monthly (
+    CREATE TABLE IF NOT EXISTS detail.eurostat_air_monthly (
         period   DATE           NOT NULL,
         dataset  VARCHAR        NOT NULL,
         geo      VARCHAR        NOT NULL,
@@ -202,7 +233,7 @@ _BASE_DDL = (
     )
     """,
     """
-    CREATE TABLE IF NOT EXISTS emirates_post_monthly (
+    CREATE TABLE IF NOT EXISTS detail.emirates_post_monthly (
         period      DATE    NOT NULL,
         origin_city VARCHAR NOT NULL,
         destn_city  VARCHAR NOT NULL,
@@ -228,66 +259,6 @@ _BASE_DDL = (
         value       DECIMAL(12, 3),
         source_file VARCHAR,
         PRIMARY KEY (period, indicator)
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS rta_bus_trips_route_monthly (
-        period      DATE    NOT NULL,
-        route_name  VARCHAR NOT NULL,
-        trips       BIGINT,
-        PRIMARY KEY (period, route_name)
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS rta_marine_trips_station_monthly (
-        period      DATE          NOT NULL,
-        station     VARCHAR       NOT NULL,
-        passengers  DECIMAL(18, 3),
-        marine_mode VARCHAR,
-        PRIMARY KEY (period, station)
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS rta_taxi_trips_monthly (
-        period     DATE    NOT NULL,
-        carrier    VARCHAR NOT NULL,
-        fleet_size BIGINT,
-        trips      BIGINT,
-        PRIMARY KEY (period, carrier)
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS rta_bus_speed_daily_detail (
-        txn_date        DATE,
-        time_period     VARCHAR,
-        service_type    VARCHAR,
-        route_name      VARCHAR,
-        route_direction VARCHAR,
-        average_speed   DOUBLE
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS rta_marine_ridership_raw (
-        txn_date  DATE,
-        txn_time  VARCHAR,
-        line_name VARCHAR,
-        location  VARCHAR,
-        txn_type  VARCHAR,
-        zone      VARCHAR,
-        txn_ts    VARCHAR
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS rta_bus_ridership_raw (
-        txn_date       DATE,
-        txn_time       VARCHAR,
-        route_name     VARCHAR,
-        start_location VARCHAR,
-        start_zone     VARCHAR,
-        end_location   VARCHAR,
-        end_zone       VARCHAR,
-        txn_type       VARCHAR,
-        txn_ts         VARCHAR
     )
     """,
     """
@@ -361,13 +332,139 @@ def connect(path: Path | str | None = None, *, read_only: bool = False):
 def init_schema(con) -> None:
     """Create every base table once; safe to call repeatedly."""
 
+    migrate_detail_schema(con)
     for statement in _BASE_DDL:
         con.execute(statement)
+    _rewrite_detail_metadata_names(con)
+    create_detail_compatibility_views(con)
+
+
+def _base_table_exists(con, schema: str, table: str) -> bool:
+    row = con.execute(
+        "SELECT 1 FROM information_schema.tables "
+        "WHERE table_schema = ? AND table_name = ? AND table_type = 'BASE TABLE'",
+        [schema, table],
+    ).fetchone()
+    return row is not None
+
+
+def _object_exists(con, schema: str, table: str) -> bool:
+    row = con.execute(
+        "SELECT 1 FROM information_schema.tables "
+        "WHERE table_schema = ? AND table_name = ?",
+        [schema, table],
+    ).fetchone()
+    return row is not None
+
+
+def migrate_detail_schema(con) -> None:
+    """Move legacy detail tables into ``detail`` without losing rows.
+
+    Existing releases created the fine-grained tables in ``main`` and
+    ``dld.transactions``.  The migration is idempotent.  If both the legacy
+    table and its target already exist with rows, it aborts instead of guessing
+    which copy is authoritative.
+    """
+
+    con.execute("CREATE SCHEMA IF NOT EXISTS detail")
+    con.execute("CREATE SCHEMA IF NOT EXISTS dld")
+    for schema, old_name, new_name in _DETAIL_MIGRATIONS:
+        old_exists = _base_table_exists(con, schema, old_name)
+        target_exists = _object_exists(con, "detail", new_name)
+        if not old_exists:
+            continue
+        if target_exists:
+            old_count = con.execute(
+                f'SELECT count(*) FROM "{schema}"."{old_name}"'
+            ).fetchone()[0]
+            target_count = con.execute(
+                f'SELECT count(*) FROM detail."{new_name}"'
+            ).fetchone()[0]
+            if old_count:
+                raise RuntimeError(
+                    f"detail 迁移冲突：{schema}.{old_name} 与 detail.{new_name} "
+                    f"同时存在（{old_count}/{target_count} 行），拒绝覆盖"
+                )
+            con.execute(f'DROP TABLE "{schema}"."{old_name}"')
+            continue
+        if schema == "dld":
+            for view in (
+                "land_transactions",
+                "transaction_year_summary",
+                "transaction_date_quality_issues",
+            ):
+                con.execute(f"DROP VIEW IF EXISTS dld.{view}")
+        con.execute(
+            f'CREATE TABLE detail."{new_name}" AS '
+            f'SELECT * FROM "{schema}"."{old_name}"'
+        )
+        primary_key = _DETAIL_PRIMARY_KEYS.get(new_name)
+        if primary_key and all(
+            con.execute(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_schema = 'detail' AND table_name = ? "
+                "AND column_name = ?",
+                [new_name, column.strip()],
+            ).fetchone()
+            for column in primary_key.split(",")
+        ):
+            con.execute(
+                f'ALTER TABLE detail."{new_name}" '
+                f'ADD PRIMARY KEY ({primary_key})'
+            )
+        con.execute(f'DROP TABLE "{schema}"."{old_name}"')
+
+
+def _rewrite_detail_metadata_names(con) -> None:
+    """Keep column metadata keyed to physical detail-table names."""
+
+    if not _object_exists(con, "main", "meta_column_dictionary"):
+        return
+    for legacy, physical in DETAIL_TABLE_ALIASES.items():
+        con.execute(
+            "UPDATE main.meta_column_dictionary SET object_name = ? "
+            "WHERE object_name = ?",
+            [physical, legacy],
+        )
+
+
+def create_detail_compatibility_views(con) -> None:
+    """Expose legacy names as read-only views after detail migration."""
+
+    for legacy, physical in DETAIL_TABLE_ALIASES.items():
+        if "." in legacy:
+            schema, view_name = legacy.split(".", 1)
+        else:
+            schema, view_name = "main", legacy
+        physical_schema, physical_name = physical.split(".", 1)
+        if not _object_exists(con, physical_schema, physical_name):
+            continue
+        if schema == "dld":
+            con.execute(
+                f'CREATE OR REPLACE VIEW dld."{view_name}" AS '
+                f'SELECT * FROM "{physical_schema}"."{physical_name}"'
+            )
+        else:
+            con.execute(
+                f'CREATE OR REPLACE VIEW main."{view_name}" AS '
+                f'SELECT * FROM "{physical_schema}"."{physical_name}"'
+            )
+
+
+def canonical_table_name(name: str) -> str:
+    """Return the writable physical name for a logical table name."""
+
+    if name in DETAIL_TABLE_ALIASES:
+        return DETAIL_TABLE_ALIASES[name]
+    if name.startswith("main.") and name[5:] in DETAIL_TABLE_ALIASES:
+        return DETAIL_TABLE_ALIASES[name[5:]]
+    return name
 
 
 def table_exists(con, name: str) -> bool:
     """Return whether ``name`` (optionally schema-qualified) exists."""
 
+    name = canonical_table_name(name)
     if "." in name:
         schema, table = name.split(".", 1)
         row = con.execute(
@@ -387,6 +484,7 @@ def table_exists(con, name: str) -> bool:
 def ensure(con, name: str, ddl: str) -> None:
     """Create a table from its DDL when it does not exist yet."""
 
+    name = canonical_table_name(name)
     if not table_exists(con, name):
         con.execute(ddl)
 
@@ -398,6 +496,7 @@ def replace(con, table: str, rows: Iterable[dict[str, Any]]) -> int:
     form one atomic refresh.  Returns the inserted row count.
     """
 
+    table = canonical_table_name(table)
     records = [dict(row) for row in rows]
     if not records:
         con.execute(f"DELETE FROM {table}")

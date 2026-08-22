@@ -109,13 +109,13 @@ def render_real_estate_section(
         last_month = anchor_last_month(data.values)
         left, right = st_obj.columns(2, gap="small")
         try:
-            _render_sales_chart(left, data, last_month, market="期房")
+            _render_sales_chart(left, data, last_month, market="现房")
         except (KeyError, TypeError, ValueError) as exc:
-            left.warning(f"期房销售图未加载：{exc}")
+            left.warning(f"现房销售图未加载：{exc}")
         try:
-            _render_sales_chart(right, data, last_month, market="现房")
+            _render_sales_chart(right, data, last_month, market="期房")
         except (KeyError, TypeError, ValueError) as exc:
-            right.warning(f"现房销售图未加载：{exc}")
+            right.warning(f"期房销售图未加载：{exc}")
         with st_obj.expander("指标算法与解读", expanded=False):
             st_obj.markdown(REAL_ESTATE_EXPLANATION)
     except (KeyError, TypeError, ValueError, FileNotFoundError) as exc:

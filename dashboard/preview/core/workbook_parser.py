@@ -22,7 +22,11 @@ from dashboard.preview.domain.models import IndicatorMetadata, LoadedPreviewData
 
 
 DICTIONARY_SHEET_NAME = "指标字典"
-DICTIONARY_COLUMNS = ["指标名称", "类型", "行业", "数据来源", "预测变量"]
+DICTIONARY_COLUMNS = [
+    "指标名称", "类型", "行业", "频率", "开始日期", "最新日期",
+    "缺失期数", "数据来源", "预测变量",
+]
+DICTIONARY_BASE_COLUMNS = ["指标名称", "类型", "行业"]
 METADATA_ROW_LABELS = {
     2: "指标名称",
     3: "频率",
@@ -102,7 +106,14 @@ def _load_dictionary(excel_file: pd.ExcelFile) -> Dict[str, Dict[str, Any]]:
         raise ValueError(f"“{DICTIONARY_SHEET_NAME}”必须是工作簿的首个sheet")
 
     dictionary = pd.read_excel(excel_file, sheet_name=DICTIONARY_SHEET_NAME)
-    missing_columns = [column for column in DICTIONARY_COLUMNS if column not in dictionary.columns]
+    missing_columns = [
+        column for column in DICTIONARY_BASE_COLUMNS
+        if column not in dictionary.columns
+    ]
+    missing_columns.extend(
+        column for column in ("数据来源", "预测变量")
+        if column not in dictionary.columns
+    )
     if missing_columns:
         raise ValueError(f"指标字典缺少字段: {', '.join(missing_columns)}")
 

@@ -288,9 +288,9 @@ def test_to_weekly_table_rows_drops_pre_publication_weeks() -> None:
 
 
 def test_raw_weekly_sql_targets_unified_schema() -> None:
-    assert dld.RAW_WEEKLY_SQL.count("dld.transactions") >= 6
+    assert dld.RAW_WEEKLY_SQL.count("detail.dld_transactions") >= 6
     assert "FROM transactions" not in dld.RAW_WEEKLY_SQL
-    assert "FROM dld.transactions" in dld.RAW_WEEKLY_SQL
+    assert "FROM detail.dld_transactions" in dld.RAW_WEEKLY_SQL
 
 
 def test_indicator_dictionary_contract() -> None:
@@ -342,7 +342,7 @@ def test_column_dictionary_contract() -> None:
     assert all(len(row) == 7 for row in dld.COLUMN_DICTIONARY)
     object_names = {row[0] for row in dld.COLUMN_DICTIONARY}
     # 2026-08 瘦身：只保留 transactions（land_registry 已不再入库）
-    assert object_names == {"dld.transactions"}
+    assert object_names == {"detail.dld_transactions"}
     assert {row[1] for row in dld.COLUMN_DICTIONARY} == set(dld.KEEP_COLUMNS)
 
 
@@ -352,6 +352,6 @@ def test_column_dictionary_matches_legacy_metadata_rows() -> None:
     by_object: dict[str, dict[str, tuple]] = {}
     for row in dld.COLUMN_DICTIONARY:
         by_object.setdefault(row[0], {})[row[1]] = row
-    assert set(by_object["dld.transactions"]) == set(dld.KEEP_COLUMNS)
+    assert set(by_object["detail.dld_transactions"]) == set(dld.KEEP_COLUMNS)
     assert "dld.land_registry" not in by_object
-    assert by_object["dld.transactions"]["transaction_id"][2] == "VARCHAR"
+    assert by_object["detail.dld_transactions"]["transaction_id"][2] == "VARCHAR"

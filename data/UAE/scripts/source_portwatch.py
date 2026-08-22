@@ -149,7 +149,7 @@ UAE_STRING_COLUMNS = ("country", "ISO3")
 # ---------------------------------------------------------------------------
 
 UAE_TABLE_DDL = """
-CREATE TABLE IF NOT EXISTS portwatch_uae_daily (
+CREATE TABLE IF NOT EXISTS detail.portwatch_uae_daily (
     date                DATE    NOT NULL,
     portid              VARCHAR NOT NULL,
     portname            VARCHAR NOT NULL,
@@ -181,7 +181,7 @@ CREATE TABLE IF NOT EXISTS portwatch_uae_daily (
 """
 
 CHOKEPOINT_TABLE_DDL = """
-CREATE TABLE IF NOT EXISTS portwatch_chokepoint_daily (
+CREATE TABLE IF NOT EXISTS detail.portwatch_chokepoint_daily (
     date                DATE    NOT NULL,
     portid              VARCHAR NOT NULL,
     portname            VARCHAR NOT NULL,
@@ -399,7 +399,7 @@ def _monthly_observations(con) -> list["Observation"]:
                SUM(export) AS v6,
                SUM(export_container) AS v7,
                SUM(export_tanker) AS v8
-        FROM portwatch_uae_daily
+        FROM detail.portwatch_uae_daily
         GROUP BY month
         ORDER BY month
         """
@@ -411,7 +411,7 @@ def _monthly_observations(con) -> list["Observation"]:
                SUM(capacity) AS v1,
                SUM(n_tanker) AS v2,
                SUM(capacity_tanker) AS v3
-        FROM portwatch_chokepoint_daily
+        FROM detail.portwatch_chokepoint_daily
         WHERE portid = 'chokepoint6'
         GROUP BY month
         ORDER BY month

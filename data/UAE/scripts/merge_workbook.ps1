@@ -89,11 +89,27 @@ try {
     $dictionary = $book.Worksheets.Item($dictionarySheetName)
     $template = $book.Worksheets.Item($templateSheetName)
 
-    $expectedHeaders = @("指标名称", "类型", "行业", "数据来源", "预测变量")
-    for ($column = 1; $column -le 5; $column++) {
-        if ($dictionary.Cells.Item(1, $column).Text -ne $expectedHeaders[$column - 1]) {
-            throw "Unexpected indicator dictionary header in column $column"
-        }
+    $legacyHeaders = @("指标名称", "类型", "行业", "数据来源", "预测变量")
+    $extendedHeaders = @(
+        "指标名称", "类型", "行业", "频率", "开始日期", "最新日期",
+        "缺失期数", "数据来源", "预测变量"
+    )
+    $dictionaryHeaders = @(
+        1..$dictionary.UsedRange.Columns.Count |
+            ForEach-Object { $dictionary.Cells.Item(1, $_).Text }
+    )
+    if (@($dictionaryHeaders[0..($legacyHeaders.Count - 1)]) -ceq $legacyHeaders) {
+        $dictionarySourceColumn = 4
+        $dictionaryForecastColumn = 5
+        $dictionaryLastColumn = 5
+    }
+    elseif (@($dictionaryHeaders[0..($extendedHeaders.Count - 1)]) -ceq $extendedHeaders) {
+        $dictionarySourceColumn = 8
+        $dictionaryForecastColumn = 9
+        $dictionaryLastColumn = 9
+    }
+    else {
+        throw "Unexpected indicator dictionary header"
     }
 
     $lastDictionaryRow = $dictionary.Cells.Item(
@@ -119,17 +135,21 @@ try {
         else {
             $row = ++$lastDictionaryRow
             $sourceRange = $dictionary.Range(
-                "A$($row - 1):G$($row - 1)"
+                $dictionary.Cells.Item($row - 1, 1),
+                $dictionary.Cells.Item($row - 1, $dictionaryLastColumn)
             )
-            $destinationRange = $dictionary.Range("A$row:G$row")
+            $destinationRange = $dictionary.Range(
+                $dictionary.Cells.Item($row, 1),
+                $dictionary.Cells.Item($row, $dictionaryLastColumn)
+            )
             $sourceRange.Copy($destinationRange) | Out-Null
             $added++
         }
         $dictionary.Cells.Item($row, 1).Value2 = $indicator
         $dictionary.Cells.Item($row, 2).Value2 = "价格"
         $dictionary.Cells.Item($row, 3).Value2 = "钢铁"
-        $dictionary.Cells.Item($row, 4).Value2 = "MEsteel"
-        $dictionary.Cells.Item($row, 5).ClearContents() | Out-Null
+        $dictionary.Cells.Item($row, $dictionarySourceColumn).Value2 = "MEsteel"
+        $dictionary.Cells.Item($row, $dictionaryForecastColumn).ClearContents() | Out-Null
     }
 
     foreach ($worksheet in @($book.Worksheets)) {

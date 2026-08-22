@@ -78,7 +78,7 @@ def _eurostat(con) -> dict[str, Any]:
     rows = _long_to_wide(
         con.execute(
             "SELECT period, dataset, tra_meas, value "
-            "FROM eurostat_air_monthly "
+            "FROM detail.eurostat_air_monthly "
             "WHERE geo = 'EU27_2020' AND partner = 'AE' AND schedule = 'TOTAL'"
         ).fetchall(),
         lambda dataset, measure: f"{datasets[dataset]}:{measures[measure]}",

@@ -1,11 +1,16 @@
-"""阿联酋交通物流月度监测（IMF PortWatch：霍尔木兹海峡 + UAE 港口）。
+"""阿联酋交通物流监测（海运与航空货运）。
 
-数据来自工作簿「月度_PortWatch」sheet（先入 duckdb 再写 Excel 的月度聚合表）：
-- 霍尔木兹通道 3 指标：油轮载货容量（吨）、载货总容量（吨）、油轮过境次数（艘次）；
-- UAE 港口 1 指标：港口到港总次数（艘次）。
+数据来自工作簿中的以下 sheet（先入 duckdb 再写 Excel 的聚合表）：
+- 「月度_PortWatch」：
+- UAE 港口进口/出口总量及油轮进口/出口量（吨）；
+- 霍尔木兹过境总次数及油轮过境次数（艘次）。
+- 「月度_迪拜海关航空」：迪拜航空货运进口/出口运单数（张）与总量（吨）。
+- 「月度_DOTT100」：美国↔阿联酋航空旅客（人次）与航空货运（磅）。
 
-四大指标是"战争对海运影响"最灵敏的组合（2026-03 美伊战争断崖实证）：
-霍尔木兹油轮容量环比 -98%、UAE 港口到港 -77%。图表统一带 2026-03
+十二个指标用于观察港口货量结构、霍尔木兹通道活动、迪拜航空货运与
+美国↔阿联酋航空运输
+（2026-03 美伊战争断崖实证）。
+图表统一带 2026-03
 战争基准线（红色虚线），窗口锚定最新完整月往前 36 个月。
 """
 
@@ -23,38 +28,113 @@ from dashboard.analysis.uae.sheet_reader import (
 )
 
 PORTWATCH_SHEET = "月度_PortWatch"
+DUBAI_CUSTOMS_AIR_SHEET = "月度_迪拜海关航空"
+DOTT100_SHEET = "月度_DOTT100"
 
 # (显示名, 工作簿指标名, 单位)。指标名与「月度_PortWatch」写表一致；
 # 解析时经 normalize_indicator_name 全角/冒号归一匹配。
-HORMUZ_TANKER_CAPACITY = "霍尔木兹油轮容量"
-HORMUZ_CAPACITY = "霍尔木兹总容量"
+UAE_PORT_IMPORT_TOTAL = "阿联酋港口进口总量"
+UAE_PORT_EXPORT_TOTAL = "阿联酋港口出口总量"
+UAE_PORT_TANKER_IMPORT = "阿联酋港口油轮进口量"
+UAE_PORT_TANKER_EXPORT = "阿联酋港口油轮出口量"
+HORMUZ_TOTAL_CALLS = "霍尔木兹过境总次数"
 HORMUZ_TANKER_CALLS = "霍尔木兹油轮过境"
-UAE_PORT_CALLS = "UAE港口总到港"
+DUBAI_AIR_IMPORT_AWBS = "迪拜航空货运_进口运单数(张)"
+DUBAI_AIR_EXPORT_AWBS = "迪拜航空货运_出口运单数(张)"
+DUBAI_AIR_IMPORT_TOTAL = "迪拜航空货运_进口总量(吨)"
+DUBAI_AIR_EXPORT_TOTAL = "迪拜航空货运_出口总量(吨)"
+US_UAE_AIR_PASSENGERS = "美国↔阿联酋_航空旅客_合计(人次)"
+US_UAE_AIR_FREIGHT = "美国↔阿联酋_航空货运_合计(磅)"
 
 CALLS_TARGETS: tuple[tuple[str, str], ...] = (
+    (HORMUZ_TOTAL_CALLS, "霍尔木兹:过境总次数:当月值"),
     (HORMUZ_TANKER_CALLS, "霍尔木兹:油轮过境次数:当月值"),
-    (UAE_PORT_CALLS, "阿联酋:港口到港总次数:当月值"),
 )
-TON_TARGETS: tuple[tuple[str, str], ...] = (
-    (HORMUZ_CAPACITY, "霍尔木兹:载货容量:当月值"),
-    (HORMUZ_TANKER_CAPACITY, "霍尔木兹:油轮载货容量:当月值"),
+PORT_VOLUME_TARGETS: tuple[tuple[str, str], ...] = (
+    (UAE_PORT_IMPORT_TOTAL, "阿联酋:港口进口总量:当月值"),
+    (UAE_PORT_EXPORT_TOTAL, "阿联酋:港口出口总量:当月值"),
+    (UAE_PORT_TANKER_IMPORT, "阿联酋:港口油轮进口量:当月值"),
+    (UAE_PORT_TANKER_EXPORT, "阿联酋:港口油轮出口量:当月值"),
 )
 
 ALL_COLUMNS: tuple[str, ...] = (
+    UAE_PORT_IMPORT_TOTAL,
+    UAE_PORT_EXPORT_TOTAL,
+    UAE_PORT_TANKER_IMPORT,
+    UAE_PORT_TANKER_EXPORT,
+    HORMUZ_TOTAL_CALLS,
     HORMUZ_TANKER_CALLS,
-    HORMUZ_CAPACITY,
-    HORMUZ_TANKER_CAPACITY,
-    UAE_PORT_CALLS,
+)
+
+MONTHLY_EXTRA_COLUMNS: tuple[str, ...] = (
+    DUBAI_AIR_IMPORT_AWBS,
+    DUBAI_AIR_EXPORT_AWBS,
+    DUBAI_AIR_IMPORT_TOTAL,
+    DUBAI_AIR_EXPORT_TOTAL,
+    US_UAE_AIR_PASSENGERS,
+    US_UAE_AIR_FREIGHT,
+)
+
+DUBAI_CUSTOMS_AIR_AWB_TARGETS: tuple[tuple[str, str], ...] = (
+    (DUBAI_AIR_IMPORT_AWBS, DUBAI_AIR_IMPORT_AWBS),
+    (DUBAI_AIR_EXPORT_AWBS, DUBAI_AIR_EXPORT_AWBS),
+)
+
+DUBAI_CUSTOMS_AIR_TOTAL_TARGETS: tuple[tuple[str, str], ...] = (
+    (DUBAI_AIR_IMPORT_TOTAL, DUBAI_AIR_IMPORT_TOTAL),
+    (DUBAI_AIR_EXPORT_TOTAL, DUBAI_AIR_EXPORT_TOTAL),
+)
+
+DUBAI_CUSTOMS_AIR_AWB_ERROR_KEY = f"{DUBAI_CUSTOMS_AIR_SHEET}:运单数"
+DUBAI_CUSTOMS_AIR_TOTAL_ERROR_KEY = f"{DUBAI_CUSTOMS_AIR_SHEET}:总量"
+DOTT100_ERROR_KEY = f"{DOTT100_SHEET}:航空指标"
+
+DOTT100_PASSENGER_TARGETS: tuple[tuple[str, str], ...] = (
+    (US_UAE_AIR_PASSENGERS, US_UAE_AIR_PASSENGERS),
+)
+DOTT100_FREIGHT_TARGETS: tuple[tuple[str, str], ...] = (
+    (US_UAE_AIR_FREIGHT, US_UAE_AIR_FREIGHT),
 )
 
 
 @dataclass(frozen=True)
 class TransportData:
-    """交通物流月度的最小数据集（4 个 PortWatch 指标）。"""
+    """交通物流面板数据。
+
+    ``values`` 承载六个 PortWatch 指标；``monthly_values`` 承载航空扩展序列。
+    """
 
     values: pd.DataFrame
     metadata: dict[str, SheetSeriesMetadata]
     source_name: str
+    monthly_values: pd.DataFrame
+    load_errors: dict[str, str]
+
+
+def _try_parse_target_sheet(
+    excel_file: pd.ExcelFile,
+    *,
+    sheet_name: str,
+    targets: tuple[tuple[str, str], ...],
+    expected_unit: str,
+) -> tuple[
+    pd.DataFrame,
+    dict[str, SheetSeriesMetadata],
+    str | None,
+]:
+    """读取扩展指标；缺失或协议错误只影响对应图表。"""
+
+    try:
+        frame, metadata = parse_target_sheet(
+            excel_file,
+            sheet_name=sheet_name,
+            targets=targets,
+            allowed_frequencies={"月", "月度"},
+            expected_unit=expected_unit,
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        return pd.DataFrame(), {}, str(exc)
+    return frame, metadata, None
 
 
 def load_transport_data(
@@ -62,16 +142,23 @@ def load_transport_data(
     *,
     file_name: str | None = None,
 ) -> TransportData:
-    """只读取「月度_PortWatch」的 4 个指标（艘次、吨两类单位）。
+    """读取交通物流板块所需的海运、迪拜航空和美国↔阿联酋航空指标。
 
-    由于 sheet 内单位混合，按单位分两次调用共享的 parse_target_sheet，
-    再按月份对齐合并。
+    PortWatch 六个指标是基础数据；扩展 sheet 读取失败时保留基础数据，
+    并把错误写入 ``load_errors``，由页面对对应图表显示警告。
     """
 
     with open_uae_workbook(file_input, file_name=file_name) as (
         excel_file,
         source_name,
     ):
+        port_volume_frame, port_volume_metadata = parse_target_sheet(
+            excel_file,
+            sheet_name=PORTWATCH_SHEET,
+            targets=PORT_VOLUME_TARGETS,
+            allowed_frequencies={"月", "月度"},
+            expected_unit="吨",
+        )
         calls_frame, calls_metadata = parse_target_sheet(
             excel_file,
             sheet_name=PORTWATCH_SHEET,
@@ -79,29 +166,95 @@ def load_transport_data(
             allowed_frequencies={"月", "月度"},
             expected_unit="艘次",
         )
-        ton_frame, ton_metadata = parse_target_sheet(
+        values = pd.concat(
+            [port_volume_frame, calls_frame],
+            axis=1,
+            sort=False,
+        ).sort_index()
+        metadata = {**port_volume_metadata, **calls_metadata}
+        load_errors: dict[str, str] = {}
+
+        customs_awb_frame, customs_awb_metadata, error = _try_parse_target_sheet(
             excel_file,
-            sheet_name=PORTWATCH_SHEET,
-            targets=TON_TARGETS,
-            allowed_frequencies={"月", "月度"},
-            expected_unit="吨",
+            sheet_name=DUBAI_CUSTOMS_AIR_SHEET,
+            targets=DUBAI_CUSTOMS_AIR_AWB_TARGETS,
+            expected_unit="张",
         )
-        values = pd.concat([calls_frame, ton_frame], axis=1, sort=False).sort_index()
-        metadata = {**calls_metadata, **ton_metadata}
+        if error:
+            load_errors[DUBAI_CUSTOMS_AIR_AWB_ERROR_KEY] = error
+        metadata.update(customs_awb_metadata)
+
+        customs_total_frame, customs_total_metadata, error = (
+            _try_parse_target_sheet(
+                excel_file,
+                sheet_name=DUBAI_CUSTOMS_AIR_SHEET,
+                targets=DUBAI_CUSTOMS_AIR_TOTAL_TARGETS,
+                expected_unit="吨",
+            )
+        )
+        if error:
+            load_errors[DUBAI_CUSTOMS_AIR_TOTAL_ERROR_KEY] = error
+        metadata.update(customs_total_metadata)
+
+        customs_frame = pd.concat(
+            [customs_awb_frame, customs_total_frame],
+            axis=1,
+            sort=False,
+        ).sort_index()
+
+        dot_passenger_frame, dot_passenger_metadata, error = (
+            _try_parse_target_sheet(
+                excel_file,
+                sheet_name=DOTT100_SHEET,
+                targets=DOTT100_PASSENGER_TARGETS,
+                expected_unit="人次",
+            )
+        )
+        dot_errors: list[str] = []
+        if error:
+            dot_errors.append(error)
+        metadata.update(dot_passenger_metadata)
+
+        dot_freight_mail_frame, dot_freight_mail_metadata, error = (
+            _try_parse_target_sheet(
+                excel_file,
+                sheet_name=DOTT100_SHEET,
+                targets=DOTT100_FREIGHT_TARGETS,
+                expected_unit="磅",
+            )
+        )
+        if error:
+            dot_errors.append(error)
+        metadata.update(dot_freight_mail_metadata)
+        if dot_errors:
+            load_errors[DOTT100_ERROR_KEY] = "；".join(dot_errors)
+        dot_frame = pd.concat(
+            [dot_passenger_frame, dot_freight_mail_frame],
+            axis=1,
+            sort=False,
+        ).sort_index()
+
+        monthly_values = pd.concat(
+            [values, customs_frame, dot_frame],
+            axis=1,
+            sort=False,
+        ).sort_index()
 
     return TransportData(
         values=values,
         metadata=metadata,
         source_name=source_name,
+        monthly_values=monthly_values,
+        load_errors=load_errors,
     )
 
 
 def latest_complete_month(values: pd.DataFrame) -> pd.Timestamp:
-    """返回 4 个指标均有效的最新月份。"""
+    """返回输入月度指标均有效的最新月份。"""
 
     complete = values.dropna(how="any").sort_index()
     if complete.empty:
-        raise ValueError("月度_PortWatch 没有四个指标均完整的月份")
+        raise ValueError("交通物流月度指标没有共同完整月份")
     return pd.Timestamp(complete.index[-1])
 
 
@@ -131,13 +284,31 @@ def anchor_last_month(
 __all__ = [
     "ALL_COLUMNS",
     "CALLS_TARGETS",
-    "HORMUZ_CAPACITY",
+    "DUBAI_AIR_EXPORT_AWBS",
+    "DUBAI_AIR_EXPORT_TOTAL",
+    "DUBAI_AIR_IMPORT_AWBS",
+    "DUBAI_AIR_IMPORT_TOTAL",
+    "DUBAI_CUSTOMS_AIR_SHEET",
+    "DUBAI_CUSTOMS_AIR_AWB_ERROR_KEY",
+    "DUBAI_CUSTOMS_AIR_AWB_TARGETS",
+    "DUBAI_CUSTOMS_AIR_TOTAL_ERROR_KEY",
+    "DUBAI_CUSTOMS_AIR_TOTAL_TARGETS",
+    "DOTT100_ERROR_KEY",
+    "DOTT100_FREIGHT_TARGETS",
+    "DOTT100_PASSENGER_TARGETS",
+    "DOTT100_SHEET",
+    "HORMUZ_TOTAL_CALLS",
     "HORMUZ_TANKER_CALLS",
-    "HORMUZ_TANKER_CAPACITY",
     "PORTWATCH_SHEET",
-    "TON_TARGETS",
+    "PORT_VOLUME_TARGETS",
+    "MONTHLY_EXTRA_COLUMNS",
     "TransportData",
-    "UAE_PORT_CALLS",
+    "UAE_PORT_EXPORT_TOTAL",
+    "UAE_PORT_IMPORT_TOTAL",
+    "UAE_PORT_TANKER_EXPORT",
+    "UAE_PORT_TANKER_IMPORT",
+    "US_UAE_AIR_FREIGHT",
+    "US_UAE_AIR_PASSENGERS",
     "anchor_last_month",
     "latest_complete_month",
     "load_transport_data",

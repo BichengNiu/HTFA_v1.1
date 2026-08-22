@@ -341,7 +341,7 @@ def _dictionary_rows() -> list[dict]:
 
 
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
-    """下载（或复用 raw/ 现有文件）→ 解析校验 → 入明细表 emirates_post_monthly。
+    """下载（或复用 raw/ 现有文件）→ 解析校验 → 入 detail.emirates_post_monthly。
 
     校验通过才入库；明细粒度 (period, origin_city, destn_city, service)，
     共 6001 行（2022-01 至 2025-12）。``skip_download`` 时不访问网络。
@@ -413,7 +413,7 @@ def merge(workbook_path: Path) -> dict:
     try:
         db_rows = con.execute(
             "SELECT period, service, SUM(volume) AS volume "
-            "FROM emirates_post_monthly "
+            "FROM detail.emirates_post_monthly "
             "GROUP BY period, service ORDER BY period"
         ).fetchall()
     finally:

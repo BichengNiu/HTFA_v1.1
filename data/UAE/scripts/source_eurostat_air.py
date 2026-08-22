@@ -7,7 +7,7 @@
   reporting country and partner country（月度，2008-01 起；geo=EU27_2020,
   partner=AE）。
 
-解析后的长表入 ``eurostat_air_monthly``（(period, dataset, geo, partner,
+解析后的细粒度长表入 ``detail.eurostat_air_monthly``（(period, dataset, geo, partner,
 schedule, unit, tra_meas) 主键），tra_meas 含全部 9 个口径（如 PAS_CRD 旅客数、
 PAS_CRD_ARR/DEP 抵达/离港、FRM_LD_NLD 装+卸、FRM_LD/FRM_NLD 方向口径与
 CAF_* 航班数）。原始 JSON 缓存于 ``data/UAE/raw/eurostat_air/``。

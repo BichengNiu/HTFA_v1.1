@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import Any
 
 import pandas as pd
 from matplotlib.figure import Figure
@@ -16,15 +16,21 @@ from dashboard.analysis.uae.plot_helpers import (
     normalize_ts_axis,
     source_note,
 )
+from dashboard.analysis.uae.sheet_reader import open_uae_workbook, parse_target_sheet
 
 SMOOTH_WINDOW = 7
 SMOOTH_POLYORDER = 2
 
-SEARCH_CSV_RELATIVE = "data/UAE/工作搜索热度.csv"
+SEARCH_SHEET = "月度_工作搜索热度"
 
 TIME_COLUMN = "Time"
 WORK_DUBAI_COLUMN = "work in dubai"
 WORK_UAE_COLUMN = "work in uae"
+
+SEARCH_INDICATORS = (
+    (WORK_DUBAI_COLUMN, "阿联酋:Google搜索热度(work in dubai)"),
+    (WORK_UAE_COLUMN, "阿联酋:Google搜索热度(work in uae)"),
+)
 
 WORK_DUBAI_LABEL = "搜索“在迪拜工作”"
 WORK_UAE_LABEL = "搜索“在阿联酋工作”"
@@ -38,24 +44,23 @@ START_YEAR = 2023
 SOURCE_TEXT = "Google 趋势"
 
 
-def _search_csv_path() -> Path:
-    """返回工作搜索热度 CSV 的绝对路径。"""
+def load_search_index_data(
+    file_input: Any,
+    *,
+    file_name: str | None = None,
+) -> pd.DataFrame:
+    """从工作簿的 ``月度_工作搜索热度`` 读取谷歌趋势序列。"""
 
-    project_root = Path(__file__).resolve().parents[4]
-    return project_root / SEARCH_CSV_RELATIVE
-
-
-def load_search_index_data() -> pd.DataFrame:
-    """读取谷歌趋势月度工作搜索热度，索引为时间戳。"""
-
-    path = _search_csv_path()
-    if not path.exists():
-        raise FileNotFoundError(f"缺少谷歌搜索热度数据文件：{path}")
-    frame = pd.read_csv(path)
-    frame[TIME_COLUMN] = pd.to_datetime(frame[TIME_COLUMN])
-    values = frame.set_index(TIME_COLUMN)[
-        [WORK_DUBAI_COLUMN, WORK_UAE_COLUMN]
-    ].sort_index()
+    with open_uae_workbook(file_input, file_name=file_name) as (excel_file, _):
+        values, _ = parse_target_sheet(
+            excel_file,
+            sheet_name=SEARCH_SHEET,
+            targets=SEARCH_INDICATORS,
+            allowed_frequencies={"月", "月度"},
+            expected_unit="指数",
+            zero_is_missing=False,
+        )
+    values = values.sort_index()
     values.index = pd.DatetimeIndex(values.index).normalize()
     return values
 
@@ -131,8 +136,9 @@ def build_search_index_figure(
 
 
 __all__ = [
-    "SEARCH_CSV_RELATIVE",
+    "SEARCH_INDICATORS",
     "SEARCH_SERIES",
+    "SEARCH_SHEET",
     "SMOOTH_POLYORDER",
     "SMOOTH_WINDOW",
     "SOURCE_TEXT",

@@ -12,11 +12,13 @@ from dashboard.analysis.uae.government_finance.pmi import (
     load_pmi_data,
 )
 from dashboard.analysis.uae.government_finance.search_index import (
+    SEARCH_SHEET,
     START_YEAR,
     WORK_DUBAI_COLUMN,
     WORK_UAE_COLUMN,
     build_search_index_figure,
     display_search_index_values,
+    load_search_index_data,
 )
 
 PMI_SHEET = "月度_LSEG"
@@ -97,6 +99,49 @@ def _search_index_frame() -> pd.DataFrame:
         },
         index=pd.DatetimeIndex(dates),
     )
+
+
+def _search_index_workbook_bytes() -> bytes:
+    """构造包含月度工作搜索热度 sheet 的最小工作簿。"""
+
+    indicators = [
+        "阿联酋:Google搜索热度(work in dubai)",
+        "阿联酋:Google搜索热度(work in uae)",
+    ]
+    rows = [
+        ["Google Trends", None, None],
+        ["指标名称", *indicators],
+        ["频率", "月", "月"],
+        ["单位", "指数", "指数"],
+        ["来源", "Google Trends", "Google Trends"],
+        ["更新时间", "2026-08-20", "2026-08-20"],
+        [pd.Timestamp("2026-02-01"), 0, 8],
+        [pd.Timestamp("2026-01-01"), 7, 0],
+    ]
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        pd.DataFrame(rows).to_excel(
+            writer,
+            sheet_name=SEARCH_SHEET,
+            header=False,
+            index=False,
+        )
+    return buffer.getvalue()
+
+
+def test_search_index_loader_reads_workbook_sheet_and_preserves_zero() -> None:
+    data = load_search_index_data(
+        _search_index_workbook_bytes(),
+        file_name="阿联酋.xlsx",
+    )
+
+    assert data.columns.tolist() == [WORK_DUBAI_COLUMN, WORK_UAE_COLUMN]
+    assert data.index.tolist() == [
+        pd.Timestamp("2026-01-01"),
+        pd.Timestamp("2026-02-01"),
+    ]
+    assert data.loc["2026-01-01", WORK_UAE_COLUMN] == 0
+    assert data.loc["2026-02-01", WORK_DUBAI_COLUMN] == 0
 
 
 def test_search_index_display_filters_to_start_year() -> None:

@@ -158,8 +158,8 @@ def _load_pmi_cached(content: bytes, file_name: str) -> PmiData:
 
 
 @st.cache_data(show_spinner=False)
-def _load_search_index_cached() -> pd.DataFrame:
-    return load_search_index_data()
+def _load_search_index_cached(content: bytes, file_name: str) -> pd.DataFrame:
+    return load_search_index_data(content, file_name=file_name)
 
 
 def _format_number(value: float | None, *, unit: str) -> str | None:
@@ -318,7 +318,7 @@ def _render_labor_metrics(
                     ),
                 )
             )
-        search = _load_search_index_cached()
+        search = _load_search_index_cached(content, file_name)
         for label, column in (
             ("谷歌「在迪拜工作」搜索热度", WORK_DUBAI_COLUMN),
             ("谷歌「在阿联酋工作」搜索热度", WORK_UAE_COLUMN),
@@ -744,7 +744,7 @@ def _render_labor_employment_charts(
     search_column, labor_column = st_obj.columns(2, gap="small")
     try:
         with st_obj.spinner("正在读取谷歌工作搜索热度数据..."):
-            search_index = _load_search_index_cached()
+            search_index = _load_search_index_cached(content, file_name)
         _render_search_index_chart(search_column, search_index)
     except (KeyError, TypeError, ValueError, FileNotFoundError) as exc:
         search_column.warning(f"谷歌搜索热度图表未加载：{exc}")

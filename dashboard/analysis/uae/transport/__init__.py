@@ -1,4 +1,4 @@
-"""阿联酋交通物流月度监测（IMF PortWatch：霍尔木兹通道 + UAE 港口）。"""
+"""阿联酋交通物流月度监测（港口货量 + 霍尔木兹过境 + 航空运输）。"""
 
 from dashboard.analysis.uae.transport.renderer import (
     render_transport_section,
