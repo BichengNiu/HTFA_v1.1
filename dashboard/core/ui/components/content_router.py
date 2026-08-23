@@ -157,7 +157,7 @@ def render_model_analysis_content(sub_module: str | None) -> None:
         from dashboard.models.SARIMAX.ui.pages import render_sarimax_model_page
 
         all_tabs = [
-            ("SARIMAX 模型", lambda: render_sarimax_model_page(st)),
+            ("动态回归模型", lambda: render_sarimax_model_page(st)),
         ]
         _render_model_submodule_tabs("单变量模型", all_tabs)
         return

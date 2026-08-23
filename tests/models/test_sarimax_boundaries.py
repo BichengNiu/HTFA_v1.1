@@ -9,7 +9,7 @@ from dashboard.auth.permission_builder import PermissionTreeBuilder
 from dashboard.navigation_config import GRANULAR_PERMISSION_MAP, MODULE_CONFIG
 
 SUB_MODULE = "单变量模型"
-EXPECTED_TABS = ("SARIMAX 模型",)
+EXPECTED_TABS = ("动态回归模型",)
 EXPECTED_PERMISSION_CODES = (
     "model_analysis.univariate_ts",
     "model_analysis.univariate_ts.sarimax",
@@ -42,7 +42,7 @@ def test_permission_display_names_generated_automatically():
     )
     assert (
         builder.get_permission_display_name("model_analysis.univariate_ts.sarimax")
-        == "模型分析 - 单变量模型 - SARIMAX 模型"
+        == "模型分析 - 单变量模型 - 动态回归模型"
     )
 
 
@@ -61,7 +61,7 @@ def test_content_router_dispatches_univariate_ts_submodule():
 
     assert '"单变量模型"' in source
     assert "render_sarimax_model_page" in source
-    assert "SARIMAX 模型" in source
+    assert "动态回归模型" in source
     assert "_render_model_submodule_tabs" in source
 
 

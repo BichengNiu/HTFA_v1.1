@@ -7,10 +7,23 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from Ts.TsModels import AutoModelResult, AutoSARIMAX, SARIMAX, SARIMAXResult
+from Ts.TsModels import (
+    ARDL,
+    AutoARDL,
+    AutoARDLResult,
+    AutoModelResult,
+    AutoSARIMAX,
+    RationalLagSpec,
+    SARIMAX,
+    SARIMAXResult,
+)
 
 from dashboard.models.SARIMAX.core.model_config import (
+    ARDLConfig,
+    AutoARDLConfig,
+    AutoRDLConfig,
     AutoSARIMAXConfig,
+    RDLConfig,
     SARIMAXConfig,
 )
 
@@ -67,10 +80,24 @@ def translate_ts_error(error: Exception) -> str:
     return message
 
 
+DynamicConfig = (
+    SARIMAXConfig
+    | AutoSARIMAXConfig
+    | RDLConfig
+    | AutoRDLConfig
+    | ARDLConfig
+    | AutoARDLConfig
+)
+
+
+def _is_dynamic_regression(config: DynamicConfig) -> bool:
+    return isinstance(config, (RDLConfig, AutoRDLConfig, ARDLConfig, AutoARDLConfig))
+
+
 def validate_fit_inputs(
     series: pd.Series,
     exog: pd.DataFrame | None,
-    config: SARIMAXConfig | AutoSARIMAXConfig,
+    config: DynamicConfig,
 ) -> list[str]:
     """拟合前预检，返回用户可读的问题列表；空列表表示可以拟合。"""
     problems: list[str] = []
@@ -81,7 +108,7 @@ def validate_fit_inputs(
     valid = series.dropna()
     if len(valid) < MIN_OBSERVATIONS:
         problems.append(
-            f"样本量不足：有效观测 {len(valid)} 个，SARIMAX 至少需要 "
+            f"样本量不足：有效观测 {len(valid)} 个，模型至少需要 "
             f"{MIN_OBSERVATIONS} 个"
         )
     if config.log and len(valid) > 0 and float(valid.min()) <= 0.0:
@@ -97,9 +124,25 @@ def validate_fit_inputs(
                 "丢弃对应行"
             )
 
-    seasonal_period = (
-        config.seasonal_order[3] if isinstance(config, SARIMAXConfig) else config.s
-    )
+    if _is_dynamic_regression(config):
+        if exog is None or exog.shape[1] == 0:
+            problems.append("RDL/ARDL 至少需要选择一个解释变量")
+        if series.isna().any() or (exog is not None and exog.isna().any().any()):
+            problems.append(
+                "动态回归不接受缺失导致的非连续样本；请先补齐或删除不完整期"
+            )
+
+    seasonal_period = 0
+    if isinstance(config, (SARIMAXConfig, RDLConfig)):
+        seasonal_period = (
+            config.seasonal_order[3]
+            if isinstance(config, SARIMAXConfig)
+            else config.error.seasonal_order[3]
+        )
+    elif isinstance(config, (AutoSARIMAXConfig, AutoRDLConfig)):
+        seasonal_period = config.s if isinstance(config, AutoSARIMAXConfig) else config.error.s
+    elif config.seasonal:
+        seasonal_period = config.period or 0
     if seasonal_period > 0 and len(valid) < 2 * seasonal_period:
         problems.append(
             f"季节周期 s={seasonal_period} 过大：至少需要 {2 * seasonal_period} "
@@ -154,8 +197,140 @@ def fit_auto_sarimax(
     return model.fit()
 
 
+def _rdl_specs(config: RDLConfig | AutoRDLConfig) -> dict[str, RationalLagSpec]:
+    """将 UI 层传递函数配置转换为 Ts 的不可变规格。"""
+    return {
+        item.name: RationalLagSpec(
+            numerator=item.specification()[0],
+            denominator=item.specification()[1],
+            delay=item.specification()[2],
+            initialization=item.specification()[3],
+        )
+        for item in config.inputs
+    }
+
+
+def fit_rdl(
+    series: pd.Series,
+    exog: pd.DataFrame,
+    config: RDLConfig,
+) -> SARIMAXResult:
+    """拟合固定传递函数加 SARIMAX 误差的 RDL 模型。"""
+    error = config.error
+    model = SARIMAX(
+        series,
+        order=error.order,
+        seasonal_order=error.seasonal_order,
+        trend=error.trend,
+        exog=exog,
+        log=error.log,
+        enforce_stationarity=error.enforce_stationarity,
+        enforce_invertibility=error.enforce_invertibility,
+        distributed_lags=_rdl_specs(config),
+        enforce_distributed_lag_stability=config.enforce_distributed_lag_stability,
+    )
+    return model.fit(
+        method=error.fit_method,
+        maxiter=error.maxiter,
+        cov_type=error.cov_type,
+    )
+
+
+def fit_auto_rdl(
+    series: pd.Series,
+    exog: pd.DataFrame,
+    config: AutoRDLConfig,
+) -> AutoModelResult:
+    """仅自动搜索 RDL 的 SARIMAX 误差阶数，传递函数保持固定。"""
+    error = config.error
+    model = AutoSARIMAX(
+        series,
+        p=error.p,
+        d=error.d,
+        q=error.q,
+        P=error.P,
+        D=error.D,
+        Q=error.Q,
+        s=error.s,
+        trend=error.trend,
+        criterion=error.criterion,
+        exog=exog,
+        log=error.log,
+        distributed_lags=_rdl_specs(config),
+        enforce_distributed_lag_stability=config.enforce_distributed_lag_stability,
+    )
+    return model.fit()
+
+
+def fit_ardl(
+    series: pd.Series,
+    exog: pd.DataFrame,
+    config: ARDLConfig,
+):
+    """拟合标准 ARDL，而非把 SARIMAX AR 误差误称为 ARDL。"""
+    model = ARDL(
+        series,
+        lags=config.lags,
+        exog=exog,
+        order=config.order_mapping(),
+        trend=config.trend,
+        causal=config.causal,
+        seasonal=config.seasonal,
+        period=config.period,
+        hold_back=config.hold_back,
+        log=config.log,
+    )
+    return model.fit(cov_type=config.cov_type)
+
+
+def fit_auto_ardl(
+    series: pd.Series,
+    exog: pd.DataFrame,
+    config: AutoARDLConfig,
+) -> AutoARDLResult:
+    """按 AIC/BIC 自动选择标准 ARDL 的目标和逐输入滞后。"""
+    model = AutoARDL(
+        series,
+        maxlag=config.maxlag,
+        exog=exog,
+        maxorder=config.maxorder_mapping(),
+        trend=config.trend,
+        criterion=config.criterion,
+        search_method=config.search_method,
+        causal=config.causal,
+        seasonal=config.seasonal,
+        period=config.period,
+        hold_back=config.hold_back,
+        log=config.log,
+    )
+    return model.fit(cov_type=config.cov_type)
+
+
+def fit_dynamic_model(
+    series: pd.Series,
+    exog: pd.DataFrame | None,
+    config: DynamicConfig,
+):
+    """按模型族和配置方式分发到 Ts 的唯一拟合入口。"""
+    if isinstance(config, SARIMAXConfig):
+        return fit_sarimax(series, exog, config)
+    if isinstance(config, AutoSARIMAXConfig):
+        return fit_auto_sarimax(series, exog, config)
+    if exog is None:
+        raise ValueError("RDL/ARDL 需要解释变量")
+    if isinstance(config, RDLConfig):
+        return fit_rdl(series, exog, config)
+    if isinstance(config, AutoRDLConfig):
+        return fit_auto_rdl(series, exog, config)
+    if isinstance(config, ARDLConfig):
+        return fit_ardl(series, exog, config)
+    if isinstance(config, AutoARDLConfig):
+        return fit_auto_ardl(series, exog, config)
+    raise TypeError(f"不支持的动态回归配置：{type(config)!r}")
+
+
 def run_residual_diagnostics(
-    result: SARIMAXResult,
+    result: Any,
     lags: int = 10,
 ) -> pd.DataFrame:
     """对拟合结果执行残差诊断，返回结构化结果表。"""
@@ -175,7 +350,7 @@ def run_residual_diagnostics(
     return pd.DataFrame(rows, columns=["检验", "统计量", "P值", "结论"])
 
 
-def future_dates(result: SARIMAXResult, steps: int) -> pd.DatetimeIndex | None:
+def future_dates(result: Any, steps: int) -> pd.DatetimeIndex | None:
     """基于拟合日期频率推算未来预测日期；无法推断时返回 None。"""
     dates = result.dates
     if dates is None or len(dates) == 0:
@@ -194,7 +369,7 @@ def future_dates(result: SARIMAXResult, steps: int) -> pd.DatetimeIndex | None:
 
 
 def produce_forecast(
-    result: SARIMAXResult,
+    result: Any,
     steps: int,
     alpha: float = 0.05,
     dynamic: bool = False,
@@ -251,9 +426,15 @@ def build_prediction_table(forecast: dict[str, Any]) -> pd.DataFrame:
 
 
 __all__ = [
+    "DynamicConfig",
     "MIN_OBSERVATIONS",
     "build_prediction_table",
+    "fit_ardl",
+    "fit_auto_ardl",
+    "fit_auto_rdl",
     "fit_auto_sarimax",
+    "fit_dynamic_model",
+    "fit_rdl",
     "fit_sarimax",
     "future_dates",
     "produce_forecast",

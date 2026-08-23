@@ -6,7 +6,7 @@ import logging
 
 import pandas as pd
 import streamlit as st
-from Ts.TsModels import AutoModelResult
+from Ts.TsModels import AutoARDLResult, AutoModelResult
 
 from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
 from dashboard.core.ui.utils.matplotlib_compat import matplotlib_date_compatibility
@@ -25,30 +25,36 @@ def render_analysis_section(st_obj) -> None:
     if result is None:
         st_obj.info("完成「② 模型训练」后可查看模型分析结果。")
         return
-    best = result.best_result if isinstance(result, AutoModelResult) else result
-
-    _render_parameter_table(st_obj, best)
-
-    st_obj.markdown("**拟合效果图**")
-    try:
-        with matplotlib_date_compatibility():
-            figure, _ = best.plot_fit()
-            render_pyplot_figure(st_obj, figure)
-    except Exception as exc:  # noqa: BLE001 - 可选图表边界
-        st_obj.warning(f"拟合效果图无法绘制：{exc}")
-        logger.warning("SARIMAX 拟合图绘制失败", exc_info=True)
-
-    st_obj.markdown("**残差诊断图**")
-    try:
-        with matplotlib_date_compatibility():
-            figure, _ = best.plot_diagnostics()
-            render_pyplot_figure(st_obj, figure)
-    except Exception as exc:  # noqa: BLE001 - 可选图表边界
-        st_obj.warning(f"残差诊断图无法绘制：{exc}")
-        logger.warning("SARIMAX 诊断图绘制失败", exc_info=True)
-
-    _render_residual_tests(st_obj, best)
-    _render_root_conditions(st_obj, best)
+    best = (
+        result.best_result
+        if isinstance(result, (AutoModelResult, AutoARDLResult))
+        else result
+    )
+    fit_tab, structure_tab, diagnostic_tab = st_obj.tabs(
+        ["估计与拟合", "动态结构", "残差诊断"]
+    )
+    with fit_tab:
+        _render_parameter_table(st_obj, best)
+        st_obj.markdown("**拟合效果图**")
+        try:
+            with matplotlib_date_compatibility():
+                figure, _ = best.plot_fit()
+                render_pyplot_figure(st_obj, figure)
+        except Exception as exc:  # noqa: BLE001 - 可选图表边界
+            st_obj.warning(f"拟合效果图无法绘制：{exc}")
+            logger.warning("动态回归拟合图绘制失败", exc_info=True)
+    with structure_tab:
+        _render_dynamic_structure(st_obj, best)
+    with diagnostic_tab:
+        st_obj.markdown("**残差诊断图**")
+        try:
+            with matplotlib_date_compatibility():
+                figure, _ = best.plot_diagnostics()
+                render_pyplot_figure(st_obj, figure)
+        except Exception as exc:  # noqa: BLE001 - 可选图表边界
+            st_obj.warning(f"残差诊断图无法绘制：{exc}")
+            logger.warning("动态回归诊断图绘制失败", exc_info=True)
+        _render_residual_tests(st_obj, best)
 
 
 def _render_parameter_table(st_obj, best) -> None:
@@ -139,6 +145,42 @@ def _render_root_conditions(st_obj, best) -> None:
             "模型存在位于单位圆上或圆内的根，拟合结果可能不稳定，"
             "建议调整差分阶数或季节项后再拟合。"
         )
+
+
+def _render_dynamic_structure(st_obj, best) -> None:
+    """按模型族展示传递函数、ARDL 滞后或 SARIMAX 根结构。"""
+    distributed = getattr(best, "distributed_lags", {})
+    if distributed:
+        if isinstance(distributed, dict) and all(
+            hasattr(value, "steady_state_gain") for value in distributed.values()
+        ):
+            st_obj.markdown("**RDL 传递函数**")
+            gains = best.steady_state_gains
+            st_obj.dataframe(gains, width="stretch")
+            coefficients = best.distributed_lag_coefficients
+            st_obj.dataframe(coefficients, width="stretch")
+            try:
+                with matplotlib_date_compatibility():
+                    figure, _ = best.plot_impulse_response()
+                    render_pyplot_figure(st_obj, figure)
+            except Exception as exc:  # noqa: BLE001 - 可选图表边界
+                st_obj.warning(f"RDL 冲击权重图无法绘制：{exc}")
+            return
+        st_obj.markdown("**ARDL 滞后结构**")
+        rows = [{"变量": "目标变量", "滞后": repr(getattr(best, "ar_lags", ()))}]
+        rows.extend(
+            {"变量": name, "滞后": repr(lags)}
+            for name, lags in distributed.items()
+        )
+        st_obj.dataframe(pd.DataFrame(rows), width="stretch")
+        st_obj.metric(
+            "目标 AR 稳定性",
+            "平稳" if getattr(best, "is_stationary", False) else "非平稳",
+            delta_color="off",
+        )
+        return
+    st_obj.markdown("**SARIMAX 根条件**")
+    _render_root_conditions(st_obj, best)
 
 
 __all__ = ["render_analysis_section"]

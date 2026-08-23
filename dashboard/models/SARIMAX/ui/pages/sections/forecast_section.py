@@ -7,7 +7,7 @@ import logging
 import numpy as np
 import pandas as pd
 import streamlit as st
-from Ts.TsModels import AutoModelResult
+from Ts.TsModels import AutoARDLResult, AutoModelResult
 
 from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
 from dashboard.core.ui.utils.matplotlib_compat import matplotlib_date_compatibility
@@ -29,7 +29,12 @@ def render_forecast_section(st_obj) -> None:
     if result is None:
         st_obj.info("完成「② 模型训练」后可生成样本外预测。")
         return
-    best = result.best_result if isinstance(result, AutoModelResult) else result
+    best = (
+        result.best_result
+        if isinstance(result, (AutoModelResult, AutoARDLResult))
+        else result
+    )
+    family = state.get("model_selection", ("SARIMAX", "手动配置"))[0]
 
     control_columns = st_obj.columns(3)
     with control_columns[0]:
@@ -104,11 +109,11 @@ def render_forecast_section(st_obj) -> None:
     st_obj.download_button(
         "下载预测结果 CSV",
         data=table.to_csv(encoding="utf-8-sig").encode("utf-8-sig"),
-        file_name=f"SARIMAX_预测_{int(steps)}期.csv",
+        file_name=f"{family}_预测_{int(steps)}期.csv",
         mime="text/csv",
         key="sarimax_forecast_download",
     )
-    _render_forecast_chart(st_obj, best, forecast)
+    _render_forecast_chart(st_obj, best, forecast, family=family)
 
 
 def _render_future_exog_editor(st_obj, best, steps: int, exog_names) -> pd.DataFrame:
@@ -139,7 +144,7 @@ def _render_future_exog_editor(st_obj, best, steps: int, exog_names) -> pd.DataF
     return edited
 
 
-def _render_forecast_chart(st_obj, best, forecast) -> None:
+def _render_forecast_chart(st_obj, best, forecast, *, family: str) -> None:
     """绘制历史值与预测均值/置信区间图。"""
     try:
         import matplotlib.pyplot as plt
@@ -181,7 +186,7 @@ def _render_forecast_chart(st_obj, best, forecast) -> None:
                 label=f"{1 - forecast['alpha']:.0%} 置信区间",
             )
             axis.legend(frameon=False)
-            axis.set_title("SARIMAX 样本外预测")
+            axis.set_title(f"{family} 样本外预测")
             figure.tight_layout()
             render_pyplot_figure(st_obj, figure)
     except Exception as exc:  # noqa: BLE001 - 可选图表边界

@@ -40,7 +40,7 @@ GRANULAR_PERMISSION_MAP = {
             "单变量模型": {
                 "code": "model_analysis.univariate_ts",
                 "tabs": {
-                    "SARIMAX 模型": "model_analysis.univariate_ts.sarimax",
+                    "动态回归模型": "model_analysis.univariate_ts.sarimax",
                 },
             },
         },

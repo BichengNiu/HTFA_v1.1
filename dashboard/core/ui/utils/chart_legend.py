@@ -53,6 +53,7 @@ def _place_matplotlib_legend_at_bottom(
 ) -> None:
     handles: list[Any] = []
     labels: list[str] = []
+    label_identities: set[str] = set()
     for axis in figure.axes:
         legend = axis.get_legend()
         if legend is not None:
@@ -63,9 +64,18 @@ def _place_matplotlib_legend_at_bottom(
         else:
             axis_handles, axis_labels = axis.get_legend_handles_labels()
         for handle, label in zip(axis_handles, axis_labels):
-            if label and not label.startswith("_") and label not in labels:
+            # Ts 双轴模板在主轴局部图例中补充“（左轴）/（右轴）”，
+            # 右轴自身仍报告原始标签。按未修饰的标签去重，保留更易读的
+            # 局部图例文本，避免底部图例重复同一序列。
+            identity = label.split("（", maxsplit=1)[0].strip()
+            if (
+                label
+                and not label.startswith("_")
+                and identity not in label_identities
+            ):
                 handles.append(handle)
                 labels.append(label)
+                label_identities.add(identity)
         if legend is not None:
             legend.remove()
 

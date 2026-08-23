@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import pandas as pd
@@ -64,6 +65,20 @@ def _multi_sample_csv() -> tuple[str, bytes, str]:
     return "multi-sample.csv", frame.to_csv(index=False).encode("utf-8"), "text/csv"
 
 
+def _dynamic_sample_csv() -> tuple[str, bytes, str]:
+    """生成目标和两个连续解释变量，供 RDL/ARDL 工作流使用。"""
+    index = pd.date_range("2020-01-01", periods=60, freq="MS")
+    frame = pd.DataFrame(
+        {
+            "date": index.strftime("%Y-%m-%d"),
+            "value": [10.0 + step * 0.08 + math.sin(step / 3) for step in range(60)],
+            "policy": [1.0 + step * 0.05 + math.cos(step / 4) for step in range(60)],
+            "price": [4.0 + step * 0.03 + math.sin(step / 5) for step in range(60)],
+        }
+    )
+    return "dynamic.csv", frame.to_csv(index=False).encode("utf-8"), "text/csv"
+
+
 def _by_key(elements, key: str):
     return next(element for element in elements if element.key == key)
 
@@ -75,9 +90,9 @@ def test_full_workflow_via_ui(monkeypatch):
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
     _navigate_to_sarimax(app)
 
-    # 导航结果：单 tab「SARIMAX 模型」，页内四环节标题与引导信息齐全
+    # 导航结果：单 tab「动态回归模型」，页内四环节标题与引导信息齐全
     assert not app.exception
-    assert [tab.label for tab in app.tabs] == ["SARIMAX 模型"]
+    assert [tab.label for tab in app.tabs] == ["动态回归模型"]
     title_texts = " ".join(element.value for element in app.markdown)
     assert "① 数据预览" in title_texts
     assert "② 模型训练" in title_texts
@@ -146,9 +161,7 @@ def test_auto_mode_workflow_via_ui(monkeypatch):
     assert not app.exception
 
     # 切换到自动选阶，并把范围缩到 4 个组合
-    _by_key(app.radio, "sarimax_mode_radio").set_value(
-        "自动选阶（AutoSARIMAX）"
-    )
+    _by_key(app.segmented_control, "sarimax_config_mode").set_value("自动选阶")
     app.run()
     assert not app.exception
     _by_key(app.number_input, "sarimax_auto_p_max").set_value(1)
@@ -172,6 +185,86 @@ def test_auto_mode_workflow_via_ui(monkeypatch):
     )
     metrics = {element.label: element.value for element in app.metric}
     assert "AIC" in metrics
+
+
+def _open_dynamic_family(app, family: str, mode: str) -> None:
+    """上传连续多变量样本，切换到指定动态回归模型族。"""
+    app.file_uploader[0].upload(*_dynamic_sample_csv())
+    app.run()
+    _by_key(app.multiselect, "sarimax_exog_select").set_value(["policy"])
+    app.run()
+    _by_key(app.segmented_control, "sarimax_model_family").set_value(family)
+    app.run()
+    _by_key(app.segmented_control, "sarimax_config_mode").set_value(mode)
+    app.run()
+    assert not app.exception
+
+
+def test_rdl_manual_and_auto_workflows_via_ui(monkeypatch):
+    """RDL 两种配置方式均保留输入传递函数并可完成拟合。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=90).run()
+    _navigate_to_sarimax(app)
+    _open_dynamic_family(app, "RDL", "手动配置")
+    assert _by_key(app.dataframe, "sarimax_rdl_input_table")
+    _by_key(app.button, "sarimax_fit_button").click()
+    app.run()
+    assert not app.exception
+    assert any("有效样本量" in item.value for item in app.success)
+
+    _by_key(app.segmented_control, "sarimax_config_mode").set_value("自动选阶")
+    app.run()
+    _by_key(app.number_input, "sarimax_rdl_auto_error_p_max").set_value(1)
+    _by_key(app.number_input, "sarimax_rdl_auto_error_d_max").set_value(0)
+    _by_key(app.number_input, "sarimax_rdl_auto_error_q_max").set_value(0)
+    _by_key(app.number_input, "sarimax_rdl_auto_error_P_max").set_value(0)
+    _by_key(app.number_input, "sarimax_rdl_auto_error_D_max").set_value(0)
+    _by_key(app.number_input, "sarimax_rdl_auto_error_Q_max").set_value(0)
+    app.run()
+    _by_key(app.button, "sarimax_fit_button").click()
+    app.run()
+    assert not app.exception
+    assert any("最优模型" in item.value for item in app.markdown)
+
+
+def test_ardl_manual_and_auto_workflows_via_ui(monkeypatch):
+    """ARDL 两种配置方式显示逐变量滞后，不遗留 RDL 控件或旧结果。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=90).run()
+    _navigate_to_sarimax(app)
+    _open_dynamic_family(app, "ARDL", "手动配置")
+    assert _by_key(app.dataframe, "sarimax_ardl_input_table")
+    assert not any(
+        item.key == "sarimax_rdl_input_table" for item in app.dataframe
+    )
+    _by_key(app.button, "sarimax_fit_button").click()
+    app.run()
+    assert not app.exception
+    assert any(tab.label == "动态结构" for tab in app.tabs)
+
+    # 切换模型族必须清除旧 ARDL 结果，并且只留下 RDL 控件。
+    _by_key(app.segmented_control, "sarimax_model_family").set_value("RDL")
+    app.run()
+    assert not app.exception
+    assert _by_key(app.dataframe, "sarimax_rdl_input_table")
+    assert not any(metric.label == "AIC" for metric in app.metric)
+    _by_key(app.segmented_control, "sarimax_model_family").set_value("ARDL")
+    app.run()
+    assert _by_key(app.dataframe, "sarimax_ardl_input_table")
+
+    _by_key(app.segmented_control, "sarimax_config_mode").set_value("自动选阶")
+    app.run()
+    assert _by_key(app.dataframe, "sarimax_auto_ardl_input_table")
+    _by_key(app.number_input, "sarimax_auto_ardl_target_lag").set_value(1)
+    app.run()
+    _by_key(app.button, "sarimax_fit_button").click()
+    app.run()
+    assert not app.exception
+    assert any("最优 ARDL" in item.value for item in app.markdown)
 
 
 def test_data_table_options_via_ui(monkeypatch):

@@ -16,12 +16,22 @@ from dashboard.models.SARIMAX.core.data_loader import (
     prepare_modeling_inputs,
 )
 from dashboard.models.SARIMAX.core.model_config import (
+    ARDLConfig,
+    AutoARDLConfig,
+    AutoRDLConfig,
     AutoSARIMAXConfig,
+    RDLConfig,
+    RDLInputConfig,
     SARIMAXConfig,
 )
 from dashboard.models.SARIMAX.core.modeling import (
     build_prediction_table,
+    fit_auto_ardl,
+    fit_auto_rdl,
     fit_auto_sarimax,
+    fit_ardl,
+    fit_dynamic_model,
+    fit_rdl,
     fit_sarimax,
     produce_forecast,
     run_residual_diagnostics,
@@ -165,6 +175,25 @@ def test_auto_sarimax_config_candidate_count_and_validation():
         AutoSARIMAXConfig(p=(3, 1))
 
 
+def test_dynamic_regression_configs_capture_all_lag_structure():
+    rdl_input = RDLInputConfig(
+        "price", numerator_order=2, denominator_order=1, delay=1,
+        numerator_lags=(0, 2), denominator_lags=(1,), initialization="zero",
+    )
+    rdl = RDLConfig(inputs=(rdl_input,))
+    assert rdl_input.specification() == ((0, 2), (1,), 1, "zero")
+    assert rdl.signature()[0] == "rdl-manual"
+
+    ardl = ARDLConfig(lags=(1, 3), input_orders=(("price", 2),))
+    auto = AutoARDLConfig(maxlag=2, max_input_orders=(("price", 3),))
+    assert ardl.order_mapping() == {"price": 2}
+    assert auto.maxorder_mapping() == {"price": 3}
+    with pytest.raises(ValueError, match="至少需要"):
+        RDLConfig(inputs=())
+    with pytest.raises(ValueError, match="至少需要"):
+        ARDLConfig(input_orders=())
+
+
 # ---------- modeling ----------
 
 
@@ -265,6 +294,65 @@ def test_fit_auto_sarimax_small_grid():
     assert result.best_result is not None
     assert len(result.best_order) == 3
     assert len(result.criterion_values) == 4
+
+
+def test_fit_rdl_and_auto_rdl_keep_transfer_function_fixed():
+    series = make_series()
+    exog = pd.DataFrame({"policy": np.linspace(1.0, 3.0, len(series))})
+    inputs = (RDLInputConfig("policy", numerator_order=0),)
+    manual = fit_rdl(
+        series,
+        exog,
+        RDLConfig(
+            inputs=inputs,
+            error=SARIMAXConfig(order=(0, 0, 0), trend="n"),
+        ),
+    )
+    assert tuple(manual.distributed_lags) == ("policy",)
+    automatic = fit_auto_rdl(
+        series,
+        exog,
+        AutoRDLConfig(
+            inputs=inputs,
+            error=AutoSARIMAXConfig(
+                p=(0, 1), d=(0, 0), q=(0, 0),
+                P=(0, 0), D=(0, 0), Q=(0, 0), trend="n",
+            ),
+        ),
+    )
+    assert tuple(automatic.best_result.distributed_lags) == ("policy",)
+
+
+def test_fit_standard_ardl_manual_auto_and_future_input_path():
+    series = make_series(dates=True) + 10.0
+    exog = pd.DataFrame(
+        {"policy": np.linspace(1.0, 3.0, len(series))}, index=series.index
+    )
+    manual = fit_ardl(
+        series,
+        exog,
+        ARDLConfig(lags=1, input_orders=(("policy", 1),), trend="n"),
+    )
+    assert manual.ardl_order == (1, 1)
+    forecast = produce_forecast(
+        manual,
+        steps=3,
+        future_exog=pd.DataFrame({"policy": [3.1, 3.2, 3.3]}),
+    )
+    assert len(forecast["mean"]) == 3
+
+    automatic = fit_auto_ardl(
+        series,
+        exog,
+        AutoARDLConfig(
+            maxlag=1, max_input_orders=(("policy", 1),), trend="n"
+        ),
+    )
+    assert automatic.best_result is not None
+    assert not automatic.criterion_table.empty
+    assert fit_dynamic_model(
+        series, exog, ARDLConfig(lags=1, input_orders=(("policy", 0),), trend="n")
+    ).model_type == "ARDL"
 
 
 def test_run_residual_diagnostics_table():
@@ -384,3 +472,13 @@ def test_validate_fit_inputs_reports_user_problems():
     assert any("索引不一致" in problem for problem in problems)
 
     assert validate_fit_inputs(series, None, SARIMAXConfig()) == []
+
+
+def test_dynamic_regression_validation_rejects_missing_and_no_input():
+    series = make_series()
+    config = ARDLConfig(lags=1, input_orders=(("x", 0),))
+    missing = pd.DataFrame({"x": np.arange(len(series), dtype=float)})
+    missing.iloc[5, 0] = np.nan
+    problems = validate_fit_inputs(series, missing, config)
+    assert any("非连续" in problem for problem in problems)
+    assert any("至少需要" in problem for problem in validate_fit_inputs(series, None, config))

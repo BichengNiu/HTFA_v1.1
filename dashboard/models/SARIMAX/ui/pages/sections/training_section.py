@@ -6,15 +6,22 @@ import logging
 
 import pandas as pd
 import streamlit as st
-from Ts.TsModels import AutoModelResult
+from Ts.TsModels import AutoARDLResult, AutoModelResult
 
 from dashboard.models.SARIMAX.core.data_loader import (
     numeric_variable_names,
     prepare_modeling_inputs,
 )
 from dashboard.models.SARIMAX.core.model_config import (
+    ARDL_CRITERIA,
+    ARDL_SEARCH_METHODS,
     AUTO_CRITERIA,
+    ARDLConfig,
+    AutoARDLConfig,
+    AutoRDLConfig,
     AutoSARIMAXConfig,
+    RDLConfig,
+    RDLInputConfig,
     SARIMAXConfig,
     SARIMAX_COV_TYPES,
     SARIMAX_OPTIMIZERS,
@@ -22,8 +29,7 @@ from dashboard.models.SARIMAX.core.model_config import (
     TREND_OPTIONS,
 )
 from dashboard.models.SARIMAX.core.modeling import (
-    fit_auto_sarimax,
-    fit_sarimax,
+    fit_dynamic_model,
     translate_ts_error,
     validate_fit_inputs,
 )
@@ -47,7 +53,7 @@ _AUTO_MAX = 200
 
 
 def render_training_section(st_obj) -> None:
-    """配置并拟合 SARIMAX 模型。"""
+    """配置并拟合 SARIMAX、RDL 或标准 ARDL 模型。"""
     st_obj.markdown("#### ② 模型训练")
     dataset = state.get("dataset")
     if dataset is None:
@@ -88,13 +94,8 @@ def render_training_section(st_obj) -> None:
         state.set("exog_variables", tuple(exog))
         clear_fit_results()
 
-    st_obj.caption(
-        f"当前配置：目标变量「{target}」，外生变量 "
-        + (f"「{'、'.join(exog)}」" if exog else "无")
-    )
-
     try:
-        series, exog, index = prepare_modeling_inputs(
+        series, exog, _ = prepare_modeling_inputs(
             dataset,
             target,
             tuple(exog),
@@ -103,31 +104,40 @@ def render_training_section(st_obj) -> None:
         st_obj.error(f"数据准备失败：{exc}")
         return
 
-    scope_text = (
-        f"建模对象：目标「{target}」 · 有效观测 {len(series.dropna()):,} 行"
-    )
-    if isinstance(index, pd.DatetimeIndex):
-        scope_text += f" · 时间范围 {index.min():%Y-%m-%d} ~ {index.max():%Y-%m-%d}"
-    else:
-        scope_text += " · 未识别时间索引（按观测顺序建模）"
-    st_obj.caption(scope_text)
+    control_columns = st_obj.columns(2)
+    with control_columns[0]:
+        family = st_obj.segmented_control(
+            "模型族",
+            options=("SARIMAX", "RDL", "ARDL"),
+            default="SARIMAX",
+            key="sarimax_model_family",
+            help="SARIMAX 使用静态外生变量；RDL 使用传递函数；ARDL 显式估计目标和输入滞后。",
+        )
+    with control_columns[1]:
+        mode = st_obj.segmented_control(
+            "配置方式",
+            options=("手动配置", "自动选阶"),
+            default="手动配置",
+            key="sarimax_config_mode",
+        )
+    family = family or "SARIMAX"
+    mode = mode or "手动配置"
+    if (family, mode) != state.get("model_selection"):
+        state.set("model_selection", (family, mode))
+        clear_fit_results()
 
-    mode = st_obj.radio(
-        "模型配置方式",
-        options=("手动配置", "自动选阶（AutoSARIMAX）"),
-        horizontal=True,
-        key="sarimax_mode_radio",
-        help=(
-            "手动配置：自行指定 (p,d,q)×(P,D,Q,s) 阶数；"
-            "自动选阶：在指定范围内按信息准则搜索最优阶数。"
-        ),
-    )
-    if mode == "手动配置":
-        config = _render_manual_config(st_obj)
+    if family == "SARIMAX":
+        config = (
+            _render_manual_config(st_obj)
+            if mode == "手动配置"
+            else _render_auto_config(st_obj)
+        )
+    elif family == "RDL":
+        config = _render_rdl_config(st_obj, exog, automatic=mode == "自动选阶")
     else:
-        config = _render_auto_config(st_obj)
-        if config is None:
-            return
+        config = _render_ardl_config(st_obj, exog, automatic=mode == "自动选阶")
+    if config is None:
+        return
 
     problems = validate_fit_inputs(
         series,
@@ -139,6 +149,8 @@ def render_training_section(st_obj) -> None:
 
     signature = (
         state.get("file_fingerprint"),
+        family,
+        mode,
         target,
         tuple(state.get("exog_variables", ())),
         config.signature(),
@@ -151,10 +163,7 @@ def render_training_section(st_obj) -> None:
     ):
         with st_obj.spinner("正在调用 Ts 包拟合模型..."):
             try:
-                if isinstance(config, AutoSARIMAXConfig):
-                    result = fit_auto_sarimax(series, exog, config)
-                else:
-                    result = fit_sarimax(series, exog, config)
+                result = fit_dynamic_model(series, exog, config)
             except Exception as exc:  # noqa: BLE001 - 统计拟合失败边界
                 st_obj.error(translate_ts_error(exc))
                 logger.exception("SARIMAX 模型拟合失败")
@@ -173,25 +182,25 @@ def render_training_section(st_obj) -> None:
     _render_fit_summary(st_obj, result)
 
 
-def _render_manual_config(st_obj) -> SARIMAXConfig:
+def _render_manual_config(st_obj, prefix: str = "sarimax") -> SARIMAXConfig:
     """渲染手动 SARIMAX 阶数与高级设置。"""
     st_obj.markdown("**非季节阶数 (p, d, q)**")
     order_columns = st_obj.columns(3)
-    p = order_columns[0].number_input("p（AR 阶数）", 0, 6, 1, key="sarimax_p")
-    d = order_columns[1].number_input("d（差分阶数）", 0, 2, 0, key="sarimax_d")
-    q = order_columns[2].number_input("q（MA 阶数）", 0, 6, 1, key="sarimax_q")
+    p = order_columns[0].number_input("p（AR 阶数）", 0, 6, 1, key=f"{prefix}_p")
+    d = order_columns[1].number_input("d（差分阶数）", 0, 2, 0, key=f"{prefix}_d")
+    q = order_columns[2].number_input("q（MA 阶数）", 0, 6, 1, key=f"{prefix}_q")
 
     st_obj.markdown("**季节阶数 (P, D, Q, s)**")
     seasonal_columns = st_obj.columns(4)
-    P = seasonal_columns[0].number_input("P（季节 AR）", 0, 3, 0, key="sarimax_P")
-    D = seasonal_columns[1].number_input("D（季节差分）", 0, 2, 0, key="sarimax_D")
-    Q = seasonal_columns[2].number_input("Q（季节 MA）", 0, 3, 0, key="sarimax_Q")
+    P = seasonal_columns[0].number_input("P（季节 AR）", 0, 3, 0, key=f"{prefix}_P")
+    D = seasonal_columns[1].number_input("D（季节差分）", 0, 2, 0, key=f"{prefix}_D")
+    Q = seasonal_columns[2].number_input("Q（季节 MA）", 0, 3, 0, key=f"{prefix}_Q")
     s = seasonal_columns[3].number_input(
         "s（季节周期）",
         0,
         12,
         0,
-        key="sarimax_s",
+        key=f"{prefix}_s",
         help="季节周期长度；0 表示无季节项（如月度数据可填 12）。",
     )
 
@@ -201,11 +210,11 @@ def _render_manual_config(st_obj) -> SARIMAXConfig:
         options=list(TREND_OPTIONS),
         index=list(TREND_OPTIONS).index("c"),
         format_func=lambda value: TREND_LABELS[value],
-        key="sarimax_trend",
+        key=f"{prefix}_trend",
     )
     log = common_columns[1].checkbox(
         "对响应取自然对数（log 变换）",
-        key="sarimax_log",
+        key=f"{prefix}_log",
         help="要求数据严格为正；预测结果将回到原始刻度。",
     )
 
@@ -215,7 +224,7 @@ def _render_manual_config(st_obj) -> SARIMAXConfig:
             "优化器",
             options=list(SARIMAX_OPTIMIZERS),
             index=list(SARIMAX_OPTIMIZERS).index("bfgs"),
-            key="sarimax_method",
+            key=f"{prefix}_method",
         )
         maxiter = advanced_columns[1].number_input(
             "最大迭代次数",
@@ -223,24 +232,24 @@ def _render_manual_config(st_obj) -> SARIMAXConfig:
             10000,
             500,
             step=50,
-            key="sarimax_maxiter",
+            key=f"{prefix}_maxiter",
         )
         cov_type = advanced_columns[2].selectbox(
             "协方差估计",
             options=list(SARIMAX_COV_TYPES),
             index=list(SARIMAX_COV_TYPES).index("oim"),
-            key="sarimax_cov_type",
+            key=f"{prefix}_cov_type",
         )
         enforce_columns = st_obj.columns(2)
         enforce_stationarity = enforce_columns[0].checkbox(
             "强制 AR 多项式平稳",
             value=True,
-            key="sarimax_enforce_stationarity",
+            key=f"{prefix}_enforce_stationarity",
         )
         enforce_invertibility = enforce_columns[1].checkbox(
             "强制 MA 多项式可逆",
             value=True,
-            key="sarimax_enforce_invertibility",
+            key=f"{prefix}_enforce_invertibility",
         )
 
     return SARIMAXConfig(
@@ -256,7 +265,7 @@ def _render_manual_config(st_obj) -> SARIMAXConfig:
     )
 
 
-def _render_auto_config(st_obj) -> AutoSARIMAXConfig | None:
+def _render_auto_config(st_obj, prefix: str = "sarimax_auto") -> AutoSARIMAXConfig | None:
     """渲染 AutoSARIMAX 搜索范围；范围非法时提示并返回 None。"""
     st_obj.markdown("**搜索范围**")
     range_columns = st_obj.columns(3)
@@ -265,14 +274,14 @@ def _render_auto_config(st_obj) -> AutoSARIMAXConfig | None:
         ranges[name] = _render_range_inputs(
             column,
             name,
-            _AUTO_RANGE_DEFAULTS[name],
+            _AUTO_RANGE_DEFAULTS[name], prefix,
         )
     seasonal_columns = st_obj.columns(3)
     for column, name in zip(seasonal_columns, ("P", "D", "Q")):
         ranges[name] = _render_range_inputs(
             column,
             name,
-            _AUTO_RANGE_DEFAULTS[name],
+            _AUTO_RANGE_DEFAULTS[name], prefix,
         )
 
     options_columns = st_obj.columns(3)
@@ -281,7 +290,7 @@ def _render_auto_config(st_obj) -> AutoSARIMAXConfig | None:
         0,
         12,
         0,
-        key="sarimax_auto_s",
+        key=f"{prefix}_s",
         help="0 表示不搜索季节项。",
     )
     trend = options_columns[1].selectbox(
@@ -289,17 +298,17 @@ def _render_auto_config(st_obj) -> AutoSARIMAXConfig | None:
         options=list(TREND_OPTIONS),
         index=list(TREND_OPTIONS).index("c"),
         format_func=lambda value: TREND_LABELS[value],
-        key="sarimax_auto_trend",
+        key=f"{prefix}_trend",
     )
     criterion = options_columns[2].selectbox(
         "选阶准则",
         options=list(AUTO_CRITERIA),
         index=list(AUTO_CRITERIA).index("aic"),
-        key="sarimax_auto_criterion",
+        key=f"{prefix}_criterion",
     )
     log = st_obj.checkbox(
         "对响应取自然对数（log 变换）",
-        key="sarimax_auto_log",
+        key=f"{prefix}_log",
         help="要求数据严格为正。",
     )
 
@@ -332,6 +341,7 @@ def _render_range_inputs(
     container,
     name: str,
     default: tuple[int, int],
+    prefix: str,
 ) -> tuple[int, int]:
     """渲染单个阶数的 (最小值, 最大值) 两个输入框。"""
     container.markdown(f"**{name}**")
@@ -340,21 +350,231 @@ def _render_range_inputs(
         0,
         6,
         int(default[0]),
-        key=f"sarimax_auto_{name}_min",
+        key=f"{prefix}_{name}_min",
     )
     high = container.number_input(
         "最大值",
         0,
         6,
         int(default[1]),
-        key=f"sarimax_auto_{name}_max",
+        key=f"{prefix}_{name}_max",
     )
     return (int(low), int(high))
 
 
+def _parse_sparse_lags(value: object, *, minimum: int) -> tuple[int, ...] | None:
+    """将高级表格中的逗号分隔滞后转换为规范化元组。"""
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        lags = tuple(sorted({int(token.strip()) for token in text.split(",")}))
+    except ValueError as exc:
+        raise ValueError("稀疏滞后请用逗号分隔的整数，例如 0,2,4") from exc
+    if any(lag < minimum for lag in lags):
+        raise ValueError(f"稀疏滞后必须不小于 {minimum}")
+    return lags
+
+
+def _render_rdl_inputs(st_obj, exog: pd.DataFrame) -> tuple[RDLInputConfig, ...] | None:
+    """渲染固定行的 RDL 传递函数参数表与可选稀疏滞后设置。"""
+    names = list(exog.columns)
+    basic = pd.DataFrame(
+        {
+            "变量": names,
+            "分子阶数": 0,
+            "分母阶数": 0,
+            "延迟": 0,
+        }
+    )
+    edited = st_obj.data_editor(
+        basic,
+        key="sarimax_rdl_input_table",
+        num_rows="fixed",
+        disabled=("变量",),
+        width="stretch",
+    )
+    advanced = None
+    with st_obj.expander("高级：稀疏滞后与初始化策略", expanded=False):
+        st_obj.caption("留空即采用上表连续阶数；分母稀疏滞后从 1 开始。")
+        advanced = st_obj.data_editor(
+            pd.DataFrame(
+                {
+                    "变量": names,
+                    "分子稀疏滞后": "",
+                    "分母稀疏滞后": "",
+                    "初始化": "auto",
+                }
+            ),
+            key="sarimax_rdl_advanced_table",
+            num_rows="fixed",
+            disabled=("变量",),
+            width="stretch",
+        )
+    try:
+        inputs = []
+        for index, name in enumerate(names):
+            advanced_row = advanced.iloc[index]
+            inputs.append(
+                RDLInputConfig(
+                    name=str(name),
+                    numerator_order=int(edited.iloc[index]["分子阶数"]),
+                    denominator_order=int(edited.iloc[index]["分母阶数"]),
+                    delay=int(edited.iloc[index]["延迟"]),
+                    numerator_lags=_parse_sparse_lags(
+                        advanced_row["分子稀疏滞后"], minimum=0
+                    ),
+                    denominator_lags=_parse_sparse_lags(
+                        advanced_row["分母稀疏滞后"], minimum=1
+                    ),
+                    initialization=str(advanced_row["初始化"]),
+                )
+            )
+        return tuple(inputs)
+    except (TypeError, ValueError) as exc:
+        st_obj.error(f"RDL 输入动态设置有误：{exc}")
+        return None
+
+
+def _render_rdl_config(st_obj, exog: pd.DataFrame | None, *, automatic: bool):
+    """渲染 RDL 的误差结构、输入动态与估计设置区块。"""
+    if exog is None or exog.empty:
+        st_obj.warning("RDL 需要至少一个解释变量；请在上方变量选择中添加。")
+        return None
+    with st_obj.container(border=True):
+        st_obj.markdown("**响应 / 误差结构**")
+        error = (
+            _render_auto_config(st_obj, "sarimax_rdl_auto_error")
+            if automatic
+            else _render_manual_config(st_obj, "sarimax_rdl_error")
+        )
+    if error is None:
+        return None
+    with st_obj.container(border=True):
+        st_obj.markdown("**输入动态**")
+        inputs = _render_rdl_inputs(st_obj, exog)
+    if inputs is None:
+        return None
+    with st_obj.container(border=True):
+        st_obj.markdown("**估计设置**")
+        stable = st_obj.checkbox(
+            "强制传递函数分母稳定",
+            value=True,
+            key="sarimax_rdl_enforce_stability",
+        )
+        st_obj.caption("自动 RDL 只搜索 SARIMAX 误差阶数，以上传递函数结构保持固定。")
+    try:
+        if automatic:
+            return AutoRDLConfig(
+                inputs=inputs,
+                error=error,
+                enforce_distributed_lag_stability=stable,
+            )
+        return RDLConfig(
+            inputs=inputs,
+            error=error,
+            enforce_distributed_lag_stability=stable,
+        )
+    except (TypeError, ValueError) as exc:
+        st_obj.error(f"RDL 设置有误：{exc}")
+        return None
+
+
+def _render_ardl_config(st_obj, exog: pd.DataFrame | None, *, automatic: bool):
+    """渲染标准 ARDL 的目标/输入滞后与自动选阶设置。"""
+    if exog is None or exog.empty:
+        st_obj.warning("ARDL 需要至少一个解释变量；请在上方变量选择中添加。")
+        return None
+    prefix = "sarimax_auto_ardl" if automatic else "sarimax_ardl"
+    with st_obj.container(border=True):
+        st_obj.markdown("**响应 / 误差结构**")
+        response_columns = st_obj.columns(3)
+        target_lag = response_columns[0].number_input(
+            "最大目标滞后" if automatic else "目标变量滞后",
+            0, 12, 3 if automatic else 1,
+            key=f"{prefix}_target_lag",
+        )
+        trend = response_columns[1].selectbox(
+            "趋势项", options=list(TREND_OPTIONS),
+            index=list(TREND_OPTIONS).index("c"),
+            format_func=lambda value: TREND_LABELS[value],
+            key=f"{prefix}_trend",
+        )
+        causal = response_columns[2].checkbox(
+            "仅使用滞后输入（不含当期）", key=f"{prefix}_causal"
+        )
+        seasonal = st_obj.checkbox("加入季节虚拟项", key=f"{prefix}_seasonal")
+        period = None
+        if seasonal:
+            period = st_obj.number_input(
+                "季节周期", 2, 365, 12, key=f"{prefix}_period"
+            )
+    with st_obj.container(border=True):
+        st_obj.markdown("**输入动态**")
+        label = "最大输入滞后" if automatic else "输入滞后"
+        orders = st_obj.data_editor(
+            pd.DataFrame({"变量": list(exog.columns), label: 0}),
+            key=f"{prefix}_input_table",
+            num_rows="fixed",
+            disabled=("变量",),
+            width="stretch",
+        )
+    with st_obj.container(border=True):
+        st_obj.markdown("**估计设置**")
+        settings = st_obj.columns(3)
+        log = settings[0].checkbox("对响应取自然对数（log）", key=f"{prefix}_log")
+        hold_back_value = settings[1].number_input(
+            "统一预留期（0=自动）", 0, 1000, 0, key=f"{prefix}_hold_back"
+        )
+        cov_type = settings[2].selectbox(
+            "协方差估计", ("nonrobust", "HC0", "HC1", "HC2", "HC3"),
+            key=f"{prefix}_cov_type",
+        )
+        criterion = "bic"
+        search_method = "hierarchical"
+        if automatic:
+            choice = st_obj.columns(2)
+            criterion = choice[0].selectbox(
+                "选阶准则", ARDL_CRITERIA, index=1, key=f"{prefix}_criterion"
+            )
+            search_method = choice[1].selectbox(
+                "搜索方式", ARDL_SEARCH_METHODS, key=f"{prefix}_search_method",
+                format_func=lambda value: "分层搜索" if value == "hierarchical" else "全局搜索",
+            )
+            if search_method == "global":
+                st_obj.warning("全局搜索会枚举滞后子集，变量较多或上限较高时计算量会迅速增加。")
+    try:
+        pairs = tuple(
+            (str(row["变量"]), int(row[label]))
+            for _, row in orders.iterrows()
+        )
+        common = {
+            "trend": trend,
+            "causal": bool(causal),
+            "seasonal": bool(seasonal),
+            "period": None if period is None else int(period),
+            "hold_back": None if int(hold_back_value) == 0 else int(hold_back_value),
+            "log": bool(log),
+            "cov_type": cov_type,
+        }
+        if automatic:
+            return AutoARDLConfig(
+                maxlag=int(target_lag), max_input_orders=pairs,
+                criterion=criterion, search_method=search_method, **common,
+            )
+        return ARDLConfig(lags=int(target_lag), input_orders=pairs, **common)
+    except (TypeError, ValueError) as exc:
+        st_obj.error(f"ARDL 设置有误：{exc}")
+        return None
+
+
 def _render_fit_summary(st_obj, result) -> None:
     """展示拟合摘要与关键指标。"""
-    best = result.best_result if isinstance(result, AutoModelResult) else result
+    best = (
+        result.best_result
+        if isinstance(result, (AutoModelResult, AutoARDLResult))
+        else result
+    )
 
     if isinstance(result, AutoModelResult):
         st_obj.markdown("**自动选阶结果**")
@@ -385,6 +605,19 @@ def _render_fit_summary(st_obj, result) -> None:
                 }
             )
         st_obj.dataframe(pd.DataFrame(candidate_rows), width="stretch")
+    elif isinstance(result, AutoARDLResult):
+        st_obj.markdown("**自动选阶结果**")
+        st_obj.markdown(
+            f"最优 ARDL：目标滞后 {result.ar_lags}；"
+            f"输入滞后 {result.distributed_lags}"
+            f"（准则：{result.selection_criterion.upper()}，"
+            f"{('全局' if result.search_method == 'global' else '分层')}搜索）"
+        )
+        table = result.criterion_table.copy()
+        table = table.rename(
+            columns={"criterion": result.selection_criterion.upper(), "target_lags": "目标滞后", "input_lags": "输入滞后"}
+        )
+        st_obj.dataframe(table, width="stretch")
 
     status = "已收敛" if best.converged else "未收敛"
     st_obj.success(
