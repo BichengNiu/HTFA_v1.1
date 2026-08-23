@@ -40,7 +40,10 @@ def test_oil_panel_reports_missing_shared_workbook(monkeypatch) -> None:
     result = renderer.render_oil_fiscal_panel(st_obj)
 
     assert result["status"] == "no_data"
-    st_obj.subheader.assert_called_once_with("石油生产与收入")
+    assert [call.args[0] for call in st_obj.subheader.call_args_list] == [
+        "战争压力",
+        "石油生产与收入",
+    ]
     st_obj.info.assert_called_once()
 
 

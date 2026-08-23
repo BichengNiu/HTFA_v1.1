@@ -8,6 +8,7 @@ from typing import Any
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure as MatplotlibFigure
 from plotly.graph_objects import Figure as PlotlyFigure
+from Ts.TsPlots.style import LEGEND_FONTSIZE, resolve_legend_fontsize
 
 
 PLOTLY_LEGEND_Y = -0.14
@@ -59,24 +60,26 @@ def _place_matplotlib_legend_at_bottom(
     figure: MatplotlibFigure,
     legend_title: str | None = None,
     legend_cols: int | None = None,
+    legend_size: float | None = None,
 ) -> None:
     handles: list[Any] = []
     labels: list[str] = []
     for axis in figure.axes:
         legend = axis.get_legend()
-        if legend is None:
-            continue
         axis_handles, axis_labels = axis.get_legend_handles_labels()
         for handle, label in zip(axis_handles, axis_labels):
-            if label and label not in labels:
+            if label and not label.startswith("_") and label not in labels:
                 handles.append(handle)
                 labels.append(label)
-        legend.remove()
+        if legend is not None:
+            legend.remove()
 
     rows = 1
     if handles:
         ncol = legend_cols or min(4, len(labels))
         rows = math.ceil(len(labels) / ncol)
+        fontsize = resolve_legend_fontsize(figure, legend_size)
+        scale = fontsize / LEGEND_FONTSIZE
         figure.legend(
             handles,
             labels,
@@ -84,11 +87,11 @@ def _place_matplotlib_legend_at_bottom(
             bbox_to_anchor=(0.5, _legend_anchor_y(figure, rows)),
             ncol=ncol,
             frameon=False,
-            fontsize=15,
-            markerscale=1.6,
-            handlelength=2.6,
+            fontsize=fontsize,
+            markerscale=1.6 * scale,
+            handlelength=2.6 * scale,
             title=legend_title or None,
-            title_fontsize=15,
+            title_fontsize=fontsize,
         )
 
     for legend in figure.legends:
@@ -112,6 +115,7 @@ def place_chart_legend_at_bottom(
     *,
     legend_title: str | None = None,
     legend_cols: int | None = None,
+    legend_size: float | None = None,
 ) -> Any:
     """原地应用全局图例布局规则，并返回原图表对象。
 
@@ -123,7 +127,10 @@ def place_chart_legend_at_bottom(
         _place_plotly_legend_at_bottom(figure)
     elif isinstance(figure, MatplotlibFigure):
         _place_matplotlib_legend_at_bottom(
-            figure, legend_title=legend_title, legend_cols=legend_cols
+            figure,
+            legend_title=legend_title,
+            legend_cols=legend_cols,
+            legend_size=legend_size,
         )
     return figure
 
@@ -135,6 +142,7 @@ def render_pyplot_figure(
     place_legend_bottom: bool = True,
     legend_title: str | None = None,
     legend_cols: int | None = None,
+    legend_size: float | None = None,
     **kwargs,
 ) -> None:
     """按全局图例规则渲染 Matplotlib 图形并关闭资源。
@@ -153,6 +161,7 @@ def render_pyplot_figure(
                 figure,
                 legend_title=legend_title,
                 legend_cols=legend_cols,
+                legend_size=legend_size,
             )
         st_obj.pyplot(figure, **kwargs)
     finally:

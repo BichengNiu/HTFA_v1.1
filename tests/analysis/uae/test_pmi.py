@@ -87,7 +87,7 @@ def test_pmi_figure_plots_single_line() -> None:
     assert figure.axes[0].get_ylabel() == "点"
     # 单序列图不需要图例
     assert len(figure.legends) == 0
-    assert any(text.get_text() == "数据来源：S&P Global" for text in figure.texts)
+    assert any(text.get_text() == "数据来源：标普全球" for text in figure.texts)
 
 
 def _search_index_frame() -> pd.DataFrame:
@@ -178,4 +178,4 @@ def test_search_index_figure_standardizes_series_on_one_axis() -> None:
         assert ydata.mean() == pytest.approx(0.0, abs=1e-9)
         assert ydata.std() == pytest.approx(1.0)
     assert axis.get_ylabel() == "标准化指数"
-    assert any(text.get_text() == "数据来源：Google 趋势" for text in figure.texts)
+    assert any(text.get_text() == "数据来源：谷歌趋势" for text in figure.texts)

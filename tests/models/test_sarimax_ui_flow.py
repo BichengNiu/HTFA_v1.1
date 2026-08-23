@@ -38,6 +38,32 @@ def _sample_csv() -> tuple[str, bytes, str]:
     )
 
 
+def _preamble_csv() -> tuple[str, bytes, str]:
+    """生成前两行是说明、第三行是变量名的 CSV。"""
+    content = (
+        "这是数据说明\n"
+        "来源：测试\n"
+        "date,sales,exog\n"
+        "2020-01-01,10,1\n"
+        "2020-02-01,11,2\n"
+        "2020-03-01,12,3\n"
+    )
+    return "preamble.csv", content.encode("utf-8"), "text/csv"
+
+
+def _multi_sample_csv() -> tuple[str, bytes, str]:
+    """生成含两个指标的月度 CSV，用于页面级分面测试。"""
+    index = pd.date_range("2020-01-01", periods=12, freq="MS")
+    frame = pd.DataFrame(
+        {
+            "date": index.strftime("%Y-%m-%d"),
+            "value_a": range(12),
+            "value_b": range(20, 32),
+        }
+    )
+    return "multi-sample.csv", frame.to_csv(index=False).encode("utf-8"), "text/csv"
+
+
 def _by_key(elements, key: str):
     return next(element for element in elements if element.key == key)
 
@@ -53,16 +79,16 @@ def test_full_workflow_via_ui(monkeypatch):
     assert not app.exception
     assert [tab.label for tab in app.tabs] == ["SARIMAX 模型"]
     title_texts = " ".join(element.value for element in app.markdown)
-    assert "① 数据概览" in title_texts
+    assert "① 数据预览" in title_texts
     assert "② 模型训练" in title_texts
     assert "③ 模型分析" in title_texts
     assert "④ 模型预测" in title_texts
     info_texts = " ".join(element.value for element in app.info)
     assert "请在上方上传数据文件" in info_texts
-    assert "完成「① 数据概览」（在上方上传数据）后可配置并拟合模型" in info_texts
+    assert "完成「① 数据预览」（在上方上传数据）后可配置并拟合模型" in info_texts
     assert "完成「② 模型训练」后可查看模型分析结果" in info_texts
 
-    # ① 数据概览：上传文件后出现数据表格与预览绘图（compact 模式
+    # ① 数据预览：上传文件后出现数据表格与预览绘图（compact 模式
     # 不再显示「已加载」success 与行数小字）
     app.file_uploader[0].upload(*_sample_csv())
     app.run()
@@ -149,7 +175,7 @@ def test_auto_mode_workflow_via_ui(monkeypatch):
 
 
 def test_data_table_options_via_ui(monkeypatch):
-    """数据表高级选项：视图开关互斥、筛选直接作用于预览表、统计量。"""
+    """数据表高级选项：行数、筛选直接作用于预览表、统计量。"""
     from streamlit.testing.v1 import AppTest
 
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
@@ -164,7 +190,7 @@ def test_data_table_options_via_ui(monkeypatch):
     assert app.file_uploader
     _by_key(app.multiselect, "sarimax_preview_vars")
 
-    # 两个高级选项 expander 并排：数据表在前，图形在后
+    # 两个高级选项 expander 均存在，分别位于表格和时间序列图下方
     assert len(app.expander) >= 2
     assert app.expander[0].label == "数据表高级选项"
     assert app.expander[1].label == "图形高级选项"
@@ -183,24 +209,22 @@ def test_data_table_options_via_ui(monkeypatch):
     assert len(preview_frame()) == 10
     assert preview_frame().iloc[0]["date"] == "2020-01-01"
 
-    # 展开数据表高级选项后出现视图开关与筛选控件
+    # 行数、筛选和时间控件都在数据表高级选项中，表格下方不再渲染行数控件。
     app.expander[0].expanded = True
     app.run()
     assert not app.exception
-    head_box = _by_key(app.checkbox, "sarimax_table_view_head")
-    tail_box = _by_key(app.checkbox, "sarimax_table_view_tail")
-    assert head_box.value is True
-    assert tail_box.value is False
+    view_mode = _by_key(app.selectbox, "sarimax_table_view_mode")
+    assert view_mode.value == "显示头10行"
     _by_key(app.selectbox, "sarimax_table_filter_col")
-    _by_key(app.selectbox, "sarimax_table_filter_op")
-    _by_key(app.number_input, "sarimax_table_filter_val")
+    filter_op = _by_key(app.selectbox, "sarimax_table_filter_op")
+    assert "≠" in filter_op.options
+    assert _by_key(app.number_input, "sarimax_table_filter_val").label == "值"
     # 月度数据 → 时间筛选按频率渲染为「时间范围」预设下拉
     # （无 date_input；自定义时才出现起止年月下拉）
     _by_key(app.selectbox, "sarimax_table_time_preset")
     assert not app.date_input
-    assert not any(
-        element.key == "sarimax_table_view_reset" for element in app.checkbox
-    )
+    assert not any(element.key == "sarimax_table_view_head" for element in app.checkbox)
+    assert not any(element.key == "sarimax_table_view_tail" for element in app.checkbox)
 
     # 数值筛选：value ≥ 2.0 → 上方预览表直接变为筛选结果（少于 10 行）
     _by_key(app.selectbox, "sarimax_table_filter_col").select("value")
@@ -215,15 +239,13 @@ def test_data_table_options_via_ui(monkeypatch):
         for element in app.dataframe
     )
 
-    # 视图开关互斥：清除数值筛选后勾选「显示尾10行」→ 头10行自动取消
-    # （每次交互前重新获取元素，AppTest 树在多次 rerun 后旧引用失效）
+    # 清除数值筛选后选择「显示尾10行」→ 预览表显示最后 10 行
     _by_key(app.selectbox, "sarimax_table_filter_col").select("无")
     app.run()
-    _by_key(app.checkbox, "sarimax_table_view_tail").check()
+    _by_key(app.selectbox, "sarimax_table_view_mode").select("显示尾10行")
     app.run()
     assert not app.exception
-    assert _by_key(app.checkbox, "sarimax_table_view_tail").value is True
-    assert _by_key(app.checkbox, "sarimax_table_view_head").value is False
+    assert _by_key(app.selectbox, "sarimax_table_view_mode").value == "显示尾10行"
     # 预览表显示全部数据的最后 10 行（60 行数据末尾为 2024-12）
     tailed = preview_frame()
     assert len(tailed) == 10
@@ -261,18 +283,213 @@ def test_data_table_options_via_ui(monkeypatch):
     )
     assert int(stats.loc["value", "count"]) == 12
 
-    # 清除尾10行视图 + 时间范围回「全部」→ 头/尾均未勾选 = 显示全部
-    _by_key(app.checkbox, "sarimax_table_view_tail").uncheck()
+    # 选择「显示全部」+ 时间范围回「全部」→ 显示全部 60 行
+    _by_key(app.selectbox, "sarimax_table_view_mode").select("显示全部")
     _by_key(app.selectbox, "sarimax_table_time_preset").select("全部")
     app.run()
     assert not app.exception
     assert len(preview_frame()) == 60
-    # 重新勾选头10行 → 恢复默认前 10 行视图
-    _by_key(app.checkbox, "sarimax_table_view_head").check()
+    # 选择指定行数 17 → 显示前 17 行
+    _by_key(app.selectbox, "sarimax_table_view_mode").select("显示指定行数")
     app.run()
     assert not app.exception
-    assert len(preview_frame()) == 10
+    _by_key(app.number_input, "sarimax_table_view_rows").set_value(17)
+    app.run()
+    assert not app.exception
+    assert len(preview_frame()) == 17
     assert preview_frame().iloc[0]["date"] == "2020-01-01"
+
+
+def test_page_level_facet_renders_independent_plots(monkeypatch):
+    """分面在 Streamlit 页面中生成多个独立图，而不是单个子图 Figure。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
+    _navigate_to_sarimax(app)
+    app.file_uploader[0].upload(*_multi_sample_csv())
+    app.run()
+    assert not app.exception
+
+    variables = _by_key(app.multiselect, "sarimax_preview_vars")
+    variables.set_value(["value_a", "value_b"])
+    app.run()
+    assert not app.exception
+    assert len(app.image) == 1
+
+    _by_key(app.checkbox, "sarimax_preview_facet").check()
+    app.run()
+    assert not app.exception
+    assert len(app.image) == 2
+    image_columns = [
+        column
+        for column in app.columns
+        if any(type(child).__name__ == "Image" for child in column.children.values())
+    ]
+    assert len(image_columns) == 2
+
+    _by_key(app.number_input, "sarimax_preview_facet_cols").set_value(2)
+    app.run()
+    assert not app.exception
+    assert len(app.image) == 2
+
+    app.expander[1].expanded = True
+    app.run()
+    assert not app.exception
+    assert _by_key(app.checkbox, "sarimax_preview_sharex").value is True
+    assert _by_key(app.checkbox, "sarimax_preview_sharey").value is False
+    assert _by_key(app.checkbox, "sarimax_preview_sharex").proto.disabled
+    assert _by_key(app.checkbox, "sarimax_preview_sharey").proto.disabled
+    assert _by_key(app.number_input, "sarimax_preview_legend_bbox_x").proto.disabled
+    assert _by_key(app.number_input, "sarimax_preview_legend_bbox_y").proto.disabled
+    assert _by_key(app.number_input, "sarimax_preview_legend_cols").proto.disabled
+    assert _by_key(app.number_input, "sarimax_preview_legend_size")
+    _by_key(app.selectbox, "sarimax_preview_legend_loc").select("upper right")
+    app.run()
+    assert not app.exception
+    assert app.expander[1].proto.id
+    assert _by_key(app.number_input, "sarimax_preview_legend_bbox_x").proto.disabled
+    assert _by_key(app.number_input, "sarimax_preview_legend_bbox_y").proto.disabled
+    assert any(
+        element.key == "sarimax_preview_grid_style" for element in app.selectbox
+    )
+    assert any(
+        element.key == "sarimax_preview_vlines" for element in app.text_input
+    )
+    assert any(
+        element.key == "sarimax_preview_hlines" for element in app.text_input
+    )
+    assert any(
+        element.key == "sarimax_preview_vline_color" for element in app.selectbox
+    )
+    assert any(
+        element.key == "sarimax_preview_vline_style" for element in app.selectbox
+    )
+    assert any(
+        element.key == "sarimax_preview_hline_color" for element in app.selectbox
+    )
+    assert any(
+        element.key == "sarimax_preview_hline_style" for element in app.selectbox
+    )
+    assert any(
+        element.key == "sarimax_preview_vline_linewidth" for element in app.slider
+    )
+    assert any(
+        element.key == "sarimax_preview_hline_linewidth" for element in app.slider
+    )
+    assert any(
+        element.key == "sarimax_preview_shade" for element in app.text_input
+    )
+    assert not any(
+        element.key == "sarimax_preview_colors" for element in app.text_input
+    )
+    assert len(
+        [element for element in app.selectbox if "series_style" in element.key]
+    ) == 6
+    assert len(
+        [element for element in app.slider if "series_style" in element.key]
+    ) == 6
+    _by_key(app.checkbox, "sarimax_preview_legend").uncheck()
+    app.run()
+    assert not app.exception
+    assert not any(
+        element.key == "sarimax_preview_legend_bbox_on" for element in app.checkbox
+    )
+    assert not any(
+        element.key == "sarimax_preview_legend_labels"
+        for element in app.text_input
+    )
+    hidden_legend_selects = {
+        "sarimax_preview_legend_loc",
+    }
+    assert not any(element.key in hidden_legend_selects for element in app.selectbox)
+    hidden_legend_inputs = {
+        "sarimax_preview_legend_cols",
+        "sarimax_preview_legend_bbox_x",
+        "sarimax_preview_legend_bbox_y",
+    }
+    assert not any(
+        element.key in hidden_legend_inputs for element in app.number_input
+    )
+
+
+def test_select_rows_uses_variable_names_and_data_start(monkeypatch):
+    """输入变量名行和数据开始行后，预览使用对应表头与数据。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
+    _navigate_to_sarimax(app)
+    app.file_uploader[0].upload(*_preamble_csv())
+    app.run()
+    assert not app.exception
+    assert any(
+        element.key == "sarimax_preview_variable_name_row"
+        for element in app.number_input
+    )
+    assert any(
+        element.key == "sarimax_preview_data_start_row"
+        for element in app.number_input
+    )
+    assert any("数据读取失败" in element.value for element in app.error)
+
+    _by_key(app.number_input, "sarimax_preview_variable_name_row").set_value(3)
+    app.run()
+    _by_key(app.number_input, "sarimax_preview_data_start_row").set_value(4)
+    app.run()
+    assert not app.exception
+    time_column = _by_key(app.selectbox, "sarimax_preview_time_column")
+    assert "date" in time_column.options
+    assert time_column.value == "date"
+
+    preview = next(
+        element.value
+        for element in app.dataframe
+        if list(element.value.columns) == ["date", "sales"]
+    )
+    assert preview.iloc[0]["sales"] == 10
+    assert "exog" in _by_key(app.multiselect, "sarimax_preview_vars").options
+    target = _by_key(app.selectbox, "sarimax_target_select")
+    assert set(target.options) >= {"sales", "exog"}
+
+    # 读取设置变化会清除旧数据集，解析失败时不会继续使用旧变量/模型状态。
+    _by_key(app.number_input, "sarimax_preview_variable_name_row").set_value(2)
+    app.run()
+    assert not app.exception
+    assert any(
+        "数据读取失败" in element.value or "数据集校验失败" in element.value
+        for element in app.error
+    )
+    assert not any(
+        element.key == "sarimax_target_select" for element in app.selectbox
+    )
+
+
+def test_zero_values_are_missing_in_sarimax_preview(monkeypatch):
+    """SARIMAX 预览图与预览表都不把数值 0 当作有效观测。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
+    _navigate_to_sarimax(app)
+    content = (
+        "date,value\n"
+        "2020-01-01,0\n"
+        "2020-02-01,5\n"
+        "2020-03-01,0\n"
+    ).encode("utf-8")
+    app.file_uploader[0].upload("zeros.csv", content, "text/csv")
+    app.run()
+
+    assert not app.exception
+    preview = next(
+        element.value
+        for element in app.dataframe
+        if list(element.value.columns) == ["date", "value"]
+    )
+    assert pd.isna(preview.iloc[0]["value"])
+    assert preview.iloc[1]["value"] == 5
+    assert pd.isna(preview.iloc[2]["value"])
 
 
 def test_excel_sheet_selection_via_ui(monkeypatch):

@@ -28,6 +28,7 @@ from dashboard.analysis.uae.sheet_reader import (
 PMI_SHEET = "月度_LSEG"
 PMI_LABEL = "阿联酋非油私营部门采购经理人指数(PMI)"
 PMI_INDICATOR = PMI_LABEL
+PMI_DISPLAY_NAME = "阿联酋非油私营部门采购经理指数（PMI）"
 
 DISPLAY_MONTHS = 37
 
@@ -118,6 +119,7 @@ def build_pmi_figure(
 __all__ = [
     "PMI_INDICATOR",
     "PMI_LABEL",
+    "PMI_DISPLAY_NAME",
     "PMI_SHEET",
     "PmiData",
     "build_pmi_figure",

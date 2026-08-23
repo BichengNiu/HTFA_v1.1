@@ -37,6 +37,19 @@ GRID_STYLE_MAP = {
 }
 GRID_LINESTYLES = ("--", "-", ":", "-.")
 GRID_WIDTH_RANGE = (0.2, 3.0)
+SERIES_LINESTYLES = ("-", "--", "-.", ":")
+SERIES_MARKERS = (None, "o", "s", "^", "D", "v", "P", "X", "*")
+SERIES_MARKER_LABELS = {
+    None: "无",
+    "o": "圆点",
+    "s": "方形",
+    "^": "上三角",
+    "D": "菱形",
+    "v": "下三角",
+    "P": "加号填充",
+    "X": "乘号填充",
+    "*": "星形",
+}
 COLOR_NAMES = ("红", "橙", "黄", "绿", "蓝", "紫", "灰")
 COLOR_HEX_MAP = {
     "红": "#d9534f",
@@ -57,6 +70,7 @@ FILTER_OPERATORS = {
     ">": "gt",
     "<": "lt",
     "=": "eq",
+    "≠": "ne",
 }
 
 # 时间筛选预设（按数据频率），value 为最近期数（"custom" 为自定义）。
@@ -134,6 +148,9 @@ __all__ = [
     "PREVIEW_FIGSIZE",
     "PREVIEW_TABLE_ROWS",
     "REFERENCE_LINE_STYLES",
+    "SERIES_LINESTYLES",
+    "SERIES_MARKER_LABELS",
+    "SERIES_MARKERS",
     "TIME_PRESETS",
     "TITLE_POSITION_MAP",
     "TITLE_POSITIONS",

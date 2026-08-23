@@ -10,6 +10,7 @@ import pytest
 from Ts.TsSims import simulate_sarima
 
 from dashboard.models.SARIMAX.core.data_loader import (
+    build_modeling_dataset,
     load_modeling_dataset,
     numeric_variable_names,
     prepare_modeling_inputs,
@@ -66,6 +67,23 @@ def test_load_modeling_dataset_falls_back_to_gbk_encoding():
 
     assert dataset.time_column == "日期"
     assert numeric_variable_names(dataset.frame) == ["销售额"]
+
+
+def test_build_modeling_dataset_treats_numeric_zero_as_missing():
+    frame = pd.DataFrame(
+        {
+            "date": pd.date_range("2024-01-01", periods=3, freq="MS"),
+            "value": [0.0, 2.0, 0.0],
+            "zero_only": [0.0, 0.0, 0.0],
+            "label": ["0", "x", "0"],
+        }
+    )
+
+    dataset = build_modeling_dataset(frame, "data.xlsx", "fingerprint")
+
+    assert dataset.frame["value"].isna().tolist() == [True, False, True]
+    assert "zero_only" not in dataset.frame.columns
+    assert dataset.frame["label"].tolist() == ["0", "x", "0"]
 
 
 def test_load_modeling_dataset_rejects_empty_or_non_numeric_files():

@@ -6,7 +6,7 @@
 
 ## 一、数据库概况
 
-数据库包含 24 张 `main` 聚合业务表、3 张 `main` 元数据表、7 张 `detail` 细粒度派生表，以及 `dld` 下 3 个业务视图和 1 个旧名兼容视图。`main` 中另保留 6 个只读兼容视图，供旧查询名称平滑过渡。当前已登记 250 个业务指标和 90 条 `meta_column_dictionary` 字段说明；Excel 指标字典有 293 个指标，全部 250 个 DuckDB 业务指标均已进入对应数据 sheet。
+数据库包含 25 张 `main` 聚合业务表、3 张 `main` 元数据表、8 张 `detail` 细粒度派生表，以及 `dld` 下 3 个业务视图和 1 个旧名兼容视图。`main` 中另保留 7 个只读兼容视图，供旧查询名称平滑过渡。当前已登记 257 个业务指标和 90 条 `meta_column_dictionary` 字段说明；Excel 指标字典有 300 个指标，全部 257 个 DuckDB 业务指标均已进入对应数据 sheet。
 
 数据分层规则如下：`raw/` 只保存原始下载件、原始缓存和源下载工具；`main` 只保存仪表盘和工作簿使用的聚合指标；`detail` 保存为可追溯分析保留的细粒度派生数据，不是原始文件副本。旧的 `main.<表名>` 与 `dld.transactions` 名称均为只读兼容视图，物理数据不再位于这些旧名称下。
 
@@ -16,6 +16,7 @@
 |---|---|---|---|---|
 | Baker Hughes / `baker_hughes_monthly` | `阿联酋石油活跃钻机数` | 月；2024-01—2026-07；31 期 | 31 期均有值，无 NULL、无区间缺月 | Baker Hughes WorldWide Rig Count Report；Oil 口径，阿布扎比、迪拜、沙迦合计 |
 | CBUAE / `cbuae_monthly` | 23 项：FTS 国内资金转账 6 项；国内信贷 3 项；外币存款 1 项；支票清算 2 项；银行国外资产/负债 2 项；非居民存款 5 项；政府及政府控股企业信贷/存款 4 项 | 月；大部分 2020-03—2026-06；每项 76 期 | 前 19 项无缺月、无 NULL；政府/政府控股企业 4 项为 2020-01—2026-06，共 77 期，但缺 2020-02；空值以不插行表达 | 阿联酋中央银行 CBUAE 月度公报；新旧公报口径已在 `source_cbuae.py` 统一 |
+| WAM / `detail.wam_military_strike_daily`、`wam_military_strike_monthly` | 弹道导弹、巡航导弹、UAV；辅助未分类导弹、攻击天数、观测天数；月度原始战争压力为每日 `9×log1p(弹道)+3×log1p(巡航)+log1p(无人机)` 按月求和，再按战争窗口 min-max 归一化为 0–100 | 日度 2026-02-28—2026-08-22，共 176 天；月度 7 期；2026-08 为截至 8月22日的部分月份 | 日度 `strike_intensity_log` 保留原始加权值；月度 `strike_intensity_index` 为非累计 0–100 指数；未分类导弹不进入压力指标；月度 `observation_days` 显式标记部分月份 | 根据公开新闻整理；原始来源页归档于 `raw/wam/source_manifest.json`，处理逻辑见 `source_wam.py` |
 | Cloudflare Radar / `cloudflare_radar_daily` | `阿联酋:Cloudflare Radar网络流量(相对水平%)`、周度相对水平 | 日/周；共 142 条观测，2025-08-18—2026-08-18；日度 90 条、周度 52 条 | 已入库值无 NULL；指标为各自窗口内 min-max 归一化代理指标，不是绝对流量 | Cloudflare Radar UAE；原始 JSON/CSV 保存在 `data/UAE/raw/cloudflare_radar/` |
 | GFS / `gfs_quarterly`、`gfs_annual` | 29 个政府财政科目：收入、税收、社会缴款、赠款、其他收入；费用及其子项；总/净营业余额；支出；净贷款或净借款；金融资产净获得及子项；非金融资产净投资及子项；负债净发生及子项。完整变量名为 `阿联酋:GFS:季度:<科目>` 或 `阿联酋:GFS:年度:<科目>` | 季度：28 个科目 2012Q1—2026Q1，共 57 期；“支出”科目 2016Q1—2026Q1，共 41 期。年度：28 个科目 2012—2025，共 14 年；“支出”科目 2016—2025，共 10 年 | 已入库值均非 NULL；“支出”在 2012—2015 年源文件中没有发布，不应视为异常缺报 | UAE Ministry of Finance（MOF）Government Finance Statistics；官方 PDF 提取 |
 | PMI / `pmi_monthly` | `阿联酋非油私营部门采购经理人指数(PMI)` | 月；2023-07—2026-07；37 期 | 连续、无 NULL | S&P Global / Trading Economics 公开样本 |
@@ -36,7 +37,7 @@
 
 ## 二、数据库字典补全后的变量边界
 
-本次已将数据库中的 250 个业务指标全部补入 `meta_indicator_dictionary` 和 Excel 对应数据 sheet；其中 Cloudflare、Eurostat、DOT、Dubai Customs、Salik、Google 搜索热度、Comtrade 设备/车辆等此前未接入工作簿的来源，已通过扩展合并阶段生成独立 sheet。细粒度派生表的字段、维度字段、质量标记仍补入 `meta_column_dictionary`。以下表保留变量族说明，使用时应同时查看两套字典和来源脚本。
+本次已将数据库中的 257 个业务指标全部补入 `meta_indicator_dictionary` 和 Excel 对应数据 sheet；其中 Cloudflare、Eurostat、DOT、Dubai Customs、Salik、Google 搜索热度、Comtrade 设备/车辆及 WAM 等此前未接入工作簿的来源，已生成独立 sheet。细粒度派生表的字段、维度字段、质量标记仍补入 `meta_column_dictionary`。以下表保留变量族说明，使用时应同时查看两套字典和来源脚本。
 
 | 表 | 变量 / 维度 | 时间范围与缺失 | 数据来源 |
 |---|---|---|---|
@@ -55,7 +56,7 @@
 1. **缺失主要通过“缺行”表达。** CBUAE、DOT、DLD 销售、MEsteel、Emirates Post 等表通常不会为缺报月份写一行，因此 `COUNT(value)` 为 0 不代表该月经济指标为 0。
 2. **明确的 NULL 共 5 类重点问题：** DLD 租赁住宅/商业占比各 1 个（2022-03）；UAEWPS 覆盖员工数 1 个（2024Q2）；车辆底层数量字段主要在 HS87/8708，且 HS8702 有 1 个目标分类月份缺失；外籍劳动力表 2026-02 通过质量标记表达不可可靠差分。
 3. **时间范围异常需要优先处理：** DED 三个快照序列出现 1906 年和 2027 年日期；DLD 交易明细有 4 条 1900 年以前日期。它们可能来自源快照中的异常发照日期或日期解析结果，使用 DED/DLD 长期趋势前应单独过滤或核实。
-4. **指标字典与工作簿已完成对齐。** 当前 DuckDB 已登记 250 个业务指标、90 条字段说明；Excel 指标字典 293 个指标，250 个数据库指标均有真实数据列支撑，孤立字典项为 0。新增来源按 `日度_CloudflareRadar`、`周度_CloudflareRadar`、`月度_Eurostat航空`、`月度_DOTT100`、`月度_迪拜海关航空`、`季度_Salik`、`月度_工作搜索热度` 等独立 sheet 写入；后续新增变量仍应先写入 DuckDB，再由合并流程同步 Excel。
+4. **指标字典与工作簿已完成对齐。** 当前 DuckDB 已登记 257 个业务指标、90 条字段说明；Excel 指标字典 300 个指标，257 个数据库指标均有真实数据列支撑，孤立字典项为 0。新增来源按 `日度_CloudflareRadar`、`周度_CloudflareRadar`、`月度_Eurostat航空`、`月度_DOTT100`、`月度_迪拜海关航空`、`季度_Salik`、`月度_工作搜索热度`、`月度_WAM` 等独立 sheet 写入；后续新增变量仍应先写入 DuckDB，再由合并流程同步 Excel。
 5. **已完成的结构性检查：** 主键/唯一键冲突未发现于已检查的核心长表；DLD `detail.dld_transactions.transaction_id` 无重复；DLD 周度序列连续；GFS 季度/年度序列连续；EU27 聚合序列连续；Emirates Post 源文件重复键已在入库前求和并保留 `raw_rows` 审计字段。
 
 ## 四、建议的使用规则

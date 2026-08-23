@@ -1,11 +1,13 @@
 import io
 import json
 import os
+from types import SimpleNamespace
 import zipfile
 from pathlib import Path
 
 import pytest
 
+from scripts import htfa
 from scripts.htfa import (
     RuntimeUpdateError,
     build_streamlit_argv,
@@ -232,3 +234,36 @@ def test_streamlit_arguments_are_preserved():
         "--server.headless",
         "true",
     ]
+
+
+def test_free_port_terminates_listener_process_tree(monkeypatch):
+    """释放后端端口时必须连同子进程一起终止。"""
+    listener_states = iter([[1234], []])
+    taskkill_calls = []
+
+    monkeypatch.setattr(
+        htfa,
+        "_listener_process_ids",
+        lambda _port: next(listener_states),
+    )
+
+    def fake_run(arguments, **_kwargs):
+        taskkill_calls.append(arguments)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(htfa.subprocess, "run", fake_run)
+    htfa.free_port(port=8501, wait_seconds=1)
+
+    assert taskkill_calls == [["taskkill", "/PID", "1234", "/T", "/F"]]
+
+
+def test_stop_cli_dispatches_backend_shutdown(monkeypatch):
+    """stop 命令应将端口和等待时间传给后端清理函数。"""
+    captured = {}
+
+    def fake_stop_backend(*, port, wait_seconds):
+        captured.update(port=port, wait_seconds=wait_seconds)
+
+    monkeypatch.setattr(htfa, "stop_backend", fake_stop_backend)
+    assert htfa.cli(["stop", "--port", "8510", "--wait-seconds", "3"]) == 0
+    assert captured == {"port": 8510, "wait_seconds": 3}

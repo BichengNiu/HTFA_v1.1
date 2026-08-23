@@ -111,8 +111,8 @@ def test_chart_uses_the_latest_common_month_and_two_requested_lines() -> None:
         f"{NEPAL_LABEL}（左轴）",
         f"{BANGLADESH_LABEL}（右轴）",
     ]
-    assert nepal_axis.get_ylabel() == "人"
-    assert bangladesh_axis.get_ylabel() == "人"
+    assert nepal_axis.get_ylabel() == "万人"
+    assert bangladesh_axis.get_ylabel() == "万人"
     # 双柱模板化：两根柱在同一时间点并排错开（x 起点不同），而不重叠。
     assert _bars_side_by_side(nepal_axis, bangladesh_axis)
     # 模板默认脊线：主轴保留下/左，右轴保留右，上脊线隐藏。

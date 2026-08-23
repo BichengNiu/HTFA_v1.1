@@ -1,11 +1,12 @@
 """Unified HTFA launcher, Ts runtime manager, and portable-runtime builder.
 
-The command line has four operations:
+The command line has five operations:
 
     python scripts/htfa.py start [Streamlit arguments]
     python scripts/htfa.py setup-runtime
     python scripts/htfa.py build-runtime --candidate-root ... --pip-wheel ...
     python scripts/htfa.py install-ts [--source-root ...] [--install-root ...]
+    python scripts/htfa.py stop [--port 8501]
 
 Normal HTFA execution uses the project-local runtime.  The setup command is
 stdlib-only so it can be bootstrapped by a system Python when that runtime is
@@ -973,23 +974,38 @@ def _listener_process_ids(port: int) -> list[int]:
     return sorted(process_ids)
 
 
+def _terminate_process_tree(process_id: int) -> None:
+    """Force-terminate a Windows process and every descendant process."""
+
+    result = subprocess.run(
+        ["taskkill", "/PID", str(process_id), "/T", "/F"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip()
+        raise RuntimeUpdateError(
+            f"Could not terminate process tree rooted at PID {process_id}: {detail}"
+        )
+
+
 def free_port(port: int = 8501, wait_seconds: int = 15) -> None:
-    """Stop Windows listeners on a port and verify that it was released."""
+    """Stop Windows listeners and their child processes, then verify release."""
 
     process_ids = _listener_process_ids(port)
     if not process_ids:
         print(f"[OK] Port {port} is available.")
         return
     for process_id in process_ids:
-        print(f"[INFO] Stopping process {process_id} on port {port}...")
-        result = subprocess.run(
-            ["taskkill", "/PID", str(process_id), "/F"],
-            capture_output=True,
-            text=True,
-            check=False,
+        print(
+            f"[INFO] Stopping process tree rooted at {process_id} "
+            f"on port {port}..."
         )
-        if result.returncode != 0:
-            print(f"[WARN] Could not stop process {process_id}: {result.stderr.strip()}")
+        try:
+            _terminate_process_tree(process_id)
+        except RuntimeUpdateError as exc:
+            print(f"[WARN] {exc}")
     deadline = time.monotonic() + wait_seconds
     while time.monotonic() < deadline:
         if not _listener_process_ids(port):
@@ -1000,6 +1016,12 @@ def free_port(port: int = 8501, wait_seconds: int = 15) -> None:
     raise RuntimeUpdateError(
         f"Port {port} is still in use by PID(s): {', '.join(map(str, remaining))}"
     )
+
+
+def stop_backend(port: int = 8501, wait_seconds: int = 15) -> None:
+    """Stop the HTFA backend process tree listening on *port*."""
+
+    free_port(port=port, wait_seconds=wait_seconds)
 
 
 def _purge_ts_modules() -> None:
@@ -1096,7 +1118,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "command",
         nargs="?",
-        choices=("start", "setup-runtime", "build-runtime", "install-ts"),
+        choices=("start", "setup-runtime", "build-runtime", "install-ts", "stop"),
         default="start",
     )
     return parser
@@ -1111,7 +1133,7 @@ def cli(arguments: Sequence[str] | None = None) -> int:
         print("\nUse 'start -- <Streamlit arguments>' to launch HTFA.")
         return 0
     command = values.pop(0) if values and values[0] in {
-        "start", "setup-runtime", "build-runtime", "install-ts"
+        "start", "setup-runtime", "build-runtime", "install-ts", "stop"
     } else "start"
 
     if command == "start":
@@ -1130,6 +1152,13 @@ def cli(arguments: Sequence[str] | None = None) -> int:
         options = parser.parse_args(values)
         installed_path = install(options.source_root, options.install_root)
         print(f"Ts installed at {installed_path}")
+        return 0
+    if command == "stop":
+        parser = argparse.ArgumentParser(prog="htfa.py stop")
+        parser.add_argument("--port", type=int, default=8501)
+        parser.add_argument("--wait-seconds", type=int, default=15)
+        options = parser.parse_args(values)
+        stop_backend(port=options.port, wait_seconds=options.wait_seconds)
         return 0
     if command == "build-runtime":
         parser = argparse.ArgumentParser(prog="htfa.py build-runtime")
@@ -1159,6 +1188,7 @@ __all__ = [
     "fetch_head_commit",
     "format_selection_message",
     "free_port",
+    "stop_backend",
     "install",
     "install_locked_dependencies",
     "install_pip_bootstrap",

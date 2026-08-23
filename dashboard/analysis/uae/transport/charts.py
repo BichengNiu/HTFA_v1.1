@@ -29,13 +29,19 @@ HORMUZ_CALLS_TITLE = "霍尔木兹海峡过境次数"
 DUBAI_AIR_AWBS_TITLE = "迪拜航空货运进出口运单数"
 DUBAI_AIR_TOTAL_TITLE = "迪拜航空货运进出口总量"
 DUBAI_AIR_CARGO_TITLE = "迪拜航空货运进出口运单数与总量"
-US_UAE_AIR_TITLE = "美国↔阿联酋航空运输"
+US_UAE_AIR_TITLE = "美国—阿联酋航空旅客与货运"
 
 
 def _legend_label_without_unit(label: str) -> str:
-    """删除图例变量名末尾的括号单位，保留纵轴单位显示。"""
+    """删除技术变量名中的单位、下划线和“合计”字样。"""
 
-    return re.sub(r"(?:\([^()]*\)|（[^（）]*）)$", "", label).rstrip()
+    without_unit = re.sub(r"(?:\([^()]*\)|（[^（）]*）)$", "", label)
+    return (
+        without_unit.replace("_", "")
+        .replace("合计", "")
+        .replace("↔", "—")
+        .strip()
+    )
 
 
 def _normalize_legend_labels(

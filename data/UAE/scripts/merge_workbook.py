@@ -57,6 +57,7 @@ SOURCES = (
     "tdra",
     "uaewps",
     "extended",
+    "wam",
 )
 
 

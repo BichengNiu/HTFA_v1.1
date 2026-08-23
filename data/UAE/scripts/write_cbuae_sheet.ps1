@@ -15,6 +15,7 @@ $workbook = $null
 $sheet = $null
 $dictionarySheet = $null
 $range = $null
+$temporaryWorkbookPath = $null
 
 try {
     $payload = Get-Content -Raw -LiteralPath $DataPath | ConvertFrom-Json
@@ -31,7 +32,27 @@ try {
     $excel.AskToUpdateLinks = $false
 
     $resolvedWorkbook = (Resolve-Path -LiteralPath $WorkbookPath).Path
-    $workbook = $excel.Workbooks.Open($resolvedWorkbook, 0, $false)
+    # Excel 16 on this workstation rejects the workbook's existing package
+    # through the short Open overload.  The explicit overload with repair mode
+    # opens the same workbook and preserves the existing sheets before the
+    # requested sheet is rebuilt.
+    $workbook = $excel.Workbooks.Open(
+        $resolvedWorkbook,
+        0,
+        $false,
+        5,
+        '',
+        '',
+        $true,
+        2,
+        $null,
+        $false,
+        $false,
+        $null,
+        $false,
+        $null,
+        1
+    )
     if ($workbook.ReadOnly) {
         throw "Destination workbook is open or read-only: $resolvedWorkbook"
     }
@@ -55,7 +76,7 @@ try {
     $rowCount = $records.Count + 6
     $columnCount = $lastColumnIndex
     $values = [object[,]]::new($rowCount, $columnCount)
-    $values[0, 0] = "CBUAE"
+    $values[0, 0] = $payload.source
     $metadataLabels = @($payload.metadata_labels)
     for ($row = 0; $row -lt $metadataLabels.Count; $row++) {
         $values[($row + 1), 0] = $metadataLabels[$row]
@@ -145,10 +166,25 @@ try {
     $excel.ActiveWindow.SplitColumn = 0
     $excel.ActiveWindow.SplitRow = 6
     $excel.ActiveWindow.FreezePanes = $true
-    $workbook.Save()
-    if (-not $workbook.Saved) {
-        throw "Excel did not save the destination workbook: $resolvedWorkbook"
+    # Repair-mode opens require SaveAs rather than the short Save property on
+    # this Excel installation.  Save beside the target and replace it only
+    # after Excel has closed the repaired package successfully.
+    $temporaryWorkbookPath = "$resolvedWorkbook.wam-write.tmp.xlsx"
+    if (Test-Path -LiteralPath $temporaryWorkbookPath) {
+        Remove-Item -LiteralPath $temporaryWorkbookPath -Force
     }
+    $workbook.SaveAs($temporaryWorkbookPath, 51)
+    $workbook.Close($false)
+    [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($workbook)
+    $workbook = $null
+    $excel.Quit()
+    [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($excel)
+    $excel = $null
+    if (-not (Test-Path -LiteralPath $temporaryWorkbookPath)) {
+        throw "Excel did not create the temporary workbook: $temporaryWorkbookPath"
+    }
+    Move-Item -LiteralPath $temporaryWorkbookPath -Destination $resolvedWorkbook -Force
+    $temporaryWorkbookPath = $null
 }
 finally {
     if ($null -ne $workbook) {
@@ -156,6 +192,9 @@ finally {
     }
     if ($null -ne $excel) {
         $excel.Quit()
+    }
+    if ($null -ne $temporaryWorkbookPath -and (Test-Path -LiteralPath $temporaryWorkbookPath)) {
+        Remove-Item -LiteralPath $temporaryWorkbookPath -Force
     }
     foreach ($comObject in @(
         $range,

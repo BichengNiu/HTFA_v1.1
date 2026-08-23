@@ -5,9 +5,10 @@
 
 from __future__ import annotations
 
+from matplotlib.colors import is_color_like
 import pandas as pd
 
-from .constants import FREQ_PERIOD, TIME_PRESETS
+from .constants import COLOR_HEX_MAP, FREQ_PERIOD, TIME_PRESETS
 
 
 def detect_frequency(dates) -> str:
@@ -85,6 +86,71 @@ def parse_float(text: str) -> float | None:
         return None
 
 
+def parse_csv_items(
+    text: str,
+    label: str,
+    *,
+    expected_count: int | None = None,
+) -> tuple[list[str] | None, str | None]:
+    """解析逗号分隔的非空文本项，并可校验项目数。"""
+    text = str(text or "").strip()
+    if not text:
+        return None, None
+    items = [item.strip() for item in text.split(",")]
+    if any(not item for item in items):
+        return None, f"{label}不能包含空项目"
+    if expected_count is not None and len(items) != expected_count:
+        return None, f"{label}应填写 {expected_count} 项，实际为 {len(items)} 项"
+    return items, None
+
+
+def parse_color_sequence(
+    text: str,
+    *,
+    expected_count: int | None = None,
+) -> tuple[list[str] | None, str | None]:
+    """解析按序排列的颜色列表，支持中文颜色名和 Matplotlib 颜色值。"""
+    items, error = parse_csv_items(
+        text, "序列颜色", expected_count=expected_count
+    )
+    if error or items is None:
+        return items, error
+    colors = []
+    for item in items:
+        color = COLOR_HEX_MAP.get(item, item)
+        if not is_color_like(color):
+            return None, f"序列颜色无法识别：{item}"
+        colors.append(color)
+    return colors, None
+
+
+def parse_key_value_mapping(
+    text: str,
+    label: str,
+    *,
+    allowed_keys=None,
+) -> tuple[dict[str, str] | None, str | None]:
+    """解析 ``键=值,键=值`` 文本为字典，并校验键唯一性。"""
+    text = str(text or "").strip()
+    if not text:
+        return None, None
+    mapping: dict[str, str] = {}
+    allowed = set(allowed_keys) if allowed_keys is not None else None
+    for item in text.split(","):
+        item = item.strip()
+        if not item or "=" not in item:
+            return None, f"{label}格式应为 键=值,键=值：{item or text}"
+        key, value = (part.strip() for part in item.split("=", 1))
+        if not key or not value:
+            return None, f"{label}的键和值都不能为空：{item}"
+        if key in mapping:
+            return None, f"{label}存在重复键：{key}"
+        if allowed is not None and key not in allowed:
+            return None, f"{label}包含未选择变量：{key}"
+        mapping[key] = value
+    return mapping, None
+
+
 def resolve_position(text: str, x_values, label: str):
     """把输入解析为 X 轴位置：纯数字=行号；否则按日期解析（取第一个
     不早于该日期的数据点）。返回 (位置, 错误)；出错时位置为 None。"""
@@ -128,6 +194,23 @@ def parse_vlines(text: str, x_values) -> tuple[list | None, str | None]:
     return resolved, None
 
 
+def parse_hlines(text: str) -> tuple[list[float] | None, str | None]:
+    """解析水平参考线：逗号分隔的数值 Y 轴位置。"""
+    text = text.strip()
+    if not text:
+        return None, None
+    parts = [part.strip() for part in text.split(",") if part.strip()]
+    if not parts:
+        return None, None
+    resolved = []
+    for part in parts:
+        value = parse_float(part)
+        if value is None:
+            return None, f"水平参考线必须填写数字：{part}"
+        resolved.append(value)
+    return resolved, None
+
+
 def parse_shade(text: str, x_values) -> tuple[list[tuple] | None, str | None]:
     """解析阴影区间：逗号分隔两两一组（起,止,起,止…），行为行号或日期。"""
     text = text.strip()
@@ -154,7 +237,11 @@ def parse_shade(text: str, x_values) -> tuple[list[tuple] | None, str | None]:
 
 __all__ = [
     "detect_frequency",
+    "parse_color_sequence",
+    "parse_csv_items",
     "parse_float",
+    "parse_hlines",
+    "parse_key_value_mapping",
     "parse_shade",
     "parse_vlines",
     "period_bounds",

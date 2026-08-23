@@ -21,6 +21,7 @@ runtime\python.exe data\UAE\scripts\merge_workbook.py   # 库→阿联酋.xlsx
 - `update_data.py` / `update_data.bat`：更新总控（全部源或按 `--source`）；
 - `merge_workbook.py` / `merge_workbook.bat`：合并总控（写回工作簿各 sheet）；
 - `source_extended.py` / `workbook_sheet_writer.py`：从 DuckDB 重建此前未接入工作簿的 Eurostat、DOT、Dubai Customs、Salik、搜索热度、Comtrade 和 DED sheet；外籍劳动力由专用 `source_foreign_labour.py` 独占写回；
+- `fetch_wam.py` / `source_wam.py`：归档 WAM 日度军事打击登记表引用的来源页，校验每日三类武器数量，计算战争压力指标并写入 `月度_WAM`；来源页清单失败逐条记录，不覆盖审核后的数值登记表；
 - `db.py`：共享 DuckDB 连接 / 建表 / 运行日志；`_excel_helpers.py`：COM 写表基础设施；
 - `source_*.py`：每源一个模块（download → parse → load → merge）；
 - `write_*.ps1`：Excel COM 写表助手（baker_hughes/cbuae/emirates_post/portwatch/

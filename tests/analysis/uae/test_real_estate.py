@@ -229,8 +229,13 @@ def test_section_renders_two_charts_and_explanation(monkeypatch) -> None:
         lambda content, file_name: data,
     )
     st_obj = MagicMock()
+    metric_columns = tuple(MagicMock() for _ in range(4))
     left, right = MagicMock(), MagicMock()
-    st_obj.columns.return_value = (left, right)
+
+    def _columns(n, gap=None):
+        return metric_columns if n == 4 else (left, right)
+
+    st_obj.columns.side_effect = _columns
     markets = []
     original_render = renderer._render_sales_chart
 
@@ -252,7 +257,19 @@ def test_section_renders_two_charts_and_explanation(monkeypatch) -> None:
     assert calls.count("divider") == 1
     assert calls.count("subheader") == 1
     assert st_obj.subheader.call_args.args[0] == "房地产"
+    assert st_obj.metric.call_count == 4
+    assert [call.args[0] for call in st_obj.metric.call_args_list] == [
+        "现房销售笔数",
+        "现房销售金额",
+        "期房销售笔数",
+        "期房销售金额",
+    ]
+    assert all(
+        "环比" in call.kwargs["delta"] and "同比" in call.kwargs["delta"]
+        for call in st_obj.metric.call_args_list
+    )
     assert st_obj.columns.call_args.kwargs["gap"] == "small"
+    assert st_obj.columns.call_count == 2
     assert markets == [(left, "现房"), (right, "期房")]
     # 两图分别渲染进左右两列
     assert left.pyplot.call_count == 1
@@ -293,8 +310,13 @@ def test_cell_failure_warns_cell_and_keeps_other_chart(monkeypatch) -> None:
         lambda content, file_name: data,
     )
     st_obj = MagicMock()
+    metric_columns = tuple(MagicMock() for _ in range(4))
     left, right = MagicMock(), MagicMock()
-    st_obj.columns.return_value = (left, right)
+
+    def _columns(n, gap=None):
+        return metric_columns if n == 4 else (left, right)
+
+    st_obj.columns.side_effect = _columns
 
     original_render = renderer._render_sales_chart
 

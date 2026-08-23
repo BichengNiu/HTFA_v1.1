@@ -23,6 +23,17 @@ class _FakeSource:
     def current_data(self):
         return self._frame
 
+    def load_data(
+        self, *, variable_name_row=0, data_start_row=1, time_column=None
+    ):
+        assert variable_name_row == 0
+        assert data_start_row == 1
+        assert time_column is None
+        return self._frame
+
+    def row_count(self):
+        return len(self._frame)
+
     def current_fingerprint(self):
         return "fp-1"
 

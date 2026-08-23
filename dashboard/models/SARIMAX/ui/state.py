@@ -7,6 +7,7 @@ from typing import Any
 from dashboard.core.ui.utils.state_helpers import NamespacedStateManager
 from data_overview.ui.widget_keys import (
     CHART_WIDGET_KEYS,
+    READ_WIDGET_KEYS,
     SELECTOR_WIDGET_KEYS,
     TABLE_WIDGET_KEYS,
 )
@@ -62,11 +63,20 @@ MODEL_WIDGET_KEYS = (
 )
 
 # 全部 Streamlit widget 键；换文件或换变量时需要清除，
-# 避免旧 widget 值被 Streamlit 自动恢复。
-# 顺序保持历史约定：选择器在前（WIDGET_KEYS[1:] 在换文件时清空，
-# 变量多选键被排除在清理之外）。
+# 避免旧 widget 值被 Streamlit 自动恢复。读取设置也纳入汇总，
+# 便于宿主页面统一管理。
 WIDGET_KEYS = (
-    SELECTOR_WIDGET_KEYS + CHART_WIDGET_KEYS + TABLE_WIDGET_KEYS + MODEL_WIDGET_KEYS
+    SELECTOR_WIDGET_KEYS
+    + READ_WIDGET_KEYS
+    + CHART_WIDGET_KEYS
+    + TABLE_WIDGET_KEYS
+    + MODEL_WIDGET_KEYS
+)
+
+# 数据集变化时清除旧图形、表格和模型状态，但保留本次刚输入的读取设置。
+# 变量多选同样保留，由 data_overview.ui.selectors 按新变量名自动过滤。
+DATASET_REPLACED_WIDGET_KEYS = (
+    CHART_WIDGET_KEYS + TABLE_WIDGET_KEYS + MODEL_WIDGET_KEYS
 )
 
 RESULT_KEYS = (
@@ -88,6 +98,7 @@ def clear_fit_results() -> None:
 def clear_dataset_state() -> None:
     """清除数据集与变量选择状态（换文件或清空上传时调用）。"""
     state.set("dataset", None)
+    state.set("source_fingerprint", None)
     state.set("file_fingerprint", None)
     state.set("file_name", None)
     state.set("target_variable", None)
@@ -110,6 +121,7 @@ def get_fitted_result() -> Any:
 
 
 __all__ = [
+    "DATASET_REPLACED_WIDGET_KEYS",
     "MODEL_WIDGET_KEYS",
     "RESULT_KEYS",
     "WIDGET_KEYS",

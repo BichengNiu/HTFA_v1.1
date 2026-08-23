@@ -59,6 +59,21 @@ def numeric_variable_names(frame: pd.DataFrame) -> list[str]:
     return names
 
 
+def _replace_zero_values_with_missing(frame: pd.DataFrame) -> pd.DataFrame:
+    """将 SARIMAX 数据中的数值 0 和空白字符串视为缺失值。"""
+    result = frame.replace(r"^\s*$", pd.NA, regex=True).copy()
+    for column in result.columns:
+        series = result[column]
+        if (
+            pd.api.types.is_datetime64_any_dtype(series)
+            or pd.api.types.is_bool_dtype(series)
+            or not pd.api.types.is_numeric_dtype(series)
+        ):
+            continue
+        result[column] = series.mask(series.eq(0))
+    return result.dropna(how="all").dropna(axis=1, how="all")
+
+
 def build_modeling_dataset(
     frame: pd.DataFrame,
     file_name: str,
@@ -71,7 +86,7 @@ def build_modeling_dataset(
     ValueError
         数据框为空或没有数值型变量时抛出，消息面向用户。
     """
-    frame = frame.dropna(how="all").dropna(axis=1, how="all")
+    frame = _replace_zero_values_with_missing(frame)
     if frame.empty or frame.shape[1] == 0:
         raise ValueError("文件清理后为空，没有可分析的列")
     if not numeric_variable_names(frame):
@@ -95,17 +110,7 @@ def load_modeling_dataset(uploaded_file: Any) -> ModelingDataset:
     fingerprint = fingerprint_file(uploaded_file)
     file_name = str(getattr(uploaded_file, "name", "data"))
     frame = load_shared_dataframe(uploaded_file)
-    frame = frame.dropna(how="all").dropna(axis=1, how="all")
-    if frame.empty or frame.shape[1] == 0:
-        raise ValueError("文件清理后为空，没有可分析的列")
-    if not numeric_variable_names(frame):
-        raise ValueError("数据中没有数值型变量，无法进行 SARIMAX 建模")
-    return ModelingDataset(
-        fingerprint=fingerprint,
-        file_name=file_name,
-        frame=frame,
-        time_column=_detect_time_column(frame),
-    )
+    return build_modeling_dataset(frame, file_name, fingerprint)
 
 
 def prepare_modeling_inputs(

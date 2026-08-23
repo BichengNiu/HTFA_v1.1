@@ -2,9 +2,9 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** 在 HTFA 的“企业活动”部分，在现有 DED 与 PMI 图表下方增加 FTS 客户转账和支票清算两张双轴月度图。
+**Goal:** 在 HTFA 的“企业活动”部分，在现有 DED 与 PMI 图表下方增加 FTS 客户转账和支票清算两张双轴当月值图。
 
-**Architecture:** 复用现有 `月度_CBUAE` 前六行元数据协议，新增一个支付数据模块读取四个已有指标；使用运行时已有的 `Ts.TsPlots.plot_series` 绘制“笔数/金额”双轴折线图。渲染层只负责缓存、布局、错误隔离和下载，数据解析与图表构建留在模块内。
+**Architecture:** 复用现有 `月度_CBUAE` 前六行元数据协议，新增一个支付数据模块读取四个已有指标；将年内累计源数据转换为当月值后，使用运行时已有的 `Ts.TsPlots.plot_series` 绘制“笔数/金额”双轴折线图。渲染层只负责缓存、布局、错误隔离和下载，数据解析与图表构建留在模块内。
 
 **Tech Stack:** Python, pandas, openpyxl, matplotlib, Streamlit, `Ts.TsPlots.plot_series`, pytest。
 
@@ -46,9 +46,9 @@ Implement:
 - strict mixed-unit parser for `月度_CBUAE`, following `ded.py`'s metadata validation and numeric-value handling;
 - `load_payment_data(file_input, file_name=None)`;
 - a shared private two-series figure helper using `within_month_window`, `plot_series(facet=False, axis_groups=...)`, `year_ruler=True`, `grid=True`, `vlines=WAR_START_DATE`, `show_legend=True`, source note, `figsize=(9.4, 6.2)`, and per-series units;
-- public `build_customer_transfers_figure()` and `build_cheques_figure()` wrappers, with titles explicitly stating “年内累计”.
+- public `build_customer_transfers_figure()` and `build_cheques_figure()` wrappers, with titles explicitly stating “当月值”.
 
-Keep the raw cumulative/YTD values as supplied by the workbook; do not silently convert them to monthly increments. The chart title/note must make the cumulative nature visible.
+Keep the raw cumulative/YTD values as supplied by the workbook in `PaymentData`; convert a copy to monthly values before charting and downloading. The chart title/note must make the monthly conversion rule visible.
 
 **Step 4: Run the focused tests to verify they pass**
 

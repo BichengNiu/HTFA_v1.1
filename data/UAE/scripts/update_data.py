@@ -58,6 +58,7 @@ SOURCES = (
     "steel",
     "tdra",
     "uaewps",
+    "wam",
 )
 
 

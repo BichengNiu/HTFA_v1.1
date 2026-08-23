@@ -27,6 +27,7 @@ DETAIL_TABLE_ALIASES = {
     "portwatch_uae_daily": "detail.portwatch_uae_daily",
     "portwatch_chokepoint_daily": "detail.portwatch_chokepoint_daily",
     "dld.transactions": "detail.dld_transactions",
+    "wam_military_strike_daily": "detail.wam_military_strike_daily",
 }
 
 _DETAIL_MIGRATIONS = (
@@ -46,6 +47,7 @@ _DETAIL_PRIMARY_KEYS = {
     "emirates_post_monthly": "period, origin_city, destn_city, service",
     "portwatch_uae_daily": "date, portid",
     "portwatch_chokepoint_daily": "date, portid",
+    "wam_military_strike_daily": "date",
 }
 
 # --------------------------------------------------------------------------
@@ -286,6 +288,41 @@ _BASE_DDL = (
         PRIMARY KEY (period, indicator)
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS detail.wam_military_strike_daily (
+        date                    DATE PRIMARY KEY,
+        ballistic_missiles      BIGINT NOT NULL,
+        cruise_missiles         BIGINT NOT NULL,
+        uavs                    BIGINT NOT NULL,
+        unclassified_missiles  BIGINT NOT NULL,
+        strike_intensity_log    DOUBLE NOT NULL,
+        attack_any              BOOLEAN NOT NULL,
+        uae_asset_attack        BOOLEAN NOT NULL,
+        origin                  VARCHAR,
+        observation_status      VARCHAR NOT NULL,
+        count_basis             VARCHAR,
+        external_threat_alert   BOOLEAN NOT NULL,
+        source_url              VARCHAR,
+        source_url_2            VARCHAR,
+        source_url_3            VARCHAR,
+        notes                   VARCHAR
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS wam_military_strike_monthly (
+        period                   DATE PRIMARY KEY,
+        observation_days         BIGINT NOT NULL,
+        ballistic_missiles       BIGINT NOT NULL,
+        cruise_missiles          BIGINT NOT NULL,
+        uavs                     BIGINT NOT NULL,
+        unclassified_missiles   BIGINT NOT NULL,
+        strike_intensity_log     DOUBLE NOT NULL,
+        strike_intensity_index   DOUBLE NOT NULL,
+        attack_days              BIGINT NOT NULL,
+        asset_attack_days        BIGINT NOT NULL,
+        external_threat_alert_days BIGINT NOT NULL
+    )
+    """,
     # --- metadata ---
     """
     CREATE TABLE IF NOT EXISTS meta_indicator_dictionary (
@@ -335,6 +372,18 @@ def init_schema(con) -> None:
     migrate_detail_schema(con)
     for statement in _BASE_DDL:
         con.execute(statement)
+    # The WAM monthly table was introduced before the partial-month audit
+    # column.  Keep existing local databases upgradeable without rebuilding
+    # the full DuckDB file.
+    if _object_exists(con, "main", "wam_military_strike_monthly"):
+        con.execute(
+            "ALTER TABLE wam_military_strike_monthly "
+            "ADD COLUMN IF NOT EXISTS observation_days BIGINT DEFAULT 0"
+        )
+        con.execute(
+            "ALTER TABLE wam_military_strike_monthly "
+            "ADD COLUMN IF NOT EXISTS strike_intensity_index DOUBLE DEFAULT 0"
+        )
     _rewrite_detail_metadata_names(con)
     create_detail_compatibility_views(con)
 

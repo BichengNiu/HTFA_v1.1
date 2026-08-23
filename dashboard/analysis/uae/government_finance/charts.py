@@ -23,8 +23,8 @@ from dashboard.analysis.uae.plot_helpers import (
 
 
 YOY_SERIES = (
-    (GOVERNMENT_CREDIT, "政府贷款增长率"),
-    (GRE_CREDIT, "政府控制企业贷款增长率"),
+    (GOVERNMENT_CREDIT, "政府贷款同比"),
+    (GRE_CREDIT, "政府控股企业贷款同比"),
 )
 
 

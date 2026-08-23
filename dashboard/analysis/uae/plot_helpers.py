@@ -12,10 +12,12 @@ import pandas as pd
 from matplotlib.axes import Axes
 from matplotlib.dates import date2num
 from matplotlib.figure import Figure
-from matplotlib.ticker import FuncFormatter
 from matplotlib.transforms import blended_transform_factory
 import numpy as np
-from Ts.TsPlots.style import apply_fonts
+from Ts.TsPlots.style import (
+    apply_fonts,
+    format_compact_y_axis as ts_format_compact_y_axis,
+)
 
 
 CHINESE_FONT_FAMILY = ["Microsoft YaHei", "SimHei"]
@@ -23,24 +25,86 @@ SOURCE_NOTE_Y = 0.025
 WAR_START_DATE = pd.Timestamp("2026-03-01")
 WAR_LINE_COLOR = "#C0392B"
 
-COMPACT_Y_AXIS_SCALES = (
-    (1_000_000_000_000, "万亿"),
-    (100_000_000, "亿"),
-    (10_000, "万"),
+_COUNT_AXIS_UNITS = (
+    "个",
+    "家",
+    "张",
+    "笔",
+    "人",
+    "人次",
+    "艘次",
+    "磅",
+    "吨",
+    "台",
 )
 
+
+def _count_axis_rules(unit: str) -> tuple[tuple[float, float, str], ...]:
+    return (
+        (10_000_000_000.0, 10_000_000_000.0, f"百亿{unit}"),
+        (1_000_000_000.0, 1_000_000_000.0, f"十亿{unit}"),
+        (100_000_000.0, 100_000_000.0, f"亿{unit}"),
+        (10_000_000.0, 10_000_000.0, f"千万{unit}"),
+        (1_000.0, 10_000.0, f"万{unit}"),
+        (0.0, 1.0, unit),
+    )
+
+
+UAE_COMPACT_Y_AXIS_RULES = {
+    "百万迪拉姆": (
+        (100_000.0, 1_000_000.0, "万亿迪拉姆"),
+        (0.0, 100.0, "亿迪拉姆"),
+    ),
+    **{
+        unit: _count_axis_rules(unit)
+        for unit in _COUNT_AXIS_UNITS
+    },
+}
+
 SOURCE_DISPLAY_NAMES = {
+    "ICE": "洲际交易所",
     "OPEC": "欧佩克",
+    "Wind": "万得",
+    "EIA": "美国能源信息署",
     "Baker Hughes": "贝克休斯",
     "CBUAE": "阿联酋央行",
-    "S&P Global / Trading Economics（公开样本）": "S&P Global",
+    "CBUAE QER": "阿联酋央行季度经济报告",
+    "UAE Ministry of Finance (MOF GFS)": "阿联酋财政部（政府财政统计）",
+    "DLD": "迪拜土地局",
+    "DED": "迪拜经济局",
+    "S&P Global": "标普全球",
+    "S&P Global / Trading Economics（公开样本）": "标普全球/全球经济数据平台（公开样本）",
     "Nepal DoFE": "尼泊尔外国就业局",
     "尼泊尔 DoFE monthly final labour approval": "尼泊尔外国就业局",
     "Bangladesh BMET": "孟加拉国人力就业培训局",
     "孟加拉国 BMET/OEP Country Clearance": "孟加拉国人力就业培训局",
+    "菲律宾 DMW Monthly Compendium Tab 11": "菲律宾移民工人部月度汇编表 11",
+    "UN Comtrade": "联合国商品贸易统计数据库",
+    "MEsteel（CFR/CPT UAE）": "MEsteel 钢材数据（CFR/CPT 阿联酋）",
+    "IMF PortWatch (HDX mirror)": "国际货币基金组织港口监测（HDX 镜像）",
+    "Emirates Post (bayanat.ae)": "阿联酋邮政（bayanat.ae）",
+    "SCAD": "沙迦统计与社区发展局",
+    "TDRA Open Data": "电信和数字政府监管局开放数据",
+    "RTA Open Data (Data Dubai)": "迪拜道路与交通管理局开放数据（迪拜数据）",
+    "Cloudflare Radar (UAE)": "Cloudflare 雷达（阿联酋）",
+    "WAM / UAE official source registry": "WAM/阿联酋官方来源登记表",
+    "US DOT BTS T-100 International Segment (All Carriers)": "美国交通部统计局 BTS T-100 国际航段（全部承运人）",
+    "Salik (salik.ae IR)": "Salik 道路收费系统（salik.ae 投资者关系）",
+    "Google Trends/工作搜索热度 CSV": "谷歌趋势/工作搜索热度 CSV",
+    "Google Trends": "谷歌趋势",
+    "Google 趋势": "谷歌趋势",
+    "Eurostat avia_paexcc/avia_goexcc（EU27_2020→AE，官方 API）": "欧盟统计局 avia_paexcc/avia_goexcc（EU27_2020→阿联酋，官方 API）",
+    "Dubai Customs Airway Bill Details": "迪拜海关航空运单明细",
+    "Dubai Customs Airway Bill Details（data.dubai 开放数据，ID 459114）": "迪拜海关航空运单明细（data.dubai 开放数据，ID 459114）",
     "Dubai Land Department": "迪拜土地局",
     "Dubai Land Department (Mo'asher)": "迪拜土地局（Mo'asher）",
-    "IMF PortWatch (HDX mirror)": "IMF PortWatch",
+    "DET/迪拜媒体办新闻稿": "迪拜经济与旅游部/迪拜媒体办公室新闻稿",
+    "data.dubai Commerce Registry": "data.dubai 商业登记库",
+    "data.dubai Commerce Registry (commerce_number 按发照月去重)": "data.dubai 商业登记库（commerce_number 按发照月去重）",
+    "data.dubai Commerce Registry (main_license_number 按发照月去重)": "data.dubai 商业登记库（main_license_number 按发照月去重）",
+    "data.dubai Commerce Registry 原始快照": "data.dubai 商业登记库原始快照",
+    "UN Comtrade (HS87 镜像为主)": "联合国商品贸易统计数据库（HS87 以镜像为主）",
+    "UN Comtrade (HS87 镜像口径)": "联合国商品贸易统计数据库（HS87 镜像口径）",
 }
 
 
@@ -64,15 +128,38 @@ def new_ts_figure_axis() -> tuple[Figure, Axes]:
     return figure, figure.add_subplot(111)
 
 
-def source_note(source_text: str) -> str:
-    """把原始来源字符串转换为中文展示文本。"""
+def translate_source_text(source_text: str) -> str:
+    """把来源字符串中的数据源名称统一转换为中文展示文本。"""
 
     names = [
-        SOURCE_DISPLAY_NAMES.get(part.strip(), part.strip())
+        _remove_parenthetical_text(
+            SOURCE_DISPLAY_NAMES.get(part.strip(), part.strip())
+        )
         for part in re.split(r"[、；]", source_text)
         if part.strip()
     ]
-    return f"数据来源：{'、'.join(names)}"
+    return "、".join(names)
+
+
+def _remove_parenthetical_text(value: str) -> str:
+    """删除来源展示名中的中英文括号及括号内说明。"""
+
+    cleaned = value
+    while True:
+        without_parenthetical = re.sub(
+            r"\s*(?:（[^（）]*）|\([^()]*\))",
+            "",
+            cleaned,
+        )
+        if without_parenthetical == cleaned:
+            return cleaned.strip()
+        cleaned = without_parenthetical
+
+
+def source_note(source_text: str) -> str:
+    """把原始来源字符串转换为中文图注。"""
+
+    return f"数据来源：{translate_source_text(source_text)}"
 
 
 def add_source_note(figure: Figure, source_text: str) -> None:
@@ -269,40 +356,20 @@ def apply_htfa_fonts(figure: Figure) -> None:
 
 
 def format_compact_y_axis(axis: Axes) -> None:
-    """用中文数量级单位压缩超过四位的纵轴刻度。
+    """用 TsPlots 的通用规则引擎压缩 UAE 纵轴刻度。"""
 
-    纵轴数据本身不缩放，只改变刻度显示和轴单位：例如原始值 120000
-    会显示为 12，轴单位显示为“万”。刻度数字最多保留四位有效数字。
-    """
-
-    if getattr(axis, "_htfa_compact_y_axis", False):
-        return
-    lower, upper = axis.get_ylim()
-    maximum = max(abs(float(lower)), abs(float(upper)))
-    scale, prefix = next(
-        ((scale, prefix) for scale, prefix in COMPACT_Y_AXIS_SCALES if maximum >= scale),
-        (1, ""),
+    ts_format_compact_y_axis(
+        axis,
+        unit=axis.get_ylabel().strip(),
+        rules=UAE_COMPACT_Y_AXIS_RULES,
     )
-    if scale == 1:
-        return
-
-    def _format_tick(value: float, _position: int) -> str:
-        scaled = value / scale
-        if abs(scaled) < 1e-12:
-            scaled = 0
-        return f"{scaled:.4g}"
-
-    axis.yaxis.set_major_formatter(FuncFormatter(_format_tick))
-    label = axis.get_ylabel().strip()
-    if not label.startswith(prefix):
-        axis.set_ylabel(f"{prefix}{label}" if label else prefix)
-    axis._htfa_compact_y_axis = True
 
 
 __all__ = [
     "CHINESE_FONT_FAMILY",
     "SOURCE_DISPLAY_NAMES",
     "SOURCE_NOTE_Y",
+    "UAE_COMPACT_Y_AXIS_RULES",
     "WAR_LINE_COLOR",
     "WAR_START_DATE",
     "add_source_note",
@@ -314,4 +381,5 @@ __all__ = [
     "new_ts_figure_axis",
     "normalize_ts_axis",
     "source_note",
+    "translate_source_text",
 ]

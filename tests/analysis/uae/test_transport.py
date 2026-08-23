@@ -321,14 +321,17 @@ def test_hormuz_legend_uses_requested_total_calls_label() -> None:
         unit="艘次",
         source_text="IMF PortWatch (HDX mirror)",
         last_month=last_month,
-        legend_labels=("霍尔木兹邮轮过境总次数", "霍尔木兹油轮过境次数"),
+        legend_labels=(
+            "霍尔木兹海峡过境总次数",
+            "霍尔木兹海峡油轮过境次数",
+        ),
     )
 
     legend = figure.axes[0].get_legend()
     assert legend is not None
     assert [text.get_text() for text in legend.get_texts()] == [
-        "霍尔木兹邮轮过境总次数",
-        "霍尔木兹油轮过境次数",
+        "霍尔木兹海峡过境总次数",
+        "霍尔木兹海峡油轮过境次数",
     ]
 
 
@@ -485,8 +488,8 @@ def test_us_uae_air_figure_draws_passenger_and_freight_lines() -> None:
     legend = figure.axes[0].get_legend()
     assert legend is not None
     assert [text.get_text() for text in legend.get_texts()] == [
-        "美国↔阿联酋_航空旅客_合计",
-        "美国↔阿联酋_航空货运_合计",
+        "美国—阿联酋航空旅客",
+        "美国—阿联酋航空货运",
     ]
 
 
@@ -498,8 +501,13 @@ def test_section_renders_two_charts_and_explanation(monkeypatch) -> None:
         lambda content, file_name, **kwargs: data,
     )
     st_obj = MagicMock()
+    metric_columns = tuple(MagicMock() for _ in range(4))
     left, right = MagicMock(), MagicMock()
-    st_obj.columns.return_value = (left, right)
+
+    def _columns(n, gap=None):
+        return metric_columns if n == 4 else (left, right)
+
+    st_obj.columns.side_effect = _columns
     render_calls = []
     original_render = renderer._render_chart
 
@@ -521,8 +529,23 @@ def test_section_renders_two_charts_and_explanation(monkeypatch) -> None:
     assert calls.count("divider") == 1
     assert calls.count("subheader") == 1
     assert st_obj.subheader.call_args.args[0] == "交通物流"
+    assert st_obj.metric.call_count == 8
+    assert [call.args[0] for call in st_obj.metric.call_args_list] == [
+        "阿联酋港口进口量",
+        "阿联酋港口出口量",
+        "霍尔木兹过境总次数",
+        "霍尔木兹油轮过境次数",
+        "迪拜航空货运运单数",
+        "迪拜航空货运总量",
+        "美国—阿联酋航空旅客",
+        "美国—阿联酋航空货运",
+    ]
+    assert all(
+        "环比" in call.kwargs["delta"] and "同比" in call.kwargs["delta"]
+        for call in st_obj.metric.call_args_list
+    )
     assert st_obj.columns.call_args.kwargs["gap"] == "small"
-    assert st_obj.columns.call_count == 2
+    assert st_obj.columns.call_count == 4
     assert left.pyplot.call_count == 2
     assert right.pyplot.call_count == 2
     assert left.download_button.call_count == 2
@@ -537,8 +560,8 @@ def test_section_renders_two_charts_and_explanation(monkeypatch) -> None:
         "2025-05-31", UAE_PORT_IMPORT_TOTAL
     ] == 132_000_000
     assert render_calls[1]["builder_kwargs"]["legend_labels"] == (
-        "霍尔木兹邮轮过境总次数",
-        "霍尔木兹油轮过境次数",
+        "霍尔木兹海峡过境总次数",
+        "霍尔木兹海峡油轮过境次数",
     )
 
 
@@ -570,8 +593,13 @@ def test_cell_failure_warns_cell_and_keeps_other_chart(monkeypatch) -> None:
         lambda content, file_name, **kwargs: data,
     )
     st_obj = MagicMock()
+    metric_columns = tuple(MagicMock() for _ in range(4))
     left, right = MagicMock(), MagicMock()
-    st_obj.columns.return_value = (left, right)
+
+    def _columns(n, gap=None):
+        return metric_columns if n == 4 else (left, right)
+
+    st_obj.columns.side_effect = _columns
 
     original_render = renderer._render_chart
 

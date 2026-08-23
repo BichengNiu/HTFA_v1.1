@@ -9,9 +9,13 @@ from dashboard.analysis.uae.metrics import (
     change_in_points,
     latest_calendar_yoy_and_pp,
     latest_month_value,
+    month_and_year_delta_text,
     month_over_month_change,
     pct_delta_text,
     points_delta_text,
+    format_scaled_value,
+    format_count_value,
+    format_currency_value,
     render_metric_cards,
 )
 
@@ -83,6 +87,42 @@ def test_format_deltas() -> None:
     assert points_delta_text(0.75) == "较上月 +0.75 个百分点"
     assert points_delta_text(-0.5, unit="点", digits=1) == "较上月 -0.5 点"
     assert points_delta_text(None) is None
+
+
+def test_month_and_year_delta_text_contains_both_comparisons() -> None:
+    index = pd.date_range("2025-01-31", periods=14, freq="ME")
+    values = _series([100.0] * 12 + [110.0, 121.0], index)
+
+    assert month_and_year_delta_text(values) == "环比 +10.0%；同比 +21.0%"
+
+
+def test_format_scaled_value_uses_three_digit_display_units() -> None:
+    assert format_scaled_value(6_584, "家") == "65.84 百家"
+    assert format_scaled_value(8_834_494, "笔") == "8.83 百万笔"
+    assert (
+        format_scaled_value(
+            1_345_361,
+            "迪拉姆",
+            input_scale=1_000_000,
+        )
+        == "1.35 万亿迪拉姆"
+    )
+    assert format_scaled_value(None, "人") is None
+
+
+def test_domain_formatters_prefer_readable_count_and_currency_units() -> None:
+    assert format_count_value(261, "艘次") == "261 艘次"
+    assert format_count_value(5_878_953, "磅") == "587.9 万磅"
+    assert format_count_value(4_021, "人") == "0.4 万人"
+    assert format_currency_value(15_764, "迪拉姆", input_scale=1_000_000) == (
+        "157.64 亿迪拉姆"
+    )
+    assert format_currency_value(951_224, "迪拉姆", input_scale=1_000_000) == (
+        "0.95 万亿迪拉姆"
+    )
+    assert format_currency_value(1_345_361, "迪拉姆", input_scale=1_000_000) == (
+        "1.35 万亿迪拉姆"
+    )
 
 
 def test_render_metric_cards_renders_dash_for_missing() -> None:

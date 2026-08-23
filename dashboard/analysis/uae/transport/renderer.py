@@ -37,14 +37,22 @@ from dashboard.analysis.uae.transport.data import (
     anchor_last_month,
     load_transport_data,
 )
+from dashboard.analysis.uae.metrics import (
+    _source_note_from_metadata,
+    format_count_value,
+    format_scaled_value,
+    latest_month_value,
+    month_and_year_delta_text,
+    render_metric_cards,
+)
 from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
 
 PORT_VOLUME_DISPLAY_SCALE = 1_000_000
 TRANSPORT_DATA_SCHEMA_VERSION = "2026-08-22-dott100-v2-no-mail-compact-axis"
 
 TRANSPORT_EXPLANATION = """
-- **数据来源**：IMF PortWatch、Dubai Customs Airway Bill Details 和 US DOT BTS
-  T-100；数据分别来自工作簿中的「月度_PortWatch」「月度_迪拜海关航空」和
+- **数据来源**：国际货币基金组织港口监测、迪拜海关航空运单明细和美国交通部统计局
+  BTS T-100；数据分别来自工作簿中的「月度_PortWatch」「月度_迪拜海关航空」和
   「月度_DOTT100」sheet。
 - **指标口径**：左图为 UAE 港口进口/出口总量及其中油轮货量（百万吨，原始口径为吨）；
   右图为霍尔木兹过境总次数及油轮过境次数（艘次）；下方左图为迪拜航空货运运单数和总量，
@@ -116,6 +124,112 @@ def _render_chart(
     )
 
 
+def _render_transport_metrics(
+    st_obj: Any,
+    data: TransportData,
+    last_month: pd.Period,
+) -> None:
+    """渲染交通物流板块的海运与航空运输月度指标卡。"""
+
+    values = data.values.loc[
+        pd.PeriodIndex(data.values.index, freq="M") <= last_month
+    ]
+
+    def _card(
+        label: str,
+        series: pd.Series,
+        *,
+        unit: str,
+        scale: float = 1.0,
+        source_column: str,
+    ) -> tuple[str, str | None, str | None, str]:
+        value, as_of = latest_month_value(series)
+        return (
+            label,
+            (
+                format_scaled_value(value / scale, unit)
+                if unit == "百万吨"
+                else format_count_value(value, unit)
+            ),
+            month_and_year_delta_text(series),
+            _source_note_from_metadata(data.metadata, source_column, as_of),
+        )
+
+    maritime_cards = []
+    for label, column, unit, scale in (
+        ("阿联酋港口进口量", UAE_PORT_IMPORT_TOTAL, "百万吨", PORT_VOLUME_DISPLAY_SCALE),
+        ("阿联酋港口出口量", UAE_PORT_EXPORT_TOTAL, "百万吨", PORT_VOLUME_DISPLAY_SCALE),
+        ("霍尔木兹过境总次数", HORMUZ_TOTAL_CALLS, "艘次", 1.0),
+        ("霍尔木兹油轮过境次数", HORMUZ_TANKER_CALLS, "艘次", 1.0),
+    ):
+        maritime_cards.append(
+            _card(
+                label,
+                values[column],
+                unit=unit,
+                scale=scale,
+                source_column=column,
+            )
+        )
+
+    st_obj.caption("海运")
+    render_metric_cards(st_obj, maritime_cards, n=4)
+
+    air_values = data.monthly_values.loc[
+        pd.PeriodIndex(data.monthly_values.index, freq="M") <= last_month
+    ]
+
+    def _sum_series(columns: tuple[str, ...], name: str) -> pd.Series:
+        if any(column not in air_values.columns for column in columns):
+            return pd.Series(dtype=float, name=name)
+        return air_values.loc[:, list(columns)].sum(axis=1, min_count=len(columns)).rename(name)
+
+    def _source_column(columns: tuple[str, ...]) -> str:
+        return next(
+            (column for column in columns if column in data.metadata),
+            columns[0],
+        )
+
+    air_cards = [
+        _card(
+            "迪拜航空货运运单数",
+            _sum_series(
+                (DUBAI_AIR_IMPORT_AWBS, DUBAI_AIR_EXPORT_AWBS),
+                "迪拜航空货运运单数",
+            ),
+            unit="张",
+            source_column=_source_column(
+                (DUBAI_AIR_IMPORT_AWBS, DUBAI_AIR_EXPORT_AWBS)
+            ),
+        ),
+        _card(
+            "迪拜航空货运总量",
+            _sum_series(
+                (DUBAI_AIR_IMPORT_TOTAL, DUBAI_AIR_EXPORT_TOTAL),
+                "迪拜航空货运总量",
+            ),
+            unit="吨",
+            source_column=_source_column(
+                (DUBAI_AIR_IMPORT_TOTAL, DUBAI_AIR_EXPORT_TOTAL)
+            ),
+        ),
+        _card(
+            "美国—阿联酋航空旅客",
+            _sum_series((US_UAE_AIR_PASSENGERS,), "美国—阿联酋航空旅客"),
+            unit="人次",
+            source_column=_source_column((US_UAE_AIR_PASSENGERS,)),
+        ),
+        _card(
+            "美国—阿联酋航空货运",
+            _sum_series((US_UAE_AIR_FREIGHT,), "美国—阿联酋航空货运"),
+            unit="磅",
+            source_column=_source_column((US_UAE_AIR_FREIGHT,)),
+        ),
+    ]
+    st_obj.caption("航空运输")
+    render_metric_cards(st_obj, air_cards, n=4)
+
+
 def render_transport_section(
     st_obj: Any,
     content: bytes,
@@ -133,6 +247,10 @@ def render_transport_section(
                 schema_version=TRANSPORT_DATA_SCHEMA_VERSION,
             )
         last_month = anchor_last_month(data.values)
+        try:
+            _render_transport_metrics(st_obj, data, last_month)
+        except (KeyError, TypeError, ValueError) as exc:
+            st_obj.warning(f"交通物流指标卡未加载：{exc}")
         left, right = st_obj.columns(2, gap="small")
         port_volume_columns = (
             UAE_PORT_IMPORT_TOTAL,
@@ -179,7 +297,10 @@ def render_transport_section(
                         "title": title,
                         "unit": unit,
                         "legend_labels": (
-                            ("霍尔木兹邮轮过境总次数", "霍尔木兹油轮过境次数")
+                            (
+                                "霍尔木兹海峡过境总次数",
+                                "霍尔木兹海峡油轮过境次数",
+                            )
                             if title == HORMUZ_CALLS_TITLE
                             else None
                         ),
@@ -216,10 +337,10 @@ def render_transport_section(
                         DUBAI_AIR_EXPORT_TOTAL: "吨",
                     },
                     "legend_labels": (
-                        DUBAI_AIR_IMPORT_AWBS,
-                        DUBAI_AIR_EXPORT_AWBS,
-                        DUBAI_AIR_IMPORT_TOTAL,
-                        DUBAI_AIR_EXPORT_TOTAL,
+                        "迪拜航空货运进口运单数",
+                        "迪拜航空货运出口运单数",
+                        "迪拜航空货运进口总量",
+                        "迪拜航空货运出口总量",
                     ),
                 },
             ),
@@ -236,8 +357,8 @@ def render_transport_section(
                         US_UAE_AIR_FREIGHT: "磅",
                     },
                     "legend_labels": (
-                        US_UAE_AIR_PASSENGERS,
-                        US_UAE_AIR_FREIGHT,
+                        "美国—阿联酋航空旅客",
+                        "美国—阿联酋航空货运",
                     ),
                 },
             ),

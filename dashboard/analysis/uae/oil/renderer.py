@@ -20,6 +20,8 @@ from dashboard.analysis.uae.oil.charts import (
     REVENUE_PRICE_LABEL,
     build_oil_market_figure,
     build_oil_revenue_figure,
+    build_war_pressure_index_figure,
+    build_war_pressure_raw_figure,
 )
 from dashboard.analysis.uae.oil.data import OilMarketData, load_oil_market_data
 from dashboard.analysis.uae.oil.revenue import (
@@ -30,6 +32,20 @@ from dashboard.analysis.uae.oil.revenue import (
     YTD_COLUMN,
     YTD_YOY_COLUMN,
     estimate_monthly_oil_revenue,
+)
+from dashboard.analysis.uae.oil.war_pressure import (
+    BALLISTIC_LABEL,
+    CRUISE_LABEL,
+    PRESSURE_LABEL,
+    RAW_LABELS,
+    UAV_LABEL,
+    WarPressureData,
+    load_war_pressure_data,
+)
+from dashboard.analysis.uae.plot_helpers import translate_source_text
+from dashboard.analysis.uae.metrics import (
+    format_count_value,
+    format_scaled_value,
 )
 from dashboard.core.ui.utils.shared_dataset import get_shared_dataset_file
 from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
@@ -46,7 +62,7 @@ OIL_FISCAL_EXPLANATION = """
 - **价格/产量拉动率**：按中点法把收入同比分解为价格拉动与产量拉动
   `(ΔP·V̄ + ΔV·P̄) ÷ (P₋₁₂·V₋₁₂)`，其中 `P̄=(P+P₋₁₂)/2`、`V̄=(V+V₋₁₂)/2`，
   两者之和恰好等于收入同比，用于判断收入变动主要来自价格还是产量。
-- **解读**：收入先区分价格驱动还是产量驱动；产量受 OPEC+ 配额约束，价格受全球供需与地缘事件影响。
+- **解读**：收入先区分价格驱动还是产量驱动；产量受欧佩克+ 配额约束，价格受全球供需与地缘事件影响。
 - 图中红色虚线为 2026 年 3 月美伊战争起始基准线。
 """.strip()
 
@@ -102,12 +118,13 @@ def _render_oil_metrics(st_obj: Any, data: OilMarketData) -> None:
         with column:
             st_obj.metric(
                 name,
-                f"{value:,.2f} 美元/桶",
+                format_scaled_value(value, "美元/桶"),
                 delta=_metric_delta("30日", change),
                 delta_color="off",
                 help=(
                     f"截至 {as_of:%Y-%m-%d}；{metadata.frequency}；"
-                    f"来源：{metadata.source}；源表更新：{metadata.updated_at}"
+                    f"来源：{translate_source_text(metadata.source)}；"
+                    f"源表更新：{metadata.updated_at}"
                 ),
             )
 
@@ -116,11 +133,12 @@ def _render_oil_metrics(st_obj: Any, data: OilMarketData) -> None:
     with columns[2]:
         st_obj.metric(
             "阿联酋原油产量",
-            f"{value / 10_000:,.1f} 万桶/天",
+            format_count_value(value, "桶/天"),
             delta=_metric_delta("环比", change),
             delta_color="off",
             help=(
-                f"截至 {as_of:%Y-%m}；月度；来源：{metadata.source}；"
+                f"截至 {as_of:%Y-%m}；月度；来源："
+                f"{translate_source_text(metadata.source)}；"
                 f"源表更新：{metadata.updated_at}"
             ),
         )
@@ -135,11 +153,12 @@ def _render_oil_metrics(st_obj: Any, data: OilMarketData) -> None:
     with columns[3]:
         st_obj.metric(
             "阿联酋石油活跃钻机数",
-            f"{value:,.0f} 台",
+            format_count_value(value, "台"),
             delta=_metric_delta("环比", change),
             delta_color="off",
             help=(
-                f"截至 {as_of:%Y-%m}；月度；来源：{metadata.source}；"
+                f"截至 {as_of:%Y-%m}；月度；来源："
+                f"{translate_source_text(metadata.source)}；"
                 f"源表更新：{metadata.updated_at}"
             ),
         )
@@ -172,6 +191,95 @@ def _render_revenue_metrics(st_obj: Any, revenue: pd.DataFrame) -> None:
             "年度累计同比",
             f"{value:+.1f}%" if pd.notna(value) else "—",
         )
+
+
+def _render_war_pressure_metrics(
+    st_obj: Any,
+    data: WarPressureData,
+) -> None:
+    """展示最新完整月份的三类武器数量与战争压力指数。"""
+
+    latest_values = data.values.dropna(
+        subset=[*RAW_LABELS, PRESSURE_LABEL]
+    ).sort_index()
+    if latest_values.empty:
+        st_obj.info("战争压力数据没有完整的最新月份。")
+        return
+
+    latest = latest_values.iloc[-1]
+    latest_date = pd.Timestamp(latest_values.index[-1])
+    cumulative = data.values.loc[:, list(RAW_LABELS)].sum(min_count=1)
+    source_text = "、".join(
+        dict.fromkeys(
+            metadata.source for metadata in data.metadata.values() if metadata.source
+        )
+    )
+    help_text = (
+        f"截至 {latest_date:%Y-%m}；月度_WAM；"
+        f"来源：{translate_source_text(source_text)}"
+    )
+    columns = st_obj.columns(4)
+    metric_specs = (
+        ("最新月弹道导弹", BALLISTIC_LABEL, latest[BALLISTIC_LABEL], "枚"),
+        ("最新月巡航导弹", CRUISE_LABEL, latest[CRUISE_LABEL], "枚"),
+        ("最新月无人机", UAV_LABEL, latest[UAV_LABEL], "架"),
+    )
+    for column, (label, data_label, value, unit) in zip(columns[:3], metric_specs):
+        with column:
+            st_obj.metric(
+                label,
+                format_count_value(float(value), unit),
+                help=help_text,
+            )
+            st_obj.caption(
+                "战争以来累计："
+                f"{format_count_value(float(cumulative[data_label]), unit)}"
+            )
+    with columns[3]:
+        st_obj.metric(
+            "最新月战争压力指数",
+            format_scaled_value(float(latest[PRESSURE_LABEL]), "指数"),
+            help=(
+                f"{help_text}；原始压力为每日 9×弹道 log1p + 3×巡航 log1p + 无人机 log1p 后按月汇总，"
+                "再按战争期间 min-max 归一化到 0–100（不累计）"
+            ),
+        )
+
+
+def _render_war_pressure_section(
+    st_obj: Any,
+    data: WarPressureData,
+) -> None:
+    """在石油收入之前展示 WAM 原始数据与战争压力指数。"""
+
+    source_text = "、".join(
+        dict.fromkeys(
+            metadata.source for metadata in data.metadata.values() if metadata.source
+        )
+    )
+    values = data.values.loc[:, [*RAW_LABELS, PRESSURE_LABEL]].sort_index()
+    columns = st_obj.columns(2, gap="small")
+    with columns[0]:
+        render_pyplot_figure(
+            st_obj,
+            build_war_pressure_raw_figure(values, source_text),
+            bbox_inches=None,
+            place_legend_bottom=False,
+        )
+    with columns[1]:
+        render_pyplot_figure(
+            st_obj,
+            build_war_pressure_index_figure(values, source_text),
+            bbox_inches=None,
+            place_legend_bottom=False,
+        )
+    render_chart_download(
+        st_obj,
+        values,
+        title="战争压力（月度_WAM）",
+        key="analysis.uae.oil.war_pressure.download",
+    )
+    st_obj.divider()
 
 
 def _render_charts(
@@ -289,17 +397,30 @@ def _render_charts(
 def render_oil_fiscal_panel(st_obj: Any = st) -> dict[str, Any]:
     """用真实油价和产量估算石油收入，不生成占位渠道。"""
 
-    st_obj.subheader("石油生产与收入")
     payload = _source_payload()
     if payload is None:
+        st_obj.subheader("战争压力")
+        st_obj.subheader("石油生产与收入")
         message = "当前工作簿不可用，无法读取真实油价与原油产量。"
         st_obj.info(message)
         return {"status": "no_data", "message": message}
 
+    war_pressure_available = False
     try:
         content, file_name = payload
         with st_obj.spinner("正在读取日度油价与月度原油产量..."):
             data = _load_oil_market_cached(content, file_name)
+        try:
+            war_pressure = load_war_pressure_data(content, file_name=file_name)
+        except (KeyError, TypeError, ValueError) as exc:
+            st_obj.subheader("战争压力")
+            st_obj.warning(f"战争压力数据暂不可用：{exc}")
+        else:
+            st_obj.subheader("战争压力")
+            _render_war_pressure_metrics(st_obj, war_pressure)
+            _render_war_pressure_section(st_obj, war_pressure)
+            war_pressure_available = True
+        st_obj.subheader("石油生产与收入")
         _render_oil_metrics(st_obj, data)
         revenue = estimate_monthly_oil_revenue(data.prices, data.production)
         _render_revenue_metrics(st_obj, revenue)
@@ -331,6 +452,7 @@ def render_oil_fiscal_panel(st_obj: Any = st) -> dict[str, Any]:
     return {
         "status": "success",
         "source": file_name,
+        "war_pressure": war_pressure_available,
         "government_finance": government_finance,
         "real_estate": real_estate,
         "transport": transport,

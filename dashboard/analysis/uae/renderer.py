@@ -29,7 +29,7 @@ from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
 TAB_CONFIG = (
     ("宏观概览", "growth_overview"),
     ("行业分析", "growth_industry"),
-    ("石油财政", "oil_fiscal"),
+    ("高频数据", "oil_fiscal"),
 )
 
 GROWTH_OVERVIEW_GROUPS = (

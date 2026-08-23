@@ -115,13 +115,14 @@ def render_table_options_expander(
             key=table_key(key_prefix, "filter_op"),
         )
         row[2].number_input(
-            "阈值",
+            "值",
             value=0.0,
             key=table_key(key_prefix, "filter_val"),
         )
 
         if dataset.time_column is not None:
             render_time_filter(st_obj, dataset, key_prefix=key_prefix)
+        render_view_toggles(st_obj, key_prefix=key_prefix)
 
         # 当前筛选掩码（与上方预览表一致），用于统计量。
         table_state = build_table_options(
@@ -164,13 +165,16 @@ def render_table_panel(
     if dataset.time_column is not None:
         table_columns = [dataset.time_column, *table_columns]
     preview_frame = preview_table_frame(
-        dataset, filtered, table_state["view"], table_columns
+        dataset,
+        filtered,
+        table_state["view"],
+        table_columns,
+        table_state["view_rows"],
     )
     st_obj.dataframe(
         preview_frame,
         width="stretch",
     )
-    render_view_toggles(st_obj, key_prefix=key_prefix)
     st_obj.caption(
         f"当前筛选：{len(filtered):,} 行 / 共 {len(dataset.frame):,} 行"
     )

@@ -42,9 +42,21 @@ echo [INFO] Debug mode: %HTFA_DEBUG_MODE%
 echo [INFO] Checking Ts main before launch; offline mode uses the local version.
 echo.
 "runtime\python.exe" -B scripts\htfa.py start --server.port=8501 %*
-if errorlevel 1 (
+set "HTFA_START_CODE=%ERRORLEVEL%"
+
+echo.
+echo Cleaning any remaining HTFA backend process tree...
+"runtime\python.exe" -B scripts\htfa.py stop --port=8501 --wait-seconds=5
+set "HTFA_STOP_CODE=%ERRORLEVEL%"
+
+if not "%HTFA_START_CODE%"=="0" (
     echo.
     echo [ERROR] HTFA exited with an error.
+    goto :failed
+)
+if not "%HTFA_STOP_CODE%"=="0" (
+    echo.
+    echo [ERROR] HTFA backend cleanup failed.
     goto :failed
 )
 

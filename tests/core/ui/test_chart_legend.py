@@ -35,6 +35,21 @@ def test_matplotlib_axis_legend_is_moved_to_figure_bottom() -> None:
     assert figure.legends[0].get_bbox_to_anchor()._bbox.y0 < 0.2
 
 
+def test_matplotlib_secondary_axis_without_local_legend_is_collected() -> None:
+    """右侧纵轴曲线也应出现在底部图例中。"""
+    figure = Figure()
+    axis = figure.add_subplot(111)
+    axis.plot([1, 2], [2, 3], label="主变量")
+    axis.legend(loc="upper right")
+    right_axis = axis.twinx()
+    right_axis.plot([1, 2], [20, 30], label="第二变量")
+
+    place_chart_legend_at_bottom(figure)
+
+    labels = [text.get_text() for text in figure.legends[0].get_texts()]
+    assert labels == ["主变量", "第二变量"]
+
+
 def test_plotly_chart_without_legend_keeps_its_existing_margin() -> None:
     figure = go.Figure()
     figure.add_bar(x=[1, 2], y=[2, 3], showlegend=False)

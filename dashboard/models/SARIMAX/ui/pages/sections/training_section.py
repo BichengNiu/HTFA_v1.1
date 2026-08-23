@@ -51,7 +51,7 @@ def render_training_section(st_obj) -> None:
     st_obj.markdown("#### ② 模型训练")
     dataset = state.get("dataset")
     if dataset is None:
-        st_obj.info("完成「① 数据概览」（在上方上传数据）后可配置并拟合模型。")
+        st_obj.info("完成「① 数据预览」（在上方上传数据）后可配置并拟合模型。")
         return
 
     variables = numeric_variable_names(dataset.frame)

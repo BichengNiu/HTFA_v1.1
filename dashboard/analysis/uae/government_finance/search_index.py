@@ -41,7 +41,7 @@ SEARCH_SERIES = (
 )
 
 START_YEAR = 2023
-SOURCE_TEXT = "Google 趋势"
+SOURCE_TEXT = "谷歌趋势"
 
 
 def load_search_index_data(

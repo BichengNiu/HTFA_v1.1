@@ -10,6 +10,7 @@ import streamlit as st
 from dashboard.analysis.uae.downloads import render_chart_download
 from dashboard.analysis.uae.real_estate.charts import (
     AMOUNT_LABEL,
+    AMOUNT_UNIT_FACTOR,
     COUNT_LABEL,
     DEFAULT_TITLES,
     build_sales_figure,
@@ -24,6 +25,14 @@ from dashboard.analysis.uae.real_estate.data import (
     anchor_last_month,
     load_real_estate_data,
 )
+from dashboard.analysis.uae.metrics import (
+    _source_note_from_metadata,
+    format_count_value,
+    format_currency_value,
+    latest_month_value,
+    month_and_year_delta_text,
+    render_metric_cards,
+)
 from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
 
 REAL_ESTATE_EXPLANATION = """
@@ -33,7 +42,7 @@ REAL_ESTATE_EXPLANATION = """
   由工作簿百万 AED 口径折算，÷100）。
 - **窗口**：最新**已结束**月份（若工作簿最新月恰为当前自然月、尚未过完，则回退
   一个月）往前 36 个月，不含当月滚动统计。
-- **数据来源**：Dubai Land Department（迪拜土地局），月度_DLD sheet。
+- **数据来源**：迪拜土地局，月度_DLD sheet。
 - 图中红色虚线为 2026 年 3 月美伊战争起始基准线。
 """.strip()
 
@@ -52,6 +61,51 @@ def _market_columns(market: str) -> tuple[str, str]:
     if market == "现房":
         return READY_COUNT, READY_AMOUNT
     raise ValueError(f"未知房地产市场：{market}")
+
+
+def _format_real_estate_value(
+    value: float | None,
+    *,
+    unit: str,
+    scale: float = 1.0,
+) -> str | None:
+    if scale != 1:
+        return format_currency_value(
+            value,
+            "迪拉姆",
+            input_scale=1_000_000,
+        )
+    return format_count_value(value, unit)
+
+
+def _render_real_estate_metrics(
+    st_obj: Any,
+    data: RealEstateData,
+    last_month: pd.Period,
+) -> None:
+    """渲染房地产板块四个最新完整月指标卡。"""
+
+    values = data.values.loc[
+        pd.PeriodIndex(data.values.index, freq="M") <= last_month
+    ]
+    cards = []
+    for label, column, unit, scale in (
+        ("现房销售笔数", READY_COUNT, "笔", 1.0),
+        ("现房销售金额", READY_AMOUNT, "亿迪拉姆", AMOUNT_UNIT_FACTOR),
+        ("期房销售笔数", OFFPLAN_COUNT, "笔", 1.0),
+        ("期房销售金额", OFFPLAN_AMOUNT, "亿迪拉姆", AMOUNT_UNIT_FACTOR),
+    ):
+        series = values[column]
+        value, as_of = latest_month_value(series)
+        cards.append(
+            (
+                label,
+                _format_real_estate_value(value, unit=unit, scale=scale),
+                month_and_year_delta_text(series),
+                _source_note_from_metadata(data.metadata, column, as_of),
+            )
+        )
+    render_metric_cards(st_obj, cards, n=4)
 
 
 def _render_sales_chart(
@@ -107,6 +161,10 @@ def render_real_estate_section(
         with st_obj.spinner("正在读取 DLD 月度房地产销售数据..."):
             data = _load_real_estate_cached(content, file_name)
         last_month = anchor_last_month(data.values)
+        try:
+            _render_real_estate_metrics(st_obj, data, last_month)
+        except (KeyError, TypeError, ValueError) as exc:
+            st_obj.warning(f"房地产指标卡未加载：{exc}")
         left, right = st_obj.columns(2, gap="small")
         try:
             _render_sales_chart(left, data, last_month, market="现房")

@@ -22,6 +22,10 @@ from dashboard.analysis.uae.oil.revenue import (
     PRICE_COLUMN,
     REVENUE_COLUMN,
 )
+from dashboard.analysis.uae.oil.war_pressure import (
+    PRESSURE_LABEL,
+    RAW_LABELS,
+)
 from dashboard.analysis.uae.plot_helpers import (
     WAR_START_DATE,
     annotate_war,
@@ -29,13 +33,73 @@ from dashboard.analysis.uae.plot_helpers import (
     normalize_ts_axis,
     source_note,
 )
-from Ts.TsPlots.style import GRAY
+from Ts.TsPlots.style import DARK_BLUE, DARK_RED, GRAY
 
 
 MARKET_PRODUCTION_LABEL = "阿联酋原油产量"
 MARKET_RIG_COUNT_LABEL = "阿联酋石油活跃钻机数"
 REVENUE_LABEL = "石油收入"
 REVENUE_PRICE_LABEL = "布伦特原油现货价"
+
+
+def build_war_pressure_raw_figure(
+    values: pd.DataFrame,
+    source_text: str,
+) -> Figure:
+    """构建三类武器原始月度数量图。"""
+
+    frame = values.loc[:, list(RAW_LABELS)].dropna(how="all").sort_index()
+    figure, returned_axis = plot_series(
+        frame,
+        facet=False,
+        colors=[DARK_BLUE, GRAY, DARK_RED],
+        axis_groups={label: "raw" for label in RAW_LABELS},
+        title="袭击手段",
+        xtitle="",
+        ytitle="数量（枚/架）",
+        ytitle_position="side",
+        year_ruler=True,
+        grid=True,
+        vlines=WAR_START_DATE,
+        show_legend=True,
+        legend_cols=3,
+        note=source_note(source_text),
+        note_loc="left",
+        figsize=(9.4, 6.2),
+        bar_series=list(RAW_LABELS),
+    )
+    axis = normalize_ts_axis(returned_axis)
+    apply_htfa_fonts(figure)
+    return figure
+
+
+def build_war_pressure_index_figure(
+    values: pd.DataFrame,
+    source_text: str,
+) -> Figure:
+    """构建三类武器强权重 ``log1p`` 日度和的月度战争压力指数图。"""
+
+    frame = values.loc[:, [PRESSURE_LABEL]].dropna(how="all").sort_index()
+    figure, returned_axis = plot_series(
+        frame,
+        facet=False,
+        colors=[DARK_RED],
+        title="战争压力指数",
+        xtitle="",
+        ytitle="指数",
+        ytitle_position="side",
+        year_ruler=True,
+        grid=True,
+        vlines=WAR_START_DATE,
+        show_legend=True,
+        note=source_note(source_text),
+        note_loc="left",
+        figsize=(9.4, 6.2),
+        units={PRESSURE_LABEL: "指数"},
+    )
+    axis = normalize_ts_axis(returned_axis)
+    apply_htfa_fonts(figure)
+    return figure
 
 
 def build_oil_market_figure(
@@ -146,6 +210,8 @@ def build_oil_revenue_figure(
 
 
 __all__ = [
+    "build_war_pressure_index_figure",
+    "build_war_pressure_raw_figure",
     "build_oil_market_figure",
     "build_oil_revenue_figure",
 ]
