@@ -2,19 +2,18 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 import numpy as np
 import pandas as pd
 from Ts.TsModels import (
     ARDL,
+    SARIMAX,
     AutoARDL,
     AutoARDLResult,
     AutoModelResult,
     AutoSARIMAX,
     RationalLagSpec,
-    SARIMAX,
     SARIMAXResult,
 )
 
@@ -26,8 +25,6 @@ from dashboard.models.SARIMAX.core.model_config import (
     RDLConfig,
     SARIMAXConfig,
 )
-
-logger = logging.getLogger(__name__)
 
 MIN_OBSERVATIONS = 10
 
@@ -193,21 +190,24 @@ def fit_auto_sarimax(
         criterion=config.criterion,
         exog=exog,
         log=config.log,
+        enforce_stationarity=config.enforce_stationarity,
+        enforce_invertibility=config.enforce_invertibility,
     )
     return model.fit()
 
 
 def _rdl_specs(config: RDLConfig | AutoRDLConfig) -> dict[str, RationalLagSpec]:
     """将 UI 层传递函数配置转换为 Ts 的不可变规格。"""
-    return {
-        item.name: RationalLagSpec(
-            numerator=item.specification()[0],
-            denominator=item.specification()[1],
-            delay=item.specification()[2],
-            initialization=item.specification()[3],
+    specs = {}
+    for item in config.inputs:
+        numerator, denominator, delay, initialization = item.specification()
+        specs[item.name] = RationalLagSpec(
+            numerator=numerator,
+            denominator=denominator,
+            delay=delay,
+            initialization=initialization,
         )
-        for item in config.inputs
-    }
+    return specs
 
 
 def fit_rdl(
@@ -256,6 +256,8 @@ def fit_auto_rdl(
         criterion=error.criterion,
         exog=exog,
         log=error.log,
+        enforce_stationarity=error.enforce_stationarity,
+        enforce_invertibility=error.enforce_invertibility,
         distributed_lags=_rdl_specs(config),
         enforce_distributed_lag_stability=config.enforce_distributed_lag_stability,
     )
@@ -376,6 +378,8 @@ def produce_forecast(
     future_exog: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
     """对拟合结果做样本外预测，返回均值/区间/日期结构。"""
+    if isinstance(steps, bool) or not isinstance(steps, (int, np.integer)):
+        raise TypeError("预测期数必须是正整数")
     steps = int(steps)
     if steps <= 0:
         raise ValueError("预测期数必须为正整数")
@@ -426,8 +430,8 @@ def build_prediction_table(forecast: dict[str, Any]) -> pd.DataFrame:
 
 
 __all__ = [
-    "DynamicConfig",
     "MIN_OBSERVATIONS",
+    "DynamicConfig",
     "build_prediction_table",
     "fit_ardl",
     "fit_auto_ardl",

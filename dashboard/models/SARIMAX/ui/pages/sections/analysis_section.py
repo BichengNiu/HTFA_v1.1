@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 
 import pandas as pd
-import streamlit as st
 from Ts.TsModels import AutoARDLResult, AutoModelResult
 
 from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
@@ -40,7 +39,7 @@ def render_analysis_section(st_obj) -> None:
             with matplotlib_date_compatibility():
                 figure, _ = best.plot_fit()
                 render_pyplot_figure(st_obj, figure)
-        except Exception as exc:  # noqa: BLE001 - 可选图表边界
+        except Exception as exc:
             st_obj.warning(f"拟合效果图无法绘制：{exc}")
             logger.warning("动态回归拟合图绘制失败", exc_info=True)
     with structure_tab:
@@ -51,7 +50,7 @@ def render_analysis_section(st_obj) -> None:
             with matplotlib_date_compatibility():
                 figure, _ = best.plot_diagnostics()
                 render_pyplot_figure(st_obj, figure)
-        except Exception as exc:  # noqa: BLE001 - 可选图表边界
+        except Exception as exc:
             st_obj.warning(f"残差诊断图无法绘制：{exc}")
             logger.warning("动态回归诊断图绘制失败", exc_info=True)
         _render_residual_tests(st_obj, best)
@@ -98,7 +97,7 @@ def _render_residual_tests(st_obj, best) -> None:
         try:
             with st_obj.spinner("正在调用 Ts 包执行残差检验..."):
                 table = run_residual_diagnostics(best, lags=int(lags))
-        except Exception as exc:  # noqa: BLE001 - 统计检验失败边界
+        except Exception as exc:
             st_obj.error(f"残差检验无法执行：{exc}")
             logger.exception("SARIMAX 残差检验失败")
             state.set("diagnostics_table", None)

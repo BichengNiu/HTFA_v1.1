@@ -11,8 +11,6 @@ import pandas as pd
 
 from dashboard.core.ui.utils import shared_dataset
 
-from data_overview import DataSource
-
 
 class SharedDatasetSource:
     """把 HTFA 全局共享数据集适配为 data_overview 数据源。"""

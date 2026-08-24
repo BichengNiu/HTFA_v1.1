@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from dashboard.core.ui.utils.state_helpers import NamespacedStateManager
 from data_overview.ui.widget_keys import (
     CHART_WIDGET_KEYS,
     READ_WIDGET_KEYS,
     SELECTOR_WIDGET_KEYS,
     TABLE_WIDGET_KEYS,
 )
+
+from dashboard.core.ui.utils.state_helpers import NamespacedStateManager
 
 # 所有 SARIMAX 页面共用的会话状态命名空间。
 state = NamespacedStateManager("model_analysis.sarimax")
@@ -19,7 +20,6 @@ state = NamespacedStateManager("model_analysis.sarimax")
 MODEL_WIDGET_KEYS = (
     "sarimax_target_select",
     "sarimax_exog_select",
-    "sarimax_mode_radio",
     "sarimax_model_family",
     "sarimax_config_mode",
     "sarimax_p",
@@ -52,6 +52,8 @@ MODEL_WIDGET_KEYS = (
     "sarimax_auto_trend",
     "sarimax_auto_criterion",
     "sarimax_auto_log",
+    "sarimax_auto_enforce_stationarity",
+    "sarimax_auto_enforce_invertibility",
     "sarimax_rdl_error_p",
     "sarimax_rdl_error_d",
     "sarimax_rdl_error_q",
@@ -82,6 +84,8 @@ MODEL_WIDGET_KEYS = (
     "sarimax_rdl_auto_error_trend",
     "sarimax_rdl_auto_error_criterion",
     "sarimax_rdl_auto_error_log",
+    "sarimax_rdl_auto_error_enforce_stationarity",
+    "sarimax_rdl_auto_error_enforce_invertibility",
     "sarimax_rdl_input_table",
     "sarimax_rdl_advanced_table",
     "sarimax_rdl_enforce_stability",

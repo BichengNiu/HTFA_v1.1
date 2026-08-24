@@ -32,6 +32,7 @@ _ORDER_LIMITS = {"p": (0, 6), "q": (0, 6), "d": (0, 2)}
 _SEASONAL_LIMITS = {"P": (0, 3), "Q": (0, 3), "D": (0, 2), "s": (0, 12)}
 _RANGE_LIMITS = {"p": (0, 6), "q": (0, 6), "d": (0, 2),
                  "P": (0, 3), "Q": (0, 3), "D": (0, 2)}
+SARIMAX_RANGE_LIMITS = _RANGE_LIMITS.copy()
 
 
 def _validate_trend(trend: str) -> str:
@@ -115,6 +116,8 @@ class SARIMAXConfig:
                 f"fit_method 必须是 {SARIMAX_OPTIMIZERS} 之一，"
                 f"got {self.fit_method!r}"
             )
+        if isinstance(self.maxiter, bool) or not isinstance(self.maxiter, int):
+            raise TypeError("maxiter 必须是正整数")
         if self.maxiter < 1:
             raise ValueError("maxiter 必须为正整数")
         if self.cov_type not in SARIMAX_COV_TYPES:
@@ -153,6 +156,8 @@ class AutoSARIMAXConfig:
     trend: str = "c"
     criterion: str = "aic"
     log: bool = False
+    enforce_stationarity: bool = True
+    enforce_invertibility: bool = True
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "p", _validate_range("p", self.p))
@@ -173,6 +178,9 @@ class AutoSARIMAXConfig:
             )
         if not isinstance(self.log, bool):
             raise TypeError("log 必须是布尔值")
+        for name in ("enforce_stationarity", "enforce_invertibility"):
+            if not isinstance(getattr(self, name), bool):
+                raise TypeError(f"{name} 必须是布尔值")
 
     def candidate_count(self) -> int:
         """返回网格搜索将尝试的模型组合数。"""
@@ -201,6 +209,8 @@ class AutoSARIMAXConfig:
             self.trend,
             self.criterion,
             self.log,
+            self.enforce_stationarity,
+            self.enforce_invertibility,
         )
 
 
@@ -368,8 +378,10 @@ class AutoRDLConfig:
 
 
 def _validate_ardl_lags(name: str, value: object, *, allow_none: bool) -> int | tuple[int, ...] | None:
-    if value is None and allow_none:
-        return None
+    if value is None:
+        if allow_none:
+            return None
+        raise TypeError(f"{name} 不能为 None")
     if isinstance(value, bool):
         raise TypeError(f"{name} 必须是非负整数或滞后列表")
     if isinstance(value, int):
@@ -382,8 +394,6 @@ def _validate_ardl_lags(name: str, value: object, *, allow_none: bool) -> int | 
 
 def _validate_ardl_orders(
     orders: tuple[tuple[str, object], ...],
-    *,
-    maximum: bool,
 ) -> tuple[tuple[str, int | tuple[int, ...] | None], ...]:
     if not isinstance(orders, (tuple, list)) or not orders:
         raise ValueError("ARDL 至少需要选择一个解释变量")
@@ -417,7 +427,7 @@ class ARDLConfig:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "lags", _validate_ardl_lags("目标滞后", self.lags, allow_none=True))
-        object.__setattr__(self, "input_orders", _validate_ardl_orders(self.input_orders, maximum=False))
+        object.__setattr__(self, "input_orders", _validate_ardl_orders(self.input_orders))
         object.__setattr__(self, "trend", _validate_trend(self.trend))
         for name in ("causal", "seasonal", "log"):
             if not isinstance(getattr(self, name), bool):
@@ -456,7 +466,9 @@ class AutoARDLConfig:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "maxlag", _validate_int_in_range("最大目标滞后", self.maxlag, (0, 12)))
-        pairs = _validate_ardl_orders(self.max_input_orders, maximum=True)
+        pairs = _validate_ardl_orders(self.max_input_orders)
+        if any(not isinstance(order, int) for _, order in pairs):
+            raise TypeError("自动 ARDL 的最大输入滞后必须是整数")
         object.__setattr__(self, "max_input_orders", tuple((name, int(order)) for name, order in pairs))
         object.__setattr__(self, "trend", _validate_trend(self.trend))
         if self.criterion not in ARDL_CRITERIA:
@@ -486,16 +498,17 @@ __all__ = [
     "ARDL_CRITERIA",
     "ARDL_SEARCH_METHODS",
     "AUTO_CRITERIA",
+    "RDL_INITIALIZATIONS",
+    "SARIMAX_COV_TYPES",
+    "SARIMAX_OPTIMIZERS",
+    "SARIMAX_RANGE_LIMITS",
+    "TREND_LABELS",
+    "TREND_OPTIONS",
     "ARDLConfig",
     "AutoARDLConfig",
     "AutoRDLConfig",
     "AutoSARIMAXConfig",
     "RDLConfig",
     "RDLInputConfig",
-    "RDL_INITIALIZATIONS",
     "SARIMAXConfig",
-    "SARIMAX_COV_TYPES",
-    "SARIMAX_OPTIMIZERS",
-    "TREND_LABELS",
-    "TREND_OPTIONS",
 ]

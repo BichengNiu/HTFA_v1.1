@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import io
-
 import numpy as np
 import pandas as pd
 import pytest
@@ -26,10 +24,10 @@ from dashboard.models.SARIMAX.core.model_config import (
 )
 from dashboard.models.SARIMAX.core.modeling import (
     build_prediction_table,
+    fit_ardl,
     fit_auto_ardl,
     fit_auto_rdl,
     fit_auto_sarimax,
-    fit_ardl,
     fit_dynamic_model,
     fit_rdl,
     fit_sarimax,
@@ -100,7 +98,7 @@ def test_load_modeling_dataset_rejects_empty_or_non_numeric_files():
     with pytest.raises(ValueError, match="没有可分析的列"):
         load_modeling_dataset(FakeUploader(b"a,b\n,\n,\n", "x.csv"))
     with pytest.raises(ValueError, match="没有数值型变量"):
-        content = "name,label\nx,甲\ny,乙\n".encode("utf-8")
+        content = "name,label\nx,甲\ny,乙\n".encode()
         load_modeling_dataset(FakeUploader(content, "x.csv"))
 
 
@@ -118,7 +116,7 @@ def test_prepare_modeling_inputs_uses_datetime_index():
 def test_prepare_modeling_inputs_falls_back_to_range_index():
     content = b"value,x\n1.0,10\n2.0,20\n"
     dataset = load_modeling_dataset(FakeUploader(content))
-    series, exog, index = prepare_modeling_inputs(dataset, "value", ("x",))
+    series, _exog, index = prepare_modeling_inputs(dataset, "value", ("x",))
 
     assert isinstance(index, pd.RangeIndex)
     assert series.tolist() == [1.0, 2.0]
@@ -173,6 +171,15 @@ def test_auto_sarimax_config_candidate_count_and_validation():
         AutoSARIMAXConfig(criterion="mdl")
     with pytest.raises(ValueError, match="下限不能大于上限"):
         AutoSARIMAXConfig(p=(3, 1))
+    with pytest.raises(TypeError, match="enforce_stationarity"):
+        AutoSARIMAXConfig(enforce_stationarity=1)
+
+    unconstrained = AutoSARIMAXConfig(
+        p=(0, 0), d=(0, 0), q=(0, 0),
+        enforce_stationarity=False,
+        enforce_invertibility=False,
+    )
+    assert unconstrained.signature()[-2:] == (False, False)
 
 
 def test_dynamic_regression_configs_capture_all_lag_structure():
@@ -192,6 +199,10 @@ def test_dynamic_regression_configs_capture_all_lag_structure():
         RDLConfig(inputs=())
     with pytest.raises(ValueError, match="至少需要"):
         ARDLConfig(input_orders=())
+    with pytest.raises(TypeError, match="不能为 None"):
+        ARDLConfig(input_orders=(("price", None),))
+    with pytest.raises(TypeError, match="正整数"):
+        SARIMAXConfig(maxiter=1.5)
 
 
 # ---------- modeling ----------
@@ -296,6 +307,19 @@ def test_fit_auto_sarimax_small_grid():
     assert len(result.criterion_values) == 4
 
 
+def test_fit_auto_sarimax_passes_stationarity_constraints():
+    config = AutoSARIMAXConfig(
+        p=(0, 0), d=(0, 0), q=(0, 0),
+        enforce_stationarity=False,
+        enforce_invertibility=False,
+        trend="n",
+    )
+    result = fit_auto_sarimax(make_series(), None, config)
+    fitted_model = result.best_result._statsmodels_result.model
+    assert fitted_model.enforce_stationarity is False
+    assert fitted_model.enforce_invertibility is False
+
+
 def test_fit_rdl_and_auto_rdl_keep_transfer_function_fixed():
     series = make_series()
     exog = pd.DataFrame({"policy": np.linspace(1.0, 3.0, len(series))})
@@ -388,6 +412,8 @@ def test_produce_forecast_requires_positive_steps():
     result = fit_sarimax(make_series(), None, SARIMAXConfig(order=(1, 0, 0)))
     with pytest.raises(ValueError, match="预测期数"):
         produce_forecast(result, steps=0)
+    with pytest.raises(TypeError, match="正整数"):
+        produce_forecast(result, steps=1.5)
 
 
 def test_produce_forecast_rejects_wrong_future_exog_columns():

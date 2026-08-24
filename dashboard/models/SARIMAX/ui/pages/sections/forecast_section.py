@@ -6,7 +6,6 @@ import logging
 
 import numpy as np
 import pandas as pd
-import streamlit as st
 from Ts.TsModels import AutoARDLResult, AutoModelResult
 
 from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
@@ -86,7 +85,7 @@ def render_forecast_section(st_obj) -> None:
                     dynamic=bool(dynamic),
                     future_exog=future_exog,
                 )
-        except Exception as exc:  # noqa: BLE001 - 统计预测失败边界
+        except Exception as exc:
             st_obj.error(translate_ts_error(exc))
             logger.exception("SARIMAX 预测失败")
             return
@@ -189,7 +188,7 @@ def _render_forecast_chart(st_obj, best, forecast, *, family: str) -> None:
             axis.set_title(f"{family} 样本外预测")
             figure.tight_layout()
             render_pyplot_figure(st_obj, figure)
-    except Exception as exc:  # noqa: BLE001 - 可选图表边界
+    except Exception as exc:
         st_obj.warning(f"预测图无法绘制：{exc}")
         logger.warning("SARIMAX 预测图绘制失败", exc_info=True)
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 
 import pandas as pd
-import streamlit as st
 from Ts.TsModels import AutoARDLResult, AutoModelResult
 
 from dashboard.models.SARIMAX.core.data_loader import (
@@ -16,6 +15,11 @@ from dashboard.models.SARIMAX.core.model_config import (
     ARDL_CRITERIA,
     ARDL_SEARCH_METHODS,
     AUTO_CRITERIA,
+    SARIMAX_COV_TYPES,
+    SARIMAX_OPTIMIZERS,
+    SARIMAX_RANGE_LIMITS,
+    TREND_LABELS,
+    TREND_OPTIONS,
     ARDLConfig,
     AutoARDLConfig,
     AutoRDLConfig,
@@ -23,10 +27,6 @@ from dashboard.models.SARIMAX.core.model_config import (
     RDLConfig,
     RDLInputConfig,
     SARIMAXConfig,
-    SARIMAX_COV_TYPES,
-    SARIMAX_OPTIMIZERS,
-    TREND_LABELS,
-    TREND_OPTIONS,
 )
 from dashboard.models.SARIMAX.core.modeling import (
     fit_dynamic_model,
@@ -164,7 +164,7 @@ def render_training_section(st_obj) -> None:
         with st_obj.spinner("正在调用 Ts 包拟合模型..."):
             try:
                 result = fit_dynamic_model(series, exog, config)
-            except Exception as exc:  # noqa: BLE001 - 统计拟合失败边界
+            except Exception as exc:
                 st_obj.error(translate_ts_error(exc))
                 logger.exception("SARIMAX 模型拟合失败")
                 clear_fit_results()
@@ -274,14 +274,18 @@ def _render_auto_config(st_obj, prefix: str = "sarimax_auto") -> AutoSARIMAXConf
         ranges[name] = _render_range_inputs(
             column,
             name,
-            _AUTO_RANGE_DEFAULTS[name], prefix,
+            _AUTO_RANGE_DEFAULTS[name],
+            prefix,
+            SARIMAX_RANGE_LIMITS[name],
         )
     seasonal_columns = st_obj.columns(3)
     for column, name in zip(seasonal_columns, ("P", "D", "Q")):
         ranges[name] = _render_range_inputs(
             column,
             name,
-            _AUTO_RANGE_DEFAULTS[name], prefix,
+            _AUTO_RANGE_DEFAULTS[name],
+            prefix,
+            SARIMAX_RANGE_LIMITS[name],
         )
 
     options_columns = st_obj.columns(3)
@@ -311,6 +315,17 @@ def _render_auto_config(st_obj, prefix: str = "sarimax_auto") -> AutoSARIMAXConf
         key=f"{prefix}_log",
         help="要求数据严格为正。",
     )
+    enforce_columns = st_obj.columns(2)
+    enforce_stationarity = enforce_columns[0].checkbox(
+        "强制 AR 多项式平稳",
+        value=True,
+        key=f"{prefix}_enforce_stationarity",
+    )
+    enforce_invertibility = enforce_columns[1].checkbox(
+        "强制 MA 多项式可逆",
+        value=True,
+        key=f"{prefix}_enforce_invertibility",
+    )
 
     try:
         config = AutoSARIMAXConfig(
@@ -324,6 +339,8 @@ def _render_auto_config(st_obj, prefix: str = "sarimax_auto") -> AutoSARIMAXConf
             trend=trend,
             criterion=criterion,
             log=log,
+            enforce_stationarity=enforce_stationarity,
+            enforce_invertibility=enforce_invertibility,
         )
     except ValueError as exc:
         st_obj.error(f"搜索范围设置有误：{exc}")
@@ -342,20 +359,22 @@ def _render_range_inputs(
     name: str,
     default: tuple[int, int],
     prefix: str,
+    limits: tuple[int, int],
 ) -> tuple[int, int]:
     """渲染单个阶数的 (最小值, 最大值) 两个输入框。"""
     container.markdown(f"**{name}**")
+    minimum, maximum = limits
     low = container.number_input(
         "最小值",
-        0,
-        6,
+        minimum,
+        maximum,
         int(default[0]),
         key=f"{prefix}_{name}_min",
     )
     high = container.number_input(
         "最大值",
-        0,
-        6,
+        minimum,
+        maximum,
         int(default[1]),
         key=f"{prefix}_{name}_max",
     )

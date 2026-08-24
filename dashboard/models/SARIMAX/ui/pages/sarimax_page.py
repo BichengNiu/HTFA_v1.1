@@ -7,8 +7,6 @@
 
 from __future__ import annotations
 
-import streamlit as st
-
 from dashboard.models.SARIMAX.ui.pages.sections import (
     render_analysis_section,
     render_data_overview_section,

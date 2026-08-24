@@ -11,12 +11,6 @@ from data_overview import create_data_overview
 
 from dashboard.models.SARIMAX.core.data_loader import build_modeling_dataset
 from dashboard.models.SARIMAX.ui.overview_bridge import SharedDatasetSource
-from dashboard.models.SARIMAX.ui.state import (
-    DATASET_REPLACED_WIDGET_KEYS,
-    clear_fit_results,
-    clear_widget_state,
-    state,
-)
 from dashboard.models.SARIMAX.ui.pages.sections.analysis_section import (
     render_analysis_section,
 )
@@ -25,6 +19,12 @@ from dashboard.models.SARIMAX.ui.pages.sections.forecast_section import (
 )
 from dashboard.models.SARIMAX.ui.pages.sections.training_section import (
     render_training_section,
+)
+from dashboard.models.SARIMAX.ui.state import (
+    DATASET_REPLACED_WIDGET_KEYS,
+    clear_fit_results,
+    clear_widget_state,
+    state,
 )
 
 
