@@ -149,6 +149,34 @@ def test_war_pressure_index_chart_is_a_single_index_series() -> None:
     ] == [PRESSURE_LABEL]
 
 
+def test_war_pressure_section_renders_algorithm_and_interpretation(monkeypatch) -> None:
+    from dashboard.analysis.uae.oil import renderer
+
+    st_obj = MagicMock()
+    st_obj.columns.return_value = (MagicMock(), MagicMock())
+    st_obj.expander.return_value = _NullContext()
+    st_obj.divider.return_value = None
+    monkeypatch.setattr(renderer, "build_war_pressure_raw_figure", lambda *args: None)
+    monkeypatch.setattr(renderer, "build_war_pressure_index_figure", lambda *args: None)
+    monkeypatch.setattr(renderer, "render_pyplot_figure", lambda *args, **kwargs: None)
+    monkeypatch.setattr(renderer, "render_chart_download", lambda *args, **kwargs: None)
+
+    renderer._render_war_pressure_section(
+        st_obj,
+        WarPressureData(
+            values=_sample_values(),
+            metadata={},
+            source_name="test.xlsx",
+        ),
+    )
+
+    st_obj.expander.assert_called_once_with("指标算法与解读", expanded=False)
+    explanation = st_obj.markdown.call_args.args[0]
+    assert "9×log1p(弹道导弹数量)" in explanation
+    assert "min-max 归一化" in explanation
+    assert "不等同于实际经济损失" in explanation
+
+
 def test_oil_panel_places_war_pressure_before_revenue(monkeypatch) -> None:
     from dashboard.analysis.uae.oil import renderer
 

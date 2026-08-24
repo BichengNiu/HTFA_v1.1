@@ -66,6 +66,17 @@ OIL_FISCAL_EXPLANATION = """
 - 图中红色虚线为 2026 年 3 月美伊战争起始基准线。
 """.strip()
 
+WAR_PRESSURE_EXPLANATION = """
+- **日度原始压力**：`9×log1p(弹道导弹数量) + 3×log1p(巡航导弹数量) + 1×log1p(无人机数量)`；
+  `log1p(x)=ln(1+x)` 用于压缩极端数量，权重体现不同袭击手段的相对压力设定。
+- **月度指标**：将日度原始压力按月求和，保留月内累计袭击强度；未分类导弹不进入该指标。
+- **0–100 指数**：在战争观测窗口内做 min-max 归一化：
+  `100×(当月原始压力－窗口最小值)÷(窗口最大值－窗口最小值)`；因此最高月为100、最低月为0，
+  它是非累计的相对指数，不是百分比概率。
+- **如何解读**：指数越高，表示当月登记的三类袭击手段及其加权数量相对更集中；应结合弹道导弹、巡航导弹和无人机三条原始序列判断压力来自哪类手段。
+- **边界**：这是基于公开登记数量的袭击强度代理指标，不等同于实际经济损失、人员伤亡或综合安全风险；来源覆盖、漏报和窗口变化都会影响比较结果。
+""".strip()
+
 
 def _source_payload() -> tuple[bytes, str] | None:
     """返回当前会话上传的共享工作簿。"""
@@ -279,6 +290,8 @@ def _render_war_pressure_section(
         title="战争压力（月度_WAM）",
         key="analysis.uae.oil.war_pressure.download",
     )
+    with st_obj.expander("指标算法与解读", expanded=False):
+        st_obj.markdown(WAR_PRESSURE_EXPLANATION)
     st_obj.divider()
 
 
