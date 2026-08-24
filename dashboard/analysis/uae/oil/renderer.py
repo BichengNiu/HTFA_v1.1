@@ -219,7 +219,6 @@ def _render_war_pressure_metrics(
 
     latest = latest_values.iloc[-1]
     latest_date = pd.Timestamp(latest_values.index[-1])
-    cumulative = data.values.loc[:, list(RAW_LABELS)].sum(min_count=1)
     source_text = "、".join(
         dict.fromkeys(
             metadata.source for metadata in data.metadata.values() if metadata.source
@@ -231,20 +230,16 @@ def _render_war_pressure_metrics(
     )
     columns = st_obj.columns(4)
     metric_specs = (
-        ("最新月弹道导弹", BALLISTIC_LABEL, latest[BALLISTIC_LABEL], "枚"),
-        ("最新月巡航导弹", CRUISE_LABEL, latest[CRUISE_LABEL], "枚"),
-        ("最新月无人机", UAV_LABEL, latest[UAV_LABEL], "架"),
+        ("最新月弹道导弹", latest[BALLISTIC_LABEL], "枚"),
+        ("最新月巡航导弹", latest[CRUISE_LABEL], "枚"),
+        ("最新月无人机", latest[UAV_LABEL], "架"),
     )
-    for column, (label, data_label, value, unit) in zip(columns[:3], metric_specs):
+    for column, (label, value, unit) in zip(columns[:3], metric_specs):
         with column:
             st_obj.metric(
                 label,
                 format_count_value(float(value), unit),
                 help=help_text,
-            )
-            st_obj.caption(
-                "战争以来累计："
-                f"{format_count_value(float(cumulative[data_label]), unit)}"
             )
     with columns[3]:
         st_obj.metric(
@@ -290,7 +285,7 @@ def _render_war_pressure_section(
         title="战争压力（月度_WAM）",
         key="analysis.uae.oil.war_pressure.download",
     )
-    with st_obj.expander("指标算法与解读", expanded=False):
+    with st_obj.expander("指标算法与解读", expanded=True):
         st_obj.markdown(WAR_PRESSURE_EXPLANATION)
     st_obj.divider()
 
@@ -438,7 +433,7 @@ def render_oil_fiscal_panel(st_obj: Any = st) -> dict[str, Any]:
         revenue = estimate_monthly_oil_revenue(data.prices, data.production)
         _render_revenue_metrics(st_obj, revenue)
         _render_charts(st_obj, data, revenue)
-        with st_obj.expander("指标算法与解读", expanded=False):
+        with st_obj.expander("指标算法与解读", expanded=True):
             st_obj.markdown(OIL_FISCAL_EXPLANATION)
         from dashboard.analysis.uae.government_finance import (
             render_government_finance_section,

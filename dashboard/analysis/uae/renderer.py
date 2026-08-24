@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,23 @@ TAB_CONFIG = (
     ("行业分析", "growth_industry"),
     ("高频数据", "oil_fiscal"),
 )
+
+
+def _render_report_header(st_obj: Any) -> None:
+    """渲染网页标题，并提供仅打印显示的月报标题与报告时间。"""
+
+    st_obj.title("阿联酋经济监测")
+    report_time = datetime.now().strftime("%Y年%m月")
+    st_obj.markdown(
+        "<div class=\"uae-print-report-header\" aria-hidden=\"true\">"
+        "<div class=\"uae-print-report-title\">阿联酋经济高频数据月报</div>"
+        f"<div class=\"uae-print-report-period\">{report_time}</div>"
+        "<div class=\"uae-print-report-organization\">"
+        "国家信息中心经济预测部政策仿真实验室 | 中华人民共和国驻阿联酋大使馆经商处"
+        "</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
 GROWTH_OVERVIEW_GROUPS = (
     "实际GDP增速与GDP平减指数同比",
@@ -121,7 +139,7 @@ def _render_series_group_explanation(st_obj, group_title: str) -> None:
     explanation = SERIES_GROUP_EXPLANATIONS.get(group_title)
     if explanation is None:
         return
-    with st_obj.expander("指标算法与解读", expanded=False):
+    with st_obj.expander("指标算法与解读", expanded=True):
         st_obj.markdown(explanation)
 
 
@@ -258,7 +276,7 @@ def _render_growth_tab(
 def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
     """渲染阿联酋监测；不写入或生成任何工作簿。"""
 
-    st_obj.title("阿联酋经济监测")
+    _render_report_header(st_obj)
     file_input = get_shared_dataset_file()
     if file_input is None:
         message = (

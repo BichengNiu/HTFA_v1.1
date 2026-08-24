@@ -128,9 +128,7 @@ def test_war_pressure_metrics_render_latest_month_four_cards() -> None:
         "最新月无人机",
         "最新月战争压力指数",
     ]
-    captions = [call.args[0] for call in st_obj.caption.call_args_list]
-    assert len(captions) == 3
-    assert all(text.startswith("战争以来累计：") for text in captions)
+    st_obj.caption.assert_not_called()
 
 
 def test_war_pressure_index_chart_is_a_single_index_series() -> None:
@@ -170,7 +168,7 @@ def test_war_pressure_section_renders_algorithm_and_interpretation(monkeypatch) 
         ),
     )
 
-    st_obj.expander.assert_called_once_with("指标算法与解读", expanded=False)
+    st_obj.expander.assert_called_once_with("指标算法与解读", expanded=True)
     explanation = st_obj.markdown.call_args.args[0]
     assert "9×log1p(弹道导弹数量)" in explanation
     assert "min-max 归一化" in explanation

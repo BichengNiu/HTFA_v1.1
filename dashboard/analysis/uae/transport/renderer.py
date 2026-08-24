@@ -172,7 +172,6 @@ def _render_transport_metrics(
             )
         )
 
-    st_obj.caption("海运")
     render_metric_cards(st_obj, maritime_cards, n=4)
 
     air_values = data.monthly_values.loc[
@@ -226,7 +225,6 @@ def _render_transport_metrics(
             source_column=_source_column((US_UAE_AIR_FREIGHT,)),
         ),
     ]
-    st_obj.caption("航空运输")
     render_metric_cards(st_obj, air_cards, n=4)
 
 
@@ -384,7 +382,7 @@ def render_transport_section(
                 )
             except (KeyError, TypeError, ValueError) as exc:
                 cell.warning(f"{title}未加载：{exc}")
-        with st_obj.expander("指标算法与解读", expanded=False):
+        with st_obj.expander("指标算法与解读", expanded=True):
             st_obj.markdown(TRANSPORT_EXPLANATION)
     except (KeyError, TypeError, ValueError, FileNotFoundError) as exc:
         st_obj.error(f"交通物流数据加载失败：{exc}")

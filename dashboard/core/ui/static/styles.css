@@ -569,3 +569,193 @@ div[data-testid="stFullScreenFrame"] div[data-testid="stImageContainer"] img {
 }
 
 /* 主内容区域按钮样式已删除 - 使用Streamlit原生type="primary"参数 */
+
+.uae-print-report-header {
+    display: none;
+}
+
+/* 打印版式：屏幕端使用浅蓝灰背景，打印输出应使用白底并收紧指标卡。 */
+@media print {
+    @page {
+        size: A4 portrait;
+        margin: 10mm;
+    }
+
+    html,
+    body,
+    #root,
+    .stApp,
+    [data-testid="stAppViewContainer"],
+    [data-testid="stAppViewContainer"] > .main,
+    [data-testid="stMain"],
+    [data-testid="stMainBlockContainer"],
+    .main,
+    .main .block-container,
+    .block-container {
+        background: #ffffff !important;
+        background-color: #ffffff !important;
+        background-image: none !important;
+        box-shadow: none !important;
+    }
+
+    [data-testid="stAppViewContainer"] > .main,
+    [data-testid="stMainBlockContainer"],
+    .main .block-container,
+    .block-container {
+        width: auto !important;
+        max-width: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+    }
+
+    [data-testid="stSidebar"],
+    [data-testid="stHeader"],
+    [data-testid="stToolbar"],
+    [data-testid="stDecoration"],
+    [data-testid="stStatusWidget"],
+    [data-testid="stDownloadButton"],
+    .stDownloadButton,
+    [data-testid="stToast"],
+    [data-testid="stToastContainer"] {
+        display: none !important;
+    }
+
+    /* 打印专用月报标题；网页端原有“阿联酋经济监测”标题保持不变。 */
+    [data-testid="stElementContainer"]:has([data-testid="stHeading"] h1) {
+        display: none !important;
+    }
+
+    .uae-print-report-header {
+        display: block !important;
+        width: 100% !important;
+        margin: 0 0 1rem !important;
+        text-align: center !important;
+    }
+
+    .uae-print-report-title {
+        color: #1a202c !important;
+        font-size: 2rem !important;
+        font-weight: 700 !important;
+        line-height: 1.25 !important;
+        margin-bottom: 0.8rem !important;
+    }
+
+    .uae-print-report-period {
+        color: #4a5568 !important;
+        font-size: 0.9rem !important;
+        line-height: 1.4 !important;
+    }
+
+    .uae-print-report-organization {
+        color: #4a5568 !important;
+        font-size: 0.78rem !important;
+        line-height: 1.4 !important;
+        margin-top: 0.75rem !important;
+    }
+
+    /* 隐藏三个 Tab 的文字和按钮，仅保留一条横向分隔线。 */
+    [data-testid="stTabs"] [data-baseweb="tab-list"],
+    [data-testid="stTabs"] [role="tablist"] {
+        height: 1px !important;
+        min-height: 1px !important;
+        margin: 0 0 1rem !important;
+        padding: 0 !important;
+        gap: 0 !important;
+        overflow: hidden !important;
+        border-bottom: 1px solid #cbd5e1 !important;
+    }
+
+    [data-testid="stTabs"] [data-baseweb="tab-list"] [data-baseweb="tab"],
+    [data-testid="stTabs"] [data-baseweb="tab-highlight"],
+    [data-testid="stTabs"] [data-testid="stTab"],
+    [data-testid="stTabs"] [data-testid="stTabsScrollLeft"],
+    [data-testid="stTabs"] [data-testid="stTabsScrollRight"] {
+        display: none !important;
+    }
+
+    /* UAE 各主要 part 之间使用 st.divider() 分隔；分页作用在其元素容器上。 */
+    [data-testid="stElementContainer"]:has(hr) {
+        break-before: page !important;
+        page-break-before: always !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    [data-testid="stElementContainer"]:has(hr) hr {
+        display: none !important;
+    }
+
+    /* A4 下四列会变窄，允许标签、数值和环比文字换行，避免 Streamlit 的省略号截断。 */
+    [data-testid="stMetric"] {
+        min-width: 0 !important;
+    }
+
+    [data-testid="stMetricValue"],
+    [data-testid="stMetricValue"] *,
+    [data-testid="stMetricLabel"],
+    [data-testid="stMetricLabel"] *,
+    [data-testid="stMetricDelta"],
+    [data-testid="stMetricDelta"] * {
+        overflow: visible !important;
+        text-overflow: clip !important;
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
+    }
+
+    [data-testid="stMetricValue"],
+    [data-testid="stMetricValue"] * {
+        font-size: 1.1rem !important;
+        line-height: 1.2 !important;
+    }
+
+    [data-testid="stMetricLabel"],
+    [data-testid="stMetricLabel"] * {
+        font-size: 0.75rem !important;
+        line-height: 1.25 !important;
+    }
+
+    [data-testid="stMetricDelta"],
+    [data-testid="stMetricDelta"] * {
+        font-size: 0.7rem !important;
+        line-height: 1.2 !important;
+    }
+
+    /* 展开器正文按打印正文尺度排版，避免算法说明占满页面。 */
+    [data-testid="stExpander"] summary,
+    [data-testid="stExpander"] summary *,
+    .streamlit-expanderHeader {
+        font-size: 0.85rem !important;
+        line-height: 1.25 !important;
+    }
+
+    [data-testid="stExpander"] [data-testid="stExpanderDetails"],
+    [data-testid="stExpander"] [data-testid="stExpanderDetails"] p,
+    [data-testid="stExpander"] [data-testid="stExpanderDetails"] li,
+    [data-testid="stExpander"] [data-testid="stExpanderDetails"] ul,
+    [data-testid="stExpander"] [data-testid="stExpanderDetails"] ol {
+        font-size: 0.8rem !important;
+        line-height: 1.35 !important;
+    }
+
+    [data-testid="stExpander"] [data-testid="stExpanderDetails"] p {
+        margin-bottom: 0.35rem !important;
+    }
+
+    [data-testid="stExpander"] [data-testid="stExpanderDetails"] code {
+        font-size: 0.72rem !important;
+        line-height: 1.25 !important;
+    }
+
+    /* 展开器正文能放入一页时整体移动，避免标题留在上一页、正文跑到下一页。 */
+    [data-testid="stElementContainer"]:has([data-testid="stExpander"]),
+    [data-testid="stExpander"] {
+        break-inside: avoid !important;
+        break-inside: avoid-page !important;
+        page-break-inside: avoid !important;
+        overflow: visible !important;
+    }
+}

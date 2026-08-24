@@ -174,7 +174,7 @@ def render_real_estate_section(
             _render_sales_chart(right, data, last_month, market="期房")
         except (KeyError, TypeError, ValueError) as exc:
             right.warning(f"期房销售图未加载：{exc}")
-        with st_obj.expander("指标算法与解读", expanded=False):
+        with st_obj.expander("指标算法与解读", expanded=True):
             st_obj.markdown(REAL_ESTATE_EXPLANATION)
     except (KeyError, TypeError, ValueError, FileNotFoundError) as exc:
         st_obj.error(f"房地产数据加载失败：{exc}")
