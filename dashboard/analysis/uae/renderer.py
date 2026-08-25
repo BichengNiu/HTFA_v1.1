@@ -50,6 +50,7 @@ def _render_report_header(st_obj: Any) -> None:
         unsafe_allow_html=True,
     )
 
+
 GROWTH_OVERVIEW_GROUPS = (
     "实际GDP增速与GDP平减指数同比",
     "非石油实际GDP增速与非石油GDP平减指数同比",
@@ -324,7 +325,8 @@ def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
             else:
                 from dashboard.analysis.uae.oil import render_oil_fiscal_panel
 
-                render_oil_fiscal_panel(st_obj)
+                with st_obj.container(key="uae-high-frequency-print"):
+                    render_oil_fiscal_panel(st_obj)
     return {
         "status": "success",
         "source": source_name,

@@ -42,6 +42,57 @@ REVENUE_LABEL = "石油收入"
 REVENUE_PRICE_LABEL = "布伦特原油现货价"
 
 
+def _annotate_bar_values(
+    axis,
+    frame: pd.DataFrame,
+    labels: tuple[str, ...],
+) -> None:
+    """在 Ts 柱状序列的柱顶显示原始数值。"""
+
+    for container, label in zip(axis.containers, labels, strict=False):
+        series = frame[label].dropna()
+        values = [f"{float(value):g}" for value in series]
+        axis.bar_label(
+            container,
+            labels=values,
+            padding=2,
+            fontsize=8,
+            color="#222222",
+            zorder=10,
+        )
+
+
+def _annotate_line_values_above(
+    axis,
+    label: str,
+    *,
+    decimals: int = 1,
+) -> None:
+    """在单条线序列的每个数据点正上方显示数值。"""
+
+    line = next(
+        (item for item in axis.get_lines() if item.get_label() == label),
+        None,
+    )
+    if line is None:
+        return
+
+    for x_value, y_value in zip(line.get_xdata(), line.get_ydata(), strict=False):
+        if pd.isna(y_value):
+            continue
+        axis.annotate(
+            f"{float(y_value):.{decimals}f}",
+            xy=(x_value, y_value),
+            xytext=(0, 6),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+            color=line.get_color(),
+            zorder=10,
+        )
+
+
 def build_war_pressure_raw_figure(
     values: pd.DataFrame,
     source_text: str,
@@ -60,7 +111,6 @@ def build_war_pressure_raw_figure(
         ytitle_position="side",
         year_ruler=True,
         grid=True,
-        vlines=WAR_START_DATE,
         show_legend=True,
         legend_cols=3,
         note=source_note(source_text),
@@ -69,6 +119,7 @@ def build_war_pressure_raw_figure(
         bar_series=list(RAW_LABELS),
     )
     axis = normalize_ts_axis(returned_axis)
+    _annotate_bar_values(axis, frame, tuple(RAW_LABELS))
     apply_htfa_fonts(figure)
     return figure
 
@@ -90,7 +141,6 @@ def build_war_pressure_index_figure(
         ytitle_position="side",
         year_ruler=True,
         grid=True,
-        vlines=WAR_START_DATE,
         show_legend=True,
         note=source_note(source_text),
         note_loc="left",
@@ -98,6 +148,7 @@ def build_war_pressure_index_figure(
         units={PRESSURE_LABEL: "指数"},
     )
     axis = normalize_ts_axis(returned_axis)
+    _annotate_line_values_above(axis, PRESSURE_LABEL)
     apply_htfa_fonts(figure)
     return figure
 

@@ -285,6 +285,7 @@ def test_section_renders_quad_business_and_labor_employment_subsections(
     )
 
     assert result["status"] == "success"
+    st_obj.container.assert_called_once_with(key="uae-finance-part")
     calls = [call[0] for call in st_obj.method_calls]
     assert calls.count("divider") == 3
     assert calls.count("subheader") == 3
@@ -738,6 +739,10 @@ def test_business_and_labor_metrics_show_mom_and_yoy(monkeypatch) -> None:
         "test.xlsx",
     )
     assert business_st.metric.call_count == 7
+    assert business_st.metric.call_args_list[0].args[0] == (
+        "非油私营部门采购经理指数（PMI）"
+    )
+    business_st.caption.assert_not_called()
     assert all(
         "环比" in call.kwargs["delta"] and "同比" in call.kwargs["delta"]
         for call in business_st.metric.call_args_list

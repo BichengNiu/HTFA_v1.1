@@ -105,6 +105,12 @@ def test_war_pressure_raw_chart_uses_three_series_on_one_left_axis() -> None:
         text.get_text() for text in axis.get_legend().get_texts()
     } == {BALLISTIC_LABEL, CRUISE_LABEL, UAV_LABEL}
     assert len(axis.get_legend().get_texts()) == 3
+    assert axis.get_lines() == []
+    assert {
+        text.get_text()
+        for text in axis.texts
+        if text.get_text() in {"0", "1", "2", "3", "4", "12", "17"}
+    } >= {"0", "1", "2", "3", "4", "12", "17"}
 
 
 def test_war_pressure_metrics_render_latest_month_four_cards() -> None:
@@ -145,6 +151,15 @@ def test_war_pressure_index_chart_is_a_single_index_series() -> None:
         for line in axis.get_lines()
         if not line.get_label().startswith("_")
     ] == [PRESSURE_LABEL]
+    assert len(axis.get_lines()) == 1
+    labels = [
+        text
+        for text in axis.texts
+        if text.get_text() in {"0.0", "5.0", "10.0"}
+    ]
+    assert {text.get_text() for text in labels} >= {"0.0", "5.0", "10.0"}
+    assert all(text.get_position() == (0, 6) for text in labels)
+    assert all(text.get_verticalalignment() == "bottom" for text in labels)
 
 
 def test_war_pressure_section_renders_algorithm_and_interpretation(monkeypatch) -> None:
