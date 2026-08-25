@@ -44,7 +44,7 @@ def _render_report_header(st_obj: Any) -> None:
         "<div class=\"uae-print-report-title\">阿联酋经济高频数据月报</div>"
         f"<div class=\"uae-print-report-period\">{report_time}</div>"
         "<div class=\"uae-print-report-organization\">"
-        "国家信息中心经济预测部政策仿真实验室 | 中华人民共和国驻阿联酋大使馆经商处"
+        "中华人民共和国驻阿联酋大使馆 | 国家发展改革委国家信息中心"
         "</div>"
         "</div>",
         unsafe_allow_html=True,
