@@ -7,7 +7,8 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Iterable
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 from dashboard.analysis.uae.plot_helpers import translate_source_text
 
@@ -227,7 +228,23 @@ def render_metric_cards(
             )
 
 
-def _source_note_from_metadata(metadata: Any, name: str, as_of: object) -> str:
+def source_text_from_metadata(
+    metadata: Mapping[str, Any],
+    *,
+    separator: str = "、",
+) -> str:
+    """按首次出现顺序合并去重后的来源名称。"""
+
+    return separator.join(
+        dict.fromkeys(item.source for item in metadata.values())
+    )
+
+
+def _source_note_from_metadata(
+    metadata: Mapping[str, Any],
+    name: str,
+    as_of: object,
+) -> str:
     """拼 help：截至日期、频率、来源、源表更新。"""
 
     item = metadata.get(name)
@@ -255,4 +272,5 @@ __all__ = [
     "pct_delta_text",
     "points_delta_text",
     "render_metric_cards",
+    "source_text_from_metadata",
 ]

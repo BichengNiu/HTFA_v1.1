@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 
 from dashboard.analysis.uae.oil import renderer
-from dashboard.analysis.uae.oil.alignment import (
+from dashboard.analysis.uae.periods import (
     common_latest_month,
     within_month_window,
 )

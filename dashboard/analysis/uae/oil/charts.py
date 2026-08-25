@@ -17,7 +17,7 @@ from matplotlib.figure import Figure
 import pandas as pd
 from Ts.TsPlots import plot_series
 
-from dashboard.analysis.uae.oil.alignment import common_latest_month, through_month
+from dashboard.analysis.uae.periods import common_latest_month, through_month
 from dashboard.analysis.uae.oil.revenue import (
     PRICE_COLUMN,
     REVENUE_COLUMN,

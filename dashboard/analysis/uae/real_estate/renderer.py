@@ -32,6 +32,7 @@ from dashboard.analysis.uae.metrics import (
     latest_month_value,
     month_and_year_delta_text,
     render_metric_cards,
+    source_text_from_metadata,
 )
 from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
 
@@ -112,9 +113,7 @@ def _render_sales_chart(
 ) -> None:
     title = DEFAULT_TITLES[market]
     count_column, amount_column = _market_columns(market)
-    source_text = "、".join(
-        dict.fromkeys(metadata.source for metadata in data.metadata.values())
-    )
+    source_text = source_text_from_metadata(data.metadata)
     render_pyplot_figure(
         st_obj,
         build_sales_figure(

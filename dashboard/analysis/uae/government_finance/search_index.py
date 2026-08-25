@@ -23,7 +23,6 @@ SMOOTH_POLYORDER = 2
 
 SEARCH_SHEET = "月度_工作搜索热度"
 
-TIME_COLUMN = "Time"
 WORK_DUBAI_COLUMN = "work in dubai"
 WORK_UAE_COLUMN = "work in uae"
 
@@ -143,7 +142,6 @@ __all__ = [
     "SMOOTH_WINDOW",
     "SOURCE_TEXT",
     "START_YEAR",
-    "TIME_COLUMN",
     "WORK_DUBAI_COLUMN",
     "WORK_DUBAI_LABEL",
     "WORK_UAE_COLUMN",

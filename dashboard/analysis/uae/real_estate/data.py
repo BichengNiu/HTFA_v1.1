@@ -19,6 +19,10 @@ from dashboard.analysis.uae.sheet_reader import (
     open_uae_workbook,
     optional_text,
 )
+from dashboard.analysis.uae.periods import (
+    anchor_last_month as _anchor_last_month,
+    latest_complete_month as _latest_complete_month,
+)
 from dashboard.preview.core.workbook_parser import normalize_indicator_name
 
 
@@ -48,14 +52,6 @@ AGGREGATE_TARGETS: tuple[tuple[str, tuple[str, str], str], ...] = (
     (READY_COUNT, ("现房住宅笔数", "现房商业笔数"), "笔"),
     (READY_AMOUNT, ("现房住宅金额", "现房商业金额"), "百万AED"),
 )
-
-AGGREGATED_COLUMNS: tuple[str, ...] = (
-    OFFPLAN_COUNT,
-    OFFPLAN_AMOUNT,
-    READY_COUNT,
-    READY_AMOUNT,
-)
-
 
 @dataclass(frozen=True)
 class RealEstateData:
@@ -252,10 +248,10 @@ def _aggregate_sales(
 def latest_complete_month(values: pd.DataFrame) -> pd.Timestamp:
     """返回期房/现房笔数与金额四个口径均有效的最新月份。"""
 
-    complete = values.dropna(how="any").sort_index()
-    if complete.empty:
-        raise ValueError("月度_DLD 没有四个销售口径均完整的月份")
-    return pd.Timestamp(complete.index[-1])
+    return _latest_complete_month(
+        values,
+        empty_message="月度_DLD 没有四个销售口径均完整的月份",
+    )
 
 
 def anchor_last_month(
@@ -269,20 +265,15 @@ def anchor_last_month(
     回退一个月；否则直接取数据侧最新完整月。``today`` 仅测试注入。
     """
 
-    latest = latest_complete_month(values).to_period("M")
-    reference = (
-        pd.Timestamp.today()
-        if today is None
-        else pd.Timestamp(today).normalize()
-    ).to_period("M")
-    if latest == reference:
-        return latest - 1
-    return latest
+    return _anchor_last_month(
+        values,
+        today=today,
+        empty_message="月度_DLD 没有四个销售口径均完整的月份",
+    )
 
 
 __all__ = [
     "AGGREGATE_TARGETS",
-    "AGGREGATED_COLUMNS",
     "DLD_SHEET",
     "OFFPLAN_AMOUNT",
     "OFFPLAN_COUNT",

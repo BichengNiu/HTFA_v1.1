@@ -26,6 +26,10 @@ from dashboard.analysis.uae.sheet_reader import (
     open_uae_workbook,
     parse_target_sheet,
 )
+from dashboard.analysis.uae.periods import (
+    anchor_last_month as _anchor_last_month,
+    latest_complete_month as _latest_complete_month,
+)
 
 PORTWATCH_SHEET = "月度_PortWatch"
 DUBAI_CUSTOMS_AIR_SHEET = "月度_迪拜海关航空"
@@ -55,24 +59,6 @@ PORT_VOLUME_TARGETS: tuple[tuple[str, str], ...] = (
     (UAE_PORT_EXPORT_TOTAL, "阿联酋:港口出口总量:当月值"),
     (UAE_PORT_TANKER_IMPORT, "阿联酋:港口油轮进口量:当月值"),
     (UAE_PORT_TANKER_EXPORT, "阿联酋:港口油轮出口量:当月值"),
-)
-
-ALL_COLUMNS: tuple[str, ...] = (
-    UAE_PORT_IMPORT_TOTAL,
-    UAE_PORT_EXPORT_TOTAL,
-    UAE_PORT_TANKER_IMPORT,
-    UAE_PORT_TANKER_EXPORT,
-    HORMUZ_TOTAL_CALLS,
-    HORMUZ_TANKER_CALLS,
-)
-
-MONTHLY_EXTRA_COLUMNS: tuple[str, ...] = (
-    DUBAI_AIR_IMPORT_AWBS,
-    DUBAI_AIR_EXPORT_AWBS,
-    DUBAI_AIR_IMPORT_TOTAL,
-    DUBAI_AIR_EXPORT_TOTAL,
-    US_UAE_AIR_PASSENGERS,
-    US_UAE_AIR_FREIGHT,
 )
 
 DUBAI_CUSTOMS_AIR_AWB_TARGETS: tuple[tuple[str, str], ...] = (
@@ -252,10 +238,10 @@ def load_transport_data(
 def latest_complete_month(values: pd.DataFrame) -> pd.Timestamp:
     """返回输入月度指标均有效的最新月份。"""
 
-    complete = values.dropna(how="any").sort_index()
-    if complete.empty:
-        raise ValueError("交通物流月度指标没有共同完整月份")
-    return pd.Timestamp(complete.index[-1])
+    return _latest_complete_month(
+        values,
+        empty_message="交通物流月度指标没有共同完整月份",
+    )
 
 
 def anchor_last_month(
@@ -270,19 +256,14 @@ def anchor_last_month(
     ``today`` 仅测试注入。
     """
 
-    latest = latest_complete_month(values).to_period("M")
-    reference = (
-        pd.Timestamp.today()
-        if today is None
-        else pd.Timestamp(today).normalize()
-    ).to_period("M")
-    if latest == reference:
-        return latest - 1
-    return latest
+    return _anchor_last_month(
+        values,
+        today=today,
+        empty_message="交通物流月度指标没有共同完整月份",
+    )
 
 
 __all__ = [
-    "ALL_COLUMNS",
     "CALLS_TARGETS",
     "DUBAI_AIR_EXPORT_AWBS",
     "DUBAI_AIR_EXPORT_TOTAL",
@@ -301,7 +282,6 @@ __all__ = [
     "HORMUZ_TANKER_CALLS",
     "PORTWATCH_SHEET",
     "PORT_VOLUME_TARGETS",
-    "MONTHLY_EXTRA_COLUMNS",
     "TransportData",
     "UAE_PORT_EXPORT_TOTAL",
     "UAE_PORT_IMPORT_TOTAL",

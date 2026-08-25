@@ -89,17 +89,14 @@ from dashboard.analysis.uae.government_finance.search_index import (
 )
 from dashboard.analysis.uae.metrics import (
     _source_note_from_metadata,
-    change_in_points,
     format_count_value,
     format_currency_value,
     latest_month_value,
     month_and_year_delta_text,
-    month_over_month_change,
-    pct_delta_text,
-    points_delta_text,
     render_metric_cards,
+    source_text_from_metadata,
 )
-from dashboard.analysis.uae.oil.alignment import within_month_window
+from dashboard.analysis.uae.periods import within_month_window
 from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
 
 FINANCE_EXPLANATION = """
@@ -439,6 +436,31 @@ def _chart_frame(values: pd.DataFrame) -> pd.DataFrame:
     ).dropna(how="all")
 
 
+def _render_figure_with_download(
+    st_obj: Any,
+    figure: Any,
+    values: pd.DataFrame,
+    *,
+    title: str,
+    download_key: str,
+    place_legend_bottom: bool = False,
+) -> None:
+    """统一渲染政府金融图表并提供其下载数据。"""
+
+    render_pyplot_figure(
+        st_obj,
+        figure,
+        bbox_inches=None,
+        place_legend_bottom=place_legend_bottom,
+    )
+    render_chart_download(
+        st_obj,
+        values,
+        title=title,
+        key=download_key,
+    )
+
+
 def _render_charts(
     st_obj: Any,
     data: GovernmentFinanceData,
@@ -450,26 +472,20 @@ def _render_charts(
         first_month=first_month,
         last_month=latest_date.to_period("M"),
     )
-    source_text = "、".join(
-        dict.fromkeys(metadata.source for metadata in data.metadata.values())
-    )
+    source_text = source_text_from_metadata(data.metadata)
     title = "政府贷款与政府控股企业贷款同比"
     chart_frame = _chart_frame(display_values)
-    render_pyplot_figure(
+    _render_figure_with_download(
         st_obj,
         build_government_finance_yoy_figure(
             data.values,
             title=title,
             source_text=source_text,
         ),
-        bbox_inches=None,
-        place_legend_bottom=False,
-    )
-    render_chart_download(
-        st_obj,
         chart_frame,
         title=title,
-        key="analysis.uae.government_finance.yoy.download",
+        download_key="analysis.uae.government_finance.yoy.download",
+        place_legend_bottom=False,
     )
 
 
@@ -484,11 +500,9 @@ def _render_rates_chart(
         first_month=last_month - 36,
         last_month=last_month,
     )
-    source_text = "、".join(
-        dict.fromkeys(metadata.source for metadata in data.metadata.values())
-    )
+    source_text = source_text_from_metadata(data.metadata)
     title = "阿联酋与美国市场利率（隔夜、1年期）"
-    render_pyplot_figure(
+    _render_figure_with_download(
         st_obj,
         build_rates_figure(
             data.values,
@@ -499,14 +513,10 @@ def _render_rates_chart(
                 for name in RATES_SERIES
             },
         ),
-        bbox_inches=None,
-        place_legend_bottom=False,
-    )
-    render_chart_download(
-        st_obj,
         display_values,
         title=title,
-        key="analysis.uae.government_finance.rates.download",
+        download_key="analysis.uae.government_finance.rates.download",
+        place_legend_bottom=False,
     )
 
 
@@ -521,28 +531,23 @@ def _render_foreign_inflow_chart(
         first_month=last_month - 36,
         last_month=last_month,
     )
-    source_text = "、".join(
-        dict.fromkeys(metadata.source for metadata in data.metadata.values())
-    )
+    source_text = source_text_from_metadata(data.metadata)
     title = "外资流入同比：银行外债、外币存款与外国主体存款"
-    render_pyplot_figure(
-        st_obj,
-        build_foreign_inflow_figure(
-            data.values,
-            title=title,
-            source_text=source_text,
-        ),
-        bbox_inches=None,
-        place_legend_bottom=False,
+    figure = build_foreign_inflow_figure(
+        data.values,
+        title=title,
+        source_text=source_text,
     )
     chart_frame = calculate_calendar_yoy(display_values).rename(
         columns=lambda name: f"{name}同比（%）"
     )
-    render_chart_download(
+    _render_figure_with_download(
         st_obj,
+        figure,
         chart_frame.dropna(how="all"),
         title=title,
-        key="analysis.uae.government_finance.foreign_inflow.download",
+        download_key="analysis.uae.government_finance.foreign_inflow.download",
+        place_legend_bottom=False,
     )
 
 
@@ -557,28 +562,22 @@ def _render_private_credit_chart(
         first_month=last_month - 36,
         last_month=last_month,
     )
-    source_text = "、".join(
-        dict.fromkeys(metadata.source for metadata in data.metadata.values())
-    )
+    source_text = source_text_from_metadata(data.metadata)
     title = "企业及居民信贷同比"
     chart_frame = calculate_calendar_yoy(display_values).rename(
         columns=lambda name: f"{name}同比（%）"
     )
-    render_pyplot_figure(
+    _render_figure_with_download(
         st_obj,
         build_private_credit_yoy_figure(
             data.values,
             title=title,
             source_text=source_text,
         ),
-        bbox_inches=None,
-        place_legend_bottom=False,
-    )
-    render_chart_download(
-        st_obj,
         chart_frame,
         title=title,
-        key="analysis.uae.government_finance.private_credit.download",
+        download_key="analysis.uae.government_finance.private_credit.download",
+        place_legend_bottom=False,
     )
 
 
@@ -593,11 +592,9 @@ def _render_ded_chart(
         first_month=last_month - 36,
         last_month=last_month,
     )
-    source_text = "、".join(
-        dict.fromkeys(metadata.source for metadata in data.metadata.values())
-    )
+    source_text = source_text_from_metadata(data.metadata)
     title = "迪拜新发执照数"
-    render_pyplot_figure(
+    _render_figure_with_download(
         st_obj,
         build_ded_figure(
             data.values,
@@ -606,14 +603,10 @@ def _render_ded_chart(
             last_month=last_month,
             units={LICENCES_DISPLAY: data.metadata[LICENCES_DISPLAY].unit},
         ),
-        bbox_inches=None,
-        place_legend_bottom=False,
-    )
-    render_chart_download(
-        st_obj,
         display_values,
         title=title,
-        key="analysis.uae.government_finance.ded.download",
+        download_key="analysis.uae.government_finance.ded.download",
+        place_legend_bottom=False,
     )
 
 
@@ -627,11 +620,9 @@ def _render_foreign_labor_chart(
         first_month=last_month - 36,
         last_month=last_month,
     )
-    source_text = "；".join(
-        dict.fromkeys(metadata.source for metadata in data.metadata.values())
-    )
+    source_text = source_text_from_metadata(data.metadata, separator="；")
     title = "尼泊尔和孟加拉国入境阿联酋劳工人数"
-    render_pyplot_figure(
+    _render_figure_with_download(
         st_obj,
         build_foreign_labor_figure(
             display_values,
@@ -642,13 +633,10 @@ def _render_foreign_labor_chart(
                 BANGLADESH_LABEL: data.metadata[BANGLADESH_CLEARANCES].unit,
             },
         ),
-        bbox_inches=None,
-    )
-    render_chart_download(
-        st_obj,
         display_values,
         title=title,
-        key="analysis.uae.foreign_labor.monthly.download",
+        download_key="analysis.uae.foreign_labor.monthly.download",
+        place_legend_bottom=True,
     )
 
 
@@ -658,21 +646,17 @@ def _render_search_index_chart(
 ) -> None:
     title = "阿联酋工作谷歌搜索热度"
     display_values = display_search_index_values(values)
-    render_pyplot_figure(
+    _render_figure_with_download(
         st_obj,
         build_search_index_figure(
             values,
             title=title,
             source_text=SEARCH_SOURCE_TEXT,
         ),
-        bbox_inches=None,
-        place_legend_bottom=False,
-    )
-    render_chart_download(
-        st_obj,
         display_values,
         title=title,
-        key="analysis.uae.search_index.monthly.download",
+        download_key="analysis.uae.search_index.monthly.download",
+        place_legend_bottom=False,
     )
 
 
@@ -680,12 +664,10 @@ def _render_pmi_chart(
     st_obj: Any,
     data: PmiData,
 ) -> None:
-    source_text = "；".join(
-        dict.fromkeys(metadata.source for metadata in data.metadata.values())
-    )
+    source_text = source_text_from_metadata(data.metadata, separator="；")
     title = PMI_DISPLAY_NAME
     display_values = display_pmi_values(data.values)
-    render_pyplot_figure(
+    _render_figure_with_download(
         st_obj,
         build_pmi_figure(
             data.values,
@@ -693,14 +675,10 @@ def _render_pmi_chart(
             source_text=source_text,
             units={PMI_LABEL: data.metadata[PMI_LABEL].unit},
         ),
-        bbox_inches=None,
-        place_legend_bottom=False,
-    )
-    render_chart_download(
-        st_obj,
         display_values,
         title=title,
-        key="analysis.uae.pmi.monthly.download",
+        download_key="analysis.uae.pmi.monthly.download",
+        place_legend_bottom=False,
     )
 
 
@@ -723,11 +701,9 @@ def _render_customer_transfers_chart(
         first_month=last_month - 36,
         last_month=last_month,
     )
-    source_text = "、".join(
-        dict.fromkeys(metadata.source for metadata in data.metadata.values())
-    )
+    source_text = source_text_from_metadata(data.metadata)
     title = "客户资金转账（FTS）"
-    render_pyplot_figure(
+    _render_figure_with_download(
         st_obj,
         build_customer_transfers_figure(
             data.values,
@@ -743,14 +719,10 @@ def _render_customer_transfers_chart(
                 ].unit,
             },
         ),
-        bbox_inches=None,
-        place_legend_bottom=False,
-    )
-    render_chart_download(
-        st_obj,
         display_values,
         title=title,
-        key="analysis.uae.government_finance.customer_transfers.download",
+        download_key="analysis.uae.government_finance.customer_transfers.download",
+        place_legend_bottom=False,
     )
 
 
@@ -768,11 +740,9 @@ def _render_cheques_chart(
         first_month=last_month - 36,
         last_month=last_month,
     )
-    source_text = "、".join(
-        dict.fromkeys(metadata.source for metadata in data.metadata.values())
-    )
+    source_text = source_text_from_metadata(data.metadata)
     title = "支票清算"
-    render_pyplot_figure(
+    _render_figure_with_download(
         st_obj,
         build_cheques_figure(
             data.values,
@@ -788,14 +758,10 @@ def _render_cheques_chart(
                 ].unit,
             },
         ),
-        bbox_inches=None,
-        place_legend_bottom=False,
-    )
-    render_chart_download(
-        st_obj,
         display_values,
         title=title,
-        key="analysis.uae.government_finance.cheques.download",
+        download_key="analysis.uae.government_finance.cheques.download",
+        place_legend_bottom=False,
     )
 
 

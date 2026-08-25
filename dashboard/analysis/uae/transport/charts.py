@@ -16,7 +16,7 @@ import pandas as pd
 from matplotlib.figure import Figure
 from Ts.TsPlots import plot_series
 
-from dashboard.analysis.uae.oil.alignment import within_month_window
+from dashboard.analysis.uae.periods import within_month_window
 from dashboard.analysis.uae.plot_helpers import (
     WAR_START_DATE,
     annotate_war,
@@ -26,8 +26,6 @@ from dashboard.analysis.uae.plot_helpers import (
 )
 UAE_PORT_VOLUME_TITLE = "阿联酋港口进出口货运量"
 HORMUZ_CALLS_TITLE = "霍尔木兹海峡过境次数"
-DUBAI_AIR_AWBS_TITLE = "迪拜航空货运进出口运单数"
-DUBAI_AIR_TOTAL_TITLE = "迪拜航空货运进出口总量"
 DUBAI_AIR_CARGO_TITLE = "迪拜航空货运进出口运单数与总量"
 US_UAE_AIR_TITLE = "美国—阿联酋航空旅客与货运"
 
@@ -123,27 +121,6 @@ def build_multi_series_figure(
     return figure
 
 
-def build_single_series_figure(
-    values: pd.DataFrame,
-    *,
-    column: str,
-    title: str,
-    unit: str,
-    source_text: str,
-    last_month: pd.Period,
-) -> Figure:
-    """按交通物流现有模板绘制一张单序列图。"""
-
-    return build_multi_series_figure(
-        values,
-        columns=(column,),
-        title=title,
-        unit=unit,
-        source_text=source_text,
-        last_month=last_month,
-    )
-
-
 def build_dual_axis_figure(
     values: pd.DataFrame,
     *,
@@ -227,11 +204,8 @@ def build_dual_axis_figure(
 __all__ = [
     "HORMUZ_CALLS_TITLE",
     "UAE_PORT_VOLUME_TITLE",
-    "DUBAI_AIR_AWBS_TITLE",
-    "DUBAI_AIR_TOTAL_TITLE",
     "DUBAI_AIR_CARGO_TITLE",
     "US_UAE_AIR_TITLE",
     "build_dual_axis_figure",
     "build_multi_series_figure",
-    "build_single_series_figure",
 ]

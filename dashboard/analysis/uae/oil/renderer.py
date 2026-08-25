@@ -9,7 +9,7 @@ import pandas as pd
 import streamlit as st
 
 from dashboard.analysis.uae.downloads import render_chart_download
-from dashboard.analysis.uae.oil.alignment import (
+from dashboard.analysis.uae.periods import (
     common_latest_month,
     within_month_window,
 )

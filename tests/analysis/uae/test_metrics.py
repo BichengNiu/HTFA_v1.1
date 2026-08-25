@@ -1,5 +1,6 @@
 """Tests for the shared metric-card helpers (latest value / MoM / YoY / render)."""
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -17,6 +18,7 @@ from dashboard.analysis.uae.metrics import (
     format_count_value,
     format_currency_value,
     render_metric_cards,
+    source_text_from_metadata,
 )
 
 
@@ -156,3 +158,14 @@ def test_render_metric_cards_renders_dash_for_missing() -> None:
         call.kwargs["delta_color"] == "off"
         for call in st_obj.metric.call_args_list
     )
+
+
+def test_source_text_from_metadata_deduplicates_without_reordering() -> None:
+    metadata = {
+        "a": SimpleNamespace(source="来源A"),
+        "b": SimpleNamespace(source="来源B"),
+        "c": SimpleNamespace(source="来源A"),
+    }
+
+    assert source_text_from_metadata(metadata) == "来源A、来源B"
+    assert source_text_from_metadata(metadata, separator="；") == "来源A；来源B"

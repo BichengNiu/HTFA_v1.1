@@ -12,6 +12,7 @@ from dashboard.analysis.uae.sheet_reader import (
     open_uae_workbook,
     parse_target_sheet,
 )
+from dashboard.analysis.uae.periods import latest_complete_month as _latest_complete_month
 
 
 CBUAE_SHEET = "月度_CBUAE"
@@ -83,10 +84,10 @@ def calculate_calendar_yoy(values: pd.DataFrame) -> pd.DataFrame:
 def latest_complete_month(values: pd.DataFrame) -> pd.Timestamp:
     """返回四个指标均有有效值的最新月份。"""
 
-    complete = values.dropna(how="any").sort_index()
-    if complete.empty:
-        raise ValueError("月度_CBUAE 没有四个指标均完整的月份")
-    return pd.Timestamp(complete.index[-1])
+    return _latest_complete_month(
+        values,
+        empty_message="月度_CBUAE 没有四个指标均完整的月份",
+    )
 
 
 __all__ = [

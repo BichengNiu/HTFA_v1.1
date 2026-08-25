@@ -13,7 +13,7 @@ import pandas as pd
 from matplotlib.figure import Figure
 from Ts.TsPlots import plot_series
 
-from dashboard.analysis.uae.oil.alignment import within_month_window
+from dashboard.analysis.uae.periods import within_month_window
 from dashboard.analysis.uae.plot_helpers import (
     WAR_START_DATE,
     annotate_war,
