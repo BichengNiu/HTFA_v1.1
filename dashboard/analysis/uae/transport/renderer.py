@@ -378,7 +378,7 @@ def render_transport_section(
                 )
             except (KeyError, TypeError, ValueError) as exc:
                 cell.warning(f"{title}未加载：{exc}")
-        with st_obj.expander("指标算法与解读", expanded=False):
+        with st_obj.expander("指标算法与解读", expanded=True):
             st_obj.markdown(TRANSPORT_EXPLANATION)
     except (KeyError, TypeError, ValueError, FileNotFoundError) as exc:
         st_obj.error(f"交通物流数据加载失败：{exc}")

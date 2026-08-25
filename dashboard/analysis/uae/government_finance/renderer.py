@@ -789,7 +789,7 @@ def render_government_finance_section(
                 content,
                 file_name,
             )
-            with st_obj.expander("指标算法与解读", expanded=False):
+            with st_obj.expander("指标算法与解读", expanded=True):
                 st_obj.markdown(FINANCE_EXPLANATION)
         _render_business_activity_charts(
             st_obj,
@@ -857,7 +857,7 @@ def _render_business_activity_charts(
         except (KeyError, TypeError, ValueError) as exc:
             cheques_column.warning(f"支票清算图未加载：{exc}")
 
-    with st_obj.expander("指标算法与解读", expanded=False):
+    with st_obj.expander("指标算法与解读", expanded=True):
         st_obj.markdown(BUSINESS_ACTIVITY_EXPLANATION)
 
 
@@ -929,7 +929,7 @@ def _render_labor_employment_charts(
         _render_foreign_labor_chart(labor_column, foreign_labor)
     except (KeyError, TypeError, ValueError) as exc:
         labor_column.warning(f"外籍劳动力图表未加载：{exc}")
-    with st_obj.expander("指标算法与解读", expanded=False):
+    with st_obj.expander("指标算法与解读", expanded=True):
         st_obj.markdown(LABOR_EMPLOYMENT_EXPLANATION)
 
 

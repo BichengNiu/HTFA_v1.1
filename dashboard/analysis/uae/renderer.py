@@ -38,13 +38,15 @@ def _render_report_header(st_obj: Any) -> None:
     """渲染网页标题，并提供仅打印显示的月报标题与报告时间。"""
 
     st_obj.title("阿联酋经济监测")
-    report_time = datetime.now().strftime("%Y年%m月")
+    report_time = datetime.now().strftime("%Y年%m月%d日")
     st_obj.markdown(
         "<div class=\"uae-print-report-header\" aria-hidden=\"true\">"
         "<div class=\"uae-print-report-title\">阿联酋经济高频数据月报</div>"
-        f"<div class=\"uae-print-report-period\">{report_time}</div>"
+        "<div class=\"uae-print-report-meta\">"
         "<div class=\"uae-print-report-organization\">"
-        "中华人民共和国驻阿联酋大使馆 | 国家发展改革委国家信息中心"
+        "中国驻阿联酋大使馆、国家发展改革委国家信息中心"
+        "</div>"
+        f"<div class=\"uae-print-report-period\">{report_time}</div>"
         "</div>"
         "</div>",
         unsafe_allow_html=True,

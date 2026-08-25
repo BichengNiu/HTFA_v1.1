@@ -552,6 +552,7 @@ def test_section_renders_two_charts_and_explanation(monkeypatch) -> None:
     assert right.download_button.call_count == 2
     assert st_obj.pyplot.call_count == 0
     assert st_obj.expander.call_count == 1
+    assert st_obj.expander.call_args.kwargs["expanded"] is True
     assert render_calls[0]["builder_kwargs"]["unit"] == "百万吨"
     assert render_calls[0]["chart_values"].loc[
         "2025-05-31", UAE_PORT_IMPORT_TOTAL

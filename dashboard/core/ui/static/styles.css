@@ -649,23 +649,39 @@ div[data-testid="stFullScreenFrame"] div[data-testid="stImageContainer"] img {
         font-size: 2rem !important;
         font-weight: 700 !important;
         line-height: 1.25 !important;
-        margin-bottom: 0.8rem !important;
+        margin-bottom: 3rem !important;
     }
 
-    .uae-print-report-period {
-        color: #4a5568 !important;
-        font-size: 0.9rem !important;
+    .uae-print-report-meta {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 1rem !important;
+        width: 100% !important;
+        margin: 0 !important;
+    }
+
+    .uae-print-report-period,
+    .uae-print-report-organization {
+        flex: 0 1 auto !important;
+        color: #334155 !important;
+        font-size: 1.08rem !important;
+        font-weight: 400 !important;
         line-height: 1.4 !important;
+        white-space: nowrap !important;
     }
 
     .uae-print-report-organization {
-        color: #4a5568 !important;
-        font-size: 0.78rem !important;
-        line-height: 1.4 !important;
-        margin-top: 0.75rem !important;
+        padding-right: 0.65rem !important;
+        text-align: left !important;
     }
 
-    /* 隐藏三个 Tab 的文字和按钮，仅保留一条横向分隔线。 */
+    .uae-print-report-period {
+        padding-left: 0.65rem !important;
+        text-align: right !important;
+    }
+
+    /* 隐藏三个 Tab 的文字、按钮和重复分隔线。 */
     [data-testid="stTabs"] [data-baseweb="tab-list"],
     [data-testid="stTabs"] [role="tablist"] {
         height: 1px !important;

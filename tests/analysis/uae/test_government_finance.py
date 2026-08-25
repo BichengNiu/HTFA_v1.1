@@ -289,6 +289,11 @@ def test_section_renders_quad_business_and_labor_employment_subsections(
     calls = [call[0] for call in st_obj.method_calls]
     assert calls.count("divider") == 3
     assert calls.count("subheader") == 3
+    assert [call.kwargs["expanded"] for call in st_obj.expander.call_args_list] == [
+        True,
+        True,
+        True,
+    ]
     assert calls.index("divider") < calls.index("subheader")
     assert [call.args[0] for call in st_obj.subheader.call_args_list] == [
         "财政金融",
