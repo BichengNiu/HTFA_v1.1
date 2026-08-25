@@ -244,9 +244,9 @@ def test_revenue_metrics_include_year_to_date_yoy() -> None:
     labels = [call.args[0] for call in st_obj.metric.call_args_list]
     assert labels == [
         "最新月估算石油收入",
-        "2025 年累计收入",
-        "月度同比",
-        "年度累计同比",
+            "2025 年石油累计收入",
+            "石油收入月度同比",
+            "石油收入年度累计同比",
     ]
     assert st_obj.metric.call_args_list[-1].args[1] == "+32.0%"
 
@@ -271,7 +271,7 @@ def test_oil_market_figure_combines_production_and_rigs() -> None:
     assert rig_axis.get_lines()[0].get_ydata()[-1] == 59
     assert production_axis.get_ylabel() == "万桶/天"
     assert rig_axis.get_ylabel() == "台"
-    assert production_axis.get_title() == "原油产量及活动钻机数"
+    assert production_axis.get_title() == "原油产量与活动钻机数"
     assert figure._suptitle is None
     assert production_axis.get_xticklabels()[-1].get_text() == "12月"
     # 模板 BottomLegend 挂在参考轴（主轴）上，双轴叠加自动追加（左轴/右轴）后缀
@@ -440,7 +440,7 @@ def test_monthly_revenue_calculates_yoy_and_chart_axes() -> None:
     assert revenue_axis.patches[-1].get_height() == pytest.approx(40.92)
     assert revenue_axis.get_ylabel() == "亿美元"
     assert price_axis.get_ylabel() == "美元/桶"
-    assert price_axis.get_title() == "石油价格与阿联酋石油收入"
+    assert price_axis.get_title() == "石油价格与石油收入"
     assert figure._suptitle is None
     assert price_axis.get_xticklabels()[-1].get_text() == "12月"
     legend_labels = {

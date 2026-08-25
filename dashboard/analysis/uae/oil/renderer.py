@@ -51,10 +51,10 @@ from dashboard.core.ui.utils.shared_dataset import get_shared_dataset_file
 from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
 
 OIL_FISCAL_EXPLANATION = """
-- **油价**：数据来源：布伦特期货由洲际交易所发布、布伦特现货由金联创发布；原始数据为日度/周度价格（美元/桶），反映国际原油价格。
-- **原油产量**：数据来源：由欧佩克发布；原始数据为月度阿联酋原油产量（桶/天），反映原油生产规模。
-- **活跃钻机数**：数据来源：由贝克休斯发布；原始数据为月度活跃钻机数（台），反映石油勘探开发活动。
-- **月度石油收入（估算）**：数据来源：由金联创、欧佩克发布；原始数据为日度布伦特现货价格和月度阿联酋原油产量，分别取月均值后按
+- **油价**：布伦特期货由洲际交易所发布、布伦特现货由金联创发布；原始数据为日度/周度价格（美元/桶），油价卡片按原始频率显示最新观测，反映国际原油价格。
+- **原油产量**：由欧佩克发布；原始数据为月度阿联酋原油产量（桶/天），反映原油生产规模。
+- **活跃钻机数**：由贝克休斯发布；原始数据按月份、地区及陆上/海上拆分，汇总为阿联酋月度活跃钻机数（台），反映石油勘探开发活动。
+- **月度石油收入（估算）**：由金联创、欧佩克发布；布伦特现货为日度/周度价格，按自然月取月均值；阿联酋原油产量为月度数据，按月取有效观测均值后按
   `价格 × 产量 × 当月天数 ÷ 1亿` 计算（亿美元）；价格或产量缺失时不估算，作为销售收入规模代理。
 - **同比与累计**：原始数据为上述月度估算收入；月度同比为本月收入与上年同月之比减1，年度累计为年内各月收入之和，
   年度累计同比为本年累计与上年同期累计之比减1。
@@ -64,7 +64,7 @@ OIL_FISCAL_EXPLANATION = """
 """.strip()
 
 WAR_PRESSURE_EXPLANATION = """
-- **原始数据**：数据来源：由“根据公开新闻整理”汇编；原始数据为日度弹道导弹、巡航导弹和无人机数量，反映公开登记的袭击活动。
+- **原始数据**：由“根据公开新闻整理”汇编；原始数据为日度弹道导弹、巡航导弹和无人机数量；月度武器数量为各日数量按月求和，反映公开登记的袭击活动。
 - **战争压力指数**：原始数据为上述日度数量；按 `9×log1p(弹道导弹数量)+3×log1p(巡航导弹数量)+log1p(无人机数量)` 加权后按月求和，
   再在战争观测窗口内做 min-max 归一化 `100×(当月值−最小值)÷(最大值−最小值)`。
   `log1p(x)=ln(1+x)` 用于压缩极端值；指数越高表示登记袭击强度相对越高，最高月为100、最低月为0。
@@ -184,16 +184,16 @@ def _render_revenue_metrics(st_obj: Any, revenue: pd.DataFrame) -> None:
         )
     with columns[1]:
         st_obj.metric(
-            f"{latest_date.year} 年累计收入",
+            f"{latest_date.year} 年石油累计收入",
             f"{latest[YTD_COLUMN]:,.2f} 亿美元",
         )
     with columns[2]:
         value = latest[YOY_COLUMN]
-        st_obj.metric("月度同比", f"{value:+.1f}%" if pd.notna(value) else "—")
+        st_obj.metric("石油收入月度同比", f"{value:+.1f}%" if pd.notna(value) else "—")
     with columns[3]:
         value = latest[YTD_YOY_COLUMN]
         st_obj.metric(
-            "年度累计同比",
+            "石油收入年度累计同比",
             f"{value:+.1f}%" if pd.notna(value) else "—",
         )
 
@@ -369,7 +369,7 @@ def _render_charts(
         render_chart_download(
             st_obj,
             market_download,
-            title="原油产量及活动钻机数",
+            title="原油产量与活动钻机数",
             key="analysis.uae.oil.market.download",
         )
     with columns[1]:

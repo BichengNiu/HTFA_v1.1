@@ -36,7 +36,7 @@ from dashboard.analysis.uae.metrics import (
 from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
 
 REAL_ESTATE_EXPLANATION = """
-- **交易类型**：数据来源：由迪拜土地局发布；原始数据为月度 Off-Plan（期房）和 Existing（现房）住宅、商业房地产交易，现房含一手和二手，官方字段无法进一步拆分。
+- **交易类型**：由迪拜土地局发布；原始数据为房地产交易明细，按登记月份、交易类型（Off-Plan 期房/Existing 现房）及市场（住宅/商业）聚合为月度指标；现房含一手和二手，官方字段无法进一步拆分。
 - **笔数与金额**：原始数据为交易笔数和金额；笔数反映交易数量，金额原始单位为百万 AED，除以100换算为亿迪拉姆后反映成交规模。
   两类指标分别反映房地产交易活跃度和成交规模。
 """.strip()
