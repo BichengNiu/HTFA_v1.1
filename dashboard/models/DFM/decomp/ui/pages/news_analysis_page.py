@@ -16,11 +16,12 @@ from dashboard.models.DFM.decomp import execute_news_analysis
 
 
 from dashboard.core.ui.utils.state_helpers import NamespacedStateManager
+from dashboard.core.workspace import SessionWorkspace
 
 news_analysis_state = NamespacedStateManager("news_analysis")
 
 
-def render_dfm_news_analysis_page(st_module: Any) -> Dict[str, Any]:
+def _render_dfm_news_analysis_page_content(st_module: Any) -> Dict[str, Any]:
     """
     渲染纽约联储风格的影响分解页面
 
@@ -102,6 +103,18 @@ def render_dfm_news_analysis_page(st_module: Any) -> Dict[str, Any]:
     except Exception as e:
         st_module.error(f"页面渲染失败: {str(e)}")
         return {'status': 'error', 'error': str(e)}
+
+
+def render_dfm_news_analysis_page(st_module: Any) -> Dict[str, Any]:
+    """渲染影响分解并保存目标月份设置。"""
+    workspace = SessionWorkspace(st_module.session_state)
+    workspace.begin_page(
+        "model_analysis.dfm.decomp", keys=("news_target_month_selector",)
+    )
+    try:
+        return _render_dfm_news_analysis_page_content(st_module)
+    finally:
+        workspace.end_page("model_analysis.dfm.decomp")
 
 
 def _render_parameter_section(st_module):

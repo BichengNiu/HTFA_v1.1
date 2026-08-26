@@ -117,8 +117,20 @@ def prepare_modeling_inputs(
     dataset: ModelingDataset,
     target: str,
     exog_columns: tuple[str, ...] = (),
+    time_range: tuple[pd.Timestamp, pd.Timestamp] | None = None,
 ) -> tuple[pd.Series, pd.DataFrame | None, pd.Index]:
     """构建目标序列与外生变量框，两者共享同一索引。
+
+    Parameters
+    ----------
+    dataset : ModelingDataset
+        已解析的建模数据集。
+    target : str
+        目标变量列名。
+    exog_columns : tuple[str, ...], default=()
+        外生变量列名。
+    time_range : tuple[pd.Timestamp, pd.Timestamp] or None, default=None
+        有日期列时使用的闭区间训练样本范围；None 表示使用全部样本。
 
     Returns
     -------
@@ -137,8 +149,24 @@ def prepare_modeling_inputs(
             raise ValueError("日期列存在无法解析的缺失值，请清理数据后再建模")
         base = base.drop(columns=[time_column])
     else:
+        if time_range is not None:
+            raise ValueError("数据没有日期列，无法选择训练时间范围")
         index = pd.RangeIndex(len(base))
-    base = base.set_index(index)
+    # Ts 的时间序列模型要求日期严格按递增顺序排列。对整张宽表排序，
+    # 确保目标序列与外生变量按同一批日期同步重排。
+    base = base.set_index(index).sort_index()
+    index = base.index
+
+    if time_range is not None:
+        if len(time_range) != 2:
+            raise ValueError("训练时间范围必须同时包含起始日期和结束日期")
+        start, end = (pd.Timestamp(value) for value in time_range)
+        if pd.isna(start) or pd.isna(end):
+            raise ValueError("训练时间范围包含无效日期")
+        if start > end:
+            raise ValueError("起始日期不能晚于结束日期")
+        base = base.loc[(base.index >= start) & (base.index <= end)]
+        index = base.index
 
     if target not in base.columns:
         raise ValueError(f"目标变量 '{target}' 不在数据表中")

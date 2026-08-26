@@ -22,6 +22,7 @@ class PrepStateKeys:
     TRAINING_DATA_FILE = "training_data_file"
     UPLOADED_FILE_PATH = "uploaded_file_path"
     FILE_BYTES = "file_bytes"
+    FILE_FINGERPRINT = "file_fingerprint"
     FILE_PROCESSED = "file_processed"
 
     # ============================================================================
@@ -233,7 +234,7 @@ class PrepStateManager:
 
         return deleted_count
 
-    def on_file_change(self, file_name: str, file_bytes: bytes) -> None:
+    def on_file_change(self, file_name: str, file_fingerprint: str) -> None:
         """
         处理文件变更事件
 
@@ -241,11 +242,12 @@ class PrepStateManager:
 
         Args:
             file_name: 新文件名
-            file_bytes: 新文件字节内容
+            file_fingerprint: 新文件内容的 SHA-256 指纹
         """
         # 更新文件信息
         self.set(PrepStateKeys.UPLOADED_FILE_PATH, file_name)
-        self.set(PrepStateKeys.FILE_BYTES, file_bytes)
+        self.set(PrepStateKeys.FILE_FINGERPRINT, file_fingerprint)
+        self.delete(PrepStateKeys.FILE_BYTES)
         self.set(PrepStateKeys.FILE_PROCESSED, False)
         self.set(PrepStateKeys.DATE_DETECTION_NEEDED, True)
 

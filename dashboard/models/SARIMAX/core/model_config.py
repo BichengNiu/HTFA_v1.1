@@ -156,6 +156,9 @@ class AutoSARIMAXConfig:
     trend: str = "c"
     criterion: str = "aic"
     log: bool = False
+    fit_method: str = "bfgs"
+    maxiter: int = 500
+    cov_type: str = "oim"
     enforce_stationarity: bool = True
     enforce_invertibility: bool = True
 
@@ -178,6 +181,20 @@ class AutoSARIMAXConfig:
             )
         if not isinstance(self.log, bool):
             raise TypeError("log 必须是布尔值")
+        if self.fit_method not in SARIMAX_OPTIMIZERS:
+            raise ValueError(
+                f"fit_method 必须是 {SARIMAX_OPTIMIZERS} 之一，"
+                f"got {self.fit_method!r}"
+            )
+        if isinstance(self.maxiter, bool) or not isinstance(self.maxiter, int):
+            raise TypeError("maxiter 必须是正整数")
+        if self.maxiter < 1:
+            raise ValueError("maxiter 必须为正整数")
+        if self.cov_type not in SARIMAX_COV_TYPES:
+            raise ValueError(
+                f"cov_type 必须是 {SARIMAX_COV_TYPES} 之一，"
+                f"got {self.cov_type!r}"
+            )
         for name in ("enforce_stationarity", "enforce_invertibility"):
             if not isinstance(getattr(self, name), bool):
                 raise TypeError(f"{name} 必须是布尔值")
@@ -209,6 +226,9 @@ class AutoSARIMAXConfig:
             self.trend,
             self.criterion,
             self.log,
+            self.fit_method,
+            self.maxiter,
+            self.cov_type,
             self.enforce_stationarity,
             self.enforce_invertibility,
         )

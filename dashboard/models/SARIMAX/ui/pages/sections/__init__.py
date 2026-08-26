@@ -29,9 +29,11 @@ from dashboard.models.SARIMAX.ui.state import (
 
 
 def _on_sarimax_dataset_replaced(st_obj) -> None:
-    """数据预览输入变化后清理 SARIMAX 训练/分析/预测状态。"""
+    """数据预览输入变化后清理 SARIMAX 训练/诊断/预测状态。"""
     state.set("target_variable", None)
     state.set("exog_variables", ())
+    state.set("training_time_range", None)
+    state.set("response_log", False)
     clear_fit_results()
     clear_widget_state(st_obj, DATASET_REPLACED_WIDGET_KEYS)
 

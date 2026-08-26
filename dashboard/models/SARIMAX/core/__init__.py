@@ -27,6 +27,7 @@ from dashboard.models.SARIMAX.core.model_config import (
 from dashboard.models.SARIMAX.core.modeling import (
     MIN_OBSERVATIONS,
     DynamicConfig,
+    build_auto_sarimax_criterion_table,
     build_prediction_table,
     fit_ardl,
     fit_auto_ardl,
@@ -38,6 +39,7 @@ from dashboard.models.SARIMAX.core.modeling import (
     future_dates,
     produce_forecast,
     run_residual_diagnostics,
+    select_auto_sarimax_result,
     translate_ts_error,
     validate_fit_inputs,
 )
@@ -63,6 +65,7 @@ __all__ = [
     "RDLInputConfig",
     "SARIMAXConfig",
     "build_prediction_table",
+    "build_auto_sarimax_criterion_table",
     "fit_ardl",
     "fit_auto_ardl",
     "fit_auto_rdl",
@@ -76,6 +79,7 @@ __all__ = [
     "prepare_modeling_inputs",
     "produce_forecast",
     "run_residual_diagnostics",
+    "select_auto_sarimax_result",
     "translate_ts_error",
     "validate_fit_inputs",
 ]

@@ -25,8 +25,8 @@ from dashboard.analysis.industrial.constants import (
 
 logger = logging.getLogger(__name__)
 
-# 注：@st.cache_data装饰器会自动根据函数参数（包括uploaded_file的内容）生成缓存键
-# 不需要手动计算MD5哈希，Streamlit会自动处理文件内容的哈希
+# 上传文件属于用户会话资产，不进入进程级 Streamlit 缓存；调用方应通过
+# SessionWorkspace 保留原始 bytes，解析结果留在模块会话状态中。
 
 
 def clean_dataframe_index(df: pd.DataFrame, data_name: str = "数据") -> pd.DataFrame:
@@ -127,7 +127,6 @@ def _load_excel_sheet(uploaded_file, sheet_name: str) -> Optional[pd.DataFrame]:
         return None
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
 def load_macro_data(uploaded_file, sheet_name: str = SHEET_NAME_MACRO_DATA) -> Optional[pd.DataFrame]:
     """
     使用统一格式加载宏观工业数据：第一行是列名，第一列是时间列
@@ -140,7 +139,7 @@ def load_macro_data(uploaded_file, sheet_name: str = SHEET_NAME_MACRO_DATA) -> O
     return _zero_to_nan(df)
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=3600, max_entries=1, show_spinner=False)
 def load_weights_data() -> Optional[pd.DataFrame]:
     """
     加载权重数据：从内部CSV文件读取行业属性和权重
@@ -193,7 +192,6 @@ def load_weights_data() -> Optional[pd.DataFrame]:
         return None
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
 def load_overall_industrial_data(uploaded_file, sheet_name: str = SHEET_NAME_OVERALL_INDUSTRIAL) -> Optional[pd.DataFrame]:
     """
     使用统一格式加载总体工业增加值数据：第一行是列名，第一列是时间列
@@ -219,13 +217,11 @@ def load_overall_industrial_data(uploaded_file, sheet_name: str = SHEET_NAME_OVE
     return df
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
 def load_enterprise_profit_data(uploaded_file, sheet_name: str = SHEET_NAME_ENTERPRISE_PROFIT) -> Optional[pd.DataFrame]:
     """使用统一格式读取工业企业利润数据：第一行是列名，第一列是时间列"""
     return _load_excel_sheet(uploaded_file, sheet_name)
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
 def load_industry_profit_data(uploaded_file, sheet_name: Optional[str] = None) -> Optional[pd.DataFrame]:
     """
     加载分行业工业企业利润数据：第一行是列名，第一列是时间列
@@ -241,7 +237,6 @@ def load_industry_profit_data(uploaded_file, sheet_name: Optional[str] = None) -
     return _load_excel_sheet(uploaded_file, sheet_name)
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
 def load_enterprise_operations_data(uploaded_file, sheet_name: str = '工业企业经营') -> Optional[pd.DataFrame]:
     """
     使用统一格式读取工业企业经营数据：第一行是列名，第一列是时间列

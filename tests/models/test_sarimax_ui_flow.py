@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import date
 import math
 from pathlib import Path
 
 import pandas as pd
+import pytest
 from Ts.TsSims import simulate_sarima
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -52,6 +54,20 @@ def _preamble_csv() -> tuple[str, bytes, str]:
     return "preamble.csv", content.encode("utf-8"), "text/csv"
 
 
+def _changing_header_csv() -> tuple[str, bytes, str]:
+    """生成切换变量名行后表头和时间列名称都会变化的 CSV。"""
+    content = (
+        "文件说明\n"
+        "old_date,old_value\n"
+        "2020-01-01,10\n"
+        "2020-02-01,11\n"
+        "new_date,new_value\n"
+        "2021-01-01,20\n"
+        "2021-02-01,21\n"
+    )
+    return "changing-header.csv", content.encode("utf-8"), "text/csv"
+
+
 def _multi_sample_csv() -> tuple[str, bytes, str]:
     """生成含两个指标的月度 CSV，用于页面级分面测试。"""
     index = pd.date_range("2020-01-01", periods=12, freq="MS")
@@ -83,6 +99,35 @@ def _by_key(elements, key: str):
     return next(element for element in elements if element.key == key)
 
 
+class _FakeTrendSelector:
+    def __init__(self, selected):
+        self.selected = selected
+        self.kwargs = None
+
+    def multiselect(self, _label, **kwargs):
+        self.kwargs = kwargs
+        return self.selected
+
+
+@pytest.mark.parametrize(
+    ("selected", "expected"),
+    [
+        ([], "n"),
+        (["常数项"], "c"),
+        (["线性趋势"], "t"),
+        (["常数项", "线性趋势"], "ct"),
+    ],
+)
+def test_trend_multiselect_maps_to_ts_code(selected, expected):
+    from dashboard.models.SARIMAX.ui.pages.sections.training_section import (
+        _render_trend_selector,
+    )
+
+    widget = _FakeTrendSelector(selected)
+    assert _render_trend_selector(widget, "test") == expected
+    assert widget.kwargs["options"] == ("常数项", "线性趋势")
+
+
 def test_full_workflow_via_ui(monkeypatch):
     from streamlit.testing.v1 import AppTest
 
@@ -90,18 +135,18 @@ def test_full_workflow_via_ui(monkeypatch):
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
     _navigate_to_sarimax(app)
 
-    # 导航结果：单 tab「动态回归模型」，页内四环节标题与引导信息齐全
+    # 导航结果：单 tab「动态回归模型」，页内环节标题与引导信息齐全
     assert not app.exception
     assert [tab.label for tab in app.tabs] == ["动态回归模型"]
     title_texts = " ".join(element.value for element in app.markdown)
     assert "① 数据预览" in title_texts
     assert "② 模型训练" in title_texts
-    assert "③ 模型分析" in title_texts
+    assert "③ 残差诊断" in title_texts
     assert "④ 模型预测" in title_texts
     info_texts = " ".join(element.value for element in app.info)
     assert "请在上方上传数据文件" in info_texts
     assert "完成「① 数据预览」（在上方上传数据）后可配置并拟合模型" in info_texts
-    assert "完成「② 模型训练」后可查看模型分析结果" in info_texts
+    assert "完成「② 模型训练」后可查看残差诊断结果" in info_texts
 
     # ① 数据预览：上传文件后出现数据表格与预览绘图（compact 模式
     # 不再显示「已加载」success 与行数小字）
@@ -126,7 +171,7 @@ def test_full_workflow_via_ui(monkeypatch):
     assert "AIC" in metrics and "BIC" in metrics and "对数似然" in metrics
     assert any("已收敛" in element.value for element in app.success)
 
-    # ③ 模型分析：残差检验运行后出现结果表与下载按钮
+    # ③ 残差诊断：残差检验运行后出现结果表与下载按钮
     _by_key(app.button, "sarimax_diag_button").click()
     app.run()
     assert not app.exception
@@ -149,6 +194,46 @@ def test_full_workflow_via_ui(monkeypatch):
     )
 
 
+def test_training_time_range_limits_fit_and_invalidates_result(monkeypatch):
+    """训练范围仅传入所选样本，修改后不保留旧拟合结果。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
+    _navigate_to_sarimax(app)
+    app.file_uploader[0].upload(*_dynamic_sample_csv())
+    app.run()
+    assert not app.exception
+
+    time_range = _by_key(app.date_input, "sarimax_training_time_range")
+    time_range.set_value((date(2021, 1, 1), date(2023, 12, 1)))
+    app.run()
+    assert not app.exception
+
+    _by_key(app.button, "sarimax_fit_button").click()
+    app.run()
+    assert not app.exception
+    assert any(metric.label == "AIC" for metric in app.metric)
+
+    response_log = _by_key(app.checkbox, "sarimax_response_log")
+    response_log.set_value(True)
+    app.run()
+    assert not app.exception
+    assert not any(metric.label == "AIC" for metric in app.metric)
+
+    _by_key(app.button, "sarimax_fit_button").click()
+    app.run()
+    assert not app.exception
+    assert any(metric.label == "AIC" for metric in app.metric)
+
+    _by_key(app.date_input, "sarimax_training_time_range").set_value(
+        (date(2022, 1, 1), date(2023, 12, 1))
+    )
+    app.run()
+    assert not app.exception
+    assert not any(metric.label == "AIC" for metric in app.metric)
+
+
 def test_auto_mode_workflow_via_ui(monkeypatch):
     """自动选阶模式：切换配置方式、缩小搜索范围后拟合出候选表。"""
     from streamlit.testing.v1 import AppTest
@@ -164,14 +249,24 @@ def test_auto_mode_workflow_via_ui(monkeypatch):
     _by_key(app.segmented_control, "sarimax_config_mode").set_value("自动选阶")
     app.run()
     assert not app.exception
-    _by_key(app.number_input, "sarimax_auto_p_max").set_value(1)
-    _by_key(app.number_input, "sarimax_auto_q_max").set_value(1)
-    _by_key(app.number_input, "sarimax_auto_d_max").set_value(0)
-    _by_key(app.number_input, "sarimax_auto_P_max").set_value(0)
-    _by_key(app.number_input, "sarimax_auto_Q_max").set_value(0)
-    _by_key(app.number_input, "sarimax_auto_D_max").set_value(0)
+    _by_key(app.slider, "sarimax_auto_p_range").set_value((0, 1))
+    _by_key(app.slider, "sarimax_auto_q_range").set_value((0, 1))
+    _by_key(app.slider, "sarimax_auto_d_range").set_value((0, 0))
+    _by_key(app.slider, "sarimax_auto_P_range").set_value((0, 0))
+    _by_key(app.slider, "sarimax_auto_Q_range").set_value((0, 0))
+    _by_key(app.slider, "sarimax_auto_D_range").set_value((0, 0))
     app.run()
     assert not app.exception
+    assert _by_key(app.checkbox, "sarimax_response_log").label == "目标变量取对数"
+    assert _by_key(
+        app.checkbox, "sarimax_auto_enforce_stationarity"
+    ).label == "强制 AR 多项式平稳"
+    assert _by_key(
+        app.checkbox, "sarimax_auto_enforce_invertibility"
+    ).label == "强制 MA 多项式可逆"
+    assert not any(
+        item.value in {"搜索范围", "模型设置"} for item in app.markdown
+    )
     assert any("网格搜索将尝试 4 个模型组合" in c.value for c in app.caption)
 
     fit_button = _by_key(app.button, "sarimax_fit_button")
@@ -179,10 +274,17 @@ def test_auto_mode_workflow_via_ui(monkeypatch):
     fit_button.click()
     app.run()
     assert not app.exception
-    assert any("最优模型" in m.value for m in app.markdown)
-    assert any(
-        "模型" in element.value.columns for element in app.dataframe
+    assert any("最终采用模型" in m.value for m in app.markdown)
+    criterion_table = next(
+        element.value
+        for element in app.dataframe
+        if list(element.value.columns) == ["模型", "AIC", "BIC", "HQIC", "AICC"]
     )
+    assert len(criterion_table) == 4
+    _by_key(app.selectbox, "sarimax_auto_selection_criterion").set_value("bic")
+    app.run()
+    assert not app.exception
+    assert any("BIC 最小" in m.value for m in app.markdown)
     metrics = {element.label: element.value for element in app.metric}
     assert "AIC" in metrics
 
@@ -216,17 +318,17 @@ def test_rdl_manual_and_auto_workflows_via_ui(monkeypatch):
 
     _by_key(app.segmented_control, "sarimax_config_mode").set_value("自动选阶")
     app.run()
-    _by_key(app.number_input, "sarimax_rdl_auto_error_p_max").set_value(1)
-    _by_key(app.number_input, "sarimax_rdl_auto_error_d_max").set_value(0)
-    _by_key(app.number_input, "sarimax_rdl_auto_error_q_max").set_value(0)
-    _by_key(app.number_input, "sarimax_rdl_auto_error_P_max").set_value(0)
-    _by_key(app.number_input, "sarimax_rdl_auto_error_D_max").set_value(0)
-    _by_key(app.number_input, "sarimax_rdl_auto_error_Q_max").set_value(0)
+    _by_key(app.slider, "sarimax_rdl_auto_error_p_range").set_value((0, 1))
+    _by_key(app.slider, "sarimax_rdl_auto_error_d_range").set_value((0, 0))
+    _by_key(app.slider, "sarimax_rdl_auto_error_q_range").set_value((0, 0))
+    _by_key(app.slider, "sarimax_rdl_auto_error_P_range").set_value((0, 0))
+    _by_key(app.slider, "sarimax_rdl_auto_error_D_range").set_value((0, 0))
+    _by_key(app.slider, "sarimax_rdl_auto_error_Q_range").set_value((0, 0))
     app.run()
     _by_key(app.button, "sarimax_fit_button").click()
     app.run()
     assert not app.exception
-    assert any("最优模型" in item.value for item in app.markdown)
+    assert any("最终采用模型" in item.value for item in app.markdown)
 
 
 def test_ardl_manual_and_auto_workflows_via_ui(monkeypatch):
@@ -244,7 +346,7 @@ def test_ardl_manual_and_auto_workflows_via_ui(monkeypatch):
     _by_key(app.button, "sarimax_fit_button").click()
     app.run()
     assert not app.exception
-    assert any(tab.label == "动态结构" for tab in app.tabs)
+    assert any(item.value == "**残差诊断图**" for item in app.markdown)
 
     # 切换模型族必须清除旧 ARDL 结果，并且只留下 RDL 控件。
     _by_key(app.segmented_control, "sarimax_model_family").set_value("RDL")
@@ -313,9 +415,9 @@ def test_data_table_options_via_ui(monkeypatch):
     assert "≠" in filter_op.options
     assert _by_key(app.number_input, "sarimax_table_filter_val").label == "值"
     # 月度数据 → 时间筛选按频率渲染为「时间范围」预设下拉
-    # （无 date_input；自定义时才出现起止年月下拉）
+    # 训练区有一个日期范围控件；预览表的月度时间筛选不额外渲染 date_input。
     _by_key(app.selectbox, "sarimax_table_time_preset")
-    assert not app.date_input
+    assert [item.key for item in app.date_input] == ["sarimax_training_time_range"]
     assert not any(element.key == "sarimax_table_view_head" for element in app.checkbox)
     assert not any(element.key == "sarimax_table_view_tail" for element in app.checkbox)
 
@@ -556,6 +658,31 @@ def test_select_rows_uses_variable_names_and_data_start(monkeypatch):
     assert not any(
         element.key == "sarimax_target_select" for element in app.selectbox
     )
+
+
+def test_time_column_options_refresh_after_variable_name_row_changes(monkeypatch):
+    """变量名行变化后，时间列选项必须同步使用新表头。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
+    _navigate_to_sarimax(app)
+    app.file_uploader[0].upload(*_changing_header_csv())
+    app.run()
+
+    _by_key(app.number_input, "sarimax_preview_variable_name_row").set_value(2)
+    app.run()
+    _by_key(app.number_input, "sarimax_preview_data_start_row").set_value(3)
+    app.run()
+    time_column = _by_key(app.selectbox, "sarimax_preview_time_column")
+    assert "old_date" in time_column.options
+    assert "new_date" not in time_column.options
+
+    _by_key(app.number_input, "sarimax_preview_variable_name_row").set_value(5)
+    app.run()
+    time_column = _by_key(app.selectbox, "sarimax_preview_time_column")
+    assert "new_date" in time_column.options
+    assert "old_date" not in time_column.options
 
 
 def test_zero_values_are_missing_in_sarimax_preview(monkeypatch):

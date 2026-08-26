@@ -87,7 +87,6 @@ def _source_payload() -> tuple[bytes, str] | None:
     return content, name
 
 
-@st.cache_data(show_spinner=False)
 def _load_oil_market_cached(content: bytes, file_name: str) -> OilMarketData:
     return load_oil_market_data(content, file_name=file_name)
 

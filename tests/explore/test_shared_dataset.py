@@ -1,12 +1,18 @@
 import io
+from types import SimpleNamespace
 import warnings
 
 import pandas as pd
 
 from dashboard.core.ui.utils.shared_dataset import (
+    clear_shared_dataset,
     fingerprint_file,
+    get_shared_dataset_data,
+    get_shared_dataset_file,
     load_shared_dataframe,
+    render_shared_dataset_uploader,
 )
+from dashboard.core.ui.utils import shared_dataset
 
 
 class UploadedBytes(io.BytesIO):
@@ -58,3 +64,90 @@ def test_shared_file_fingerprint_changes_when_content_changes():
     second = UploadedBytes(b"date,value\n2025-01-31,2\n", "data.csv")
 
     assert fingerprint_file(first) != fingerprint_file(second)
+
+
+class _Uploader:
+    def __init__(self, uploaded_file=None, *, clear_clicked: bool = False):
+        self.uploaded_file = uploaded_file
+        self.clear_clicked = clear_clicked
+        self.captions: list[str] = []
+
+    def markdown(self, *_args, **_kwargs):
+        pass
+
+    def file_uploader(self, *_args, **_kwargs):
+        return self.uploaded_file
+
+    def button(self, *_args, **_kwargs):
+        return self.clear_clicked
+
+    def caption(self, text: str):
+        self.captions.append(text)
+
+    def success(self, *_args, **_kwargs):
+        pass
+
+    def error(self, *_args, **_kwargs):
+        pass
+
+    def warning(self, *_args, **_kwargs):
+        pass
+
+
+def _use_session_state(monkeypatch, state: dict) -> None:
+    monkeypatch.setattr(shared_dataset, "st", SimpleNamespace(session_state=state))
+
+
+def test_missing_uploader_value_keeps_current_session_file(monkeypatch):
+    state: dict = {}
+    _use_session_state(monkeypatch, state)
+    first = _Uploader(UploadedBytes(b"date,value\n2025-01-31,1\n", "data.csv"))
+    render_shared_dataset_uploader(first)
+    original_data = get_shared_dataset_data()
+
+    returned = render_shared_dataset_uploader(_Uploader())
+
+    assert returned["has_data"] is True
+    assert get_shared_dataset_file() is not None
+    assert get_shared_dataset_file().name == "data.csv"
+    assert get_shared_dataset_data() is original_data
+
+
+def test_explicit_clear_removes_asset_and_dependent_state(monkeypatch):
+    state: dict = {
+        "model_analysis.sarimax.fitted_result": object(),
+        "workspace.pages.exploration.univariate.inputs": {"x": 1},
+    }
+    _use_session_state(monkeypatch, state)
+    render_shared_dataset_uploader(
+        _Uploader(UploadedBytes(b"date,value\n2025-01-31,1\n", "data.csv"))
+    )
+
+    returned = render_shared_dataset_uploader(_Uploader(clear_clicked=True))
+
+    assert returned["has_data"] is False
+    assert get_shared_dataset_file() is None
+    assert get_shared_dataset_data() is None
+    assert "model_analysis.sarimax.fitted_result" not in state
+    assert "workspace.pages.exploration.univariate.inputs" not in state
+
+
+def test_new_file_clears_dependent_results_but_same_content_does_not(monkeypatch):
+    state: dict = {}
+    _use_session_state(monkeypatch, state)
+    first = UploadedBytes(b"date,value\n2025-01-31,1\n", "data.csv")
+    render_shared_dataset_uploader(_Uploader(first))
+    state["model_analysis.sarimax.fitted_result"] = "keep-for-same-file"
+    state["sarimax_target_select"] = "value"
+
+    render_shared_dataset_uploader(
+        _Uploader(UploadedBytes(b"date,value\n2025-01-31,1\n", "renamed.csv"))
+    )
+    assert state["model_analysis.sarimax.fitted_result"] == "keep-for-same-file"
+
+    render_shared_dataset_uploader(
+        _Uploader(UploadedBytes(b"date,value\n2025-01-31,2\n", "data.csv"))
+    )
+    assert "model_analysis.sarimax.fitted_result" not in state
+    assert "sarimax_target_select" not in state
+    clear_shared_dataset()

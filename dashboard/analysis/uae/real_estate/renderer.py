@@ -43,7 +43,6 @@ REAL_ESTATE_EXPLANATION = """
 """.strip()
 
 
-@st.cache_data(show_spinner=False)
 def _load_real_estate_cached(
     content: bytes,
     file_name: str,

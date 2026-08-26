@@ -9,6 +9,7 @@ from dashboard.explore.core.data_source import (
     fingerprint_uploaded_file,
     load_explore_dataset,
 )
+from dashboard.core.ui.utils.shared_dataset import get_shared_dataset_file
 
 DATASET_STATE_KEY = "exploration.dataset.parsed"
 DATASET_DEPENDENT_WIDGET_KEYS = (
@@ -22,8 +23,10 @@ def get_explore_dataset(st_obj, file_input: Any) -> ExploreDataset | None:
     """按内容指纹复用一次契约解析结果。"""
     state = st_obj.session_state
     if file_input is None:
-        state.pop(DATASET_STATE_KEY, None)
-        return None
+        file_input = get_shared_dataset_file()
+    if file_input is None:
+        cached = state.get(DATASET_STATE_KEY)
+        return cached if isinstance(cached, ExploreDataset) else None
 
     fingerprint = fingerprint_uploaded_file(file_input)
     cached = state.get(DATASET_STATE_KEY)

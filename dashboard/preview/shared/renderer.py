@@ -18,10 +18,8 @@ from dashboard.core.ui.utils.state_helpers import (
     get_preview_state,
     set_preview_state,
 )
-from dashboard.core.ui.utils.shared_dataset import (
-    fingerprint_file,
-    get_shared_dataset_file,
-)
+from dashboard.core.ui.utils.shared_dataset import fingerprint_file
+from dashboard.core.workspace import SessionWorkspace
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +52,13 @@ class PreviewRenderer:
 
     def render(self):
         """按固定流程渲染侧边栏和主内容。"""
-        self.render_sidebar()
-        self.render_main_content()
+        workspace = SessionWorkspace(st.session_state)
+        workspace.begin_page(self.state_namespace)
+        try:
+            self.render_sidebar()
+            self.render_main_content()
+        finally:
+            workspace.end_page(self.state_namespace)
 
     def render_sidebar(self) -> Optional[Any]:
         """渲染侧边栏
@@ -64,8 +67,32 @@ class PreviewRenderer:
             Optional[Any]: 默认文件对象或None
         """
         with st.sidebar:
-            # 优先使用全局共享数据集；未上传时才使用默认文件。
-            uploaded_file = get_shared_dataset_file() or self._load_default_data_file()
+            uploaded_file = st.file_uploader(
+                "选择预览数据文件",
+                type=["csv", "xlsx", "xls"],
+                key=f"{self.state_namespace}.file_uploader",
+                help="此文件只在当前数据预览模块的会话槽位中保留。",
+            )
+            workspace = SessionWorkspace(st.session_state)
+            if uploaded_file is not None:
+                update = workspace.put_asset(self._asset_slot(), uploaded_file)
+                if update.changed:
+                    clear_preview_data(namespace=self.state_namespace)
+                    workspace.reset_page(self.state_namespace)
+            asset = workspace.open_asset(self._asset_slot())
+            if asset is not None:
+                st.caption(f"当前会话文件：{asset.name}")
+                if st.button(
+                    "清除当前文件",
+                    key=f"{self.state_namespace}.clear_file",
+                ):
+                    workspace.clear_asset(self._asset_slot())
+                    clear_preview_data(namespace=self.state_namespace)
+                    workspace.reset_page(self.state_namespace)
+                    return None
+                uploaded_file = asset
+            else:
+                uploaded_file = self._load_default_data_file()
             if uploaded_file is None:
                 st.error("请先上传符合正式模板格式的数据文件")
                 clear_preview_data(namespace=self.state_namespace)
@@ -76,6 +103,12 @@ class PreviewRenderer:
                     self._process_uploaded_data(uploaded_file)
 
             return uploaded_file
+
+    def _asset_slot(self) -> str:
+        """返回与预览命名空间一一对应的独立文件槽位。"""
+        if self.state_namespace not in {"preview.industrial", "preview.uae"}:
+            raise ValueError(f"不支持的数据预览命名空间：{self.state_namespace}")
+        return self.state_namespace
 
     def _load_default_data_file(self) -> Optional[io.BytesIO]:
         """加载默认数据文件

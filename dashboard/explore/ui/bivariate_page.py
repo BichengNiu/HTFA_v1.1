@@ -12,6 +12,7 @@ import streamlit as st
 from dashboard.core.ui.utils.shared_dataset import (
     get_shared_dataset_file,
 )
+from dashboard.core.workspace import SessionWorkspace
 from dashboard.explore.core.data_source import ExploreDataset, format_table_option
 from dashboard.explore.core.series_utils import clean_dataframe_columns
 from dashboard.explore.ui.dataset_context import get_explore_dataset
@@ -20,6 +21,15 @@ from dashboard.explore.ui.lead_lag import LeadLagAnalysisComponent
 
 logger = logging.getLogger(__name__)
 TAB_NAMES = ("同步分析", "领先滞后分析")
+_PAGE_ID = "exploration.bivariate"
+_PERSISTENT_KEYS = (
+    "bivariate_table_select",
+    "lead_lag_target_var",
+    "lead_lag_alignment_mode",
+    "lead_lag_freq_agg_method",
+    "lead_lag_max_lags",
+    "lead_lag_plot_var",
+)
 
 
 def _visible_tab_names() -> list[str]:
@@ -95,32 +105,37 @@ def _publish_analysis_data(
 
 def render_bivariate_analysis_page() -> None:
     """渲染多变量分析页面。"""
-    visible_tabs = _visible_tab_names()
-    if not visible_tabs:
-        st.warning("您没有权限访问任何Tab")
-        return
+    workspace = SessionWorkspace(st.session_state)
+    workspace.begin_page(_PAGE_ID, keys=_PERSISTENT_KEYS)
+    try:
+        visible_tabs = _visible_tab_names()
+        if not visible_tabs:
+            st.warning("您没有权限访问任何Tab")
+            return
 
-    uploaded_file = get_shared_dataset_file()
-    if uploaded_file is None:
-        st.info("请先在侧边栏上传共享数据集。")
-        return
+        uploaded_file = get_shared_dataset_file()
+        if uploaded_file is None:
+            st.info("请先在侧边栏上传共享数据集。")
+            return
 
-    dataset = _load_dataset(uploaded_file)
-    if dataset is None:
-        return
-    selection = _select_analysis_table(dataset)
-    if selection is None:
-        return
-    selected_table, analysis_data = selection
-    data_name = _publish_analysis_data(dataset, selected_table, analysis_data)
+        dataset = _load_dataset(uploaded_file)
+        if dataset is None:
+            return
+        selection = _select_analysis_table(dataset)
+        if selection is None:
+            return
+        selected_table, analysis_data = selection
+        data_name = _publish_analysis_data(dataset, selected_table, analysis_data)
 
-    tabs = st.tabs(visible_tabs)
-    for index, tab_name in enumerate(visible_tabs):
-        with tabs[index]:
-            if tab_name == "同步分析":
-                _render_correlation_tab(analysis_data, data_name)
-            else:
-                _render_lead_lag_tab()
+        tabs = st.tabs(visible_tabs)
+        for index, tab_name in enumerate(visible_tabs):
+            with tabs[index]:
+                if tab_name == "同步分析":
+                    _render_correlation_tab(analysis_data, data_name)
+                else:
+                    _render_lead_lag_tab()
+    finally:
+        workspace.end_page(_PAGE_ID)
 
 
 def _render_correlation_tab(data: pd.DataFrame, data_name: str) -> None:

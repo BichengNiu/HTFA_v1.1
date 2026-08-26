@@ -23,6 +23,7 @@ from dashboard.models.SARIMAX.core.model_config import (
     SARIMAXConfig,
 )
 from dashboard.models.SARIMAX.core.modeling import (
+    build_auto_sarimax_criterion_table,
     build_prediction_table,
     fit_ardl,
     fit_auto_ardl,
@@ -33,6 +34,7 @@ from dashboard.models.SARIMAX.core.modeling import (
     fit_sarimax,
     produce_forecast,
     run_residual_diagnostics,
+    select_auto_sarimax_result,
     translate_ts_error,
     validate_fit_inputs,
 )
@@ -65,8 +67,8 @@ def test_load_modeling_dataset_parses_csv_with_date_column():
     assert dataset.file_name == "data.csv"
     assert dataset.time_column == "date"
     assert numeric_variable_names(dataset.frame) == ["value", "other"]
-    assert dataset.fingerprint.startswith("data.csv:")
-    assert len(dataset.fingerprint.rsplit(":", 1)[1]) == 64
+    assert len(dataset.fingerprint) == 64
+    assert set(dataset.fingerprint) <= set("0123456789abcdef")
 
 
 def test_load_modeling_dataset_falls_back_to_gbk_encoding():
@@ -113,6 +115,52 @@ def test_prepare_modeling_inputs_uses_datetime_index():
     assert exog is not None and list(exog.columns) == ["x"]
 
 
+def test_prepare_modeling_inputs_sorts_dates_and_keeps_exog_aligned():
+    content = (
+        b"date,value,x\n"
+        b"2024-03-01,3.0,30\n"
+        b"2024-01-01,1.0,10\n"
+        b"2024-02-01,2.0,20\n"
+    )
+    dataset = load_modeling_dataset(FakeUploader(content))
+
+    series, exog, index = prepare_modeling_inputs(dataset, "value", ("x",))
+
+    expected = pd.DatetimeIndex(
+        ["2024-01-01", "2024-02-01", "2024-03-01"]
+    )
+    assert index.equals(expected)
+    assert series.index.equals(expected)
+    assert series.tolist() == [1.0, 2.0, 3.0]
+    assert exog is not None and exog.index.equals(expected)
+    assert exog["x"].tolist() == [10.0, 20.0, 30.0]
+
+
+def test_prepare_modeling_inputs_filters_datetime_range_inclusively():
+    content = (
+        b"date,value,x\n"
+        b"2024-01-01,1.0,10\n"
+        b"2024-02-01,2.0,20\n"
+        b"2024-03-01,3.0,30\n"
+        b"2024-04-01,4.0,40\n"
+    )
+    dataset = load_modeling_dataset(FakeUploader(content))
+
+    series, exog, index = prepare_modeling_inputs(
+        dataset,
+        "value",
+        ("x",),
+        time_range=(pd.Timestamp("2024-02-01"), pd.Timestamp("2024-03-01")),
+    )
+
+    expected = pd.DatetimeIndex(["2024-02-01", "2024-03-01"])
+    assert index.equals(expected)
+    assert series.index.equals(expected)
+    assert series.tolist() == [2.0, 3.0]
+    assert exog is not None and exog.index.equals(expected)
+    assert exog["x"].tolist() == [20.0, 30.0]
+
+
 def test_prepare_modeling_inputs_falls_back_to_range_index():
     content = b"value,x\n1.0,10\n2.0,20\n"
     dataset = load_modeling_dataset(FakeUploader(content))
@@ -120,6 +168,26 @@ def test_prepare_modeling_inputs_falls_back_to_range_index():
 
     assert isinstance(index, pd.RangeIndex)
     assert series.tolist() == [1.0, 2.0]
+
+
+def test_prepare_modeling_inputs_rejects_invalid_time_range():
+    dated = load_modeling_dataset(
+        FakeUploader(b"date,value\n2024-01-01,1.0\n2024-02-01,2.0\n")
+    )
+    with pytest.raises(ValueError, match="起始日期不能晚于结束日期"):
+        prepare_modeling_inputs(
+            dated,
+            "value",
+            time_range=(pd.Timestamp("2024-02-01"), pd.Timestamp("2024-01-01")),
+        )
+
+    undated = load_modeling_dataset(FakeUploader(b"value\n1.0\n2.0\n"))
+    with pytest.raises(ValueError, match="没有日期列"):
+        prepare_modeling_inputs(
+            undated,
+            "value",
+            time_range=(pd.Timestamp("2024-01-01"), pd.Timestamp("2024-02-01")),
+        )
 
 
 def test_prepare_modeling_inputs_rejects_duplicate_dates():
@@ -305,6 +373,30 @@ def test_fit_auto_sarimax_small_grid():
     assert result.best_result is not None
     assert len(result.best_order) == 3
     assert len(result.criterion_values) == 4
+
+
+def test_auto_sarimax_criterion_table_and_post_selection():
+    result = fit_auto_sarimax(
+        make_series(),
+        None,
+        AutoSARIMAXConfig(
+            p=(0, 1),
+            d=(0, 0),
+            q=(0, 1),
+            P=(0, 0),
+            D=(0, 0),
+            Q=(0, 0),
+        ),
+    )
+
+    table = build_auto_sarimax_criterion_table(result)
+    assert list(table.columns) == ["模型", "AIC", "BIC", "HQIC", "AICC"]
+    assert len(table) == len(result.candidate_results)
+
+    selected = select_auto_sarimax_result(result, "bic")
+    expected_index = int(table["BIC"].idxmin())
+    assert selected.selection_criterion == "bic"
+    assert selected.best_order == result.candidate_orders[expected_index]
 
 
 def test_fit_auto_sarimax_passes_stationarity_constraints():

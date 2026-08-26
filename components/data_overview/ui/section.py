@@ -125,7 +125,7 @@ def render_data_overview(
     """展示数据集并绘制所选变量的时间序列预览图。
 
     第一行：数据上传组件独占一行；
-    第二行：工作表、变量名行、数据开始行和时间列；
+    第二行：工作表、变量名行、时间列和数据开始行；
     第三行：选择变量独占一行；
     预览表与时间序列图都受「数据表高级选项」的筛选条件驱动。
     """
@@ -143,10 +143,10 @@ def render_data_overview(
         st_obj.error("文件中至少需要一行变量名和一行数据。")
         return
 
-    # 工作表、变量名行、数据开始行和时间列在同一排。
+    # 工作表、变量名行、时间列和数据开始行在同一排。
     sheets = data_source.sheets()
     has_sheet_selector = bool(sheets and len(sheets) > 1)
-    selection_columns = st_obj.columns(5 if has_sheet_selector else 4)
+    selection_columns = st_obj.columns(4 if has_sheet_selector else 3)
     column_index = 0
     if has_sheet_selector:
         with selection_columns[column_index]:
@@ -169,9 +169,9 @@ def render_data_overview(
             )
         column_index += 1
 
+    time_key = preview_key(key_prefix, "time_column")
     variable_name_key = preview_key(key_prefix, "variable_name_row")
     data_start_key = preview_key(key_prefix, "data_start_row")
-    time_key = preview_key(key_prefix, "time_column")
     if state.get("source_fingerprint") != source_fingerprint:
         st.session_state.pop(variable_name_key, None)
         st.session_state.pop(data_start_key, None)
@@ -190,14 +190,13 @@ def render_data_overview(
         key=variable_name_key,
         help="输入包含变量名称的原始行号，行号从 1 开始。",
     )
-    column_index += 1
 
     data_start_min = int(variable_name_row) + 1
     data_start_default = st.session_state.get(data_start_key, data_start_min)
     if not data_start_min <= int(data_start_default) <= row_count:
         data_start_default = data_start_min
     st.session_state[data_start_key] = int(data_start_default)
-    data_start_row = selection_columns[column_index].number_input(
+    data_start_row = selection_columns[column_index + 2].number_input(
         "数据开始行",
         min_value=data_start_min,
         max_value=row_count,
@@ -205,7 +204,6 @@ def render_data_overview(
         key=data_start_key,
         help="输入第一行数据的行号，必须晚于变量名行。行号从 1 开始。",
     )
-    column_index += 1
 
     dataset = state.get("dataset")
     settings_fingerprint = (
@@ -235,13 +233,24 @@ def render_data_overview(
         return
 
     time_options = ["无", *[str(column) for column in raw_data.columns]]
+    time_options_signature = (
+        source_fingerprint,
+        int(variable_name_row),
+        int(data_start_row),
+        tuple(time_options),
+    )
+    if state.get("time_options_signature") != time_options_signature:
+        # 变量名行或数据开始行变化后，旧时间列选择不能沿用；否则
+        # Streamlit 会优先恢复旧 widget 值，页面可能继续显示旧表头。
+        st.session_state.pop(time_key, None)
+        state.set("time_options_signature", time_options_signature)
     time_default = st.session_state.get(
         time_key, _suggest_time_column(raw_data)
     )
     if time_default not in time_options:
         time_default = "无"
     st.session_state[time_key] = time_default
-    time_selection = selection_columns[column_index].selectbox(
+    time_selection = selection_columns[column_index + 1].selectbox(
         "选择时间列",
         options=time_options,
         key=time_key,

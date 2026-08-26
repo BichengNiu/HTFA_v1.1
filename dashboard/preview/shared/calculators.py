@@ -17,7 +17,6 @@ from dashboard.preview.core.calculation_rules import uses_difference_calculation
 logger = logging.getLogger(__name__)
 
 
-@st.cache_data(show_spinner=False, max_entries=30, ttl=3600)
 def calculate_summary(
     df: pd.DataFrame,
     frequency: str,

@@ -15,6 +15,8 @@ import joblib
 import pickle
 from typing import Optional, Dict, Any
 
+from dashboard.core.workspace import SessionWorkspace
+
 
 def is_valid_file_object(file_obj) -> bool:
     """
@@ -874,7 +876,7 @@ def render_dfm_tab(st):
         _render_factor_timeseries(st, accessor)
 
 
-def render_dfm_model_analysis_page(st_module: Any) -> Dict[str, Any]:
+def _render_dfm_model_analysis_page_content(st_module: Any) -> Dict[str, Any]:
     """
     渲染DFM模型分析页面
 
@@ -914,3 +916,13 @@ def render_dfm_model_analysis_page(st_module: Any) -> Dict[str, Any]:
             'error': str(e),
             'error_type': 'DataParsingError'
         }
+
+
+def render_dfm_model_analysis_page(st_module: Any) -> Dict[str, Any]:
+    """渲染模型分析并保存本页会话状态。"""
+    workspace = SessionWorkspace(st_module.session_state)
+    workspace.begin_page("model_analysis.dfm.results")
+    try:
+        return _render_dfm_model_analysis_page_content(st_module)
+    finally:
+        workspace.end_page("model_analysis.dfm.results")

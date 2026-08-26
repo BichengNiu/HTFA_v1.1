@@ -42,7 +42,7 @@ def load_default_monitoring_data() -> Optional[str]:
 
 def load_and_cache_data(uploaded_file) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame]]:
     """
-    加载数据（缓存由data_loader模块的@st.cache_data装饰器自动处理）
+    加载当前会话的数据；固定权重由 data_loader 的资源缓存复用。
 
     Returns:
         (df_macro, df_weights): 宏观数据和权重数据的元组
@@ -50,8 +50,7 @@ def load_and_cache_data(uploaded_file) -> Tuple[Optional[pd.DataFrame], Optional
     if uploaded_file is None:
         return None, None
 
-    # 直接加载数据，缓存由@st.cache_data装饰器自动处理
-    # 不需要手动缓存，避免双重缓存
+    # 上传数据只在当前会话中流转，避免通过进程级缓存保存用户文件。
     with st.spinner("正在处理数据..."):
         df_macro = load_macro_data(uploaded_file)
         df_weights = load_weights_data()  # 从内部CSV文件读取

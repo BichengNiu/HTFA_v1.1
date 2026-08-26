@@ -12,9 +12,11 @@ import time
 from datetime import date
 from typing import Optional, Tuple
 import logging
+from hashlib import sha256
 
 from dashboard.models.DFM.prep.ui.state import PrepStateKeys, prep_state
 from dashboard.models.DFM.prep.utils.html_helpers import render_tag_group
+from dashboard.core.workspace import SessionWorkspace
 
 logger = logging.getLogger(__name__)
 
@@ -24,10 +26,10 @@ _set_state = prep_state.set
 
 
 def _make_cache_key(prefix: str, uploaded_file) -> str:
-    """生成基于文件名和大小的缓存键"""
+    """生成基于文件内容 SHA-256 的缓存键。"""
     try:
         file_bytes = uploaded_file.getvalue()
-        return f"{prefix}_{uploaded_file.name}_{len(file_bytes)}"
+        return f"{prefix}_{sha256(file_bytes).hexdigest()}"
     except Exception:
         return f"{prefix}_none"
 
@@ -117,9 +119,7 @@ def _render_file_upload_section(st_obj):
 
     st_obj.markdown("#### 数据上传")
 
-    # 检查已有文件
-    existing_file = _get_state(PrepStateKeys.TRAINING_DATA_FILE)
-    existing_file_path = _get_state(PrepStateKeys.UPLOADED_FILE_PATH)
+    workspace = SessionWorkspace(st.session_state)
 
     # 文件上传组件
     uploaded_file_new = st_obj.file_uploader(
@@ -132,21 +132,20 @@ def _render_file_upload_section(st_obj):
     # 处理新上传的文件
     uploaded_file = None
     if uploaded_file_new is not None:
-        # 检查文件是否真的变更
-        file_bytes = uploaded_file_new.getvalue()
+        update = workspace.put_asset("dfm.prep", uploaded_file_new)
+        if update.changed:
+            prep_state.on_file_change(update.asset.name, update.asset.fingerprint)
+            workspace.reset_page("model_analysis.dfm.prep")
+            logger.info("新文件上传: %s，已按内容指纹重置参数", update.asset.name)
 
-        new_file_id = f"{uploaded_file_new.name}_{len(file_bytes)}"
-        existing_file_id = f"{existing_file_path}_{len(_get_state(PrepStateKeys.FILE_BYTES, b''))}"
-
-        # 只有文件真正变更时才更新状态
-        if new_file_id != existing_file_id:
-            _set_state(PrepStateKeys.TRAINING_DATA_FILE, uploaded_file_new)
-            prep_state.on_file_change(uploaded_file_new.name, file_bytes)
-            logger.info("新文件上传: %s，字节大小: %d，已重置参数", uploaded_file_new.name, len(file_bytes))
-
-        uploaded_file = uploaded_file_new
-    elif existing_file:
-        uploaded_file = existing_file
+    uploaded_file = workspace.open_asset("dfm.prep")
+    if uploaded_file is not None:
+        st_obj.caption(f"当前会话文件：{uploaded_file.name}")
+        if st_obj.button("清除当前文件", key="dfm_data_prep_clear_file"):
+            workspace.clear_asset("dfm.prep")
+            prep_state.on_file_change("", "")
+            workspace.reset_page("model_analysis.dfm.prep")
+            return None
 
     return uploaded_file
 
@@ -1132,7 +1131,7 @@ def _render_download_buttons(st_obj):
 # 主渲染函数
 # ============================================================================
 
-def render_dfm_data_prep_page(st_obj):
+def _render_dfm_data_prep_page_content(st_obj):
     """
     渲染DFM数据准备页面
 
@@ -1200,6 +1199,26 @@ def render_dfm_data_prep_page(st_obj):
 
     # 11. 渲染下载按钮
     _render_download_buttons(st_obj)
+
+
+def render_dfm_data_prep_page(st_obj):
+    """渲染 DFM 数据准备页，并保存本页已登记的输入。"""
+    workspace = SessionWorkspace(st_obj.session_state)
+    workspace.begin_page(
+        "model_analysis.dfm.prep",
+        keys=(
+            "ss_dfm_data_start",
+            "ss_dfm_data_end",
+            "ss_dfm_publication_calibration",
+            "ss_dfm_enable_borrowing",
+            "ss_dfm_enable_freq_alignment",
+            "ss_dfm_target_freq",
+        ),
+    )
+    try:
+        return _render_dfm_data_prep_page_content(st_obj)
+    finally:
+        workspace.end_page("model_analysis.dfm.prep")
 
 
 __all__ = ['render_dfm_data_prep_page']

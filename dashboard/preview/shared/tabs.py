@@ -21,7 +21,6 @@ from dashboard.core.ui.utils.state_helpers import get_preview_state
 from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
 
 
-@st.cache_data(show_spinner=False, ttl=1800, max_entries=10)
 def calculate_indicator_statistics_cached(all_data_dict, indicator_maps):
     """缓存版本的统计计算（简化版：使用Streamlit自动缓存）
 

@@ -22,6 +22,7 @@ from dashboard.models.SARIMAX.core.model_config import (
     AutoARDLConfig,
     AutoRDLConfig,
     AutoSARIMAXConfig,
+    AUTO_CRITERIA,
     RDLConfig,
     SARIMAXConfig,
 )
@@ -190,10 +191,99 @@ def fit_auto_sarimax(
         criterion=config.criterion,
         exog=exog,
         log=config.log,
+        fit_method=config.fit_method,
+        maxiter=config.maxiter,
+        cov_type=config.cov_type,
         enforce_stationarity=config.enforce_stationarity,
         enforce_invertibility=config.enforce_invertibility,
     )
     return model.fit()
+
+
+def build_auto_sarimax_criterion_table(result: AutoModelResult) -> pd.DataFrame:
+    """构建自动 SARIMAX 候选模型的多准则比较表。
+
+    Parameters
+    ----------
+    result : AutoModelResult
+        AutoSARIMAX 搜索结果，必须包含候选模型结果。
+
+    Returns
+    -------
+    pandas.DataFrame
+        行为候选模型，列为模型标签、AIC、BIC、HQIC 和 AICC。
+        信息准则数值越小越优。
+    """
+    criterion_values = result.criterion_table
+    rows = []
+    for index, order in enumerate(result.candidate_orders):
+        seasonal = (
+            result.candidate_seasonal_orders[index]
+            if index < len(result.candidate_seasonal_orders)
+            else None
+        )
+        label = f"{result.model_type}{order}"
+        if seasonal:
+            label += f" × {seasonal}"
+        rows.append(
+            {
+                "模型": label,
+                **{
+                    criterion.upper(): round(
+                        float(criterion_values.iloc[index][criterion]), 6
+                    )
+                    for criterion in AUTO_CRITERIA
+                },
+            }
+        )
+    return pd.DataFrame(rows, columns=["模型", *(c.upper() for c in AUTO_CRITERIA)])
+
+
+def select_auto_sarimax_result(
+    result: AutoModelResult,
+    criterion: str,
+) -> AutoModelResult:
+    """按指定信息准则从已有候选结果中选择最终模型，不重新拟合。
+
+    Parameters
+    ----------
+    result : AutoModelResult
+        已完成网格搜索的 AutoSARIMAX 结果。
+    criterion : str
+        选择准则，必须是 ``AUTO_CRITERIA`` 中的一项。
+
+    Returns
+    -------
+    AutoModelResult
+        以指定准则最小候选模型为 ``best_result`` 的结果对象。
+    """
+    if criterion not in AUTO_CRITERIA:
+        raise ValueError(f"criterion 必须是 {AUTO_CRITERIA} 之一")
+    values = pd.to_numeric(
+        result.criterion_table[criterion], errors="coerce"
+    ).to_numpy(dtype=float)
+    finite = np.isfinite(values)
+    if not finite.any():
+        raise ValueError(f"{criterion} 没有可用的候选值")
+    best_index = int(np.where(finite, values, np.inf).argmin())
+    seasonal = (
+        result.candidate_seasonal_orders[best_index]
+        if best_index < len(result.candidate_seasonal_orders)
+        else None
+    )
+    return AutoModelResult.from_search(
+        best_result=result.candidate_results[best_index],
+        best_order=result.candidate_orders[best_index],
+        candidate_results=result.candidate_results,
+        candidate_orders=result.candidate_orders,
+        criterion_values=values.tolist(),
+        selection_criterion=criterion,
+        search_method=result.search_method,
+        n_attempted=result.n_attempted,
+        best_seasonal_order=seasonal,
+        candidate_seasonal_orders=result.candidate_seasonal_orders,
+        search_messages=result.search_messages,
+    )
 
 
 def _rdl_specs(config: RDLConfig | AutoRDLConfig) -> dict[str, RationalLagSpec]:
@@ -256,6 +346,9 @@ def fit_auto_rdl(
         criterion=error.criterion,
         exog=exog,
         log=error.log,
+        fit_method=error.fit_method,
+        maxiter=error.maxiter,
+        cov_type=error.cov_type,
         enforce_stationarity=error.enforce_stationarity,
         enforce_invertibility=error.enforce_invertibility,
         distributed_lags=_rdl_specs(config),
@@ -432,6 +525,7 @@ def build_prediction_table(forecast: dict[str, Any]) -> pd.DataFrame:
 __all__ = [
     "MIN_OBSERVATIONS",
     "DynamicConfig",
+    "build_auto_sarimax_criterion_table",
     "build_prediction_table",
     "fit_ardl",
     "fit_auto_ardl",
@@ -443,6 +537,7 @@ __all__ = [
     "future_dates",
     "produce_forecast",
     "run_residual_diagnostics",
+    "select_auto_sarimax_result",
     "translate_ts_error",
     "validate_fit_inputs",
 ]

@@ -21,6 +21,7 @@ from dashboard.models.DFM.utils.text_utils import normalize_text
 
 # 导入新增工具和组件
 from dashboard.core.ui.utils.state_helpers import NamespacedStateManager
+from dashboard.core.workspace import SessionWorkspace
 from dashboard.models.DFM.train.ui.components.file_uploader_component import FileUploaderComponent
 from dashboard.models.DFM.train.config.ui_config import UIConfig
 from dashboard.models.DFM.train.ui.utils.config_builder import TrainingConfigBuilder
@@ -1049,7 +1050,7 @@ def _render_training_controls(
                 st_instance.error(f"[ERROR] {error_msg}")
 
 
-def render_dfm_model_training_page(st_instance):
+def _render_dfm_model_training_page_content(st_instance):
     _initialize_training_state(st_instance)
     training_inputs = _load_training_inputs(st_instance)
     if training_inputs is None:
@@ -1078,3 +1079,29 @@ def render_dfm_model_training_page(st_instance):
     _render_training_controls(
         st_instance, input_df, target_freq_code, algorithm_value
     )
+
+
+def render_dfm_model_training_page(st_instance):
+    """渲染 DFM 训练页，并在切换模块前保存训练配置。"""
+    workspace = SessionWorkspace(st_instance.session_state)
+    workspace.begin_page(
+        "model_analysis.dfm.train",
+        keys=(
+            "dfm_training_start_date_input",
+            "dfm_validation_start_date_input",
+            "dfm_validation_end_date_input",
+            "dfm_observation_start_date_input",
+            "dfm_variable_selection_method_input",
+            "dfm_target_alignment_mode_input",
+            "dfm_factor_selection_strategy",
+            "dfm_fixed_number_of_factors",
+            "dfm_cumulative_variance_threshold_input",
+            "dfm_kaiser_threshold_input",
+            "dfm_factor_ar_order_input",
+        ),
+        prefixes=("dfm_indicators_multiselect_", "dfm_select_all_"),
+    )
+    try:
+        return _render_dfm_model_training_page_content(st_instance)
+    finally:
+        workspace.end_page("model_analysis.dfm.train")

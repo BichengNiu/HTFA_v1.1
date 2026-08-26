@@ -7,8 +7,10 @@
 import streamlit as st
 import pandas as pd
 from typing import Tuple, Optional, Dict
+from hashlib import sha256
 
 from dashboard.models.DFM.utils.text_utils import normalize_variable_name
+from dashboard.core.workspace import SessionWorkspace
 
 
 class FileUploaderComponent:
@@ -48,13 +50,21 @@ class FileUploaderComponent:
             help="包含'数据'和'映射'两个sheet的Excel文件"
         )
 
+        workspace = SessionWorkspace(st.session_state)
         if uploaded_excel_file:
-            self.state.set("train_uploaded_excel_file", uploaded_excel_file)
+            update = workspace.put_asset("dfm.train", uploaded_excel_file)
+            if update.changed:
+                self._clear_dependent_states()
 
-        # 加载Excel文件
-        excel_file = self.state.get('train_uploaded_excel_file', None)
+        # 上传控件未渲染/返回 None 时仍使用当前会话文件。
+        excel_file = workspace.open_asset("dfm.train")
 
         if excel_file is not None:
+            st_instance.caption(f"当前会话文件：{excel_file.name}")
+            if st_instance.button("清除当前文件", key="dfm_train_clear_file"):
+                workspace.clear_asset("dfm.train")
+                self._clear_dependent_states()
+                return None, {}, {}, {}, {}
             # 从Excel加载数据和映射
             input_df, var_industry_map, dfm_default_map, var_frequency_map, var_unit_map = self._load_excel_file(excel_file, st_instance)
 
@@ -74,14 +84,16 @@ class FileUploaderComponent:
         return input_df, var_industry_map, dfm_default_map, var_frequency_map, var_unit_map
 
     def _get_file_id(self, file_obj) -> Optional[str]:
-        """生成文件标识用于缓存检测"""
+        """生成内容 SHA-256 标识用于缓存检测。"""
         if file_obj is None:
             return None
-        file_obj.seek(0, 2)
-        size = file_obj.tell()
-        file_obj.seek(0)
-        name = getattr(file_obj, 'name', 'unknown')
-        return f"{name}_{size}"
+        if hasattr(file_obj, "getvalue"):
+            content = file_obj.getvalue()
+        else:
+            position = file_obj.tell()
+            content = file_obj.read()
+            file_obj.seek(position)
+        return sha256(content).hexdigest()
 
     def _clear_dependent_states(self) -> None:
         """

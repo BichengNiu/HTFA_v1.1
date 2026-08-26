@@ -10,6 +10,7 @@ from Ts.TsModels import AutoARDLResult, AutoModelResult
 
 from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
 from dashboard.core.ui.utils.matplotlib_compat import matplotlib_date_compatibility
+from dashboard.core.workspace import stable_signature
 from dashboard.models.SARIMAX.core.modeling import (
     build_prediction_table,
     future_dates,
@@ -64,11 +65,13 @@ def render_forecast_section(st_obj) -> None:
     if exog_names:
         future_exog = _render_future_exog_editor(st_obj, best, int(steps), exog_names)
 
-    signature = (
-        state.get("fit_signature"),
-        int(steps),
-        float(alpha),
-        bool(dynamic),
+    signature = stable_signature(
+        {
+            "fit_signature": state.get("fit_signature"),
+            "steps": int(steps),
+            "alpha": float(alpha),
+            "dynamic": bool(dynamic),
+        }
     )
     if st_obj.button(
         "生成预测",

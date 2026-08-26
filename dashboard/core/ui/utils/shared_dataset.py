@@ -4,12 +4,13 @@
 from __future__ import annotations
 
 import csv
-import hashlib
 import io
 from typing import Optional
 
 import pandas as pd
 import streamlit as st
+
+from dashboard.core.workspace import SessionWorkspace
 
 
 STATE_PREFIX = "dashboard.shared_dataset"
@@ -21,11 +22,16 @@ def _state_key(name: str) -> str:
     return f"{STATE_PREFIX}.{name}"
 
 
+def _workspace() -> SessionWorkspace:
+    return SessionWorkspace(st.session_state)
+
+
 def fingerprint_file(uploaded_file) -> str:
-    """返回文件名与内容共同决定的稳定指纹。"""
+    """返回只由文件内容决定的稳定 SHA-256 指纹。"""
     content = uploaded_file.getvalue()
-    digest = hashlib.sha256(content).hexdigest()
-    return f"{uploaded_file.name}:{len(content)}:{digest}"
+    from hashlib import sha256
+
+    return sha256(content).hexdigest()
 
 
 def _parse_first_column_as_time(frame: pd.DataFrame) -> pd.DataFrame:
@@ -243,8 +249,8 @@ def get_shared_dataset_raw_rows() -> list[list[object]] | None:
 
 
 def get_shared_dataset_file():
-    """获取当前会话的原始上传文件。"""
-    return st.session_state.get(_state_key("file"))
+    """获取当前会话的原始上传文件内存视图。"""
+    return _workspace().open_asset("shared")
 
 
 def get_shared_dataset_data() -> Optional[pd.DataFrame]:
@@ -254,7 +260,8 @@ def get_shared_dataset_data() -> Optional[pd.DataFrame]:
 
 def get_shared_dataset_name() -> str:
     """获取当前会话数据集名称。"""
-    return st.session_state.get(_state_key("file_name"), "")
+    asset = _workspace().get_asset("shared")
+    return asset.name if asset is not None else ""
 
 
 def get_shared_dataset_fingerprint() -> str:
@@ -309,6 +316,7 @@ def select_shared_dataset_sheet(
 def _clear_dependent_analysis_state() -> None:
     """新文件进入后移除依赖旧数据的探索与模型分析结果。"""
     prefixes = (
+        "exploration.dataset.",
         "tools.analysis.",
         "exploration.lead_lag.",
         "model_analysis.sarimax.",
@@ -316,14 +324,37 @@ def _clear_dependent_analysis_state() -> None:
     for key in list(st.session_state):
         if str(key).startswith(prefixes):
             del st.session_state[key]
+    # SARIMAX 的数据概览和训练控件是共享文件的直接消费者；文件内容
+    # 改变时必须清除，避免旧变量名被 Streamlit 重新注入新数据集。
+    for key in list(st.session_state):
+        if str(key).startswith("sarimax_"):
+            del st.session_state[key]
 
 
-def clear_shared_dataset() -> None:
-    """清除共享数据集及其派生的探索结果。"""
+def _clear_shared_page_snapshots() -> None:
+    """清理依赖共享文件的页面输入快照。"""
+    prefixes = (
+        "workspace.pages.exploration.",
+        "workspace.pages.model_analysis.sarimax.",
+    )
+    for key in list(st.session_state):
+        if str(key).startswith(prefixes):
+            del st.session_state[key]
+
+
+def _clear_shared_derived_state() -> None:
+    """保留文件资产，移除共享文件衍生状态与分析结果。"""
     for key in list(st.session_state):
         if str(key).startswith(f"{STATE_PREFIX}."):
             del st.session_state[key]
+    _clear_shared_page_snapshots()
     _clear_dependent_analysis_state()
+
+
+def clear_shared_dataset() -> None:
+    """明确清除共享文件及其衍生的页面和分析状态。"""
+    _workspace().clear_asset("shared")
+    _clear_shared_derived_state()
 
 
 def _fingerprint_matches(file_fingerprint: str, current: str) -> bool:
@@ -351,34 +382,46 @@ def render_shared_dataset_uploader(
     )
 
     if uploaded_file is None:
-        if get_shared_dataset_file() is not None:
-            clear_shared_dataset()
+        asset = _workspace().get_asset("shared")
+        if asset is not None:
+            st_obj.caption(f"当前会话文件：{asset.name}")
+            if st_obj.button("清除当前文件", key="dashboard_shared_dataset_clear"):
+                clear_shared_dataset()
+                return {"show_upload": True, "has_data": False}
+            return {
+                "show_upload": True,
+                "has_data": True,
+                "file_name": asset.name,
+            }
         if not compact:
             st_obj.caption(
                 "支持 CSV、XLS、XLSX；更换文件会清除数据探索与模型分析的历史结果。"
             )
         return {"show_upload": True, "has_data": False}
 
-    fingerprint = fingerprint_file(uploaded_file)
-    if not _fingerprint_matches(fingerprint, get_shared_dataset_fingerprint()):
+    update = _workspace().put_asset("shared", uploaded_file)
+    active_file = _workspace().open_asset("shared")
+    if active_file is None:  # pragma: no cover - put_asset 成功后的防御边界
+        raise RuntimeError("共享文件资产未能保存")
+    fingerprint = update.asset.fingerprint
+    if update.changed or not _fingerprint_matches(
+        fingerprint, get_shared_dataset_fingerprint()
+    ):
         sheets = None
         sheet = None
         raw_rows = []
         try:
-            sheets = list_excel_sheets(uploaded_file)
+            _clear_shared_derived_state()
+            sheets = list_excel_sheets(active_file)
             sheet = sheets[0] if sheets else None
-            raw_rows = _read_raw_rows(uploaded_file, sheet_name=sheet)
+            raw_rows = _read_raw_rows(active_file, sheet_name=sheet)
             data = _build_dataframe_from_rows(raw_rows)
         except Exception as exc:
             if not allow_unparsed:
-                clear_shared_dataset()
                 st_obj.error(f"共享数据集读取失败：{exc}")
                 return {"show_upload": True, "has_data": False, "error": str(exc)}
-            _clear_dependent_analysis_state()
-            st.session_state[_state_key("file")] = uploaded_file
             st.session_state[_state_key("data")] = None
             st.session_state[_state_key("raw_rows")] = raw_rows
-            st.session_state[_state_key("file_name")] = uploaded_file.name
             st.session_state[_state_key("fingerprint")] = fingerprint
             st.session_state[_state_key("sheets")] = sheets
             st.session_state[_state_key("sheet")] = sheet
@@ -388,24 +431,22 @@ def render_shared_dataset_uploader(
             return {
                 "show_upload": True,
                 "has_data": True,
-                "file_name": uploaded_file.name,
+                "file_name": active_file.name,
                 "error": str(exc),
             }
 
-        _clear_dependent_analysis_state()
-        st.session_state[_state_key("file")] = uploaded_file
         st.session_state[_state_key("data")] = data
         st.session_state[_state_key("raw_rows")] = raw_rows
-        st.session_state[_state_key("file_name")] = uploaded_file.name
         st.session_state[_state_key("fingerprint")] = fingerprint
         st.session_state[_state_key("sheets")] = sheets
         st.session_state[_state_key("sheet")] = sheet
 
     if not compact:
-        st_obj.success(f"已加载：{uploaded_file.name}")
+        st_obj.success(f"已加载：{active_file.name}")
         data = get_shared_dataset_data()
-        st_obj.caption(f"{data.shape[0]:,} 行 × {data.shape[1]:,} 列")
-    return {"show_upload": True, "has_data": True, "file_name": uploaded_file.name}
+        if data is not None:
+            st_obj.caption(f"{data.shape[0]:,} 行 × {data.shape[1]:,} 列")
+    return {"show_upload": True, "has_data": True, "file_name": active_file.name}
 
 
 __all__ = [
