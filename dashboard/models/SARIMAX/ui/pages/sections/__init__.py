@@ -34,8 +34,14 @@ def _on_sarimax_dataset_replaced(st_obj) -> None:
     state.set("exog_variables", ())
     state.set("training_time_range", None)
     state.set("response_log", False)
+    state.set("future_exog_editor_signature", None)
     clear_fit_results()
     clear_widget_state(st_obj, DATASET_REPLACED_WIDGET_KEYS)
+    session = getattr(st_obj, "session_state", None)
+    if session is not None:
+        for key in tuple(session):
+            if str(key).startswith("sarimax_future_exog_source_"):
+                session.pop(key, None)
 
 
 render_data_overview_section = create_data_overview(

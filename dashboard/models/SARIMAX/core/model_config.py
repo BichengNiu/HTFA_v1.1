@@ -69,8 +69,8 @@ class SARIMAXConfig:
     seasonal_order: tuple[int, int, int, int] = (0, 0, 0, 0)
     trend: str = "c"
     log: bool = False
-    enforce_stationarity: bool = True
-    enforce_invertibility: bool = True
+    enforce_stationarity: bool = False
+    enforce_invertibility: bool = False
     fit_method: str = "bfgs"
     maxiter: int = 500
     cov_type: str = "oim"
@@ -159,8 +159,8 @@ class AutoSARIMAXConfig:
     fit_method: str = "bfgs"
     maxiter: int = 500
     cov_type: str = "oim"
-    enforce_stationarity: bool = True
-    enforce_invertibility: bool = True
+    enforce_stationarity: bool = False
+    enforce_invertibility: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "p", _validate_range("p", self.p))

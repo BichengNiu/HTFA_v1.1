@@ -122,10 +122,9 @@ MODEL_WIDGET_KEYS = (
     "sarimax_auto_ardl_criterion",
     "sarimax_auto_ardl_search_method",
     "sarimax_fit_button",
-    "sarimax_diag_lags",
-    "sarimax_diag_button",
     "sarimax_diag_download",
-    "sarimax_forecast_steps",
+    "sarimax_forecast_start",
+    "sarimax_forecast_end",
     "sarimax_forecast_alpha",
     "sarimax_forecast_dynamic",
     "sarimax_future_exog_editor",
@@ -203,6 +202,7 @@ def clear_dataset_state() -> None:
     state.set("exog_variables", ())
     state.set("training_time_range", None)
     state.set("response_log", False)
+    state.set("future_exog_editor_signature", None)
     clear_fit_results()
 
 

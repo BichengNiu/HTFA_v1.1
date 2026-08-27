@@ -420,12 +420,12 @@ def _render_sarimax_advanced_settings(
         )
         enforce_stationarity = constraint_columns[1].checkbox(
             "强制 AR 多项式平稳",
-            value=True,
+            value=False,
             key=f"{prefix}_enforce_stationarity",
         )
         enforce_invertibility = constraint_columns[2].checkbox(
             "强制 MA 多项式可逆",
-            value=True,
+            value=False,
             key=f"{prefix}_enforce_invertibility",
         )
     return (

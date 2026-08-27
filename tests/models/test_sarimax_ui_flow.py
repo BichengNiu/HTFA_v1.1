@@ -164,6 +164,8 @@ def test_full_workflow_via_ui(monkeypatch):
     # ② 模型训练：默认手动配置 (1,0,1)，拟合按钮可用并执行
     fit_button = _by_key(app.button, "sarimax_fit_button")
     assert not fit_button.disabled
+    assert not _by_key(app.checkbox, "sarimax_enforce_stationarity").value
+    assert not _by_key(app.checkbox, "sarimax_enforce_invertibility").value
     fit_button.click()
     app.run()
     assert not app.exception
@@ -171,11 +173,11 @@ def test_full_workflow_via_ui(monkeypatch):
     assert "AIC" in metrics and "BIC" in metrics and "对数似然" in metrics
     assert any("已收敛" in element.value for element in app.success)
 
-    # ③ 残差诊断：残差检验运行后出现结果表与下载按钮
-    _by_key(app.button, "sarimax_diag_button").click()
-    app.run()
+    # ③ 残差诊断：模型估计后按建议滞后阶数自动执行。
     assert not app.exception
     assert any("残差自相关" in str(element.value) for element in app.dataframe)
+    assert not any(element.key == "sarimax_diag_button" for element in app.button)
+    assert not any(element.key == "sarimax_diag_lags" for element in app.number_input)
     assert any(element.key == "sarimax_diag_download" for element in app.download_button)
 
     # ④ 模型预测：生成预测后出现预测表与下载按钮
@@ -234,6 +236,39 @@ def test_training_time_range_limits_fit_and_invalidates_result(monkeypatch):
     assert not any(metric.label == "AIC" for metric in app.metric)
 
 
+def test_forecast_prefills_future_exog_from_dataset(monkeypatch):
+    """预测页从训练范围之外的数据行预填外生变量路径。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
+    _navigate_to_sarimax(app)
+    app.file_uploader[0].upload(*_dynamic_sample_csv())
+    app.run()
+
+    _by_key(app.multiselect, "sarimax_exog_select").set_value(["policy"])
+    _by_key(app.date_input, "sarimax_training_time_range").set_value(
+        (date(2020, 1, 1), date(2023, 12, 1))
+    )
+    app.run()
+    _by_key(app.button, "sarimax_fit_button").click()
+    app.run()
+
+    assert not app.exception
+    source = _by_key(app.selectbox, "sarimax_future_exog_source_0")
+    assert source.value == "policy"
+    assert not any("还有" in warning.value for warning in app.warning)
+    forecast_button = _by_key(app.button, "sarimax_forecast_button")
+    assert not forecast_button.disabled
+    forecast_button.click()
+    app.run()
+    assert not app.exception
+    assert any(
+        list(element.value.columns) == ["日期", "预测值", "下界", "上界"]
+        for element in app.dataframe
+    )
+
+
 def test_auto_mode_workflow_via_ui(monkeypatch):
     """自动选阶模式：切换配置方式、缩小搜索范围后拟合出候选表。"""
     from streamlit.testing.v1 import AppTest
@@ -261,9 +296,11 @@ def test_auto_mode_workflow_via_ui(monkeypatch):
     assert _by_key(
         app.checkbox, "sarimax_auto_enforce_stationarity"
     ).label == "强制 AR 多项式平稳"
+    assert not _by_key(app.checkbox, "sarimax_auto_enforce_stationarity").value
     assert _by_key(
         app.checkbox, "sarimax_auto_enforce_invertibility"
     ).label == "强制 MA 多项式可逆"
+    assert not _by_key(app.checkbox, "sarimax_auto_enforce_invertibility").value
     assert not any(
         item.value in {"搜索范围", "模型设置"} for item in app.markdown
     )

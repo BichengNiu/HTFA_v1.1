@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -33,6 +35,7 @@ from dashboard.models.SARIMAX.core.modeling import (
     fit_rdl,
     fit_sarimax,
     produce_forecast,
+    recommended_residual_diagnostic_lags,
     run_residual_diagnostics,
     select_auto_sarimax_result,
     translate_ts_error,
@@ -212,6 +215,8 @@ def test_prepare_modeling_inputs_rejects_unknown_or_target_exog():
 def test_sarimax_config_defaults_and_validation():
     config = SARIMAXConfig()
     assert config.order == (1, 0, 0)
+    assert config.enforce_stationarity is False
+    assert config.enforce_invertibility is False
     assert config.signature()[0] == "manual"
 
     with pytest.raises(ValueError, match="trend"):
@@ -229,6 +234,8 @@ def test_sarimax_config_defaults_and_validation():
 def test_auto_sarimax_config_candidate_count_and_validation():
     config = AutoSARIMAXConfig(p=(0, 1), d=(0, 0), q=(0, 1))
     assert config.candidate_count() == 4
+    assert config.enforce_stationarity is False
+    assert config.enforce_invertibility is False
 
     seasonal = AutoSARIMAXConfig(
         p=(0, 0), d=(0, 0), q=(0, 0), P=(0, 1), D=(0, 0), Q=(0, 1), s=4
@@ -452,7 +459,8 @@ def test_fit_standard_ardl_manual_auto_and_future_input_path():
     assert manual.ardl_order == (1, 1)
     forecast = produce_forecast(
         manual,
-        steps=3,
+        start=manual.nobs,
+        end=manual.nobs + 2,
         future_exog=pd.DataFrame({"policy": [3.1, 3.2, 3.3]}),
     )
     assert len(forecast["mean"]) == 3
@@ -481,9 +489,14 @@ def test_run_residual_diagnostics_table():
     assert table["P值"].between(0, 1).all()
 
 
+def test_recommended_residual_diagnostic_lags_uses_effective_residual_count():
+    assert recommended_residual_diagnostic_lags(30) == 6
+    assert recommended_residual_diagnostic_lags(80) == 10
+
+
 def test_produce_forecast_with_and_without_dates():
     result = fit_sarimax(make_series(), None, SARIMAXConfig(order=(1, 0, 0)))
-    forecast = produce_forecast(result, steps=5)
+    forecast = produce_forecast(result, start=result.nobs, end=result.nobs + 4)
 
     assert len(forecast["mean"]) == 5
     assert forecast["dates"] is None
@@ -495,17 +508,68 @@ def test_produce_forecast_with_and_without_dates():
         None,
         SARIMAXConfig(order=(1, 0, 0)),
     )
-    dated_forecast = produce_forecast(dated, steps=3)
+    dated_forecast = produce_forecast(dated, start=dated.nobs, end=dated.nobs + 2)
     assert len(dated_forecast["dates"]) == 3
     assert dated_forecast["dates"][0] == pd.Timestamp("2026-09-01")
 
 
-def test_produce_forecast_requires_positive_steps():
+def test_produce_forecast_supports_explicit_window_without_steps_compatibility():
+    result = fit_sarimax(
+        make_series(dates=True),
+        None,
+        SARIMAXConfig(order=(1, 0, 0)),
+    )
+    forecast = produce_forecast(
+        result,
+        start=result.nobs + 2,
+        end=result.nobs + 4,
+    )
+
+    assert forecast["steps"] == 3
+    assert list(forecast["dates"]) == [
+        pd.Timestamp("2026-11-01"),
+        pd.Timestamp("2026-12-01"),
+        pd.Timestamp("2027-01-01"),
+    ]
+
+
+def test_future_exog_path_is_prefilled_from_dataset():
+    from dashboard.models.SARIMAX.ui.pages.sections.forecast_section import (
+        _future_exog_from_dataset,
+    )
+
+    dates = pd.date_range("2020-01-01", periods=5, freq="MS")
+    dataset = build_modeling_dataset(
+        pd.DataFrame(
+            {
+                "date": dates,
+                "target": [10, 11, 12, 13, 14],
+                "policy": [1, 2, 3, 4, 5],
+            }
+        ),
+        "future.csv",
+        "fingerprint",
+    )
+    best = SimpleNamespace(nobs=3, dates=dates[:3])
+
+    future = _future_exog_from_dataset(
+        dataset,
+        best,
+        total_steps=2,
+        source_columns=("policy",),
+        exog_names=("policy",),
+    )
+
+    assert list(future.index) == list(dates[3:5])
+    assert future["policy"].tolist() == [4.0, 5.0]
+
+
+def test_produce_forecast_requires_valid_window():
     result = fit_sarimax(make_series(), None, SARIMAXConfig(order=(1, 0, 0)))
-    with pytest.raises(ValueError, match="预测期数"):
-        produce_forecast(result, steps=0)
-    with pytest.raises(TypeError, match="正整数"):
-        produce_forecast(result, steps=1.5)
+    with pytest.raises(ValueError):
+        produce_forecast(result, start=result.nobs + 1, end=result.nobs)
+    with pytest.raises(TypeError):
+        produce_forecast(result, steps=3)
 
 
 def test_produce_forecast_rejects_wrong_future_exog_columns():
@@ -519,7 +583,12 @@ def test_produce_forecast_rejects_wrong_future_exog_columns():
     )
     wrong = pd.DataFrame({"y": rng.normal(size=5)})
     with pytest.raises(ValueError, match="columns"):
-        produce_forecast(result, steps=5, future_exog=wrong)
+        produce_forecast(
+            result,
+            start=result.nobs,
+            end=result.nobs + 4,
+            future_exog=wrong,
+        )
 
 
 def test_produce_forecast_accepts_one_based_future_exog_index():
@@ -536,7 +605,12 @@ def test_produce_forecast_accepts_one_based_future_exog_index():
         {"x": rng.normal(size=5)},
         index=pd.RangeIndex(1, 6),
     )
-    forecast = produce_forecast(result, steps=5, future_exog=future)
+    forecast = produce_forecast(
+        result,
+        start=result.nobs,
+        end=result.nobs + 4,
+        future_exog=future,
+    )
 
     assert len(forecast["mean"]) == 5
     assert np.all(forecast["lower"] <= forecast["mean"])
@@ -544,7 +618,7 @@ def test_produce_forecast_accepts_one_based_future_exog_index():
 
 def test_build_prediction_table():
     result = fit_sarimax(make_series(dates=True), None, SARIMAXConfig(order=(1, 0, 0)))
-    forecast = produce_forecast(result, steps=4)
+    forecast = produce_forecast(result, start=result.nobs, end=result.nobs + 3)
     table = build_prediction_table(forecast)
 
     assert table.shape == (4, 3)
@@ -553,9 +627,12 @@ def test_build_prediction_table():
 
     undated = produce_forecast(
         fit_sarimax(make_series(), None, SARIMAXConfig(order=(1, 0, 0))),
-        steps=3,
+        start=result.nobs,
+        end=result.nobs + 2,
     )
-    assert build_prediction_table(undated).index.name == "期数"
+    undated_table = build_prediction_table(undated)
+    assert undated_table.index.name == "期数"
+    assert list(undated_table.index) == [81, 82, 83]
 
 
 def test_translate_ts_error_maps_known_fragments():

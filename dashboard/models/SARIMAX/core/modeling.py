@@ -445,6 +445,17 @@ def run_residual_diagnostics(
     return pd.DataFrame(rows, columns=["检验", "统计量", "P值", "结论"])
 
 
+def recommended_residual_diagnostic_lags(nobs: int) -> int:
+    """按有效残差数给出残差检验的建议最大滞后阶数。
+
+    与 Ts 诊断图一致，使用 ``min(10, floor(n / 5))``；最小值为 1。
+    该上限也为 Engle LM 辅助回归保留足够有效样本。
+    """
+    if nobs < 4:
+        raise ValueError("有效残差至少需要 4 个才能执行残差诊断")
+    return min(10, max(1, nobs // 5))
+
+
 def future_dates(result: Any, steps: int) -> pd.DatetimeIndex | None:
     """基于拟合日期频率推算未来预测日期；无法推断时返回 None。"""
     dates = result.dates
@@ -465,22 +476,38 @@ def future_dates(result: Any, steps: int) -> pd.DatetimeIndex | None:
 
 def produce_forecast(
     result: Any,
-    steps: int,
+    start: int | str | pd.Timestamp,
+    end: int | str | pd.Timestamp,
     alpha: float = 0.05,
     dynamic: bool = False,
     future_exog: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
-    """对拟合结果做样本外预测，返回均值/区间/日期结构。"""
-    if isinstance(steps, bool) or not isinstance(steps, (int, np.integer)):
-        raise TypeError("预测期数必须是正整数")
-    steps = int(steps)
-    if steps <= 0:
-        raise ValueError("预测期数必须为正整数")
+    """对拟合结果预测，返回均值/区间/日期结构。
+
+    Parameters
+    ----------
+    result : SARIMAXResult or compatible result
+        已拟合的 Ts 模型结果。
+    start : int or datetime-like
+        预测起点；遵循 Ts ``predict`` 的位置/日期语义。
+    end : int or datetime-like
+        预测终点，包含该位置。
+    alpha : float, default=0.05
+        预测区间显著性水平。
+    dynamic : bool, default=False
+        传递给 Ts ``predict`` 的动态预测控制。
+    future_exog : pandas.DataFrame or None, optional
+        从拟合样本末期到 ``end`` 的完整未来外生变量路径。
+
+    Returns
+    -------
+    dict
+        包含 ``mean``、``lower``、``upper``、``dates``、``steps``、``start``、
+        ``end`` 和 ``alpha`` 的预测结构。
+    """
     if not 0.0 < alpha < 1.0:
         raise ValueError("alpha 必须在 (0, 1) 区间内")
 
-    start = result.nobs
-    end = result.nobs + steps - 1
     prediction = result.predict(
         start=start,
         end=end,
@@ -491,14 +518,60 @@ def produce_forecast(
     mean = np.asarray(prediction.mean, dtype=float)
     lower = np.asarray(prediction.lower, dtype=float)
     upper = np.asarray(prediction.upper, dtype=float)
+    steps = len(mean)
     return {
         "mean": mean,
         "lower": lower,
         "upper": upper,
-        "dates": future_dates(result, steps),
+        "dates": _prediction_dates(result, start, end, steps),
         "steps": steps,
+        "start": start,
+        "end": end,
         "alpha": alpha,
     }
+
+
+def _prediction_dates(
+    result: Any,
+    start: int | str | pd.Timestamp | None,
+    end: int | str | pd.Timestamp | None,
+    length: int,
+) -> pd.DatetimeIndex | None:
+    """按 Ts 预测窗口位置还原结果日期。"""
+    dates = result.dates
+    if dates is None:
+        return None
+    dates = pd.DatetimeIndex(dates)
+    if isinstance(start, (int, np.integer)) and (
+        end is None or isinstance(end, (int, np.integer))
+    ):
+        start_pos = int(start)
+        end_pos = start_pos + length - 1 if end is None else int(end)
+        if end_pos < len(dates):
+            return dates[start_pos : end_pos + 1]
+        future = future_dates(result, end_pos - len(dates) + 1)
+        if future is None:
+            return None
+        calendar = dates.append(future)
+        return calendar[start_pos : end_pos + 1]
+
+    frequency = dates.freq or pd.infer_freq(dates)
+    if frequency is None:
+        return None
+    offset = pd.tseries.frequencies.to_offset(frequency)
+    start_date = dates[0] if start is None else pd.Timestamp(start)
+    end_date = (
+        start_date + (length - 1) * offset
+        if end is None
+        else pd.Timestamp(end)
+    )
+    calendar = pd.date_range(
+        start=dates[0],
+        end=max(end_date, dates[-1]),
+        freq=offset,
+    )
+    selection = calendar[(calendar >= start_date) & (calendar <= end_date)]
+    return pd.DatetimeIndex(selection[:length])
 
 
 def build_prediction_table(forecast: dict[str, Any]) -> pd.DataFrame:
@@ -511,7 +584,13 @@ def build_prediction_table(forecast: dict[str, Any]) -> pd.DataFrame:
         index = pd.DatetimeIndex(dates)
         index.name = "日期"
     else:
-        index = pd.RangeIndex(1, len(mean) + 1, name="期数")
+        start = forecast.get("start", 0)
+        start = int(start) if isinstance(start, (int, np.integer)) else 0
+        index = pd.RangeIndex(
+            start + 1,
+            start + len(mean) + 1,
+            name="期数",
+        )
     return pd.DataFrame(
         {
             "预测值": mean,

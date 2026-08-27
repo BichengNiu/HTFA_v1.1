@@ -23,7 +23,11 @@ _PAGE_ID = "model_analysis.sarimax"
 def render_sarimax_model_page(st_obj) -> None:
     """按顺序渲染数据、训练、残差诊断和预测四个环节。"""
     workspace = SessionWorkspace(st_obj.session_state)
-    workspace.begin_page(_PAGE_ID, keys=PERSISTENT_WIDGET_KEYS)
+    workspace.begin_page(
+        _PAGE_ID,
+        keys=PERSISTENT_WIDGET_KEYS,
+        prefixes=("sarimax_future_exog_source_",),
+    )
     try:
         render_data_overview_section(st_obj)
         st_obj.markdown("---")
