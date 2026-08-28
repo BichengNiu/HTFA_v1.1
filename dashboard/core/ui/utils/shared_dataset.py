@@ -5,17 +5,26 @@ from __future__ import annotations
 
 import csv
 import io
+from dataclasses import dataclass
 from typing import Optional
 
 import pandas as pd
 import streamlit as st
 
-from dashboard.core.workspace import SessionWorkspace
+from dashboard.core.workspace import FileAsset, NamedBytesIO, SessionWorkspace
 
 
 STATE_PREFIX = "dashboard.shared_dataset"
 SUPPORTED_FILE_TYPES = ["csv", "xlsx", "xls"]
 _AUTO_TIME_COLUMN = object()
+
+
+@dataclass(frozen=True)
+class SharedDatasetSnapshot:
+    """可在另一 Streamlit 会话中恢复的共享数据文件快照。"""
+
+    asset: FileAsset
+    sheet: str | None
 
 
 def _state_key(name: str) -> str:
@@ -279,6 +288,51 @@ def get_shared_dataset_sheet() -> Optional[str]:
     return st.session_state.get(_state_key("sheet"))
 
 
+def export_shared_dataset_snapshot() -> SharedDatasetSnapshot | None:
+    """导出当前共享文件和已选工作表，供短生命周期页面交接使用。"""
+
+    asset = _workspace().get_asset("shared")
+    if asset is None:
+        return None
+    return SharedDatasetSnapshot(asset=asset, sheet=get_shared_dataset_sheet())
+
+
+def restore_shared_dataset_snapshot(
+    snapshot: SharedDatasetSnapshot, *, allow_unparsed: bool = False
+) -> None:
+    """将共享数据快照恢复到当前会话，并沿用既有读取边界。"""
+
+    if not isinstance(snapshot, SharedDatasetSnapshot):
+        raise TypeError("共享数据快照类型无效")
+
+    _clear_shared_derived_state()
+    uploaded_file = NamedBytesIO(snapshot.asset.content, snapshot.asset.name)
+    _workspace().put_asset("shared", uploaded_file)
+    sheets = list_excel_sheets(uploaded_file)
+    sheet = snapshot.sheet if snapshot.sheet in (sheets or []) else None
+    if sheet is None and sheets:
+        sheet = sheets[0]
+
+    raw_rows: list[list[object]] = []
+    try:
+        raw_rows = _read_raw_rows(uploaded_file, sheet_name=sheet)
+        data = _build_dataframe_from_rows(raw_rows)
+    except Exception:
+        if not allow_unparsed:
+            _workspace().clear_asset("shared")
+            raise
+        data = None
+
+    fingerprint = snapshot.asset.fingerprint
+    if sheet is not None:
+        fingerprint = f"{fingerprint}::{sheet}"
+    st.session_state[_state_key("data")] = data
+    st.session_state[_state_key("raw_rows")] = raw_rows
+    st.session_state[_state_key("fingerprint")] = fingerprint
+    st.session_state[_state_key("sheets")] = sheets
+    st.session_state[_state_key("sheet")] = sheet
+
+
 def select_shared_dataset_sheet(
     sheet: str, *, allow_unparsed: bool = False
 ) -> bool:
@@ -314,28 +368,19 @@ def select_shared_dataset_sheet(
 
 
 def _clear_dependent_analysis_state() -> None:
-    """新文件进入后移除依赖旧数据的探索与模型分析结果。"""
+    """新文件进入后移除依赖旧数据的数据探索结果。"""
     prefixes = (
         "exploration.dataset.",
         "tools.analysis.",
         "exploration.lead_lag.",
-        "model_analysis.sarimax.",
     )
     for key in list(st.session_state):
         if str(key).startswith(prefixes):
             del st.session_state[key]
-    # SARIMAX 训练控件是共享文件的直接消费者；文件内容改变时必须清除，
-    # 避免旧变量名被 Streamlit 重新注入新数据集。
-    for key in list(st.session_state):
-        if str(key).startswith("sarimax_"):
-            del st.session_state[key]
-
-
 def _clear_shared_page_snapshots() -> None:
     """清理依赖共享文件的页面输入快照。"""
     prefixes = (
         "workspace.pages.exploration.",
-        "workspace.pages.model_analysis.sarimax.",
     )
     for key in list(st.session_state):
         if str(key).startswith(prefixes):
@@ -450,7 +495,9 @@ def render_shared_dataset_uploader(
 
 
 __all__ = [
+    "SharedDatasetSnapshot",
     "clear_shared_dataset",
+    "export_shared_dataset_snapshot",
     "fingerprint_file",
     "get_shared_dataset_data",
     "get_shared_dataset_file",
@@ -462,5 +509,6 @@ __all__ = [
     "get_shared_dataset_sheets",
     "list_excel_sheets",
     "render_shared_dataset_uploader",
+    "restore_shared_dataset_snapshot",
     "select_shared_dataset_sheet",
 ]

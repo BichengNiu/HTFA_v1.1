@@ -26,6 +26,10 @@ from dashboard.auth.ui.middleware import get_auth_middleware
 from dashboard.core.ui.components.content_router import render_main_content
 from dashboard.core.ui.components.sidebar import render_complete_sidebar
 from dashboard.core.ui.utils.style_loader import inject_cached_styles
+from dashboard.explore.ui.standalone_data_overview import (
+    is_standalone_data_overview_request,
+    render_standalone_data_overview,
+)
 from dashboard.navigation_config import MODULE_CONFIG as NAV_MODULE_CONFIG
 
 
@@ -80,6 +84,9 @@ def main() -> None:
     inject_cached_styles()
     middleware, current_user, debug_mode = _authenticate()
     _set_authorization_state(middleware, current_user, debug_mode)
+    if is_standalone_data_overview_request():
+        render_standalone_data_overview()
+        return
     _render_user_panel(middleware, current_user)
 
     render_complete_sidebar(MODULE_CONFIG, key_prefix="sidebar")

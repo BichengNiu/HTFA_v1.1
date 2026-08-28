@@ -81,8 +81,7 @@ def render_training_section(st_obj) -> None:
     dataset = state.get("dataset")
     if dataset is None:
         st_obj.info(
-            "请先在“数据探索 → 单变量分析 → 数据概览”中完成数据读取，"
-            "再返回此处配置并拟合模型。"
+            "请先在上方上传并读取 SARIMAX 的数据文件，再配置并拟合模型。"
         )
         return
 

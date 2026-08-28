@@ -68,6 +68,24 @@ def test_configured_figsize_is_preserved():
     assert tuple(streamlit.figure.get_size_inches()) == (6.0, 4.0)
 
 
+def test_plot_starts_at_first_valid_observation():
+    """图表裁掉首个有效值之前的空时间点。"""
+    index = pd.date_range("2000-01-01", periods=4, freq="YS")
+    frame = pd.DataFrame({"value": [np.nan, np.nan, 10.0, 11.0]}, index=index)
+    streamlit = _StreamlitStub()
+
+    draw_series_plot(
+        streamlit,
+        _dataset(frame),
+        ["value"],
+        figsize=(6, 4),
+        filtered=frame,
+    )
+
+    plotted_x = streamlit.figure.axes[0].lines[0].get_xdata()
+    assert plotted_x[0] == index[2]
+
+
 def test_non_bottom_legend_receives_title_and_column_count():
     """非底部图例位置也应接收 Ts 的标题和列数参数。"""
     frame = pd.DataFrame(

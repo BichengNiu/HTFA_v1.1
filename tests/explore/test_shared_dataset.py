@@ -6,11 +6,13 @@ import pandas as pd
 
 from dashboard.core.ui.utils.shared_dataset import (
     clear_shared_dataset,
+    export_shared_dataset_snapshot,
     fingerprint_file,
     get_shared_dataset_data,
     get_shared_dataset_file,
     load_shared_dataframe,
     render_shared_dataset_uploader,
+    restore_shared_dataset_snapshot,
 )
 from dashboard.core.ui.utils import shared_dataset
 
@@ -115,6 +117,7 @@ def test_missing_uploader_value_keeps_current_session_file(monkeypatch):
 
 def test_explicit_clear_removes_asset_and_dependent_state(monkeypatch):
     state: dict = {
+        "unrelated_model.fitted_result": object(),
         "model_analysis.sarimax.fitted_result": object(),
         "workspace.pages.exploration.univariate.inputs": {"x": 1},
     }
@@ -128,26 +131,48 @@ def test_explicit_clear_removes_asset_and_dependent_state(monkeypatch):
     assert returned["has_data"] is False
     assert get_shared_dataset_file() is None
     assert get_shared_dataset_data() is None
-    assert "model_analysis.sarimax.fitted_result" not in state
+    assert state["unrelated_model.fitted_result"] is not None
+    assert state["model_analysis.sarimax.fitted_result"] is not None
     assert "workspace.pages.exploration.univariate.inputs" not in state
 
 
-def test_new_file_clears_dependent_results_but_same_content_does_not(monkeypatch):
-    state: dict = {}
+def test_new_file_does_not_clear_unrelated_model_state(monkeypatch):
+    state: dict = {"model_analysis.sarimax.fitted_result": "keep-sarimax"}
     _use_session_state(monkeypatch, state)
     first = UploadedBytes(b"date,value\n2025-01-31,1\n", "data.csv")
     render_shared_dataset_uploader(_Uploader(first))
-    state["model_analysis.sarimax.fitted_result"] = "keep-for-same-file"
-    state["sarimax_target_select"] = "value"
+    state["unrelated_model.fitted_result"] = "keep-for-same-file"
+    state["unrelated_model.target_select"] = "value"
 
     render_shared_dataset_uploader(
         _Uploader(UploadedBytes(b"date,value\n2025-01-31,1\n", "renamed.csv"))
     )
-    assert state["model_analysis.sarimax.fitted_result"] == "keep-for-same-file"
+    assert state["unrelated_model.fitted_result"] == "keep-for-same-file"
 
     render_shared_dataset_uploader(
         _Uploader(UploadedBytes(b"date,value\n2025-01-31,2\n", "data.csv"))
     )
-    assert "model_analysis.sarimax.fitted_result" not in state
-    assert "sarimax_target_select" not in state
+    assert state["unrelated_model.fitted_result"] == "keep-for-same-file"
+    assert state["unrelated_model.target_select"] == "value"
+    assert state["model_analysis.sarimax.fitted_result"] == "keep-sarimax"
     clear_shared_dataset()
+
+
+def test_shared_dataset_snapshot_restores_file_and_selected_sheet(monkeypatch):
+    source_state: dict = {}
+    _use_session_state(monkeypatch, source_state)
+    render_shared_dataset_uploader(
+        _Uploader(UploadedBytes(b"date,value\n2025-01-31,1\n", "data.csv"))
+    )
+    snapshot = export_shared_dataset_snapshot()
+
+    assert snapshot is not None
+    target_state: dict = {}
+    _use_session_state(monkeypatch, target_state)
+    restore_shared_dataset_snapshot(snapshot, allow_unparsed=True)
+
+    restored = get_shared_dataset_file()
+    assert restored is not None
+    assert restored.name == "data.csv"
+    assert restored.getvalue() == b"date,value\n2025-01-31,1\n"
+    assert get_shared_dataset_data().columns.tolist() == ["date", "value"]

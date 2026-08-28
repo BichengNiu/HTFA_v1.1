@@ -6,14 +6,17 @@ import logging
 
 import streamlit as st
 
-from data_overview.ui.widget_keys import overview_widget_keys
-
 from dashboard.core.ui.utils.shared_dataset import get_shared_dataset_file
 from dashboard.core.workspace import SessionWorkspace
 from dashboard.explore.ui.data_overview import (
     CORRELOGRAM_TRANSFORMATION_PREFIX,
-    CORRELOGRAM_WIDGET_KEYS,
+    DATA_OVERVIEW_HANDOFF_WIDGET_KEYS,
+    SERIES_STYLE_WIDGET_PREFIX,
+    migrate_legacy_data_overview_state,
     render_data_overview,
+)
+from dashboard.explore.ui.standalone_data_overview import (
+    create_standalone_data_overview_url,
 )
 from dashboard.explore.ui.stationarity import StationarityAnalysisComponent
 from dashboard.explore.ui.structural_break import StructuralBreakAnalysisComponent
@@ -37,10 +40,11 @@ _PERSISTENT_KEYS = (
     "structural_break_model",
     "structural_break_lag_method",
     "structural_break_alpha",
-) + overview_widget_keys("sarimax") + CORRELOGRAM_WIDGET_KEYS
+) + DATA_OVERVIEW_HANDOFF_WIDGET_KEYS
 _PERSISTENT_PREFIXES = (
     "tools.analysis.chart_config.",
     CORRELOGRAM_TRANSFORMATION_PREFIX,
+    SERIES_STYLE_WIDGET_PREFIX,
 )
 
 
@@ -51,6 +55,7 @@ def render_univariate_analysis_page():
         _PAGE_ID, keys=_PERSISTENT_KEYS, prefixes=_PERSISTENT_PREFIXES
     )
     try:
+        migrate_legacy_data_overview_state(st)
         uploaded_file = get_shared_dataset_file()
 
         overview_tab, stationarity_tab, structural_break_tab = st.tabs(
@@ -58,9 +63,8 @@ def render_univariate_analysis_page():
         )
 
         with overview_tab:
-            # 动态回归的数据读取设置、数据表和时间序列预览在此统一维护；
-            # ACF/PACF 由 render_data_overview 在预览后继续渲染。
             render_data_overview(st)
+            _render_standalone_overview_launcher()
 
         with stationarity_tab:
             stationarity_component = StationarityAnalysisComponent()
@@ -77,3 +81,23 @@ def render_univariate_analysis_page():
             )
     finally:
         workspace.end_page(_PAGE_ID)
+
+
+def _render_standalone_overview_launcher() -> None:
+    """复制当前数据概览状态到不回写原会话的独立页面。"""
+
+    st.markdown("---")
+    st.markdown("**复制到独立标签页**")
+    st.caption(
+        "新页面会复制当前文件、读取设置和已生成图表对应的参数；"
+        "之后两边可分别继续操作，互不影响。"
+    )
+    url = create_standalone_data_overview_url(st)
+    if url is None:
+        st.info("请先在左侧“共享数据集”上传文件。")
+        return
+    st.link_button(
+        "在新标签页打开数据概览",
+        url,
+        icon=":material/open_in_new:",
+    )

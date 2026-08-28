@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date
 import math
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import pandas as pd
 import pytest
@@ -42,12 +43,32 @@ def _navigate_to_univariate_overview(app) -> None:
 
 
 def _prepare_model_app(app, payload) -> None:
-    """在数据探索页上传共享文件后返回动态回归模型页。"""
+    """在 SARIMAX 自有数据输入区上传文件。"""
+    _navigate_to_sarimax(app)
+    uploader = next(
+        element
+        for element in app.file_uploader
+        if element.key == "model_analysis.sarimax.upload.uploader"
+    )
+    uploader.upload(*payload)
+    app.run()
+    assert not app.exception
+
+
+def _open_standalone_univariate_overview(app, payload):
+    """通过新标签页令牌在独立会话中打开单变量数据概览。"""
+    from streamlit.testing.v1 import AppTest
+
     _navigate_to_univariate_overview(app)
     app.sidebar.file_uploader[0].upload(*payload)
     app.run()
-    assert not app.exception
-    _navigate_to_sarimax(app)
+    launcher = app.get("link_button")
+    assert len(launcher) == 1
+    standalone = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60)
+    standalone.query_params = parse_qs(urlparse(launcher[0].proto.url).query)
+    standalone.run()
+    assert not standalone.exception
+    return standalone
 
 
 def _sample_csv() -> tuple[str, bytes, str]:
@@ -156,57 +177,19 @@ def test_full_workflow_via_ui(monkeypatch):
 
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
-    _navigate_to_univariate_overview(app)
-
-    # 数据概览已迁移到数据探索页；上传控件、数据表、时间序列图与 ACF/PACF 图均在此处出现。
+    _prepare_model_app(app, _sample_csv())
     assert not app.exception
-    app.sidebar.file_uploader[0].upload(*_sample_csv())
-    app.run()
-    assert not app.exception
-    assert any(
-        element.key == "sarimax_preview_vars" for element in app.multiselect
-    )
-    assert {element.label for element in app.radio} == {
-        "ACF",
-        "PACF",
-    }
-    assert all(
-        tuple(element.options)
-        == ("原始变量", "对数", "差分", "对数差分")
-        for element in app.radio
-    )
-    assert not any(
-        "数据处理方法" in element.label for element in app.multiselect
-    )
-    acf_radio = next(element for element in app.radio if element.label == "ACF")
-    pacf_radio = next(element for element in app.radio if element.label == "PACF")
-    acf_radio.set_value("first_difference")
-    app.run()
-    assert not app.exception
-    assert acf_radio.value == "first_difference"
-    assert pacf_radio.value == "original"
-    assert len(app.image) == 3  # 时间序列图 + ACF 图 + PACF 图
-    correlogram_expanders = [
-        element
-        for element in app.expander
-        if element.label == "ACF/PACF 图表设置"
-    ]
-    assert len(correlogram_expanders) == 1
-    correlogram_expanders[0].expanded = True
-    app.run()
-    assert not app.exception
-    assert sum(element.label == "滞后阶数" for element in app.number_input) == 1
-    assert sum(element.label == "PACF 计算方法" for element in app.selectbox) == 1
-
-    _navigate_to_sarimax(app)
-    assert not app.exception
-    assert [tab.label for tab in app.tabs] == ["动态回归模型"]
+    assert app.tabs[0].label == "动态回归模型"
     title_texts = " ".join(element.value for element in app.markdown)
+    assert "数据文件" in title_texts
     assert "① 模型训练" in title_texts
     assert "② 残差诊断" in title_texts
     assert "③ 模型预测" in title_texts
-    assert "数据预览" not in title_texts
     assert not app.sidebar.file_uploader
+    assert any(
+        element.key == "model_analysis.sarimax.upload.uploader"
+        for element in app.file_uploader
+    )
 
     # ① 模型训练：默认手动配置 (1,0,1)，拟合按钮可用并执行
     fit_button = _by_key(app.button, "sarimax_fit_button")
@@ -452,15 +435,11 @@ def test_data_table_options_via_ui(monkeypatch):
 
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
-    _navigate_to_univariate_overview(app)
-    app.sidebar.file_uploader[0].upload(*_sample_csv())
-    app.run()
-    assert not app.exception
+    app = _open_standalone_univariate_overview(app, _sample_csv())
 
-    # 共享文件上传器位于侧边栏，变量选择与预览控件位于数据概览主区域。
-    assert app.sidebar.file_uploader
-    assert app.file_uploader
-    _by_key(app.multiselect, "sarimax_preview_vars")
+    # 独立页不显示原主系统上传器，变量选择与预览控件位于页面主区域。
+    assert not app.file_uploader
+    _by_key(app.multiselect, "univariate_overview_preview_vars")
 
     # 两个高级选项 expander 均存在，分别位于表格和时间序列图下方
     assert len(app.expander) >= 2
@@ -485,21 +464,21 @@ def test_data_table_options_via_ui(monkeypatch):
     app.expander[0].expanded = True
     app.run()
     assert not app.exception
-    view_mode = _by_key(app.selectbox, "sarimax_table_view_mode")
+    view_mode = _by_key(app.selectbox, "univariate_overview_table_view_mode")
     assert view_mode.value == "显示头10行"
-    _by_key(app.selectbox, "sarimax_table_filter_col")
-    filter_op = _by_key(app.selectbox, "sarimax_table_filter_op")
+    _by_key(app.selectbox, "univariate_overview_table_filter_col")
+    filter_op = _by_key(app.selectbox, "univariate_overview_table_filter_op")
     assert "≠" in filter_op.options
-    assert _by_key(app.number_input, "sarimax_table_filter_val").label == "值"
+    assert _by_key(app.number_input, "univariate_overview_table_filter_val").label == "值"
     # 月度数据 → 时间筛选按频率渲染为「时间范围」预设下拉
     # 训练区有一个日期范围控件；预览表的月度时间筛选不额外渲染 date_input。
-    _by_key(app.selectbox, "sarimax_table_time_preset")
-    assert not any(element.key == "sarimax_table_view_head" for element in app.checkbox)
-    assert not any(element.key == "sarimax_table_view_tail" for element in app.checkbox)
+    _by_key(app.selectbox, "univariate_overview_table_time_preset")
+    assert not any(element.key == "univariate_overview_table_view_head" for element in app.checkbox)
+    assert not any(element.key == "univariate_overview_table_view_tail" for element in app.checkbox)
 
     # 数值筛选：value ≥ 2.0 → 上方预览表直接变为筛选结果（少于 10 行）
-    _by_key(app.selectbox, "sarimax_table_filter_col").select("value")
-    _by_key(app.number_input, "sarimax_table_filter_val").set_value(2.0)
+    _by_key(app.selectbox, "univariate_overview_table_filter_col").select("value")
+    _by_key(app.number_input, "univariate_overview_table_filter_val").set_value(2.0)
     app.run()
     assert not app.exception
     filtered = preview_frame()
@@ -511,19 +490,19 @@ def test_data_table_options_via_ui(monkeypatch):
     )
 
     # 清除数值筛选后选择「显示尾10行」→ 预览表显示最后 10 行
-    _by_key(app.selectbox, "sarimax_table_filter_col").select("无")
+    _by_key(app.selectbox, "univariate_overview_table_filter_col").select("无")
     app.run()
-    _by_key(app.selectbox, "sarimax_table_view_mode").select("显示尾10行")
+    _by_key(app.selectbox, "univariate_overview_table_view_mode").select("显示尾10行")
     app.run()
     assert not app.exception
-    assert _by_key(app.selectbox, "sarimax_table_view_mode").value == "显示尾10行"
+    assert _by_key(app.selectbox, "univariate_overview_table_view_mode").value == "显示尾10行"
     # 预览表显示全部数据的最后 10 行（60 行数据末尾为 2024-12）
     tailed = preview_frame()
     assert len(tailed) == 10
     assert tailed.iloc[-1]["date"] == "2024-12-01"
 
     # 时间预设：月度数据选「过去3个月」→ 最后 3 行（2024-10 ~ 2024-12）
-    _by_key(app.selectbox, "sarimax_table_time_preset").select("过去3个月")
+    _by_key(app.selectbox, "univariate_overview_table_time_preset").select("过去3个月")
     app.run()
     assert not app.exception
     assert len(preview_frame()) == 3
@@ -536,13 +515,13 @@ def test_data_table_options_via_ui(monkeypatch):
     assert int(stats.loc["value", "count"]) == 3
 
     # 自定义年月：限定 2023-01 ~ 2023-12 → 12 行（尾10行视图截断为 10）
-    _by_key(app.selectbox, "sarimax_table_time_preset").select("自定义")
+    _by_key(app.selectbox, "univariate_overview_table_time_preset").select("自定义")
     app.run()
     assert not app.exception
-    assert _by_key(app.selectbox, "sarimax_table_time_start")
-    assert _by_key(app.selectbox, "sarimax_table_time_end")
-    _by_key(app.selectbox, "sarimax_table_time_start").select("2023-01")
-    _by_key(app.selectbox, "sarimax_table_time_end").select("2023-12")
+    assert _by_key(app.selectbox, "univariate_overview_table_time_start")
+    assert _by_key(app.selectbox, "univariate_overview_table_time_end")
+    _by_key(app.selectbox, "univariate_overview_table_time_start").select("2023-01")
+    _by_key(app.selectbox, "univariate_overview_table_time_end").select("2023-12")
     app.run()
     assert not app.exception
     assert len(preview_frame()) == 10  # 12 行结果被尾10行视图截断
@@ -555,16 +534,16 @@ def test_data_table_options_via_ui(monkeypatch):
     assert int(stats.loc["value", "count"]) == 12
 
     # 选择「显示全部」+ 时间范围回「全部」→ 显示全部 60 行
-    _by_key(app.selectbox, "sarimax_table_view_mode").select("显示全部")
-    _by_key(app.selectbox, "sarimax_table_time_preset").select("全部")
+    _by_key(app.selectbox, "univariate_overview_table_view_mode").select("显示全部")
+    _by_key(app.selectbox, "univariate_overview_table_time_preset").select("全部")
     app.run()
     assert not app.exception
     assert len(preview_frame()) == 60
     # 选择指定行数 17 → 显示前 17 行
-    _by_key(app.selectbox, "sarimax_table_view_mode").select("显示指定行数")
+    _by_key(app.selectbox, "univariate_overview_table_view_mode").select("显示指定行数")
     app.run()
     assert not app.exception
-    _by_key(app.number_input, "sarimax_table_view_rows").set_value(17)
+    _by_key(app.number_input, "univariate_overview_table_view_rows").set_value(17)
     app.run()
     assert not app.exception
     assert len(preview_frame()) == 17
@@ -577,18 +556,15 @@ def test_page_level_facet_renders_independent_plots(monkeypatch):
 
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
-    _navigate_to_univariate_overview(app)
-    app.sidebar.file_uploader[0].upload(*_multi_sample_csv())
-    app.run()
-    assert not app.exception
+    app = _open_standalone_univariate_overview(app, _multi_sample_csv())
 
-    variables = _by_key(app.multiselect, "sarimax_preview_vars")
+    variables = _by_key(app.multiselect, "univariate_overview_preview_vars")
     variables.set_value(["value_a", "value_b"])
     app.run()
     assert not app.exception
     assert len(app.image) == 5  # 时间序列图 + 两个变量各自的 ACF/PACF 图
 
-    _by_key(app.checkbox, "sarimax_preview_facet").check()
+    _by_key(app.checkbox, "univariate_overview_preview_facet").check()
     app.run()
     assert not app.exception
     assert len(app.image) == 6  # 两个分面时间序列图 + 两个变量各自的 ACF/PACF 图
@@ -599,7 +575,7 @@ def test_page_level_facet_renders_independent_plots(monkeypatch):
     ]
     assert len(image_columns) == 6
 
-    _by_key(app.number_input, "sarimax_preview_facet_cols").set_value(2)
+    _by_key(app.number_input, "univariate_overview_preview_facet_cols").set_value(2)
     app.run()
     assert not app.exception
     assert len(app.image) == 6
@@ -607,52 +583,52 @@ def test_page_level_facet_renders_independent_plots(monkeypatch):
     app.expander[1].expanded = True
     app.run()
     assert not app.exception
-    assert _by_key(app.checkbox, "sarimax_preview_sharex").value is True
-    assert _by_key(app.checkbox, "sarimax_preview_sharey").value is False
-    assert _by_key(app.checkbox, "sarimax_preview_sharex").proto.disabled
-    assert _by_key(app.checkbox, "sarimax_preview_sharey").proto.disabled
-    assert _by_key(app.number_input, "sarimax_preview_legend_bbox_x").proto.disabled
-    assert _by_key(app.number_input, "sarimax_preview_legend_bbox_y").proto.disabled
-    assert _by_key(app.number_input, "sarimax_preview_legend_cols").proto.disabled
-    assert _by_key(app.number_input, "sarimax_preview_legend_size")
-    _by_key(app.selectbox, "sarimax_preview_legend_loc").select("upper right")
+    assert _by_key(app.checkbox, "univariate_overview_preview_sharex").value is True
+    assert _by_key(app.checkbox, "univariate_overview_preview_sharey").value is False
+    assert _by_key(app.checkbox, "univariate_overview_preview_sharex").proto.disabled
+    assert _by_key(app.checkbox, "univariate_overview_preview_sharey").proto.disabled
+    assert _by_key(app.number_input, "univariate_overview_preview_legend_bbox_x").proto.disabled
+    assert _by_key(app.number_input, "univariate_overview_preview_legend_bbox_y").proto.disabled
+    assert _by_key(app.number_input, "univariate_overview_preview_legend_cols").proto.disabled
+    assert _by_key(app.number_input, "univariate_overview_preview_legend_size")
+    _by_key(app.selectbox, "univariate_overview_preview_legend_loc").select("upper right")
     app.run()
     assert not app.exception
     assert app.expander[1].proto.id
-    assert _by_key(app.number_input, "sarimax_preview_legend_bbox_x").proto.disabled
-    assert _by_key(app.number_input, "sarimax_preview_legend_bbox_y").proto.disabled
+    assert _by_key(app.number_input, "univariate_overview_preview_legend_bbox_x").proto.disabled
+    assert _by_key(app.number_input, "univariate_overview_preview_legend_bbox_y").proto.disabled
     assert any(
-        element.key == "sarimax_preview_grid_style" for element in app.selectbox
+        element.key == "univariate_overview_preview_grid_style" for element in app.selectbox
     )
     assert any(
-        element.key == "sarimax_preview_vlines" for element in app.text_input
+        element.key == "univariate_overview_preview_vlines" for element in app.text_input
     )
     assert any(
-        element.key == "sarimax_preview_hlines" for element in app.text_input
+        element.key == "univariate_overview_preview_hlines" for element in app.text_input
     )
     assert any(
-        element.key == "sarimax_preview_vline_color" for element in app.selectbox
+        element.key == "univariate_overview_preview_vline_color" for element in app.selectbox
     )
     assert any(
-        element.key == "sarimax_preview_vline_style" for element in app.selectbox
+        element.key == "univariate_overview_preview_vline_style" for element in app.selectbox
     )
     assert any(
-        element.key == "sarimax_preview_hline_color" for element in app.selectbox
+        element.key == "univariate_overview_preview_hline_color" for element in app.selectbox
     )
     assert any(
-        element.key == "sarimax_preview_hline_style" for element in app.selectbox
+        element.key == "univariate_overview_preview_hline_style" for element in app.selectbox
     )
     assert any(
-        element.key == "sarimax_preview_vline_linewidth" for element in app.slider
+        element.key == "univariate_overview_preview_vline_linewidth" for element in app.slider
     )
     assert any(
-        element.key == "sarimax_preview_hline_linewidth" for element in app.slider
+        element.key == "univariate_overview_preview_hline_linewidth" for element in app.slider
     )
     assert any(
-        element.key == "sarimax_preview_shade" for element in app.text_input
+        element.key == "univariate_overview_preview_shade" for element in app.text_input
     )
     assert not any(
-        element.key == "sarimax_preview_colors" for element in app.text_input
+        element.key == "univariate_overview_preview_colors" for element in app.text_input
     )
     assert len(
         [element for element in app.selectbox if "series_style" in element.key]
@@ -660,24 +636,24 @@ def test_page_level_facet_renders_independent_plots(monkeypatch):
     assert len(
         [element for element in app.slider if "series_style" in element.key]
     ) == 6
-    _by_key(app.checkbox, "sarimax_preview_legend").uncheck()
+    _by_key(app.checkbox, "univariate_overview_preview_legend").uncheck()
     app.run()
     assert not app.exception
     assert not any(
-        element.key == "sarimax_preview_legend_bbox_on" for element in app.checkbox
+        element.key == "univariate_overview_preview_legend_bbox_on" for element in app.checkbox
     )
     assert not any(
-        element.key == "sarimax_preview_legend_labels"
+        element.key == "univariate_overview_preview_legend_labels"
         for element in app.text_input
     )
     hidden_legend_selects = {
-        "sarimax_preview_legend_loc",
+        "univariate_overview_preview_legend_loc",
     }
     assert not any(element.key in hidden_legend_selects for element in app.selectbox)
     hidden_legend_inputs = {
-        "sarimax_preview_legend_cols",
-        "sarimax_preview_legend_bbox_x",
-        "sarimax_preview_legend_bbox_y",
+        "univariate_overview_preview_legend_cols",
+        "univariate_overview_preview_legend_bbox_x",
+        "univariate_overview_preview_legend_bbox_y",
     }
     assert not any(
         element.key in hidden_legend_inputs for element in app.number_input
@@ -690,26 +666,23 @@ def test_select_rows_uses_variable_names_and_data_start(monkeypatch):
 
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
-    _navigate_to_univariate_overview(app)
-    app.sidebar.file_uploader[0].upload(*_preamble_csv())
-    app.run()
-    assert not app.exception
+    app = _open_standalone_univariate_overview(app, _preamble_csv())
     assert any(
-        element.key == "sarimax_preview_variable_name_row"
+        element.key == "univariate_overview_preview_variable_name_row"
         for element in app.number_input
     )
     assert any(
-        element.key == "sarimax_preview_data_start_row"
+        element.key == "univariate_overview_preview_data_start_row"
         for element in app.number_input
     )
     assert any("数据读取失败" in element.value for element in app.error)
 
-    _by_key(app.number_input, "sarimax_preview_variable_name_row").set_value(3)
+    _by_key(app.number_input, "univariate_overview_preview_variable_name_row").set_value(3)
     app.run()
-    _by_key(app.number_input, "sarimax_preview_data_start_row").set_value(4)
+    _by_key(app.number_input, "univariate_overview_preview_data_start_row").set_value(4)
     app.run()
     assert not app.exception
-    time_column = _by_key(app.selectbox, "sarimax_preview_time_column")
+    time_column = _by_key(app.selectbox, "univariate_overview_preview_time_column")
     assert "date" in time_column.options
     assert time_column.value == "date"
 
@@ -719,10 +692,10 @@ def test_select_rows_uses_variable_names_and_data_start(monkeypatch):
         if list(element.value.columns) == ["date", "sales"]
     )
     assert preview.iloc[0]["sales"] == 10
-    assert "exog" in _by_key(app.multiselect, "sarimax_preview_vars").options
+    assert "exog" in _by_key(app.multiselect, "univariate_overview_preview_vars").options
 
     # 读取设置变化会清除旧数据集，解析失败时不会继续使用旧变量/模型状态。
-    _by_key(app.number_input, "sarimax_preview_variable_name_row").set_value(2)
+    _by_key(app.number_input, "univariate_overview_preview_variable_name_row").set_value(2)
     app.run()
     assert not app.exception
     assert any(
@@ -740,40 +713,38 @@ def test_time_column_options_refresh_after_variable_name_row_changes(monkeypatch
 
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
-    _navigate_to_univariate_overview(app)
-    app.sidebar.file_uploader[0].upload(*_changing_header_csv())
-    app.run()
+    app = _open_standalone_univariate_overview(app, _changing_header_csv())
 
-    _by_key(app.number_input, "sarimax_preview_variable_name_row").set_value(2)
+    _by_key(app.number_input, "univariate_overview_preview_variable_name_row").set_value(2)
     app.run()
-    _by_key(app.number_input, "sarimax_preview_data_start_row").set_value(3)
+    _by_key(app.number_input, "univariate_overview_preview_data_start_row").set_value(3)
     app.run()
-    time_column = _by_key(app.selectbox, "sarimax_preview_time_column")
+    time_column = _by_key(app.selectbox, "univariate_overview_preview_time_column")
     assert "old_date" in time_column.options
     assert "new_date" not in time_column.options
 
-    _by_key(app.number_input, "sarimax_preview_variable_name_row").set_value(5)
+    _by_key(app.number_input, "univariate_overview_preview_variable_name_row").set_value(5)
     app.run()
-    time_column = _by_key(app.selectbox, "sarimax_preview_time_column")
+    time_column = _by_key(app.selectbox, "univariate_overview_preview_time_column")
     assert "new_date" in time_column.options
     assert "old_date" not in time_column.options
 
 
-def test_zero_values_are_missing_in_sarimax_preview(monkeypatch):
-    """SARIMAX 预览图与预览表都不把数值 0 当作有效观测。"""
+def test_univariate_overview_starts_at_first_valid_value(monkeypatch):
+    """单变量图从首个有效值开始，不把前置 0 作为时间序列起点。"""
     from streamlit.testing.v1 import AppTest
 
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
-    _navigate_to_univariate_overview(app)
     content = (
         "date,value\n"
         "2020-01-01,0\n"
         "2020-02-01,5\n"
         "2020-03-01,0\n"
     ).encode("utf-8")
-    app.sidebar.file_uploader[0].upload("zeros.csv", content, "text/csv")
-    app.run()
+    app = _open_standalone_univariate_overview(
+        app, ("zeros.csv", content, "text/csv")
+    )
 
     assert not app.exception
     preview = next(
@@ -781,6 +752,8 @@ def test_zero_values_are_missing_in_sarimax_preview(monkeypatch):
         for element in app.dataframe
         if list(element.value.columns) == ["date", "value"]
     )
+    # 表格保留原始时间位置，但 0 在概览本地数据集中按缺失处理；
+    # 图表会据此从 2020-02-01 的首个有效值开始绘制。
     assert pd.isna(preview.iloc[0]["value"])
     assert preview.iloc[1]["value"] == 5
     assert pd.isna(preview.iloc[2]["value"])
@@ -792,7 +765,6 @@ def test_excel_sheet_selection_via_ui(monkeypatch):
 
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
-    _navigate_to_univariate_overview(app)
 
     # 构造含两个工作表（不同时间范围）的 Excel
     index_a = pd.date_range("2020-01-01", periods=12, freq="MS")
@@ -810,16 +782,18 @@ def test_excel_sheet_selection_via_ui(monkeypatch):
 
     path = PROJECT_ROOT / "tests" / "models" / "_sheet_sample.xlsx"
     try:
-        app.sidebar.file_uploader[0].upload(
-            "sheet_sample.xlsx",
-            path.read_bytes(),
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        app = _open_standalone_univariate_overview(
+            app,
+            (
+                "sheet_sample.xlsx",
+                path.read_bytes(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ),
         )
-        app.run()
         assert not app.exception
 
         # 多工作表 → 出现「选择工作表」下拉，默认第一个工作表
-        sheet_box = _by_key(app.selectbox, "sarimax_preview_sheet")
+        sheet_box = _by_key(app.selectbox, "univariate_overview_preview_sheet")
         assert list(sheet_box.options) == ["一表", "二表"]
         assert sheet_box.value == "一表"
         preview = next(
@@ -830,7 +804,7 @@ def test_excel_sheet_selection_via_ui(monkeypatch):
         assert preview.iloc[0]["date"] == "2020-01-01"
 
         # 切换到第二个工作表 → 预览表时间范围变为 2022 起
-        _by_key(app.selectbox, "sarimax_preview_sheet").select("二表")
+        _by_key(app.selectbox, "univariate_overview_preview_sheet").select("二表")
         app.run()
         assert not app.exception
         preview = next(

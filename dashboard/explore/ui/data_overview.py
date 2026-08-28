@@ -1,20 +1,20 @@
-"""单变量分析的数据概览页。
-
-动态回归模型的数据读取、数据表和时间序列预览在这里统一渲染；本页原有
-的单变量诊断只保留 ACF/PACF 相关结构分析。
-"""
+"""单变量分析的数据概览页与 ACF/PACF 诊断。"""
 
 from __future__ import annotations
 
-import pandas as pd
+import logging
+from copy import deepcopy
 
+import pandas as pd
 from data_overview import create_data_overview
 from data_overview.core.dataset import OverviewDataset, build_overview_dataset
 from data_overview.ui.widget_keys import (
+    overview_widget_keys,
     read_widget_keys,
     selector_widget_keys,
 )
 
+from dashboard.core.ui.utils.shared_dataset import get_shared_dataset_fingerprint
 from dashboard.core.ui.utils.state_helpers import NamespacedStateManager
 from dashboard.explore.analysis.stationarity import (
     numeric_variable_names,
@@ -28,15 +28,29 @@ from dashboard.explore.ui.chart_controls import (
 )
 from dashboard.explore.ui.shared_dataset_source import SharedDatasetSource
 
-_DATA_OVERVIEW_STATE = NamespacedStateManager("model_analysis.sarimax")
-_DATA_OVERVIEW_KEY_PREFIX = "sarimax"
-CORRELOGRAM_VARIABLES_KEY = "sarimax_correlogram_vars"
-CORRELOGRAM_TRANSFORMATION_PREFIX = "sarimax_correlogram_transformation_"
+logger = logging.getLogger(__name__)
+
+_DATA_OVERVIEW_STATE = NamespacedStateManager(
+    "data_exploration.univariate.overview"
+)
+_DATA_OVERVIEW_KEY_PREFIX = "univariate_overview"
+_LEGACY_DATA_OVERVIEW_KEY_PREFIX = "sarimax"
+_LEGACY_DATA_OVERVIEW_SHEET_KEY = "sarimax_preview_sheet"
+CORRELOGRAM_VARIABLES_KEY = "univariate_overview_correlogram_vars"
+CORRELOGRAM_TRANSFORMATION_PREFIX = (
+    "univariate_overview_correlogram_transformation_"
+)
+SERIES_STYLE_WIDGET_PREFIX = "univariate_overview_preview_series_style_"
+_LEGACY_CORRELOGRAM_VARIABLES_KEY = "sarimax_correlogram_vars"
+_LEGACY_CORRELOGRAM_TRANSFORMATION_PREFIX = (
+    "sarimax_correlogram_transformation_"
+)
+_LEGACY_SERIES_STYLE_WIDGET_PREFIX = "sarimax_preview_series_style_"
 CORRELOGRAM_WIDGET_KEYS = (CORRELOGRAM_VARIABLES_KEY,)
 _PRESERVED_DATA_OVERVIEW_KEYS = set(
     selector_widget_keys(_DATA_OVERVIEW_KEY_PREFIX)
     + read_widget_keys(_DATA_OVERVIEW_KEY_PREFIX)
-    + ("sarimax_preview_sheet",)
+    + ("univariate_overview_preview_sheet",)
 )
 
 CORRELOGRAM_TRANSFORMATION_OPTIONS = (
@@ -51,7 +65,69 @@ CORRELOGRAM_TRANSFORMATION_LABELS = {
     "first_difference": "差分",
     "log_first_difference": "对数差分",
 }
-_CORRELOGRAM_SOURCE_VARIABLES_KEY = "sarimax_correlogram_source_vars"
+_CORRELOGRAM_SOURCE_VARIABLES_KEY = "univariate_overview_correlogram_source_vars"
+_HANDOFF_RESTORE_GUARD_KEY = (
+    "data_exploration.univariate.overview.handoff_restore"
+)
+_CHART_CONFIG_STATE_PREFIX = "tools.analysis.chart_config."
+DATA_OVERVIEW_HANDOFF_WIDGET_KEYS = (
+    overview_widget_keys(_DATA_OVERVIEW_KEY_PREFIX)
+    + ("univariate_overview_preview_sheet",)
+    + CORRELOGRAM_WIDGET_KEYS
+)
+
+
+def migrate_legacy_data_overview_state(st_obj) -> None:
+    """把旧版单变量概览控件迁移到当前独立命名空间。
+
+    旧版本曾把单变量概览误用 ``sarimax_*`` 键保存。迁移只在新键
+    不存在时执行，避免覆盖用户已经在当前页面设置的值；旧键保留在
+    会话中但不再被本页面读取。SARIMAX 自有数据入口使用独立前缀，
+    因而不会与本迁移发生耦合。
+    """
+
+    session = getattr(st_obj, "session_state", None)
+    if session is None:
+        return
+
+    legacy_keys = (
+        overview_widget_keys(_LEGACY_DATA_OVERVIEW_KEY_PREFIX)
+        + (_LEGACY_DATA_OVERVIEW_SHEET_KEY,)
+    )
+    for old_key in legacy_keys:
+        if old_key not in session:
+            continue
+        new_key = (
+            _DATA_OVERVIEW_KEY_PREFIX
+            + old_key[len(_LEGACY_DATA_OVERVIEW_KEY_PREFIX) :]
+        )
+        if new_key not in session:
+            session[new_key] = deepcopy(session[old_key])
+
+    if (
+        _LEGACY_CORRELOGRAM_VARIABLES_KEY in session
+        and CORRELOGRAM_VARIABLES_KEY not in session
+    ):
+        session[CORRELOGRAM_VARIABLES_KEY] = deepcopy(
+            session[_LEGACY_CORRELOGRAM_VARIABLES_KEY]
+        )
+
+    for old_key in tuple(session):
+        old_key = str(old_key)
+        if old_key.startswith(_LEGACY_CORRELOGRAM_TRANSFORMATION_PREFIX):
+            new_key = (
+                CORRELOGRAM_TRANSFORMATION_PREFIX
+                + old_key[len(_LEGACY_CORRELOGRAM_TRANSFORMATION_PREFIX) :]
+            )
+        elif old_key.startswith(_LEGACY_SERIES_STYLE_WIDGET_PREFIX):
+            new_key = (
+                SERIES_STYLE_WIDGET_PREFIX
+                + old_key[len(_LEGACY_SERIES_STYLE_WIDGET_PREFIX) :]
+            )
+        else:
+            continue
+        if new_key not in session:
+            session[new_key] = deepcopy(session[old_key])
 
 
 def _build_univariate_overview_dataset(
@@ -59,7 +135,13 @@ def _build_univariate_overview_dataset(
     file_name: str,
     fingerprint: str,
 ) -> OverviewDataset:
-    """构建单变量概览数据，并保留预览中的零值缺失约定。"""
+    """按单变量概览的历史口径构建数据集。
+
+    原始共享数据仍保留 0；这里只在单变量概览的本地数据集里把数值 0
+    视为尚未开始/缺失观测，使图表和统计从第一个有效值开始。该边界
+    不影响共享数据，也不影响其他模型页面的数据输入。
+    """
+
     cleaned = frame.replace(r"^\s*$", pd.NA, regex=True).copy()
     for column in cleaned.columns:
         series = cleaned[column]
@@ -74,40 +156,29 @@ def _build_univariate_overview_dataset(
 
 
 def _clear_data_overview_dependent_widgets(st_obj) -> None:
-    """换数据读取设置时清理图表、模型和相关分析控件。"""
+    """换数据读取设置时清理本页图表与相关分析控件。"""
     session = getattr(st_obj, "session_state", None)
     if session is None:
         return
     for key in tuple(session):
         if (
-            str(key).startswith("sarimax_")
+            str(key).startswith("univariate_overview_")
             and key not in _PRESERVED_DATA_OVERVIEW_KEYS
         ):
             session.pop(key, None)
 
 
 def _on_data_overview_dataset_replaced(st_obj) -> None:
-    """数据读取设置变化后清理共享模型状态和下游控件。"""
-    for key, value in {
-        "target_variable": None,
-        "exog_variables": (),
-        "training_time_range": None,
-        "response_log": False,
-        "future_exog_editor_signature": None,
-        "fitted_result": None,
-        "fit_signature": None,
-        "diagnostics_table": None,
-        "diagnostics_signature": None,
-        "forecast": None,
-        "forecast_signature": None,
-    }.items():
-        _DATA_OVERVIEW_STATE.set(key, value)
+    """数据读取设置变化后只清理单变量数据概览的下游控件。"""
+
+    if st_obj.session_state.pop(_HANDOFF_RESTORE_GUARD_KEY, False):
+        return
     _clear_data_overview_dependent_widgets(st_obj)
 
 
 _render_shared_data_overview = create_data_overview(
     key_prefix=_DATA_OVERVIEW_KEY_PREFIX,
-    state_namespace="model_analysis.sarimax",
+    state_namespace="data_exploration.univariate.overview",
     data_source=SharedDatasetSource(uploader_enabled=False),
     dataset_builder=_build_univariate_overview_dataset,
     on_dataset_replaced=_on_data_overview_dataset_replaced,
@@ -195,14 +266,122 @@ def _shared_correlogram_maximum(
             continue
         try:
             _, maximum = resolve_correlation_lags(result[0])
-        except Exception:  # noqa: BLE001 - 单图绘制边界会报告具体错误
+        except (TypeError, ValueError):
             continue
         maxima.append(maximum)
     return min(maxima) if maxima else None
 
 
+def _correlogram_chart_config_prefixes(session) -> tuple[str, ...]:
+    """返回当前单变量概览 ACF/PACF 配置的会话键前缀。"""
+
+    variables = session.get(CORRELOGRAM_VARIABLES_KEY)
+    if variables is None:
+        variables = session.get(
+            f"{_DATA_OVERVIEW_KEY_PREFIX}_preview_vars", ()
+        )
+    if isinstance(variables, str):
+        variables = (variables,)
+    if not variables:
+        return ()
+    return tuple(
+        f"{_CHART_CONFIG_STATE_PREFIX}"
+        f"{chart_scope('data_overview', variable, 'correlogram')}."
+        for variable in variables
+    )
+
+
+def export_data_overview_widget_state(st_obj) -> dict[str, object]:
+    """导出独立数据概览页可恢复的白名单控件状态。"""
+
+    session = st_obj.session_state
+    keys = list(DATA_OVERVIEW_HANDOFF_WIDGET_KEYS)
+    config_prefixes = _correlogram_chart_config_prefixes(session)
+    keys.extend(
+        str(key)
+        for key in session
+        if str(key).startswith(
+            (
+                CORRELOGRAM_TRANSFORMATION_PREFIX,
+                SERIES_STYLE_WIDGET_PREFIX,
+            )
+            + config_prefixes
+        )
+    )
+    return {
+        key: deepcopy(session[key])
+        for key in keys
+        if key in session
+    }
+
+
+def restore_data_overview_widget_state(
+    st_obj, widget_state: dict[str, object]
+) -> None:
+    """恢复已校验白名单中的数据概览控件状态。"""
+
+    allowed = set(DATA_OVERVIEW_HANDOFF_WIDGET_KEYS)
+    config_prefixes = _correlogram_chart_config_prefixes(widget_state)
+    for key, value in widget_state.items():
+        if key in allowed or key.startswith(
+            (
+                CORRELOGRAM_TRANSFORMATION_PREFIX,
+                SERIES_STYLE_WIDGET_PREFIX,
+            )
+            + config_prefixes
+        ):
+            st_obj.session_state[key] = deepcopy(value)
+
+
+def mark_data_overview_handoff_restore(st_obj) -> None:
+    """标记下一次数据集建立来自页面交接，保留已恢复的控件状态。"""
+
+    # ``create_data_overview`` 会在首次看到文件指纹时清理变量名行、
+    # 数据开始行和时间列控件。交接快照已经恢复了这些值，先同步内部
+    # 指纹即可避免首次渲染把它们重置为默认值。
+    fingerprint = get_shared_dataset_fingerprint()
+    if fingerprint:
+        _DATA_OVERVIEW_STATE.set("source_fingerprint", fingerprint)
+        # 首次渲染还会依据原始行和读取设置建立时间列选项签名；若不
+        # 预先建立该签名，组件会把交接过来的时间列再次清空。
+        try:
+            variable_name_row = int(
+                st_obj.session_state.get(
+                    f"{_DATA_OVERVIEW_KEY_PREFIX}_preview_variable_name_row",
+                    1,
+                )
+            )
+            data_start_row = int(
+                st_obj.session_state.get(
+                    f"{_DATA_OVERVIEW_KEY_PREFIX}_preview_data_start_row",
+                    variable_name_row + 1,
+                )
+            )
+            raw_data = SharedDatasetSource(uploader_enabled=False).load_data(
+                variable_name_row=variable_name_row - 1,
+                data_start_row=data_start_row - 1,
+                time_column=None,
+            )
+            if raw_data is not None:
+                _DATA_OVERVIEW_STATE.set(
+                    "time_options_signature",
+                    (
+                        fingerprint,
+                        variable_name_row,
+                        data_start_row,
+                        ("无", *[str(column) for column in raw_data.columns]),
+                    ),
+                )
+        except Exception:
+            logger.debug(
+                "无法预先建立交接页面的时间列选项签名",
+                exc_info=True,
+            )
+    st_obj.session_state[_HANDOFF_RESTORE_GUARD_KEY] = True
+
+
 def render_data_overview(st_obj) -> None:
-    """渲染动态回归数据预览，并提供可选预处理的 ACF/PACF 分析。"""
+    """渲染单变量数据预览，并提供可选预处理的 ACF/PACF 分析。"""
     _render_shared_data_overview(st_obj)
 
     overview_dataset = _DATA_OVERVIEW_STATE.get("dataset")
@@ -218,7 +397,9 @@ def render_data_overview(st_obj) -> None:
 
     selected_above = [
         str(variable)
-        for variable in st_obj.session_state.get("sarimax_preview_vars", [])
+        for variable in st_obj.session_state.get(
+            f"{_DATA_OVERVIEW_KEY_PREFIX}_preview_vars", []
+        )
         if str(variable) in available_variables
     ]
     variables = _render_correlogram_controls(
@@ -290,10 +471,16 @@ def render_data_overview(st_obj) -> None:
 
 
 __all__ = [
-    "CORRELOGRAM_TRANSFORMATION_OPTIONS",
     "CORRELOGRAM_TRANSFORMATION_LABELS",
+    "CORRELOGRAM_TRANSFORMATION_OPTIONS",
     "CORRELOGRAM_TRANSFORMATION_PREFIX",
     "CORRELOGRAM_VARIABLES_KEY",
     "CORRELOGRAM_WIDGET_KEYS",
+    "DATA_OVERVIEW_HANDOFF_WIDGET_KEYS",
+    "SERIES_STYLE_WIDGET_PREFIX",
+    "export_data_overview_widget_state",
+    "mark_data_overview_handoff_restore",
+    "migrate_legacy_data_overview_state",
     "render_data_overview",
+    "restore_data_overview_widget_state",
 ]
