@@ -1,4 +1,4 @@
-"""SARIMAX 工作流 - ④ 模型预测环节（样本外预测与置信区间）。"""
+"""SARIMAX 工作流 - ③ 模型预测环节（样本外预测与置信区间）。"""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from Ts.TsModels import AutoARDLResult, AutoModelResult
 from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
 from dashboard.core.ui.utils.matplotlib_compat import matplotlib_date_compatibility
 from dashboard.core.workspace import stable_signature
-from dashboard.models.SARIMAX.core.data_loader import numeric_variable_names
+from data_overview.core.dataset import numeric_variable_names
 from dashboard.models.SARIMAX.core.modeling import (
     build_prediction_table,
     future_dates,
@@ -25,10 +25,10 @@ logger = logging.getLogger(__name__)
 
 def render_forecast_section(st_obj) -> None:
     """配置预测参数并生成样本外预测。"""
-    st_obj.markdown("#### ④ 模型预测")
+    st_obj.markdown("#### ③ 模型预测")
     result = state.get("fitted_result")
     if result is None:
-        st_obj.info("完成「② 模型训练」后可生成样本外预测。")
+        st_obj.info("完成「① 模型训练」后可生成样本外预测。")
         return
     best = (
         result.best_result

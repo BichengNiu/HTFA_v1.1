@@ -1,142 +1,40 @@
-"""SARIMAX 建模数据加载与准备（纯 pandas，不依赖 streamlit 渲染）。"""
+"""Prepare the dataset selected by the data overview for model fitting."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
-
 import pandas as pd
 
-from dashboard.core.ui.utils.shared_dataset import (
-    fingerprint_file,
-    load_shared_dataframe,
-)
-
-
-@dataclass(frozen=True)
-class ModelingDataset:
-    """一次解析后供 SARIMAX 建模共享的数据集。
-
-    Attributes
-    ----------
-    fingerprint:
-        文件内容指纹，用于结果缓存失效。
-    file_name:
-        上传文件名。
-    frame:
-        清理后的宽表数据框（第一列可能为日期列）。
-    time_column:
-        被解析为日期类型的首列列名；无日期列时为 None。
-    """
-
-    fingerprint: str
-    file_name: str
-    frame: pd.DataFrame
-    time_column: str | None
-
-
-def _detect_time_column(frame: pd.DataFrame) -> str | None:
-    """返回首列中被解析为日期类型的列名，否则 None。"""
-    if frame.shape[1] == 0:
-        return None
-    first = frame.columns[0]
-    if pd.api.types.is_datetime64_any_dtype(frame[first]):
-        return str(first)
-    return None
-
-
-def numeric_variable_names(frame: pd.DataFrame) -> list[str]:
-    """返回可用于建模的数值型列名（排除日期与布尔列）。"""
-    names = []
-    for column in frame.columns:
-        series = frame[column]
-        if pd.api.types.is_datetime64_any_dtype(series):
-            continue
-        if pd.api.types.is_bool_dtype(series):
-            continue
-        if pd.api.types.is_numeric_dtype(series):
-            names.append(str(column))
-    return names
-
-
-def _replace_zero_values_with_missing(frame: pd.DataFrame) -> pd.DataFrame:
-    """将 SARIMAX 数据中的数值 0 和空白字符串视为缺失值。"""
-    result = frame.replace(r"^\s*$", pd.NA, regex=True).copy()
-    for column in result.columns:
-        series = result[column]
-        if (
-            pd.api.types.is_datetime64_any_dtype(series)
-            or pd.api.types.is_bool_dtype(series)
-            or not pd.api.types.is_numeric_dtype(series)
-        ):
-            continue
-        result[column] = series.mask(series.eq(0))
-    return result.dropna(how="all").dropna(axis=1, how="all")
-
-
-def build_modeling_dataset(
-    frame: pd.DataFrame,
-    file_name: str,
-    fingerprint: str,
-) -> ModelingDataset:
-    """从已解析的数据框构造建模数据集（共享数据集路径）。
-
-    Raises
-    ------
-    ValueError
-        数据框为空或没有数值型变量时抛出，消息面向用户。
-    """
-    frame = _replace_zero_values_with_missing(frame)
-    if frame.empty or frame.shape[1] == 0:
-        raise ValueError("文件清理后为空，没有可分析的列")
-    if not numeric_variable_names(frame):
-        raise ValueError("数据中没有数值型变量，无法进行 SARIMAX 建模")
-    return ModelingDataset(
-        fingerprint=fingerprint,
-        file_name=file_name,
-        frame=frame,
-        time_column=_detect_time_column(frame),
-    )
-
-
-def load_modeling_dataset(uploaded_file: Any) -> ModelingDataset:
-    """解析上传文件并返回建模数据集。
-
-    Raises
-    ------
-    ValueError
-        文件为空、无法解码或没有数值型变量时抛出，消息面向用户。
-    """
-    fingerprint = fingerprint_file(uploaded_file)
-    file_name = str(getattr(uploaded_file, "name", "data"))
-    frame = load_shared_dataframe(uploaded_file)
-    return build_modeling_dataset(frame, file_name, fingerprint)
+from data_overview.core.dataset import OverviewDataset
 
 
 def prepare_modeling_inputs(
-    dataset: ModelingDataset,
+    dataset: OverviewDataset,
     target: str,
     exog_columns: tuple[str, ...] = (),
     time_range: tuple[pd.Timestamp, pd.Timestamp] | None = None,
 ) -> tuple[pd.Series, pd.DataFrame | None, pd.Index]:
-    """构建目标序列与外生变量框，两者共享同一索引。
+    """Build the target series and exogenous frame from the overview dataset.
 
     Parameters
     ----------
-    dataset : ModelingDataset
-        已解析的建模数据集。
+    dataset : OverviewDataset
+        Dataset already parsed and cleaned by the data overview page.
     target : str
-        目标变量列名。
+        Target variable column name.
     exog_columns : tuple[str, ...], default=()
-        外生变量列名。
+        Exogenous variable column names.
     time_range : tuple[pd.Timestamp, pd.Timestamp] or None, default=None
-        有日期列时使用的闭区间训练样本范围；None 表示使用全部样本。
+        Inclusive training range for dated data; ``None`` uses all observations.
 
     Returns
     -------
     tuple[pd.Series, pd.DataFrame | None, pd.Index]
-        (目标序列, 外生变量框或 None, 建模索引)。日期列存在时索引为
-        DatetimeIndex，否则为 RangeIndex。
+        Target series, optional exogenous frame, and the aligned modeling index.
+
+    Raises
+    ------
+    ValueError
+        If the target/exogenous variables or the requested time range is invalid.
     """
     frame = dataset.frame
     base = frame.copy()
@@ -152,7 +50,8 @@ def prepare_modeling_inputs(
         if time_range is not None:
             raise ValueError("数据没有日期列，无法选择训练时间范围")
         index = pd.RangeIndex(len(base))
-    # Ts 的时间序列模型要求日期严格按递增顺序排列。对整张宽表排序，
+
+    # Ts 的时间序列模型要求日期严格按递增顺序排列；对整张宽表排序，
     # 确保目标序列与外生变量按同一批日期同步重排。
     base = base.set_index(index).sort_index()
     index = base.index
@@ -185,10 +84,4 @@ def prepare_modeling_inputs(
     return target_series, exog_frame, index
 
 
-__all__ = [
-    "ModelingDataset",
-    "build_modeling_dataset",
-    "load_modeling_dataset",
-    "numeric_variable_names",
-    "prepare_modeling_inputs",
-]
+__all__ = ["prepare_modeling_inputs"]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from io import BytesIO
 from types import SimpleNamespace
 
 import numpy as np
@@ -9,10 +10,10 @@ import pandas as pd
 import pytest
 from Ts.TsSims import simulate_sarima
 
+from data_overview.core.dataset import OverviewDataset, build_overview_dataset
+
+from dashboard.core.ui.utils.shared_dataset import load_shared_dataframe
 from dashboard.models.SARIMAX.core.data_loader import (
-    build_modeling_dataset,
-    load_modeling_dataset,
-    numeric_variable_names,
     prepare_modeling_inputs,
 )
 from dashboard.models.SARIMAX.core.model_config import (
@@ -43,15 +44,6 @@ from dashboard.models.SARIMAX.core.modeling import (
 )
 
 
-class FakeUploader:
-    def __init__(self, content: bytes, name: str = "data.csv"):
-        self._content = content
-        self.name = name
-
-    def getvalue(self) -> bytes:
-        return self._content
-
-
 def make_series(n: int = 80, *, dates: bool = False) -> pd.Series:
     simulated = simulate_sarima(n=n, order=(1, 0, 0), ar=[0.6], seed=42)
     if dates:
@@ -60,56 +52,16 @@ def make_series(n: int = 80, *, dates: bool = False) -> pd.Series:
     return pd.Series(simulated.data)
 
 
-# ---------- data_loader ----------
-
-
-def test_load_modeling_dataset_parses_csv_with_date_column():
-    content = b"date,value,other\n2024-01-01,1.0,10\n2024-02-01,2.0,20\n"
-    dataset = load_modeling_dataset(FakeUploader(content))
-
-    assert dataset.file_name == "data.csv"
-    assert dataset.time_column == "date"
-    assert numeric_variable_names(dataset.frame) == ["value", "other"]
-    assert len(dataset.fingerprint) == 64
-    assert set(dataset.fingerprint) <= set("0123456789abcdef")
-
-
-def test_load_modeling_dataset_falls_back_to_gbk_encoding():
-    content = "日期,销售额\n2024-01-01,100\n2024-02-01,200\n".encode("gbk")
-    dataset = load_modeling_dataset(FakeUploader(content, "数据.csv"))
-
-    assert dataset.time_column == "日期"
-    assert numeric_variable_names(dataset.frame) == ["销售额"]
-
-
-def test_build_modeling_dataset_treats_numeric_zero_as_missing():
-    frame = pd.DataFrame(
-        {
-            "date": pd.date_range("2024-01-01", periods=3, freq="MS"),
-            "value": [0.0, 2.0, 0.0],
-            "zero_only": [0.0, 0.0, 0.0],
-            "label": ["0", "x", "0"],
-        }
-    )
-
-    dataset = build_modeling_dataset(frame, "data.xlsx", "fingerprint")
-
-    assert dataset.frame["value"].isna().tolist() == [True, False, True]
-    assert "zero_only" not in dataset.frame.columns
-    assert dataset.frame["label"].tolist() == ["0", "x", "0"]
-
-
-def test_load_modeling_dataset_rejects_empty_or_non_numeric_files():
-    with pytest.raises(ValueError, match="没有可分析的列"):
-        load_modeling_dataset(FakeUploader(b"a,b\n,\n,\n", "x.csv"))
-    with pytest.raises(ValueError, match="没有数值型变量"):
-        content = "name,label\nx,甲\ny,乙\n".encode()
-        load_modeling_dataset(FakeUploader(content, "x.csv"))
+def dataset_from_csv(content: bytes) -> OverviewDataset:
+    uploaded = BytesIO(content)
+    uploaded.name = "data.csv"
+    frame = load_shared_dataframe(uploaded)
+    return build_overview_dataset(frame, "data.csv", "fingerprint")
 
 
 def test_prepare_modeling_inputs_uses_datetime_index():
     content = b"date,value,x\n2024-01-01,1.0,10\n2024-02-01,2.0,20\n"
-    dataset = load_modeling_dataset(FakeUploader(content))
+    dataset = dataset_from_csv(content)
     series, exog, index = prepare_modeling_inputs(dataset, "value", ("x",))
 
     assert isinstance(index, pd.DatetimeIndex)
@@ -125,7 +77,7 @@ def test_prepare_modeling_inputs_sorts_dates_and_keeps_exog_aligned():
         b"2024-01-01,1.0,10\n"
         b"2024-02-01,2.0,20\n"
     )
-    dataset = load_modeling_dataset(FakeUploader(content))
+    dataset = dataset_from_csv(content)
 
     series, exog, index = prepare_modeling_inputs(dataset, "value", ("x",))
 
@@ -147,7 +99,7 @@ def test_prepare_modeling_inputs_filters_datetime_range_inclusively():
         b"2024-03-01,3.0,30\n"
         b"2024-04-01,4.0,40\n"
     )
-    dataset = load_modeling_dataset(FakeUploader(content))
+    dataset = dataset_from_csv(content)
 
     series, exog, index = prepare_modeling_inputs(
         dataset,
@@ -166,7 +118,7 @@ def test_prepare_modeling_inputs_filters_datetime_range_inclusively():
 
 def test_prepare_modeling_inputs_falls_back_to_range_index():
     content = b"value,x\n1.0,10\n2.0,20\n"
-    dataset = load_modeling_dataset(FakeUploader(content))
+    dataset = dataset_from_csv(content)
     series, _exog, index = prepare_modeling_inputs(dataset, "value", ("x",))
 
     assert isinstance(index, pd.RangeIndex)
@@ -174,8 +126,8 @@ def test_prepare_modeling_inputs_falls_back_to_range_index():
 
 
 def test_prepare_modeling_inputs_rejects_invalid_time_range():
-    dated = load_modeling_dataset(
-        FakeUploader(b"date,value\n2024-01-01,1.0\n2024-02-01,2.0\n")
+    dated = dataset_from_csv(
+        b"date,value\n2024-01-01,1.0\n2024-02-01,2.0\n"
     )
     with pytest.raises(ValueError, match="起始日期不能晚于结束日期"):
         prepare_modeling_inputs(
@@ -184,7 +136,7 @@ def test_prepare_modeling_inputs_rejects_invalid_time_range():
             time_range=(pd.Timestamp("2024-02-01"), pd.Timestamp("2024-01-01")),
         )
 
-    undated = load_modeling_dataset(FakeUploader(b"value\n1.0\n2.0\n"))
+    undated = dataset_from_csv(b"value\n1.0\n2.0\n")
     with pytest.raises(ValueError, match="没有日期列"):
         prepare_modeling_inputs(
             undated,
@@ -195,14 +147,14 @@ def test_prepare_modeling_inputs_rejects_invalid_time_range():
 
 def test_prepare_modeling_inputs_rejects_duplicate_dates():
     content = b"date,value\n2024-01-01,1.0\n2024-01-01,2.0\n"
-    dataset = load_modeling_dataset(FakeUploader(content))
+    dataset = dataset_from_csv(content)
     with pytest.raises(ValueError, match="重复"):
         prepare_modeling_inputs(dataset, "value")
 
 
 def test_prepare_modeling_inputs_rejects_unknown_or_target_exog():
     content = b"date,value,x\n2024-01-01,1.0,10\n2024-02-01,2.0,20\n"
-    dataset = load_modeling_dataset(FakeUploader(content))
+    dataset = dataset_from_csv(content)
     with pytest.raises(ValueError, match="不存在"):
         prepare_modeling_inputs(dataset, "value", ("missing",))
     with pytest.raises(ValueError, match="不能同时作为外生变量"):
@@ -539,7 +491,7 @@ def test_future_exog_path_is_prefilled_from_dataset():
     )
 
     dates = pd.date_range("2020-01-01", periods=5, freq="MS")
-    dataset = build_modeling_dataset(
+    dataset = build_overview_dataset(
         pd.DataFrame(
             {
                 "date": dates,

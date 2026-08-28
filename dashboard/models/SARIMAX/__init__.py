@@ -1,7 +1,8 @@
 """SARIMAX 系列模型子模块。
 
-基于 Ts 包的 SARIMAX / AutoSARIMAX 建模工作流，单页四环节：
-① 数据导入 → ② 模型训练 → ③ 残差诊断 → ④ 模型预测。
+基于 Ts 包的 SARIMAX / AutoSARIMAX 建模工作流，数据概览位于
+“数据探索 → 单变量分析 → 数据概览”，模型页包含三个环节：
+① 模型训练 → ② 残差诊断 → ③ 模型预测。
 """
 
 from dashboard.models.SARIMAX.ui.pages import render_sarimax_model_page

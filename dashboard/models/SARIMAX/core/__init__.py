@@ -1,9 +1,6 @@
 """SARIMAX 模型核心逻辑（纯计算，不依赖 streamlit 渲染）。"""
 
 from dashboard.models.SARIMAX.core.data_loader import (
-    ModelingDataset,
-    load_modeling_dataset,
-    numeric_variable_names,
     prepare_modeling_inputs,
 )
 from dashboard.models.SARIMAX.core.model_config import (
@@ -61,7 +58,6 @@ __all__ = [
     "AutoRDLConfig",
     "AutoSARIMAXConfig",
     "DynamicConfig",
-    "ModelingDataset",
     "RDLConfig",
     "RDLInputConfig",
     "SARIMAXConfig",
@@ -75,8 +71,6 @@ __all__ = [
     "fit_rdl",
     "fit_sarimax",
     "future_dates",
-    "load_modeling_dataset",
-    "numeric_variable_names",
     "prepare_modeling_inputs",
     "produce_forecast",
     "recommended_residual_diagnostic_lags",

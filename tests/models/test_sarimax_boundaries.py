@@ -18,7 +18,6 @@ EXPECTED_PERMISSION_CODES = (
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 SECTION_FUNCTIONS = (
-    "render_data_overview_section",
     "render_training_section",
     "render_analysis_section",
     "render_forecast_section",
@@ -124,11 +123,9 @@ def test_section_entry_functions_do_not_import_ts_directly():
                         f"{section} 的 render_ 函数直接导入了 Ts，"
                         "统计调用必须走 core 层"
                     )
-    # 数据概览接线（sections/__init__.py 与 overview_bridge.py）不直接 import Ts：
-    # 绘图能力在独立组件包 data_overview（ui/chart_panel.py 收口）。
+    # 模型页接线不直接 import Ts；绘图能力在独立组件包 data_overview 中。
     for wiring_path in (
         "dashboard/models/SARIMAX/ui/pages/sections/__init__.py",
-        "dashboard/models/SARIMAX/ui/overview_bridge.py",
     ):
         tree = ast.parse(
             (PROJECT_ROOT / wiring_path).read_text(encoding="utf-8")

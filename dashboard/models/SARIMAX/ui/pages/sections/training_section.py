@@ -1,4 +1,4 @@
-"""SARIMAX 工作流 - ② 模型训练环节（手动配置与自动选阶）。"""
+"""SARIMAX 工作流 - ① 模型训练环节（手动配置与自动选阶）。"""
 
 from __future__ import annotations
 
@@ -7,10 +7,9 @@ import logging
 import pandas as pd
 from Ts.TsModels import AutoARDLResult, AutoModelResult
 
-from dashboard.models.SARIMAX.core.data_loader import (
-    numeric_variable_names,
-    prepare_modeling_inputs,
-)
+from data_overview.core.dataset import numeric_variable_names
+
+from dashboard.models.SARIMAX.core.data_loader import prepare_modeling_inputs
 from dashboard.models.SARIMAX.core.model_config import (
     ARDL_CRITERIA,
     ARDL_SEARCH_METHODS,
@@ -78,10 +77,13 @@ def _render_trend_selector(st_obj, prefix: str) -> str:
 
 def render_training_section(st_obj) -> None:
     """配置并拟合 SARIMAX、RDL 或标准 ARDL 模型。"""
-    st_obj.markdown("#### ② 模型训练")
+    st_obj.markdown("#### ① 模型训练")
     dataset = state.get("dataset")
     if dataset is None:
-        st_obj.info("完成「① 数据预览」（在上方上传数据）后可配置并拟合模型。")
+        st_obj.info(
+            "请先在“数据探索 → 单变量分析 → 数据概览”中完成数据读取，"
+            "再返回此处配置并拟合模型。"
+        )
         return
 
     variables = numeric_variable_names(dataset.frame)

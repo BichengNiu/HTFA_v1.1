@@ -85,10 +85,13 @@ def render_complete_sidebar(
             st.info("请先选择一个主模块")
 
         st.markdown("---")
-        if selected_main in {"监测分析", "数据探索"}:
+        if selected_main == "数据探索":
+            # 数据概览支持用户指定变量名行和数据开始行，因此需要在默认
+            # 解析失败时保留原始行，交由页面组件继续处理。
+            render_shared_dataset_uploader(st, allow_unparsed=True)
+        elif selected_main == "监测分析":
             render_shared_dataset_uploader(st)
-        # 模型分析 - 单变量模型的上传组件已移至页面主区域
-        # （与变量选择并排），不再在侧边栏渲染。
+        # 模型页直接读取数据探索中的共享数据集，不在模型页重复渲染上传器。
 
 
 __all__ = ["render_complete_sidebar"]

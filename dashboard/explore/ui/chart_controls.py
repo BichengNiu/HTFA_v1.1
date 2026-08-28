@@ -7,6 +7,7 @@ from datetime import date, datetime
 from typing import Any
 
 import pandas as pd
+import streamlit as st
 
 from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
 from dashboard.explore.analysis.stationarity import (
@@ -43,7 +44,7 @@ def get_applied_config(st_obj, scope: str, defaults: dict[str, Any]) -> dict[str
     """返回当前图表控件的配置；控件变更将在下一次重跑中立即生效。"""
     config = defaults.copy()
     for name, default in defaults.items():
-        value = st_obj.session_state.get(_state_key(scope, name), default)
+        value = st.session_state.get(_state_key(scope, name), default)
         if name == "grid_mode":
             config[name] = GRID_MODE_OPTIONS.get(value, value)
         elif name == "grid_line_style":
@@ -173,9 +174,10 @@ def render_time_series_config_expander(
 ) -> None:
     """渲染时间序列图下方的即时生效配置。"""
     applied = get_applied_config(st_obj, scope, defaults)
-    with st_obj.expander("图表设置", expanded=False):
-        st_obj.markdown("**标题**")
-        title_columns = st_obj.columns(3)
+    expander = st_obj.expander("图表设置", expanded=False)
+    with expander:
+        expander.markdown("**标题**")
+        title_columns = expander.columns(3)
         title_columns[0].text_input(
             "图片标题", applied["title"], key=_state_key(scope, "title")
         )
@@ -185,10 +187,10 @@ def render_time_series_config_expander(
         title_columns[2].text_input(
             "纵轴标题", applied["y_title"], key=_state_key(scope, "y_title")
         )
-        _time_series_axis_options(st_obj, scope, applied)
+        _time_series_axis_options(expander, scope, applied)
 
-        st_obj.markdown("**图形样式**")
-        style_columns = st_obj.columns(4)
+        expander.markdown("**图形样式**")
+        style_columns = expander.columns(4)
         style_columns[0].number_input(
             "线宽",
             min_value=0.1,
@@ -204,9 +206,9 @@ def render_time_series_config_expander(
             key=_state_key(scope, "marker_size"),
         )
         with style_columns[2]:
-            _grid_mode_select(st_obj, scope, applied)
+            _grid_mode_select(style_columns[2], scope, applied)
         with style_columns[3]:
-            _grid_line_style_select(st_obj, scope, applied)
+            _grid_line_style_select(style_columns[3], scope, applied)
 
 
 def render_correlogram_config_expander(
@@ -218,17 +220,18 @@ def render_correlogram_config_expander(
 ) -> None:
     """渲染 ACF/PACF 组合图下方的即时生效配置。"""
     applied = get_applied_config(st_obj, scope, defaults)
-    with st_obj.expander("ACF/PACF 图表设置", expanded=False):
-        st_obj.markdown("**标题**")
-        title_columns = st_obj.columns(2)
+    expander = st_obj.expander("ACF/PACF 图表设置", expanded=False)
+    with expander:
+        expander.markdown("**标题**")
+        title_columns = expander.columns(2)
         title_columns[0].text_input(
             "ACF 图片标题", applied["acf_title"], key=_state_key(scope, "acf_title")
         )
         title_columns[1].text_input(
             "PACF 图片标题", applied["pacf_title"], key=_state_key(scope, "pacf_title")
         )
-        st_obj.markdown("**轴标题**")
-        axis_title_columns = st_obj.columns(4)
+        expander.markdown("**轴标题**")
+        axis_title_columns = expander.columns(4)
         axis_title_columns[0].text_input(
             "ACF 横轴标题", applied["acf_x_title"], key=_state_key(scope, "acf_x_title")
         )
@@ -241,10 +244,10 @@ def render_correlogram_config_expander(
         axis_title_columns[3].text_input(
             "PACF 纵轴标题", applied["pacf_y_title"], key=_state_key(scope, "pacf_y_title")
         )
-        _correlogram_axis_options(st_obj, scope, applied)
+        _correlogram_axis_options(expander, scope, applied)
 
-        st_obj.markdown("**图形样式**")
-        option_columns = st_obj.columns(4)
+        expander.markdown("**图形样式**")
+        option_columns = expander.columns(4)
         option_columns[0].number_input(
             "滞后阶数",
             min_value=1,
@@ -260,9 +263,9 @@ def render_correlogram_config_expander(
             key=_state_key(scope, "pacf_method"),
         )
         with option_columns[2]:
-            _grid_mode_select(st_obj, scope, applied)
+            _grid_mode_select(option_columns[2], scope, applied)
         with option_columns[3]:
-            _grid_line_style_select(st_obj, scope, applied)
+            _grid_line_style_select(option_columns[3], scope, applied)
 
 
 def render_correlogram_chart(

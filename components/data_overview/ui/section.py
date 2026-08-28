@@ -130,7 +130,8 @@ def render_data_overview(
     预览表与时间序列图都受「数据表高级选项」的筛选条件驱动。
     """
     key_prefix = config.key_prefix
-    st_obj.markdown(config.title)
+    if config.title:
+        st_obj.markdown(config.title)
     data_source.render_uploader(st_obj, compact=True)
 
     source_fingerprint = data_source.current_fingerprint()

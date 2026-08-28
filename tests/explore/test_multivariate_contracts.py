@@ -245,7 +245,6 @@ def test_explore_dataset_is_parsed_once_per_file_fingerprint(monkeypatch):
         (),
         {
             "session_state": {
-                "data_overview_table_select": "old",
                 "bivariate_table_select": "old",
             }
         },
@@ -265,7 +264,6 @@ def test_explore_dataset_is_parsed_once_per_file_fingerprint(monkeypatch):
 
     assert first is second
     assert calls == 1
-    assert "data_overview_table_select" not in state_owner.session_state
     assert "bivariate_table_select" not in state_owner.session_state
 
 

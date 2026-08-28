@@ -13,8 +13,6 @@ from dashboard.core.ui.utils.shared_dataset import get_shared_dataset_file
 
 DATASET_STATE_KEY = "exploration.dataset.parsed"
 DATASET_DEPENDENT_WIDGET_KEYS = (
-    "data_overview_table_select",
-    "data_overview_variable_select",
     "bivariate_table_select",
 )
 

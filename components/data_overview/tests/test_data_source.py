@@ -13,7 +13,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from data_overview.ui.data_source import _load_dataframe
 from dashboard.core.ui.utils.shared_dataset import load_shared_dataframe
-from dashboard.models.SARIMAX.ui.overview_bridge import SharedDatasetSource
+from dashboard.explore.ui.shared_dataset_source import SharedDatasetSource
 
 
 class _UploadedFile:
@@ -81,7 +81,7 @@ def test_shared_reader_reuses_supplied_raw_rows_without_reopening_file(
     assert frame["value"].tolist() == [3]
 
 
-def test_sarimax_source_passes_cached_rows_to_shared_reader(monkeypatch):
+def test_shared_source_passes_cached_rows_to_shared_reader(monkeypatch):
     """SARIMAX 数据源应把当前工作表缓存传给共享读取器。"""
     uploaded = _UploadedFile("sample.xlsx", b"not-used")
     raw_rows = [["date", "value"], ["2020-01-01", 3]]

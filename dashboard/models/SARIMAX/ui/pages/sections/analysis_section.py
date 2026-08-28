@@ -1,4 +1,4 @@
-"""SARIMAX 工作流 - ③ 残差诊断环节。"""
+"""SARIMAX 工作流 - ② 残差诊断环节。"""
 
 from __future__ import annotations
 
@@ -20,10 +20,10 @@ logger = logging.getLogger(__name__)
 
 def render_analysis_section(st_obj) -> None:
     """展示已拟合模型的残差诊断图与残差检验。"""
-    st_obj.markdown("#### ③ 残差诊断")
+    st_obj.markdown("#### ② 残差诊断")
     result = state.get("fitted_result")
     if result is None:
-        st_obj.info("完成「② 模型训练」后可查看残差诊断结果。")
+        st_obj.info("完成「① 模型训练」后可查看残差诊断结果。")
         return
     best = (
         result.best_result

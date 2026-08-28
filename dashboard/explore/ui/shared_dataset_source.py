@@ -1,9 +1,4 @@
-"""SARIMAX 数据概览 ↔ HTFA 全局共享数据集适配器。
-
-实现 data_overview.DataSource 协议：渲染 HTFA 侧边栏共享数据集
-的上传控件（页面内嵌 compact 模式），并委托 shared_dataset 的
-全局会话状态——数据概览与数据探索/其他模型共用同一份上传数据。
-"""
+"""Shared dataset source used by the univariate data overview page."""
 
 from __future__ import annotations
 
@@ -13,9 +8,18 @@ from dashboard.core.ui.utils import shared_dataset
 
 
 class SharedDatasetSource:
-    """把 HTFA 全局共享数据集适配为 data_overview 数据源。"""
+    """Expose the global shared dataset through the data overview protocol."""
+
+    def __init__(self, *, uploader_enabled: bool = True) -> None:
+        self.uploader_enabled = bool(uploader_enabled)
 
     def render_uploader(self, st_obj, *, compact: bool = False) -> dict:
+        if not self.uploader_enabled:
+            fingerprint = self.current_fingerprint()
+            return {
+                "has_data": bool(fingerprint),
+                "file_name": self.current_name(),
+            }
         return shared_dataset.render_shared_dataset_uploader(
             st_obj,
             compact=compact,
@@ -32,7 +36,7 @@ class SharedDatasetSource:
         data_start_row: int = 1,
         time_column: str | None = None,
     ) -> pd.DataFrame | None:
-        """从共享数据集原始文件按 SARIMAX 行设置重新读取。"""
+        """Load the selected worksheet using the current overview settings."""
         uploaded_file = shared_dataset.get_shared_dataset_file()
         if uploaded_file is None:
             return None

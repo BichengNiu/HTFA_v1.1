@@ -324,8 +324,8 @@ def _clear_dependent_analysis_state() -> None:
     for key in list(st.session_state):
         if str(key).startswith(prefixes):
             del st.session_state[key]
-    # SARIMAX 的数据概览和训练控件是共享文件的直接消费者；文件内容
-    # 改变时必须清除，避免旧变量名被 Streamlit 重新注入新数据集。
+    # SARIMAX 训练控件是共享文件的直接消费者；文件内容改变时必须清除，
+    # 避免旧变量名被 Streamlit 重新注入新数据集。
     for key in list(st.session_state):
         if str(key).startswith("sarimax_"):
             del st.session_state[key]
@@ -370,7 +370,7 @@ def render_shared_dataset_uploader(
     """渲染共享数据集上传器，并在文件变更时更新共享状态。
 
     compact=True 时隐藏「共享数据集」标题、已加载提示与行数列数
-    小字（用于页面主区域内嵌场景，如模型分析的数据概览）。
+    小字（用于页面主区域内嵌场景，如单变量分析的数据概览）。
     """
     if not compact:
         st_obj.markdown("### 共享数据集")

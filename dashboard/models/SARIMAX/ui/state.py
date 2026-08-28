@@ -4,19 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from data_overview.ui.widget_keys import (
-    CHART_WIDGET_KEYS,
-    READ_WIDGET_KEYS,
-    SELECTOR_WIDGET_KEYS,
-    TABLE_WIDGET_KEYS,
-)
-
 from dashboard.core.ui.utils.state_helpers import NamespacedStateManager
 
 # 所有 SARIMAX 页面共用的会话状态命名空间。
 state = NamespacedStateManager("model_analysis.sarimax")
 
-# 训练 / 分析 / 预测环节的 widget 键（数据概览的键在 ui/overview/widget_keys.py）。
+# 训练 / 分析 / 预测环节的 widget 键。
 MODEL_WIDGET_KEYS = (
     "sarimax_target_select",
     "sarimax_exog_select",
@@ -132,16 +125,8 @@ MODEL_WIDGET_KEYS = (
     "sarimax_forecast_download",
 )
 
-# 全部 Streamlit widget 键；换文件或换变量时需要清除，
-# 避免旧 widget 值被 Streamlit 自动恢复。读取设置也纳入汇总，
-# 便于宿主页面统一管理。
-WIDGET_KEYS = (
-    SELECTOR_WIDGET_KEYS
-    + READ_WIDGET_KEYS
-    + CHART_WIDGET_KEYS
-    + TABLE_WIDGET_KEYS
-    + MODEL_WIDGET_KEYS
-)
+# SARIMAX 模型页的 Streamlit widget 键。
+WIDGET_KEYS = MODEL_WIDGET_KEYS
 
 # 跨模块切换时保留用户可编辑的页面输入；提交、下载与运行按钮不保存，
 # 以免切回页面后重复执行操作。
@@ -159,11 +144,8 @@ PERSISTENT_WIDGET_KEYS = tuple(
     }
 )
 
-# 数据集变化时清除旧图形、表格和模型状态，但保留本次刚输入的读取设置。
-# 变量多选同样保留，由 data_overview.ui.selectors 按新变量名自动过滤。
-DATASET_REPLACED_WIDGET_KEYS = (
-    CHART_WIDGET_KEYS + TABLE_WIDGET_KEYS + MODEL_WIDGET_KEYS
-)
+# 数据集变化时清除模型页的 widget 状态。
+DATASET_REPLACED_WIDGET_KEYS = MODEL_WIDGET_KEYS
 
 RESULT_KEYS = (
     "fitted_result",

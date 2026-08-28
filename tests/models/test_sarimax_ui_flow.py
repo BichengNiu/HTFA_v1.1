@@ -27,6 +27,29 @@ def _navigate_to_sarimax(app) -> None:
     app.run()
 
 
+def _navigate_to_univariate_overview(app) -> None:
+    """通过侧边栏进入“数据探索 → 单变量分析”。"""
+    explore_button = next(
+        button for button in app.sidebar.button if button.label == "数据探索"
+    )
+    explore_button.click()
+    app.run()
+    sub_button = next(
+        button for button in app.sidebar.button if button.label == "单变量分析"
+    )
+    sub_button.click()
+    app.run()
+
+
+def _prepare_model_app(app, payload) -> None:
+    """在数据探索页上传共享文件后返回动态回归模型页。"""
+    _navigate_to_univariate_overview(app)
+    app.sidebar.file_uploader[0].upload(*payload)
+    app.run()
+    assert not app.exception
+    _navigate_to_sarimax(app)
+
+
 def _sample_csv() -> tuple[str, bytes, str]:
     """生成带日期列的 AR(1) 模拟数据 CSV。"""
     simulated = simulate_sarima(n=60, order=(1, 0, 0), ar=[0.6], seed=42)
@@ -133,35 +156,48 @@ def test_full_workflow_via_ui(monkeypatch):
 
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
-    _navigate_to_sarimax(app)
+    _navigate_to_univariate_overview(app)
 
-    # 导航结果：单 tab「动态回归模型」，页内环节标题与引导信息齐全
+    # 数据概览已迁移到数据探索页；上传控件、数据表、时间序列图与 ACF/PACF 图均在此处出现。
     assert not app.exception
-    assert [tab.label for tab in app.tabs] == ["动态回归模型"]
-    title_texts = " ".join(element.value for element in app.markdown)
-    assert "① 数据预览" in title_texts
-    assert "② 模型训练" in title_texts
-    assert "③ 残差诊断" in title_texts
-    assert "④ 模型预测" in title_texts
-    info_texts = " ".join(element.value for element in app.info)
-    assert "请在上方上传数据文件" in info_texts
-    assert "完成「① 数据预览」（在上方上传数据）后可配置并拟合模型" in info_texts
-    assert "完成「② 模型训练」后可查看残差诊断结果" in info_texts
-
-    # ① 数据预览：上传文件后出现数据表格与预览绘图（compact 模式
-    # 不再显示「已加载」success 与行数小字）
-    app.file_uploader[0].upload(*_sample_csv())
+    app.sidebar.file_uploader[0].upload(*_sample_csv())
     app.run()
     assert not app.exception
-    assert not app.success
     assert any(
         element.key == "sarimax_preview_vars" for element in app.multiselect
     )
-    # 时间序列预览图只渲染一次（回归：expander 下方不应出现重复图）
-    assert len(app.image) == 1
-    assert any(element.key == "sarimax_target_select" for element in app.selectbox)
+    assert {element.label for element in app.radio} == {
+        "ACF",
+        "PACF",
+    }
+    assert all(
+        tuple(element.options)
+        == ("原始变量", "对数", "差分", "对数差分")
+        for element in app.radio
+    )
+    assert not any(
+        "数据处理方法" in element.label for element in app.multiselect
+    )
+    acf_radio = next(element for element in app.radio if element.label == "ACF")
+    pacf_radio = next(element for element in app.radio if element.label == "PACF")
+    acf_radio.set_value("first_difference")
+    app.run()
+    assert not app.exception
+    assert acf_radio.value == "first_difference"
+    assert pacf_radio.value == "original"
+    assert len(app.image) == 3  # 时间序列图 + ACF 图 + PACF 图
 
-    # ② 模型训练：默认手动配置 (1,0,1)，拟合按钮可用并执行
+    _navigate_to_sarimax(app)
+    assert not app.exception
+    assert [tab.label for tab in app.tabs] == ["动态回归模型"]
+    title_texts = " ".join(element.value for element in app.markdown)
+    assert "① 模型训练" in title_texts
+    assert "② 残差诊断" in title_texts
+    assert "③ 模型预测" in title_texts
+    assert "数据预览" not in title_texts
+    assert not app.sidebar.file_uploader
+
+    # ① 模型训练：默认手动配置 (1,0,1)，拟合按钮可用并执行
     fit_button = _by_key(app.button, "sarimax_fit_button")
     assert not fit_button.disabled
     assert not _by_key(app.checkbox, "sarimax_enforce_stationarity").value
@@ -173,14 +209,14 @@ def test_full_workflow_via_ui(monkeypatch):
     assert "AIC" in metrics and "BIC" in metrics and "对数似然" in metrics
     assert any("已收敛" in element.value for element in app.success)
 
-    # ③ 残差诊断：模型估计后按建议滞后阶数自动执行。
+    # ② 残差诊断：模型估计后按建议滞后阶数自动执行。
     assert not app.exception
     assert any("残差自相关" in str(element.value) for element in app.dataframe)
     assert not any(element.key == "sarimax_diag_button" for element in app.button)
     assert not any(element.key == "sarimax_diag_lags" for element in app.number_input)
     assert any(element.key == "sarimax_diag_download" for element in app.download_button)
 
-    # ④ 模型预测：生成预测后出现预测表与下载按钮
+    # ③ 模型预测：生成预测后出现预测表与下载按钮
     forecast_button = _by_key(app.button, "sarimax_forecast_button")
     assert not forecast_button.disabled
     forecast_button.click()
@@ -202,9 +238,7 @@ def test_training_time_range_limits_fit_and_invalidates_result(monkeypatch):
 
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
-    _navigate_to_sarimax(app)
-    app.file_uploader[0].upload(*_dynamic_sample_csv())
-    app.run()
+    _prepare_model_app(app, _dynamic_sample_csv())
     assert not app.exception
 
     time_range = _by_key(app.date_input, "sarimax_training_time_range")
@@ -242,9 +276,7 @@ def test_forecast_prefills_future_exog_from_dataset(monkeypatch):
 
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
-    _navigate_to_sarimax(app)
-    app.file_uploader[0].upload(*_dynamic_sample_csv())
-    app.run()
+    _prepare_model_app(app, _dynamic_sample_csv())
 
     _by_key(app.multiselect, "sarimax_exog_select").set_value(["policy"])
     _by_key(app.date_input, "sarimax_training_time_range").set_value(
@@ -275,9 +307,7 @@ def test_auto_mode_workflow_via_ui(monkeypatch):
 
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
-    _navigate_to_sarimax(app)
-    app.file_uploader[0].upload(*_sample_csv())
-    app.run()
+    _prepare_model_app(app, _sample_csv())
     assert not app.exception
 
     # 切换到自动选阶，并把范围缩到 4 个组合
@@ -328,8 +358,7 @@ def test_auto_mode_workflow_via_ui(monkeypatch):
 
 def _open_dynamic_family(app, family: str, mode: str) -> None:
     """上传连续多变量样本，切换到指定动态回归模型族。"""
-    app.file_uploader[0].upload(*_dynamic_sample_csv())
-    app.run()
+    _prepare_model_app(app, _dynamic_sample_csv())
     _by_key(app.multiselect, "sarimax_exog_select").set_value(["policy"])
     app.run()
     _by_key(app.segmented_control, "sarimax_model_family").set_value(family)
@@ -412,13 +441,13 @@ def test_data_table_options_via_ui(monkeypatch):
 
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
-    _navigate_to_sarimax(app)
-    app.file_uploader[0].upload(*_sample_csv())
+    _navigate_to_univariate_overview(app)
+    app.sidebar.file_uploader[0].upload(*_sample_csv())
     app.run()
     assert not app.exception
 
-    # 上传组件与变量选择都渲染在主区域（sidebar 不再有上传器）
-    assert not app.sidebar.file_uploader
+    # 共享文件上传器位于侧边栏，变量选择与预览控件位于数据概览主区域。
+    assert app.sidebar.file_uploader
     assert app.file_uploader
     _by_key(app.multiselect, "sarimax_preview_vars")
 
@@ -454,7 +483,6 @@ def test_data_table_options_via_ui(monkeypatch):
     # 月度数据 → 时间筛选按频率渲染为「时间范围」预设下拉
     # 训练区有一个日期范围控件；预览表的月度时间筛选不额外渲染 date_input。
     _by_key(app.selectbox, "sarimax_table_time_preset")
-    assert [item.key for item in app.date_input] == ["sarimax_training_time_range"]
     assert not any(element.key == "sarimax_table_view_head" for element in app.checkbox)
     assert not any(element.key == "sarimax_table_view_tail" for element in app.checkbox)
 
@@ -538,8 +566,8 @@ def test_page_level_facet_renders_independent_plots(monkeypatch):
 
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
-    _navigate_to_sarimax(app)
-    app.file_uploader[0].upload(*_multi_sample_csv())
+    _navigate_to_univariate_overview(app)
+    app.sidebar.file_uploader[0].upload(*_multi_sample_csv())
     app.run()
     assert not app.exception
 
@@ -547,23 +575,23 @@ def test_page_level_facet_renders_independent_plots(monkeypatch):
     variables.set_value(["value_a", "value_b"])
     app.run()
     assert not app.exception
-    assert len(app.image) == 1
+    assert len(app.image) == 5  # 时间序列图 + 两个变量各自的 ACF/PACF 图
 
     _by_key(app.checkbox, "sarimax_preview_facet").check()
     app.run()
     assert not app.exception
-    assert len(app.image) == 2
+    assert len(app.image) == 6  # 两个分面时间序列图 + 两个变量各自的 ACF/PACF 图
     image_columns = [
         column
         for column in app.columns
         if any(type(child).__name__ == "Image" for child in column.children.values())
     ]
-    assert len(image_columns) == 2
+    assert len(image_columns) == 6
 
     _by_key(app.number_input, "sarimax_preview_facet_cols").set_value(2)
     app.run()
     assert not app.exception
-    assert len(app.image) == 2
+    assert len(app.image) == 6
 
     app.expander[1].expanded = True
     app.run()
@@ -651,8 +679,8 @@ def test_select_rows_uses_variable_names_and_data_start(monkeypatch):
 
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
-    _navigate_to_sarimax(app)
-    app.file_uploader[0].upload(*_preamble_csv())
+    _navigate_to_univariate_overview(app)
+    app.sidebar.file_uploader[0].upload(*_preamble_csv())
     app.run()
     assert not app.exception
     assert any(
@@ -681,8 +709,6 @@ def test_select_rows_uses_variable_names_and_data_start(monkeypatch):
     )
     assert preview.iloc[0]["sales"] == 10
     assert "exog" in _by_key(app.multiselect, "sarimax_preview_vars").options
-    target = _by_key(app.selectbox, "sarimax_target_select")
-    assert set(target.options) >= {"sales", "exog"}
 
     # 读取设置变化会清除旧数据集，解析失败时不会继续使用旧变量/模型状态。
     _by_key(app.number_input, "sarimax_preview_variable_name_row").set_value(2)
@@ -703,8 +729,8 @@ def test_time_column_options_refresh_after_variable_name_row_changes(monkeypatch
 
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
-    _navigate_to_sarimax(app)
-    app.file_uploader[0].upload(*_changing_header_csv())
+    _navigate_to_univariate_overview(app)
+    app.sidebar.file_uploader[0].upload(*_changing_header_csv())
     app.run()
 
     _by_key(app.number_input, "sarimax_preview_variable_name_row").set_value(2)
@@ -728,14 +754,14 @@ def test_zero_values_are_missing_in_sarimax_preview(monkeypatch):
 
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
-    _navigate_to_sarimax(app)
+    _navigate_to_univariate_overview(app)
     content = (
         "date,value\n"
         "2020-01-01,0\n"
         "2020-02-01,5\n"
         "2020-03-01,0\n"
     ).encode("utf-8")
-    app.file_uploader[0].upload("zeros.csv", content, "text/csv")
+    app.sidebar.file_uploader[0].upload("zeros.csv", content, "text/csv")
     app.run()
 
     assert not app.exception
@@ -755,7 +781,7 @@ def test_excel_sheet_selection_via_ui(monkeypatch):
 
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
-    _navigate_to_sarimax(app)
+    _navigate_to_univariate_overview(app)
 
     # 构造含两个工作表（不同时间范围）的 Excel
     index_a = pd.date_range("2020-01-01", periods=12, freq="MS")
@@ -773,7 +799,7 @@ def test_excel_sheet_selection_via_ui(monkeypatch):
 
     path = PROJECT_ROOT / "tests" / "models" / "_sheet_sample.xlsx"
     try:
-        app.file_uploader[0].upload(
+        app.sidebar.file_uploader[0].upload(
             "sheet_sample.xlsx",
             path.read_bytes(),
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
