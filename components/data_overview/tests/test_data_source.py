@@ -11,9 +11,9 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from data_overview.ui.data_source import _load_dataframe
-from dashboard.core.ui.utils.shared_dataset import load_shared_dataframe
+from data_overview.core.file_parsing import load_dataframe
 from dashboard.explore.ui.shared_dataset_source import SharedDatasetSource
+from dashboard.explore.ui import shared_dataset_source
 
 
 class _UploadedFile:
@@ -38,7 +38,12 @@ def _preamble_csv() -> bytes:
 def test_component_reader_uses_selected_row_as_header():
     uploaded = _UploadedFile("sample.csv", _preamble_csv())
 
-    frame = _load_dataframe(uploaded, variable_name_row=2, data_start_row=3)
+    frame = load_dataframe(
+        uploaded.getvalue(),
+        uploaded.name,
+        variable_name_row=2,
+        data_start_row=3,
+    )
 
     assert list(frame.columns) == ["date", "sales", "exog"]
     assert frame["date"].iloc[0] == pd.Timestamp("2020-01-01")
@@ -48,7 +53,7 @@ def test_component_reader_uses_selected_row_as_header():
 def test_shared_reader_preserves_default_header_behavior():
     uploaded = _UploadedFile("sample.csv", b"date,value\n2020-01-01,3\n")
 
-    frame = load_shared_dataframe(uploaded)
+    frame = load_dataframe(uploaded.getvalue(), uploaded.name)
 
     assert list(frame.columns) == ["date", "value"]
     assert frame["date"].iloc[0] == pd.Timestamp("2020-01-01")
@@ -68,11 +73,12 @@ def test_shared_reader_reuses_supplied_raw_rows_without_reopening_file(
         raise AssertionError("不应重新读取上传文件")
 
     monkeypatch.setattr(
-        "dashboard.core.ui.utils.shared_dataset._read_raw_rows",
+        "data_overview.core.file_parsing.read_raw_rows",
         fail_if_file_is_read,
     )
-    frame = load_shared_dataframe(
-        uploaded,
+    frame = load_dataframe(
+        uploaded.getvalue(),
+        uploaded.name,
         raw_rows=raw_rows,
         variable_name_row=0,
         data_start_row=1,
@@ -100,14 +106,16 @@ def test_shared_source_passes_cached_rows_to_shared_reader(monkeypatch):
         lambda: "数据",
     )
 
-    def fake_load_shared_dataframe(uploaded_file, **kwargs):
-        captured["uploaded_file"] = uploaded_file
+    def fake_load_dataframe(content, file_name, **kwargs):
+        captured["content"] = content
+        captured["file_name"] = file_name
         captured.update(kwargs)
         return pd.DataFrame({"value": [3]})
 
     monkeypatch.setattr(
-        "dashboard.core.ui.utils.shared_dataset.load_shared_dataframe",
-        fake_load_shared_dataframe,
+        shared_dataset_source,
+        "load_dataframe",
+        fake_load_dataframe,
     )
 
     frame = SharedDatasetSource().load_data(
@@ -117,7 +125,8 @@ def test_shared_source_passes_cached_rows_to_shared_reader(monkeypatch):
     )
 
     assert frame["value"].tolist() == [3]
-    assert captured["uploaded_file"] is uploaded
+    assert captured["content"] == uploaded.getvalue()
+    assert captured["file_name"] == uploaded.name
     assert captured["sheet_name"] == "数据"
     assert captured["raw_rows"] is raw_rows
 
@@ -125,8 +134,9 @@ def test_shared_source_passes_cached_rows_to_shared_reader(monkeypatch):
 def test_shared_reader_supports_selected_rows_with_irregular_preamble():
     uploaded = _UploadedFile("sample.csv", _preamble_csv())
 
-    frame = load_shared_dataframe(
-        uploaded,
+    frame = load_dataframe(
+        uploaded.getvalue(),
+        uploaded.name,
         variable_name_row=2,
         data_start_row=3,
     )
@@ -141,8 +151,9 @@ def test_reader_parses_user_selected_time_column():
         b"sales,date\n10,2020-01-01\n11,2020-02-01\n",
     )
 
-    frame = _load_dataframe(
-        uploaded,
+    frame = load_dataframe(
+        uploaded.getvalue(),
+        uploaded.name,
         variable_name_row=0,
         data_start_row=1,
         time_column="date",
@@ -158,8 +169,9 @@ def test_reader_parses_user_selected_time_column():
 def test_reader_can_leave_time_column_unparsed():
     uploaded = _UploadedFile("sample.csv", b"date,value\nnot-a-date,3\n")
 
-    frame = _load_dataframe(
-        uploaded,
+    frame = load_dataframe(
+        uploaded.getvalue(),
+        uploaded.name,
         variable_name_row=0,
         data_start_row=1,
         time_column=None,
@@ -172,8 +184,9 @@ def test_reader_reports_invalid_selected_time_column():
     uploaded = _UploadedFile("sample.csv", b"date,value\nnot-a-date,3\n")
 
     with pytest.raises(ValueError, match="无法解析"):
-        _load_dataframe(
-            uploaded,
+        load_dataframe(
+            uploaded.getvalue(),
+            uploaded.name,
             variable_name_row=0,
             data_start_row=1,
             time_column="date",
@@ -186,8 +199,9 @@ def test_reader_suffixes_duplicate_variable_names():
         b"date,value,value\n2020-01-01,1,10\n2020-02-01,2,20\n",
     )
 
-    frame = _load_dataframe(
-        uploaded,
+    frame = load_dataframe(
+        uploaded.getvalue(),
+        uploaded.name,
         variable_name_row=0,
         data_start_row=1,
         time_column="date",
@@ -204,8 +218,9 @@ def test_shared_reader_suffixes_duplicate_variable_names():
         b"date,value,value\n2020-01-01,1,10\n",
     )
 
-    frame = load_shared_dataframe(
-        uploaded,
+    frame = load_dataframe(
+        uploaded.getvalue(),
+        uploaded.name,
         variable_name_row=0,
         data_start_row=1,
         time_column="date",
@@ -218,14 +233,24 @@ def test_reader_rejects_data_start_before_variable_name_row():
     uploaded = _UploadedFile("sample.csv", b"date,value\n2020-01-01,3\n")
 
     with pytest.raises(ValueError, match="晚于变量名行"):
-        _load_dataframe(uploaded, variable_name_row=1, data_start_row=1)
+        load_dataframe(
+            uploaded.getvalue(),
+            uploaded.name,
+            variable_name_row=1,
+            data_start_row=1,
+        )
 
 
 def test_reader_reports_when_data_start_removes_all_rows():
     uploaded = _UploadedFile("sample.csv", b"date,value\n2020-01-01,3\n")
 
     with pytest.raises(ValueError, match="超出数据范围"):
-        _load_dataframe(uploaded, variable_name_row=0, data_start_row=10)
+        load_dataframe(
+            uploaded.getvalue(),
+            uploaded.name,
+            variable_name_row=0,
+            data_start_row=10,
+        )
 
 
 def test_excel_reader_applies_selected_rows_before_data(tmp_path):
@@ -240,8 +265,9 @@ def test_excel_reader_applies_selected_rows_before_data(tmp_path):
         ).to_excel(writer, header=False, index=False, sheet_name="数据")
 
     uploaded = _UploadedFile(path.name, path.read_bytes())
-    frame = _load_dataframe(
-        uploaded,
+    frame = load_dataframe(
+        uploaded.getvalue(),
+        uploaded.name,
         sheet_name="数据",
         variable_name_row=1,
         data_start_row=2,
@@ -262,8 +288,9 @@ def test_excel_datetime_cells_are_not_converted_to_numeric_time(tmp_path):
         ).to_excel(writer, index=False, sheet_name="数据")
 
     uploaded = _UploadedFile(path.name, path.read_bytes())
-    frame = _load_dataframe(
-        uploaded,
+    frame = load_dataframe(
+        uploaded.getvalue(),
+        uploaded.name,
         sheet_name="数据",
         variable_name_row=0,
         data_start_row=1,

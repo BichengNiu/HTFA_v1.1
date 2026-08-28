@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
+from data_overview.core.file_parsing import load_dataframe
 from dashboard.core.ui.utils import shared_dataset
 
 
@@ -23,7 +24,6 @@ class SharedDatasetSource:
         return shared_dataset.render_shared_dataset_uploader(
             st_obj,
             compact=compact,
-            allow_unparsed=True,
         )
 
     def current_data(self) -> pd.DataFrame | None:
@@ -40,8 +40,9 @@ class SharedDatasetSource:
         uploaded_file = shared_dataset.get_shared_dataset_file()
         if uploaded_file is None:
             return None
-        return shared_dataset.load_shared_dataframe(
-            uploaded_file,
+        return load_dataframe(
+            uploaded_file.getvalue(),
+            uploaded_file.name,
             sheet_name=self.current_sheet(),
             variable_name_row=variable_name_row,
             data_start_row=data_start_row,
@@ -65,7 +66,7 @@ class SharedDatasetSource:
         return shared_dataset.get_shared_dataset_sheet()
 
     def select_sheet(self, sheet: str) -> None:
-        shared_dataset.select_shared_dataset_sheet(sheet, allow_unparsed=True)
+        shared_dataset.select_shared_dataset_sheet(sheet)
 
 
 __all__ = ["SharedDatasetSource"]

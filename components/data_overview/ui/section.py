@@ -134,13 +134,29 @@ def render_data_overview(
         st_obj.markdown(config.title)
     data_source.render_uploader(st_obj, compact=True)
 
+    dataset = state.get("dataset")
+
+    def clear_dataset() -> None:
+        nonlocal dataset
+        if dataset is None:
+            return
+        state.set("dataset", None)
+        dataset = None
+        if config.on_dataset_replaced is not None:
+            config.on_dataset_replaced(st_obj)
+
     source_fingerprint = data_source.current_fingerprint()
+    sheet_identity = data_source.current_sheet() or "none"
     if not source_fingerprint:
+        clear_dataset()
+        state.set("source_fingerprint", None)
+        state.set("time_options_signature", None)
         st_obj.info("请在上方上传数据文件（CSV / XLSX / XLS）。")
         return
 
     row_count = data_source.row_count()
     if row_count < 2:
+        clear_dataset()
         st_obj.error("文件中至少需要一行变量名和一行数据。")
         return
 
@@ -206,19 +222,16 @@ def render_data_overview(
         help="输入第一行数据的行号，必须晚于变量名行。行号从 1 开始。",
     )
 
-    dataset = state.get("dataset")
     settings_fingerprint = (
-        f"{source_fingerprint}::variable_name_row={variable_name_row}"
+        f"{source_fingerprint}::sheet={sheet_identity}"
+        f"::variable_name_row={variable_name_row}"
         f"::data_start_row={data_start_row}"
     )
     dataset_changed = dataset is not None and not str(
         dataset.fingerprint
     ).startswith(settings_fingerprint)
     if dataset_changed:
-        state.set("dataset", None)
-        if config.on_dataset_replaced is not None:
-            config.on_dataset_replaced(st_obj)
-        dataset = None
+        clear_dataset()
 
     try:
         raw_data = data_source.load_data(
@@ -227,9 +240,11 @@ def render_data_overview(
             time_column=None,
         )
     except Exception as exc:  # noqa: BLE001 - 用户可读的数据读取边界
+        clear_dataset()
         st_obj.error(f"数据读取失败：{exc}")
         return
     if raw_data is None:
+        clear_dataset()
         st_obj.info("请在上方上传数据文件（CSV / XLSX / XLS）。")
         return
 
@@ -260,7 +275,8 @@ def render_data_overview(
 
     time_column = None if time_selection == "无" else str(time_selection)
     fingerprint = (
-        f"{source_fingerprint}::variable_name_row={variable_name_row}"
+        f"{source_fingerprint}::sheet={sheet_identity}"
+        f"::variable_name_row={variable_name_row}"
         f"::data_start_row={data_start_row}::time_column={time_column or 'none'}"
     )
     try:
@@ -270,9 +286,11 @@ def render_data_overview(
             time_column=time_column,
         )
         if data is None:
+            clear_dataset()
             st_obj.info("请在上方上传数据文件（CSV / XLSX / XLS）。")
             return
     except Exception as exc:  # noqa: BLE001 - 用户可读的数据读取边界
+        clear_dataset()
         st_obj.error(f"数据读取失败：{exc}")
         return
 

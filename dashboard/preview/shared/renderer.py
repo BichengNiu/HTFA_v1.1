@@ -18,7 +18,7 @@ from dashboard.core.ui.utils.state_helpers import (
     get_preview_state,
     set_preview_state,
 )
-from dashboard.core.ui.utils.shared_dataset import fingerprint_file
+from data_overview.core.file_parsing import file_fingerprint
 from dashboard.core.workspace import SessionWorkspace
 
 logger = logging.getLogger(__name__)
@@ -169,7 +169,7 @@ class PreviewRenderer:
         if not uploaded_file:
             return False
 
-        current_fingerprint = fingerprint_file(uploaded_file)
+        current_fingerprint = file_fingerprint(uploaded_file.getvalue())
         cached_fingerprint = get_preview_state(
             'data_loaded_file_fingerprint',
             namespace=self.state_namespace,
@@ -212,7 +212,7 @@ class PreviewRenderer:
             )
             set_preview_state(
                 'data_loaded_file_fingerprint',
-                fingerprint_file(uploaded_file),
+                file_fingerprint(uploaded_file.getvalue()),
                 namespace=self.state_namespace,
             )
 

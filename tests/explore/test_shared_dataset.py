@@ -4,13 +4,13 @@ import warnings
 
 import pandas as pd
 
+from data_overview.core.file_parsing import file_fingerprint, load_dataframe
 from dashboard.core.ui.utils.shared_dataset import (
     clear_shared_dataset,
     export_shared_dataset_snapshot,
-    fingerprint_file,
     get_shared_dataset_data,
     get_shared_dataset_file,
-    load_shared_dataframe,
+    get_shared_dataset_raw_rows,
     render_shared_dataset_uploader,
     restore_shared_dataset_snapshot,
 )
@@ -34,7 +34,7 @@ def test_shared_csv_loader_parses_first_column_as_time():
         "shared.csv",
     )
 
-    result = load_shared_dataframe(uploaded)
+    result = load_dataframe(uploaded.getvalue(), uploaded.name)
 
     assert result.columns.tolist() == ["date", "value"]
     assert pd.api.types.is_datetime64_any_dtype(result["date"])
@@ -55,7 +55,7 @@ def test_shared_xlsx_loader_keeps_indicator_names_without_date_warning():
 
     with warnings.catch_warnings():
         warnings.simplefilter("error", UserWarning)
-        result = load_shared_dataframe(uploaded)
+        result = load_dataframe(uploaded.getvalue(), uploaded.name)
 
     assert result["指标名称"].tolist() == source["指标名称"].tolist()
     assert not pd.api.types.is_datetime64_any_dtype(result["指标名称"])
@@ -65,7 +65,7 @@ def test_shared_file_fingerprint_changes_when_content_changes():
     first = UploadedBytes(b"date,value\n2025-01-31,1\n", "data.csv")
     second = UploadedBytes(b"date,value\n2025-01-31,2\n", "data.csv")
 
-    assert fingerprint_file(first) != fingerprint_file(second)
+    assert file_fingerprint(first.getvalue()) != file_fingerprint(second.getvalue())
 
 
 class _Uploader:
@@ -73,6 +73,8 @@ class _Uploader:
         self.uploaded_file = uploaded_file
         self.clear_clicked = clear_clicked
         self.captions: list[str] = []
+        self.errors: list[str] = []
+        self.successes: list[str] = []
 
     def markdown(self, *_args, **_kwargs):
         pass
@@ -86,11 +88,11 @@ class _Uploader:
     def caption(self, text: str):
         self.captions.append(text)
 
-    def success(self, *_args, **_kwargs):
-        pass
+    def success(self, text: str, *_args, **_kwargs):
+        self.successes.append(text)
 
-    def error(self, *_args, **_kwargs):
-        pass
+    def error(self, text: str, *_args, **_kwargs):
+        self.errors.append(text)
 
     def warning(self, *_args, **_kwargs):
         pass
@@ -158,6 +160,33 @@ def test_new_file_does_not_clear_unrelated_model_state(monkeypatch):
     clear_shared_dataset()
 
 
+def test_invalid_shared_file_clears_data_without_success_fallback(monkeypatch):
+    state: dict = {}
+    _use_session_state(monkeypatch, state)
+    valid = _Uploader(UploadedBytes(b"date,value\n2025-01-31,1\n", "data.csv"))
+    render_shared_dataset_uploader(valid)
+    assert get_shared_dataset_data() is not None
+
+    invalid = _Uploader(
+        UploadedBytes(
+            b"date,value\n2025-01-31,1,unexpected\n",
+            "invalid.csv",
+        )
+    )
+    returned = render_shared_dataset_uploader(invalid)
+
+    assert returned["has_data"] is True
+    assert get_shared_dataset_data() is None
+    assert get_shared_dataset_raw_rows() == [
+        ["date", "value"],
+        ["2025-01-31", "1", "unexpected"],
+    ]
+    assert invalid.errors == [
+        "共享数据集读取失败：第 2 行超过变量名行的列数"
+    ]
+    assert invalid.successes == []
+
+
 def test_shared_dataset_snapshot_restores_file_and_selected_sheet(monkeypatch):
     source_state: dict = {}
     _use_session_state(monkeypatch, source_state)
@@ -169,7 +198,7 @@ def test_shared_dataset_snapshot_restores_file_and_selected_sheet(monkeypatch):
     assert snapshot is not None
     target_state: dict = {}
     _use_session_state(monkeypatch, target_state)
-    restore_shared_dataset_snapshot(snapshot, allow_unparsed=True)
+    restore_shared_dataset_snapshot(snapshot)
 
     restored = get_shared_dataset_file()
     assert restored is not None

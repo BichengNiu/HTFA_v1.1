@@ -74,9 +74,7 @@ def render_complete_sidebar(
 
         st.markdown("---")
         if selected_main == "数据探索":
-            # 数据概览支持用户指定变量名行和数据开始行，因此需要在默认
-            # 解析失败时保留原始行，交由页面组件继续处理。
-            render_shared_dataset_uploader(st, allow_unparsed=True)
+            render_shared_dataset_uploader(st)
         elif selected_main == "监测分析":
             render_shared_dataset_uploader(st)
         # 模型页直接读取数据探索中的共享数据集，不在模型页重复渲染上传器。

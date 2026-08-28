@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from io import BytesIO
 from types import SimpleNamespace
 
 import numpy as np
@@ -11,8 +10,8 @@ import pytest
 from Ts.TsSims import simulate_sarima
 
 from data_overview.core.dataset import OverviewDataset, build_overview_dataset
+from data_overview.core.file_parsing import load_dataframe
 
-from dashboard.core.ui.utils.shared_dataset import load_shared_dataframe
 from dashboard.models.SARIMAX.core.data_loader import (
     prepare_modeling_inputs,
 )
@@ -53,9 +52,7 @@ def make_series(n: int = 80, *, dates: bool = False) -> pd.Series:
 
 
 def dataset_from_csv(content: bytes) -> OverviewDataset:
-    uploaded = BytesIO(content)
-    uploaded.name = "data.csv"
-    frame = load_shared_dataframe(uploaded)
+    frame = load_dataframe(content, "data.csv")
     return build_overview_dataset(frame, "data.csv", "fingerprint")
 
 

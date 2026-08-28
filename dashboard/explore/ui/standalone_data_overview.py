@@ -100,7 +100,7 @@ def render_standalone_data_overview() -> None:
             _render_handoff_error()
             return
         try:
-            restore_shared_dataset_snapshot(handoff.dataset, allow_unparsed=True)
+            restore_shared_dataset_snapshot(handoff.dataset)
             restore_data_overview_widget_state(st, handoff.widget_state)
             mark_data_overview_handoff_restore(st)
         except Exception as exc:  # noqa: BLE001 - 页面交接的用户提示边界
