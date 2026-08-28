@@ -112,46 +112,18 @@ def render_industrial_analysis(st_obj):
     # 2. 加载和缓存数据
     df_macro, df_weights = load_and_cache_data(uploaded_file)
 
-    # 3. 根据权限过滤Tab
-    debug_mode = st_obj.session_state.get("auth.debug_mode", False)
-    current_user = st_obj.session_state.get("auth.current_user", None)
-
-    # 定义所有Tab及其对应的权限代码和渲染函数
+    # 3. 定义业务 Tab 及其渲染函数。
     all_tabs = [
-        ("工业增加值分析", "monitoring_analysis.industrial.added_value",
-         lambda: render_macro_operations_with_data(st_obj, df_macro, df_weights, uploaded_file)),
-        ("工业企业利润分析", "monitoring_analysis.industrial.profit",
-         lambda: render_enterprise_profit_with_data(st_obj, df_weights, uploaded_file)),
-        ("工业企业经营效率分析", "monitoring_analysis.industrial.efficiency",
-         lambda: render_enterprise_efficiency_with_data(st_obj, uploaded_file))
+        ("工业增加值分析", lambda: render_macro_operations_with_data(st_obj, df_macro, df_weights, uploaded_file)),
+        ("工业企业利润分析", lambda: render_enterprise_profit_with_data(st_obj, df_weights, uploaded_file)),
+        ("工业企业经营效率分析", lambda: render_enterprise_efficiency_with_data(st_obj, uploaded_file)),
     ]
 
-    # 过滤Tab
-    if debug_mode or not current_user:
-        # 调试模式或未登录：显示所有Tab
-        visible_tabs = all_tabs
-    else:
-        # 正常模式：根据权限过滤
-        from dashboard.auth.ui.middleware import get_auth_middleware
-        auth_middleware = get_auth_middleware()
-
-        visible_tabs = []
-        for tab_name, permission_code, render_func in all_tabs:
-            if auth_middleware.permission_manager.check_granular_access(
-                current_user, "监测分析", "工业", tab_name
-            ):
-                visible_tabs.append((tab_name, permission_code, render_func))
-
-    # 如果没有可访问的Tab
-    if not visible_tabs:
-        st_obj.warning("您没有权限访问任何Tab")
-        return
-
     # 4. 创建标签页
-    tab_names = [tab[0] for tab in visible_tabs]
+    tab_names = [tab[0] for tab in all_tabs]
     tabs = st_obj.tabs(tab_names)
 
     # 5. 渲染每个Tab
-    for i, (tab_name, permission_code, render_func) in enumerate(visible_tabs):
+    for i, (_, render_func) in enumerate(all_tabs):
         with tabs[i]:
             render_func()

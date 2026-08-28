@@ -5,16 +5,10 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from dashboard.auth.permission_builder import PermissionTreeBuilder
-from dashboard.navigation_config import GRANULAR_PERMISSION_MAP, MODULE_CONFIG
+from dashboard.navigation_config import MODULE_CONFIG
 
 SUB_MODULE = "单变量模型"
 EXPECTED_TABS = ("动态回归模型",)
-EXPECTED_PERMISSION_CODES = (
-    "model_analysis.univariate_ts",
-    "model_analysis.univariate_ts.sarimax",
-)
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 SECTION_FUNCTIONS = (
@@ -25,31 +19,7 @@ SECTION_FUNCTIONS = (
 
 
 def test_navigation_config_registers_univariate_ts_submodule():
-    sub_modules = GRANULAR_PERMISSION_MAP["模型分析"]["sub_modules"]
-    assert SUB_MODULE in sub_modules
-    assert sub_modules[SUB_MODULE]["code"] == "model_analysis.univariate_ts"
-    assert tuple(sub_modules[SUB_MODULE]["tabs"]) == EXPECTED_TABS
-
     assert MODULE_CONFIG["模型分析"][SUB_MODULE] == list(EXPECTED_TABS)
-
-
-def test_permission_display_names_generated_automatically():
-    builder = PermissionTreeBuilder()
-    assert (
-        builder.get_permission_display_name("model_analysis.univariate_ts")
-        == "模型分析 - 单变量模型"
-    )
-    assert (
-        builder.get_permission_display_name("model_analysis.univariate_ts.sarimax")
-        == "模型分析 - 单变量模型 - 动态回归模型"
-    )
-
-
-def test_sarimax_permission_codes_are_unique():
-    codes = list(EXPECTED_PERMISSION_CODES)
-    assert len(set(codes)) == len(codes)
-    dfm_tabs = GRANULAR_PERMISSION_MAP["模型分析"]["sub_modules"]["DFM 模型"]["tabs"]
-    assert not set(codes).intersection(set(dfm_tabs.values()))
 
 
 def test_content_router_dispatches_univariate_ts_submodule():
@@ -141,10 +111,9 @@ def test_section_entry_functions_do_not_import_ts_directly():
                 )
 
 
-def test_univariate_ts_tab_renders_without_exception(monkeypatch):
+def test_univariate_ts_tab_renders_without_exception():
     from streamlit.testing.v1 import AppTest
 
-    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=30).run()
 
     model_button = next(

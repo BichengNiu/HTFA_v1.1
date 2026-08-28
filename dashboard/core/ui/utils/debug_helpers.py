@@ -3,8 +3,8 @@
 UI调试工具
 提供UI组件的调试和日志功能。
 
-调试开关与应用的 HTFA_DEBUG_MODE 环境变量保持一致，
-避免历史遗留的硬编码 DEBUG_ENABLED 开关与真实调试模式脱节。
+调试开关由 HTFA_DEBUG_MODE 环境变量控制，
+避免历史遗留的硬编码 DEBUG_ENABLED 开关。
 """
 
 import logging
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 def _debug_enabled() -> bool:
-    """调试是否启用（与认证调试模式同一开关）。"""
+    """调试是否启用。"""
     return os.getenv('HTFA_DEBUG_MODE', 'false').strip().lower() == 'true'
 
 

@@ -32,27 +32,6 @@ _PERSISTENT_KEYS = (
 )
 
 
-def _visible_tab_names() -> list[str]:
-    debug_mode = st.session_state.get("auth.debug_mode", False)
-    current_user = st.session_state.get("auth.current_user", None)
-    if debug_mode or not current_user:
-        return list(TAB_NAMES)
-
-    from dashboard.auth.ui.middleware import get_auth_middleware
-
-    permission_manager = get_auth_middleware().permission_manager
-    return [
-        tab_name
-        for tab_name in TAB_NAMES
-        if permission_manager.check_granular_access(
-            current_user,
-            "数据探索",
-            "多变量分析",
-            tab_name,
-        )
-    ]
-
-
 def _load_dataset(uploaded_file: Any) -> ExploreDataset | None:
     try:
         dataset = get_explore_dataset(st, uploaded_file)
@@ -108,11 +87,6 @@ def render_bivariate_analysis_page() -> None:
     workspace = SessionWorkspace(st.session_state)
     workspace.begin_page(_PAGE_ID, keys=_PERSISTENT_KEYS)
     try:
-        visible_tabs = _visible_tab_names()
-        if not visible_tabs:
-            st.warning("您没有权限访问任何Tab")
-            return
-
         uploaded_file = get_shared_dataset_file()
         if uploaded_file is None:
             st.info("请先在侧边栏上传共享数据集。")
@@ -127,8 +101,8 @@ def render_bivariate_analysis_page() -> None:
         selected_table, analysis_data = selection
         data_name = _publish_analysis_data(dataset, selected_table, analysis_data)
 
-        tabs = st.tabs(visible_tabs)
-        for index, tab_name in enumerate(visible_tabs):
+        tabs = st.tabs(TAB_NAMES)
+        for index, tab_name in enumerate(TAB_NAMES):
             with tabs[index]:
                 if tab_name == "同步分析":
                     _render_correlation_tab(analysis_data, data_name)

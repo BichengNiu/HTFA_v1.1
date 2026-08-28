@@ -25,14 +25,10 @@ def _cached_functions(path: Path) -> set[str]:
     return names
 
 
-def test_authentication_and_workspace_do_not_use_process_wide_cache() -> None:
-    protected_roots = (
-        PROJECT_ROOT / "dashboard" / "auth",
-        PROJECT_ROOT / "dashboard" / "core" / "workspace",
-    )
-    for root in protected_roots:
-        for path in root.rglob("*.py"):
-            assert not _cached_functions(path), path
+def test_workspace_does_not_use_process_wide_cache() -> None:
+    root = PROJECT_ROOT / "dashboard" / "core" / "workspace"
+    for path in root.rglob("*.py"):
+        assert not _cached_functions(path), path
 
 
 def test_only_fixed_weight_resource_uses_streamlit_process_cache() -> None:

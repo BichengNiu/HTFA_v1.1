@@ -10,7 +10,7 @@ from dashboard.core import set_current_main_module, set_current_sub_module
 from dashboard.core.ui.utils.debug_helpers import debug_button_click
 
 
-FIRST_COLUMN_MODULES = {"数据预览", "模型分析", "用户管理"}
+FIRST_COLUMN_MODULES = {"数据预览", "模型分析"}
 SECOND_COLUMN_MODULES = {"监测分析", "数据探索"}
 
 

@@ -24,33 +24,26 @@ def render_complete_sidebar(
     module_config: Mapping[str, Any],
     key_prefix: str = "sidebar",
 ) -> None:
-    """渲染权限过滤后的导航和共享数据上传器。"""
+    """渲染导航和共享数据上传器。"""
 
     if not module_config:
         st.sidebar.error("模块配置为空")
         return
 
     with st.sidebar:
-        debug_mode = st.session_state.get("auth.debug_mode", False)
-        current_user = st.session_state.get("auth.current_user")
-        permission_manager = None
+        main_options = list(module_config)
 
-        if debug_mode:
-            st.warning("调试模式：认证和权限检查已禁用")
-            st.markdown("")
-            main_options = list(module_config)
-        elif current_user is None:
-            main_options = []
-        else:
-            from dashboard.auth.ui.middleware import get_auth_middleware
-
-            permission_manager = get_auth_middleware().permission_manager
-            main_options = [
-                name
-                for name in module_config
-                if permission_manager.can_access_application_module(current_user, name)
-            ]
-
+        st.markdown(
+            """
+            <div style="text-align:center; font-size:2em; font-weight:600;
+                        margin:0.5rem 0 0.75rem;">
+                经世
+            </div>
+            <hr style="width:70%; border:0; border-top:1px solid #fff;
+                       margin:0 auto 2rem;">
+            """,
+            unsafe_allow_html=True,
+        )
         st.markdown("### 主模块")
         current_main = get_current_main_module()
         if current_main is not None and current_main not in main_options:
@@ -60,16 +53,11 @@ def render_complete_sidebar(
             main_options, current_main, f"{key_prefix}_main"
         )
 
-        st.markdown("---")
+        st.markdown('<hr style="margin:0.5rem 0;">', unsafe_allow_html=True)
         st.markdown("### 子模块")
         if selected_main and isinstance(module_config.get(selected_main), Mapping):
             st.caption(f"当前主模块：{selected_main}")
             sub_options = list(module_config[selected_main])
-            if permission_manager is not None:
-                allowed = permission_manager.get_accessible_submodules(
-                    current_user, selected_main
-                )
-                sub_options = [name for name in sub_options if name in allowed]
 
             current_sub = get_current_sub_module()
             if current_sub is not None and current_sub not in sub_options:
@@ -92,6 +80,17 @@ def render_complete_sidebar(
         elif selected_main == "监测分析":
             render_shared_dataset_uploader(st)
         # 模型页直接读取数据探索中的共享数据集，不在模型页重复渲染上传器。
+
+        st.markdown(
+            """
+            <div style="position:fixed; bottom:1rem; left:0.5rem; width:18rem;
+                        text-align:center; font-size:0.75rem; line-height:1.4;
+                        color:#fff;">
+                @版权所有：国家信息中心经济预测部政策仿真实验室 牛碧珵
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 __all__ = ["render_complete_sidebar"]

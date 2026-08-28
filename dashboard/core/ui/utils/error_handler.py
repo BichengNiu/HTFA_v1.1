@@ -54,8 +54,7 @@ def handle_ui_error(
         message = f"{message}: {error_message}"
     st_obj.error(message)
 
-    debug_mode = st_obj.session_state.get("auth.debug_mode", False)
-    if show_details or debug_mode:
+    if show_details:
         with st_obj.expander("详细错误信息"):
             st_obj.text(f"错误类型: {error_type}")
             st_obj.text(f"错误消息: {error_message}")

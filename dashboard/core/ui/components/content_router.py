@@ -7,8 +7,6 @@ from collections.abc import Callable
 
 import streamlit as st
 
-from dashboard.auth.ui.pages._shared import PLATFORM_HEADER_MARKDOWN
-from dashboard.auth.ui.pages.user_management import render_user_management_page
 from dashboard.core import get_current_main_module, get_current_sub_module
 from dashboard.explore.ui.bivariate_page import render_bivariate_analysis_page
 from dashboard.explore.ui.pages import render_data_exploration_welcome_page
@@ -22,32 +20,6 @@ PREVIEW_MODULE_MAPPING = {
 }
 
 
-def check_user_permission(module_name: str) -> tuple[bool, str | None]:
-    """检查当前用户能否访问应用主模块。"""
-    try:
-        if st.session_state.get("auth.debug_mode", True):
-            return True, None
-
-        current_user = st.session_state.get("auth.current_user")
-        if current_user is None:
-            return False, f"请先登录后访问「{module_name}」模块"
-
-        from dashboard.auth.ui.middleware import get_auth_middleware
-
-        permission_manager = get_auth_middleware().permission_manager
-        if permission_manager.can_access_application_module(current_user, module_name):
-            return True, None
-
-        if permission_manager.is_admin(current_user):
-            return False, f"管理员账户无法访问「{module_name}」模块，仅可访问用户管理"
-        if module_name == "用户管理":
-            return False, "只有管理员才能访问「用户管理」模块"
-        return False, f"您没有访问「{module_name}」模块的权限，请联系管理员"
-    except Exception as exc:
-        logger.exception("权限检查失败")
-        return False, f"权限检查失败: {exc}"
-
-
 def render_main_content() -> None:
     """根据当前导航状态直接渲染主内容。"""
     main_module = get_current_main_module()
@@ -55,11 +27,6 @@ def render_main_content() -> None:
 
     if not main_module:
         render_welcome_page()
-        return
-
-    has_permission, _ = check_user_permission(main_module)
-    if not has_permission:
-        st.error("无访问权限")
         return
 
     try:
@@ -83,7 +50,6 @@ def render_main_content() -> None:
             "监测分析": render_monitoring_analysis_content,
             "模型分析": render_model_analysis_content,
             "数据探索": render_data_exploration_content,
-            "用户管理": render_user_management_content,
         }
         renderer = renderers.get(main_module)
         if renderer is None:
@@ -97,8 +63,6 @@ def render_main_content() -> None:
 
 def detect_navigation_level(main_module: str, sub_module: str | None) -> str:
     """返回当前导航层级。"""
-    if main_module == "用户管理":
-        return "FUNCTION_ACTIVE"
     if not sub_module:
         return "MAIN_MODULE_ONLY"
     if main_module == "数据预览" and sub_module in PREVIEW_MODULE_MAPPING:
@@ -165,39 +129,13 @@ def render_model_analysis_content(sub_module: str | None) -> None:
     st.info("请选择一个模型分析子模块以开始分析")
 
 
-def _filter_tabs_by_permission(
-    sub_module_name: str,
-    all_tabs: list[tuple[str, Callable[[], None]]],
-) -> list[tuple[str, Callable[[], None]]]:
-    """按子模块 Tab 权限过滤；调试模式或无用户时不过滤。"""
-    current_user = st.session_state.get("auth.current_user")
-    if st.session_state.get("auth.debug_mode", False) or current_user is None:
-        return all_tabs
-
-    from dashboard.auth.ui.middleware import get_auth_middleware
-
-    permission_manager = get_auth_middleware().permission_manager
-    return [
-        (tab_name, render_func)
-        for tab_name, render_func in all_tabs
-        if permission_manager.check_granular_access(
-            current_user, "模型分析", sub_module_name, tab_name
-        )
-    ]
-
-
 def _render_model_submodule_tabs(
     sub_module_name: str,
     all_tabs: list[tuple[str, Callable[[], None]]],
 ) -> None:
     """渲染模型分析子模块下的标签页。"""
-    visible_tabs = _filter_tabs_by_permission(sub_module_name, all_tabs)
-    if not visible_tabs:
-        st.warning("您没有权限访问任何Tab")
-        return
-
     for tab, (tab_name, render_func) in zip(
-        st.tabs([name for name, _ in visible_tabs]), visible_tabs
+        st.tabs([name for name, _ in all_tabs]), all_tabs
     ):
         with tab:
             render_func()
@@ -211,12 +149,6 @@ def render_data_exploration_content(sub_module: str | None) -> None:
         render_bivariate_analysis_page()
     else:
         st.warning(f"未知的数据探索子模块: {sub_module}")
-
-
-def render_user_management_content(sub_module: str | None) -> None:
-    """渲染用户管理主页。"""
-    current_user = st.session_state.get("auth.current_user")
-    render_user_management_page(current_user)
 
 
 def render_module_selection_guide(main_module: str) -> None:
@@ -235,7 +167,20 @@ def render_module_selection_guide(main_module: str) -> None:
 
 def render_welcome_page() -> None:
     """渲染平台首页。"""
-    st.markdown(PLATFORM_HEADER_MARKDOWN, unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div style="display:flex; flex-direction:column; align-items:center;
+                    justify-content:center; min-height:60vh; text-align:center;">
+            <h1 style="font-size:5em; margin:0;">经世</h1>
+            <hr style="width:60%; border:0; border-top:1px solid #ccc;
+                       margin:1.25rem auto;">
+            <p style="font-size:1.8rem; margin:0;">
+                国家信息中心经济预测部政策仿真实验室
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 __all__ = ["PREVIEW_MODULE_MAPPING", "detect_navigation_level", "render_main_content"]
