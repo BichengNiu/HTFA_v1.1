@@ -277,10 +277,19 @@ def render_correlogram_chart(
     include_pacf: bool = True,
     alpha: float = 0.05,
     scope: str,
+    config_container=None,
+    config_defaults: dict[str, Any] | None = None,
+    maximum_lags: int | None = None,
+    show_config: bool = True,
 ) -> None:
-    """渲染 ACF/PACF 组合图及其配置控件（平稳性与数据概览共用）。"""
+    """渲染 ACF/PACF 图，并可将配置控件放入指定容器。"""
     try:
         nlags, maximum = resolve_correlation_lags(series)
+        if maximum_lags is not None:
+            if isinstance(maximum_lags, bool) or maximum_lags < 1:
+                raise ValueError("共享的最大滞后阶数必须至少为 1")
+            maximum = min(maximum, int(maximum_lags))
+            nlags = min(nlags, maximum)
         st_obj.caption(
             f"相关图使用 {series.notna().sum():,} 个有效观测，"
             f"自动选择 {nlags} 阶滞后（PACF 最大允许 {maximum} 阶）。"
@@ -301,6 +310,8 @@ def render_correlogram_chart(
             "grid_line_style": "solid",
             "pacf_method": "ywm",
         }
+        if config_defaults:
+            defaults.update(config_defaults)
         config = get_applied_config(st_obj, scope, defaults)
         config["nlags"] = min(max(1, int(config["nlags"])), maximum)
         figure = create_correlogram_figure(
@@ -313,12 +324,13 @@ def render_correlogram_chart(
             **{key: value for key, value in config.items() if key != "nlags"},
         )
         render_pyplot_figure(st_obj, figure)
-        render_correlogram_config_expander(
-            st_obj,
-            scope=scope,
-            defaults=defaults,
-            maximum_lags=maximum,
-        )
+        if show_config:
+            render_correlogram_config_expander(
+                config_container if config_container is not None else st_obj,
+                scope=scope,
+                defaults=defaults,
+                maximum_lags=maximum,
+            )
     except Exception as exc:  # noqa: BLE001 - optional diagnostic chart boundary
         st_obj.warning(f"ACF/PACF 无法绘制：{exc}")
 

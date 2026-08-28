@@ -186,6 +186,17 @@ def test_full_workflow_via_ui(monkeypatch):
     assert acf_radio.value == "first_difference"
     assert pacf_radio.value == "original"
     assert len(app.image) == 3  # 时间序列图 + ACF 图 + PACF 图
+    correlogram_expanders = [
+        element
+        for element in app.expander
+        if element.label == "ACF/PACF 图表设置"
+    ]
+    assert len(correlogram_expanders) == 1
+    correlogram_expanders[0].expanded = True
+    app.run()
+    assert not app.exception
+    assert sum(element.label == "滞后阶数" for element in app.number_input) == 1
+    assert sum(element.label == "PACF 计算方法" for element in app.selectbox) == 1
 
     _navigate_to_sarimax(app)
     assert not app.exception

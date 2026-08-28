@@ -19,6 +19,7 @@ from dashboard.core.ui.utils.state_helpers import NamespacedStateManager
 from dashboard.explore.analysis.stationarity import (
     numeric_variable_names,
     prepare_selected_series,
+    resolve_correlation_lags,
     transform_series,
 )
 from dashboard.explore.ui.chart_controls import (
@@ -150,17 +151,14 @@ def _render_correlogram_controls(
     return list(variables)
 
 
-def _render_correlogram(
+def _prepare_correlogram(
     st_obj,
     series: pd.Series,
     variable: str,
     *,
     chart_type: str,
-    include_acf: bool,
-    include_pacf: bool,
-    scope: str,
-) -> None:
-    """在图形上方渲染变换单选，并绘制对应的相关图。"""
+) -> tuple[pd.Series, str] | None:
+    """渲染变换单选，并返回对应的序列与标题前缀。"""
     transformation_key = (
         f"{CORRELOGRAM_TRANSFORMATION_PREFIX}"
         f"{chart_scope('data_overview', variable, chart_type)}"
@@ -182,16 +180,25 @@ def _render_correlogram(
         )
     except Exception as exc:  # noqa: BLE001 - user-facing processing boundary
         st_obj.error(f"变量“{variable}”的{chart_type}处理失败：{exc}")
-        return
-    render_correlogram_chart(
-        st_obj,
-        processed,
-        title_prefix=f"{variable} · {label}",
-        include_acf=include_acf,
-        include_pacf=include_pacf,
-        alpha=0.05,
-        scope=f"{scope}_{transformation}",
-    )
+        return None
+    return processed, f"{variable} · {label}"
+
+
+def _shared_correlogram_maximum(
+    results: tuple[pd.Series, str] | None,
+    other_results: tuple[pd.Series, str] | None,
+) -> int | None:
+    """返回 ACF/PACF 两张图共同可用的最大滞后阶数。"""
+    maxima = []
+    for result in (results, other_results):
+        if result is None:
+            continue
+        try:
+            _, maximum = resolve_correlation_lags(result[0])
+        except Exception:  # noqa: BLE001 - 单图绘制边界会报告具体错误
+            continue
+        maxima.append(maximum)
+    return min(maxima) if maxima else None
 
 
 def render_data_overview(st_obj) -> None:
@@ -230,24 +237,56 @@ def render_data_overview(st_obj) -> None:
             st_obj.error(f"变量“{variable}”处理失败：{exc}")
             continue
         acf_column, pacf_column = st_obj.columns(2)
-        _render_correlogram(
+        acf_result = _prepare_correlogram(
             acf_column,
             series,
             variable,
             chart_type="ACF",
-            include_acf=True,
-            include_pacf=False,
-            scope=chart_scope("data_overview", variable, "acf"),
         )
-        _render_correlogram(
+        pacf_result = _prepare_correlogram(
             pacf_column,
             series,
             variable,
             chart_type="PACF",
-            include_acf=False,
-            include_pacf=True,
-            scope=chart_scope("data_overview", variable, "pacf"),
         )
+        if acf_result is None and pacf_result is None:
+            continue
+
+        scope = chart_scope("data_overview", variable, "correlogram")
+        config_defaults = {}
+        if acf_result is not None:
+            config_defaults["acf_title"] = f"{acf_result[1]} · ACF"
+        if pacf_result is not None:
+            config_defaults["pacf_title"] = f"{pacf_result[1]} · PACF"
+        maximum_lags = _shared_correlogram_maximum(acf_result, pacf_result)
+
+        if acf_result is not None:
+            render_correlogram_chart(
+                acf_column,
+                acf_result[0],
+                title_prefix=acf_result[1],
+                include_acf=True,
+                include_pacf=False,
+                alpha=0.05,
+                scope=scope,
+                config_defaults=config_defaults,
+                maximum_lags=maximum_lags,
+                show_config=pacf_result is None,
+                config_container=st_obj,
+            )
+        if pacf_result is not None:
+            render_correlogram_chart(
+                pacf_column,
+                pacf_result[0],
+                title_prefix=pacf_result[1],
+                include_acf=False,
+                include_pacf=True,
+                alpha=0.05,
+                scope=scope,
+                config_defaults=config_defaults,
+                maximum_lags=maximum_lags,
+                config_container=st_obj,
+            )
 
 
 __all__ = [
