@@ -96,3 +96,17 @@ Use four-space indentation and PEP 8 naming. Keep UI rendering separate from dat
 - [ ] `WIDGET_KEYS` updated
 - [ ] User instructed push: run `tooling/scripts/clean_temps.ps1` → `git status` 复核 → commit → push（见「推送规范」）
 - [ ] User reminded to restart `start.bat`
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs are tracked in this repository's GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Uses the default five canonical triage labels. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Uses a single-context domain-doc layout. See `docs/agents/domain.md`.
