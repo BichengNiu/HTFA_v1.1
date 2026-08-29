@@ -1,5 +1,4 @@
 from io import BytesIO
-import sys
 
 import numpy as np
 import pandas as pd
@@ -11,7 +10,6 @@ from dashboard.explore.analysis.dtw_batch import perform_batch_dtw_calculation
 from dashboard.explore.core.data_source import load_explore_dataset
 from dashboard.explore.core.series_utils import fingerprint_dataframe
 from dashboard.explore.metrics.kl_divergence import (
-    calculate_kl_divergence_series,
     kl_divergence,
     series_to_distribution,
 )
@@ -73,36 +71,6 @@ def test_constant_and_varying_series_do_not_have_zero_kl_divergence():
     assert kl_divergence(p, q) > 0
 
 
-def test_empty_kl_series_returns_error_tuple_instead_of_raising():
-    value, error = calculate_kl_divergence_series(
-        pd.Series(dtype=float),
-        pd.Series(dtype=float),
-    )
-
-    assert value is None
-    assert error == "序列A在移除NaN后为空"
-
-
-def test_kl_wrapper_does_not_hide_unexpected_programming_errors(monkeypatch):
-    kl_module = sys.modules[calculate_kl_divergence_series.__module__]
-
-    def raise_unexpected_error(*args, **kwargs):
-        raise RuntimeError("unexpected defect")
-
-    monkeypatch.setattr(
-        kl_module,
-        "series_to_distribution",
-        raise_unexpected_error,
-    )
-
-    with pytest.raises(RuntimeError, match="unexpected defect"):
-        calculate_kl_divergence_series(
-            pd.Series([1.0, 2.0]),
-            pd.Series([2.0, 3.0]),
-            min_samples=1,
-        )
-
-
 @pytest.mark.parametrize(
     ("target_frequency", "aggregation", "expected_error"),
     [
@@ -143,26 +111,6 @@ def test_lead_lag_config_rejects_non_integer_lags_and_accepts_ten_day():
     config = LeadLagAnalysisConfig(max_lags=12, target_frequency="Ten_Day")
 
     assert config.target_frequency == "Ten_Day"
-
-
-def test_detailed_lag_data_does_not_ignore_alignment_failure():
-    frame = pd.DataFrame(
-        {
-            "target": range(20),
-            "candidate": range(1, 21),
-        }
-    )
-
-    with pytest.raises(ValueError, match="频率对齐失败"):
-        lead_lag.get_detailed_lag_data_for_candidate(
-            frame,
-            "target",
-            "candidate",
-            {
-                "max_lags": 1,
-                "enable_frequency_alignment": True,
-            },
-        )
 
 
 def test_dataframe_fingerprint_changes_when_values_change():

@@ -1,11 +1,11 @@
 """Tests for the CBUAE foreign-inflow and private-credit panels."""
 
-from datetime import date
 from io import BytesIO
 
 import pandas as pd
 import pytest
 
+from tests.analysis.uae._helpers import data_lines
 from dashboard.analysis.uae.government_finance.credit import (
     BUSINESS_INDUSTRIAL,
     BUSINESS_INDUSTRIAL_DISPLAY,
@@ -17,11 +17,8 @@ from dashboard.analysis.uae.government_finance.credit import (
     INDIVIDUAL,
     INDIVIDUAL_DISPLAY,
     NONRESIDENT_CORPORATE,
-    NONRESIDENT_CORPORATE_DISPLAY,
     NONRESIDENT_GOVERNMENT,
-    NONRESIDENT_GOVERNMENT_DISPLAY,
     NONRESIDENT_INDIVIDUALS,
-    NONRESIDENT_INDIVIDUALS_DISPLAY,
     NONRESIDENT_DEPOSITS,
     PRIVATE_CORPORATE,
     PRIVATE_CORPORATE_DISPLAY,
@@ -31,15 +28,6 @@ from dashboard.analysis.uae.government_finance.credit import (
     load_foreign_inflow_data,
     load_private_credit_data,
 )
-
-
-def _data_lines(axis):
-    """轴上带标签的真实数据线（排除模板自动命名的占位线条）。"""
-    return [
-        line
-        for line in axis.get_lines()
-        if line.get_label() and not line.get_label().startswith("_")
-    ]
 
 
 def _workbook_bytes() -> bytes:
@@ -139,7 +127,7 @@ def test_foreign_inflow_figure_renders_yoy() -> None:
     )
 
     axis = figure.axes[0]
-    lines = _data_lines(axis)
+    lines = data_lines(axis)
     assert [line.get_label() for line in lines] == list(FOREIGN_SERIES)
     # 模板色板接管配色：黑 / 深蓝 / 灰
     assert [line.get_color() for line in lines] == [
@@ -176,7 +164,7 @@ def test_private_credit_figure_renders_yoy() -> None:
     )
 
     axis = figure.axes[0]
-    lines = _data_lines(axis)
+    lines = data_lines(axis)
     assert [line.get_label() for line in lines] == list(PRIVATE_CREDIT_SERIES)
     # 模板色板接管配色：黑 / 深蓝 / 灰
     assert [line.get_color() for line in lines] == [

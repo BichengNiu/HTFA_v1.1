@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from dashboard.core.ui.utils.state_helpers import NamespacedStateManager
 
 # 所有 SARIMAX 页面共用的会话状态命名空间。
@@ -30,18 +28,6 @@ MODEL_WIDGET_KEYS = (
     "sarimax_cov_type",
     "sarimax_enforce_stationarity",
     "sarimax_enforce_invertibility",
-    "sarimax_auto_p_min",
-    "sarimax_auto_p_max",
-    "sarimax_auto_d_min",
-    "sarimax_auto_d_max",
-    "sarimax_auto_q_min",
-    "sarimax_auto_q_max",
-    "sarimax_auto_P_min",
-    "sarimax_auto_P_max",
-    "sarimax_auto_D_min",
-    "sarimax_auto_D_max",
-    "sarimax_auto_Q_min",
-    "sarimax_auto_Q_max",
     "sarimax_auto_p_range",
     "sarimax_auto_d_range",
     "sarimax_auto_q_range",
@@ -50,7 +36,6 @@ MODEL_WIDGET_KEYS = (
     "sarimax_auto_Q_range",
     "sarimax_auto_s",
     "sarimax_auto_trend_components",
-    "sarimax_auto_criterion",
     "sarimax_auto_selection_criterion",
     "sarimax_auto_method",
     "sarimax_auto_maxiter",
@@ -70,18 +55,6 @@ MODEL_WIDGET_KEYS = (
     "sarimax_rdl_error_cov_type",
     "sarimax_rdl_error_enforce_stationarity",
     "sarimax_rdl_error_enforce_invertibility",
-    "sarimax_rdl_auto_error_p_min",
-    "sarimax_rdl_auto_error_p_max",
-    "sarimax_rdl_auto_error_d_min",
-    "sarimax_rdl_auto_error_d_max",
-    "sarimax_rdl_auto_error_q_min",
-    "sarimax_rdl_auto_error_q_max",
-    "sarimax_rdl_auto_error_P_min",
-    "sarimax_rdl_auto_error_P_max",
-    "sarimax_rdl_auto_error_D_min",
-    "sarimax_rdl_auto_error_D_max",
-    "sarimax_rdl_auto_error_Q_min",
-    "sarimax_rdl_auto_error_Q_max",
     "sarimax_rdl_auto_error_p_range",
     "sarimax_rdl_auto_error_d_range",
     "sarimax_rdl_auto_error_q_range",
@@ -174,20 +147,6 @@ def clear_downstream_results() -> None:
         state.set(key, None)
 
 
-def clear_dataset_state() -> None:
-    """清除数据集与变量选择状态（换文件或清空上传时调用）。"""
-    state.set("dataset", None)
-    state.set("source_fingerprint", None)
-    state.set("file_fingerprint", None)
-    state.set("file_name", None)
-    state.set("target_variable", None)
-    state.set("exog_variables", ())
-    state.set("training_time_range", None)
-    state.set("response_log", False)
-    state.set("future_exog_editor_signature", None)
-    clear_fit_results()
-
-
 def clear_widget_state(st_obj, keys: tuple[str, ...] = WIDGET_KEYS) -> None:
     """删除指定 Streamlit widget 的会话值，避免旧值残留。"""
     session = getattr(st_obj, "session_state", None)
@@ -197,21 +156,14 @@ def clear_widget_state(st_obj, keys: tuple[str, ...] = WIDGET_KEYS) -> None:
         session.pop(key, None)
 
 
-def get_fitted_result() -> Any:
-    """返回当前有效的拟合结果对象（无结果时为 None）。"""
-    return state.get("fitted_result")
-
-
 __all__ = [
     "DATASET_REPLACED_WIDGET_KEYS",
     "MODEL_WIDGET_KEYS",
     "PERSISTENT_WIDGET_KEYS",
     "RESULT_KEYS",
     "WIDGET_KEYS",
-    "clear_dataset_state",
     "clear_downstream_results",
     "clear_fit_results",
     "clear_widget_state",
-    "get_fitted_result",
     "state",
 ]

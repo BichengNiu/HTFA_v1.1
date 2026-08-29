@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import sys
-from datetime import date
 from decimal import Decimal
 from pathlib import Path
 

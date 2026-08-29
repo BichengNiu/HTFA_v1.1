@@ -114,7 +114,7 @@ def render_model_analysis_content(sub_module: str | None) -> None:
             ("模型分析", lambda: render_dfm_model_analysis_page(st)),
             ("影响分解", lambda: render_dfm_news_analysis_page(st)),
         ]
-        _render_model_submodule_tabs("DFM 模型", all_tabs)
+        _render_model_submodule_tabs(all_tabs)
         return
 
     if sub_module == "单变量模型":
@@ -123,14 +123,13 @@ def render_model_analysis_content(sub_module: str | None) -> None:
         all_tabs = [
             ("动态回归模型", lambda: render_sarimax_model_page(st)),
         ]
-        _render_model_submodule_tabs("单变量模型", all_tabs)
+        _render_model_submodule_tabs(all_tabs)
         return
 
     st.info("请选择一个模型分析子模块以开始分析")
 
 
 def _render_model_submodule_tabs(
-    sub_module_name: str,
     all_tabs: list[tuple[str, Callable[[], None]]],
 ) -> None:
     """渲染模型分析子模块下的标签页。"""

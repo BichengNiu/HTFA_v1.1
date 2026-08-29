@@ -117,7 +117,7 @@ def installed_runtime_root() -> Path:
     return Path(sysconfig.get_path("purelib")).resolve()
 
 
-def load_pinned_metadata(project_root: Path = PROJECT_ROOT) -> dict[str, str]:
+def load_pinned_metadata() -> dict[str, str]:
     """Return and validate the fixed Ts commit used for new runtimes."""
 
     expected = {
@@ -130,7 +130,7 @@ def load_pinned_metadata(project_root: Path = PROJECT_ROOT) -> dict[str, str]:
     return dict(expected)
 
 
-def load_portable_spec(project_root: Path = PROJECT_ROOT) -> dict[str, str]:
+def load_portable_spec() -> dict[str, str]:
     """Return and validate the fixed Python and pip bootstrap specification."""
 
     required = {
@@ -516,7 +516,7 @@ def install(
 ) -> Path:
     """Install the pinned Ts tree into an environment."""
 
-    metadata = load_pinned_metadata(PROJECT_ROOT)
+    metadata = load_pinned_metadata()
     commit = metadata["commit"]
     if source_root is not None:
         candidate_root = source_root.resolve()
@@ -773,7 +773,7 @@ def build(
         candidate_root,
         expected_candidate,
     )
-    spec = load_portable_spec(project_root)
+    spec = load_portable_spec()
     pip_wheel = assert_safe_bootstrap_wheel(
         project_root,
         pip_wheel,
@@ -796,7 +796,7 @@ def build(
     install_locked_dependencies(runtime_python, lock_path, cwd=project_root)
     remove_console_scripts(candidate_root)
 
-    pinned = load_pinned_metadata(project_root)
+    pinned = load_pinned_metadata()
     install(install_root=site_packages)
     manifest = build_manifest(spec, lock_path, ts_commit=pinned["commit"])
     (candidate_root / "runtime-manifest.json").write_text(
@@ -895,7 +895,7 @@ def setup_runtime(*, project_root: Path = PROJECT_ROOT) -> Path:
     download_root.mkdir(parents=True, exist_ok=True)
     candidate_root.mkdir(parents=True, exist_ok=True)
 
-    spec = load_portable_spec(project_root)
+    spec = load_portable_spec()
     python_archive = download_root / "python-3.13.4-embed-amd64.zip"
     pip_wheel = download_root / f"pip-{spec['pip_version']}-py3-none-any.whl"
     print("[1/4] Downloading verified Python runtime...")

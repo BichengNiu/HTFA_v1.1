@@ -11,6 +11,8 @@ import logging
 import warnings
 import multiprocessing
 
+import numpy as np
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,11 +38,7 @@ def setup_training_environment(
 
     # 2. 设置随机种子
     random.seed(seed)
-    try:
-        import numpy as np
-        np.random.seed(seed)
-    except ImportError:
-        pass
+    np.random.seed(seed)
     logger.info(f"设置随机种子: {seed}")
 
     # 3. 静默模式

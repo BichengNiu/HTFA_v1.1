@@ -21,7 +21,6 @@ from .options import (
 )
 from .parsing import (
     detect_frequency,
-    parse_color_sequence,
     parse_csv_items,
     parse_float,
     parse_hlines,
@@ -45,7 +44,6 @@ __all__ = [
     "list_excel_sheets",
     "load_dataframe",
     "numeric_variable_names",
-    "parse_color_sequence",
     "parse_csv_items",
     "parse_float",
     "parse_hlines",

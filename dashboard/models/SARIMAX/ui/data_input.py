@@ -20,7 +20,7 @@ SARIMAX_DATA_OVERVIEW_WIDGET_KEYS = overview_widget_keys(
 
 
 def _on_dataset_replaced(st_obj) -> None:
-    """模型文件或读取设置改变时，使旧模型结果和输入控件失效。"""
+    """模型文件或读取设置改变时，使已有模型结果和输入控件失效。"""
 
     state.set("target_variable", None)
     state.set("exog_variables", ())

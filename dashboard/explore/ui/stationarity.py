@@ -73,12 +73,6 @@ class StationarityAnalysisComponent(TimeSeriesAnalysisComponent):
     _RESULT_STATE_KEYS = (
         "test_results",
         "test_signature",
-        # 清理旧版批量工作流可能遗留的状态。
-        "diff_options",
-        "diff_options_vars",
-        "processed_data",
-        "process_results",
-        "failed_vars",
     )
 
     _DEPENDENT_WIDGET_SUFFIXES = (
@@ -377,7 +371,7 @@ class StationarityAnalysisComponent(TimeSeriesAnalysisComponent):
                 "grid_mode": "both",
                 "grid_line_style": "solid",
             }
-            config = get_applied_config(st_obj, time_scope, time_defaults)
+            config = get_applied_config(time_scope, time_defaults)
             with matplotlib_date_compatibility():
                 figure = create_time_series_figure(
                     processed,

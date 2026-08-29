@@ -1,9 +1,8 @@
-"""工厂与组件级测试：默认实例兼容、双实例隔离、数据源切换。"""
+"""工厂与组件级测试：默认配置、双实例隔离、数据源切换。"""
 
 from __future__ import annotations
 
 import pandas as pd
-import pytest
 
 from data_overview import DataOverview, create_data_overview
 from data_overview.core.dataset import build_overview_dataset
@@ -59,8 +58,8 @@ def _frame():
     )
 
 
-def test_default_instance_matches_legacy_keys():
-    """默认实例的键与历史 sarimax 前缀完全一致。"""
+def test_default_instance_uses_sarimax_keys():
+    """默认实例使用 SARIMAX 页面约定的键前缀和状态命名空间。"""
     component = DataOverview()
     assert component.widget_keys == overview_widget_keys("sarimax")
     assert component.config.key_prefix == "sarimax"

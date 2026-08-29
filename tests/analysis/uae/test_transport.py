@@ -497,7 +497,7 @@ def test_section_renders_two_charts_and_explanation(monkeypatch) -> None:
     data = load_transport_data(_workbook_bytes(), file_name="test.xlsx")
     monkeypatch.setattr(
         renderer,
-        "_load_transport_cached",
+        "load_transport_data",
         lambda content, file_name, **kwargs: data,
     )
     st_obj = MagicMock()
@@ -572,7 +572,7 @@ def test_section_loader_failure_shows_error_and_returns_error_status(
     def _explode(*args, **kwargs):
         raise ValueError("月度_PortWatch 缺少霍尔木兹指标")
 
-    monkeypatch.setattr(renderer, "_load_transport_cached", _explode)
+    monkeypatch.setattr(renderer, "load_transport_data", _explode)
     st_obj = MagicMock()
 
     result = renderer.render_transport_section(
@@ -590,7 +590,7 @@ def test_cell_failure_warns_cell_and_keeps_other_chart(monkeypatch) -> None:
     data = load_transport_data(_workbook_bytes(), file_name="test.xlsx")
     monkeypatch.setattr(
         renderer,
-        "_load_transport_cached",
+        "load_transport_data",
         lambda content, file_name, **kwargs: data,
     )
     st_obj = MagicMock()

@@ -5,7 +5,6 @@ from __future__ import annotations
 import inspect
 
 import pandas as pd
-import pytest
 from Ts.TsPlots import plot_series
 
 from data_overview.core.dataset import build_overview_dataset

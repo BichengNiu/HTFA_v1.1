@@ -8,7 +8,7 @@ core.overview.options.build_chart_options 读取（与 Ts plot_series
 from __future__ import annotations
 
 import streamlit as st
-from Ts.TsPlots.style import DEFAULT_LINESTYLES, DEFAULT_MARKERS, DEFAULT_PALETTE
+from Ts.TsPlots.style import DEFAULT_MARKERS, DEFAULT_PALETTE
 
 from ..core.constants import (
     ASPECT_RATIO_MAP,
@@ -56,7 +56,7 @@ def _format_series_color(color: str) -> str:
 
 
 def render_chart_options_expander(
-    st_obj, dataset, selected, *, key_prefix: str = "sarimax"
+    st_obj, selected, *, key_prefix: str = "sarimax"
 ) -> None:
     """表与图下方占一整行的图形高级选项（按逻辑分 tab 组织）。
 
@@ -674,13 +674,6 @@ def render_chart_options_expander(
                     _k("legend_loc"), "best"
                 )
                 legend_anchor_enabled = legend_location != "best" and not facet_on
-                if (
-                    st_obj.session_state.get(_k("legend_bbox_x")) == 1.02
-                    and st_obj.session_state.get(_k("legend_bbox_y")) == 1.0
-                ):
-                    # 清理旧版本的默认外置锚点，避免 upper left 被误放到图外右侧。
-                    st_obj.session_state.pop(_k("legend_bbox_x"), None)
-                    st_obj.session_state.pop(_k("legend_bbox_y"), None)
                 label_row = tab_legend.columns(3)
                 label_row[0].text_input(
                     "自定义图例标签",
@@ -710,8 +703,6 @@ def render_chart_options_expander(
                     placeholder="自动",
                     help="叠加图选择明确位置后生效；页面级分面不支持外置锚点。",
                 )
-                # 清理旧版本复选框可能遗留的状态，但保留坐标值，便于切换位置后恢复。
-                st_obj.session_state.pop(_k("legend_bbox_on"), None)
             else:
                 for name in (
                     "legend_loc",
@@ -719,7 +710,6 @@ def render_chart_options_expander(
                     "legend_cols",
                     "legend_size",
                     "legend_labels",
-                    "legend_bbox_on",
                     "legend_bbox_x",
                     "legend_bbox_y",
                 ):

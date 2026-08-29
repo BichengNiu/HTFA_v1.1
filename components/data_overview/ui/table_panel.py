@@ -153,8 +153,6 @@ def render_table_panel(
     selected: list[str],
     filtered,
     table_state: dict,
-    *,
-    key_prefix: str = "sarimax",
 ) -> None:
     """渲染左栏：预览表 + 视图开关 + 当前筛选行数信息。
 

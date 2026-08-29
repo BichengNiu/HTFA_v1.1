@@ -151,18 +151,13 @@ class TrainingResultExporter:
             # 基本信息
             'timestamp': timestamp,
             'selected_variables': result.selected_variables,
-            'best_variables': result.selected_variables,  # 兼容模型分析模块
             'N_variables': len(result.selected_variables),
             'initial_selected_indicators': getattr(config, 'selected_indicators', []),
 
-            # 模型参数（兼容模型分析模块的best_params格式）
+            # 模型参数
             'model_params': {
                 'k_factors': int(result.k_factors),
                 'variable_selection_method': config.variable_selection_method if config.enable_variable_selection else '全选',
-                'algorithm': config.algorithm,
-            },
-            'best_params': {
-                'k_factors': int(result.k_factors),
                 'algorithm': config.algorithm,
             },
 
@@ -336,6 +331,8 @@ class TrainingResultExporter:
             metadata['pca_results_df'] = None
 
         # 保存完整观测数据矩阵
+        training_means = None
+        training_var_names = None
         if prepared_data is not None:
             # 确保 prepared_data 按时间升序排列
             if not prepared_data.index.is_monotonic_increasing:
@@ -359,22 +356,14 @@ class TrainingResultExporter:
                     # 筛选出在 prepared_data 中存在的变量
                     available_vars = [v for v in var_names if v in train_data.columns]
                     training_means = train_data[available_vars].mean().values
-
-                    metadata['training_means'] = training_means
-                    metadata['training_variable_names'] = available_vars
+                    training_var_names = available_vars
                     logger.info(f"保存训练期均值: {len(available_vars)} 个变量")
                 else:
-                    metadata['training_means'] = None
-                    metadata['training_variable_names'] = None
                     logger.warning("训练期数据为空，无法计算训练期均值")
             except Exception as e:
                 logger.warning(f"计算训练期均值失败: {e}")
-                metadata['training_means'] = None
-                metadata['training_variable_names'] = None
         else:
             metadata['prepared_data'] = None
-            metadata['training_means'] = None
-            metadata['training_variable_names'] = None
 
         # 计算并保存重构对比表（原始尺度）
         if prepared_data is not None and result.model_result is not None:
@@ -405,9 +394,6 @@ class TrainingResultExporter:
                     original_data = prepared_data[available_vars]
 
                     # 使用训练期均值还原（与training_means保持一致）
-                    training_means = metadata.get('training_means')
-                    training_var_names = metadata.get('training_variable_names')
-
                     if training_means is None or training_var_names is None:
                         raise ValueError("训练期均值数据为空，无法构建重构对比表")
                     # 为每个可用变量获取对应的训练期均值

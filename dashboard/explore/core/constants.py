@@ -100,15 +100,3 @@ SEASONAL_DIFF_MAP = {
     'Irregular': None,
     'Undetermined': None
 }
-
-# 频率中文显示映射
-FREQUENCY_DISPLAY_NAMES = {
-    'Daily': '日度',
-    'Weekly': '周度',
-    'Ten_Day': '旬度',
-    'Monthly': '月度',
-    'Quarterly': '季度',
-    'Annual': '年度',
-    'Irregular': '不规则',
-    'Undetermined': '未确定'
-}

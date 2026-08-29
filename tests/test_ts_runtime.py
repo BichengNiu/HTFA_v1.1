@@ -204,8 +204,8 @@ def test_install_failure_restores_previous_ts(tmp_path, monkeypatch):
 
 
 def test_embedded_runtime_specs_are_valid():
-    pinned = load_pinned_metadata(PROJECT_ROOT)
-    portable = load_portable_spec(PROJECT_ROOT)
+    pinned = load_pinned_metadata()
+    portable = load_portable_spec()
 
     assert pinned["repository"] == "https://github.com/BichengNiu/Ts"
     assert pinned["branch"] == "main"

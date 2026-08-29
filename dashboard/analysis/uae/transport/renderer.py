@@ -6,7 +6,6 @@ from collections.abc import Mapping
 from typing import Any
 
 import pandas as pd
-import streamlit as st
 
 from dashboard.analysis.uae.downloads import render_chart_download
 from dashboard.analysis.uae.transport.charts import (
@@ -48,7 +47,6 @@ from dashboard.analysis.uae.metrics import (
 from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
 
 PORT_VOLUME_DISPLAY_SCALE = 1_000_000
-TRANSPORT_DATA_SCHEMA_VERSION = "2026-08-22-dott100-v2-no-mail-compact-axis"
 
 TRANSPORT_EXPLANATION = """
 - **港口货量**：由国际货币基金组织港口监测发布；原始数据为日度各港口观测，按月汇总全 UAE 港口的进口、出口及油轮货量，
@@ -59,17 +57,6 @@ TRANSPORT_EXPLANATION = """
 - **美国—阿联酋航空运输**：由美国交通部统计局 BTS T-100 国际航段发布；原始数据为承运商、机场对、机型及舱等层级的月度航段记录，按月份和方向汇总为双边旅客人次和货运磅数，
   反映两国航空客运与货运联系规模。
 """.strip()
-
-
-def _load_transport_cached(
-    content: bytes,
-    file_name: str,
-    schema_version: str = TRANSPORT_DATA_SCHEMA_VERSION,
-) -> TransportData:
-    """读取交通物流数据；版本号用于淘汰旧字段结构缓存。"""
-
-    del schema_version
-    return load_transport_data(content, file_name=file_name)
 
 
 def _render_chart(
@@ -234,11 +221,7 @@ def render_transport_section(
     st_obj.subheader("交通物流")
     try:
         with st_obj.spinner("正在读取交通物流数据..."):
-            data = _load_transport_cached(
-                content,
-                file_name,
-                schema_version=TRANSPORT_DATA_SCHEMA_VERSION,
-            )
+            data = load_transport_data(content, file_name=file_name)
         last_month = anchor_last_month(data.values)
         try:
             _render_transport_metrics(st_obj, data, last_month)

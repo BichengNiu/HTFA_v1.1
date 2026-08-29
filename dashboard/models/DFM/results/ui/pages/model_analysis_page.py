@@ -272,187 +272,44 @@ def _render_unsupervised_reconstruction_chart(st, accessor: DFMMetadataAccessor,
         accessor: 元数据访问器
         is_ddfm: 是否为DDFM模型
     """
-    # DDFM模式：直接使用目标变量，不显示变量选择
+    reconstruction_comparison = accessor.get('reconstruction_comparison')
+    if reconstruction_comparison is None:
+        st.warning("缺少重构对比数据，请使用当前训练模块重新生成模型")
+        return
+
+    available_vars = reconstruction_comparison.columns.get_level_values(0).unique().tolist()
+    if not available_vars:
+        st.warning("对比表中没有可用变量")
+        return
+
     if is_ddfm:
         target_variable = accessor.get('target_variable')
         if not target_variable:
             st.warning("DDFM模型缺少目标变量信息")
             return
-
-        reconstruction_comparison = accessor.get('reconstruction_comparison')
-        if reconstruction_comparison is None:
-            st.warning("缺少重构对比数据")
-            return
-
-        available_vars = reconstruction_comparison.columns.get_level_values(0).unique().tolist()
         if target_variable not in available_vars:
             st.warning(f"目标变量 {target_variable} 不在可用变量列表中")
             return
-
-        selected_var = target_variable  # 直接使用目标变量
-
-        # 获取数据
-        original_values = reconstruction_comparison[(selected_var, '原始值')].values
-        reconstructed_values = reconstruction_comparison[(selected_var, '估计值')].values
-        time_index = reconstruction_comparison.index
-
-        if not isinstance(time_index, pd.DatetimeIndex):
-            time_index = pd.to_datetime(time_index)
-
-        comparison_df = pd.DataFrame({
-            '原始值': original_values,
-            '估计值': reconstructed_values
-        }, index=time_index)
-
+        selected_var = target_variable
         logger.info(f"[估计图] DDFM模式使用目标变量: {selected_var}")
-    # 经典DFM：保持原有变量选择逻辑
-    elif accessor.get('reconstruction_comparison') is not None:
-        # 优先使用预计算的对比表
-        reconstruction_comparison = accessor.get('reconstruction_comparison')
-
-        # 使用预计算的对比表
-        available_vars = reconstruction_comparison.columns.get_level_values(0).unique().tolist()
-
-        if not available_vars:
-            st.warning("对比表中没有可用变量")
-            return
-
-        # 用户选择变量
-        selected_var = st.selectbox(
-            "选择变量",
-            options=available_vars,
-            key="reconstruction_var_select"
-        )
-
-        # 直接从预计算表中获取数据
-        original_values = reconstruction_comparison[(selected_var, '原始值')].values
-        reconstructed_values = reconstruction_comparison[(selected_var, '估计值')].values
-        time_index = reconstruction_comparison.index
-
-        # 确保 time_index 是 DatetimeIndex
-        if not isinstance(time_index, pd.DatetimeIndex):
-            time_index = pd.to_datetime(time_index)
-
-        # 构建对比数据
-        comparison_df = pd.DataFrame({
-            '原始值': original_values,
-            '估计值': reconstructed_values
-        }, index=time_index)
-
-        logger.info(f"[估计图] 使用预计算对比表: 变量={selected_var}, 长度={len(comparison_df)}")
     else:
-        # 回退到动态计算（兼容旧模型）
-        logger.warning("[估计图] 未找到预计算对比表，使用动态计算")
-
-        # 获取数据
-        prepared_data = accessor.get('prepared_data')
-        factor_loadings_df = accessor.factor_loadings_df
-        factor_series = accessor.factor_series
-        training_means = accessor.get('training_means')
-        training_variable_names = accessor.get('training_variable_names')
-
-        if prepared_data is None or factor_loadings_df is None or factor_series is None:
-            st.warning("缺少估计所需数据（prepared_data/factor_loadings_df/factor_series）")
-            return
-
-        # 获取可选变量列表（与模型使用的变量一致）
-        model_variables = factor_loadings_df.index.tolist()
-        available_vars = [v for v in model_variables if v in prepared_data.columns]
-
-        if not available_vars:
-            st.warning("没有可用于估计值对比的变量")
-            return
-
-        # 用户选择变量
         selected_var = st.selectbox(
             "选择变量",
             options=available_vars,
-            key="reconstruction_var_select"
+            key="reconstruction_var_select",
         )
+        logger.info(f"[估计图] 使用预计算对比表: 变量={selected_var}")
 
-        # 计算重构值（去均值尺度）
-        H = factor_loadings_df.loc[available_vars].values  # (n_vars, k_factors)
-        factors = factor_series.values  # (T, k_factors)
-        reconstructed_all = factors @ H.T  # (T, n_vars)
+    original_values = reconstruction_comparison[(selected_var, '原始值')].values
+    reconstructed_values = reconstruction_comparison[(selected_var, '估计值')].values
+    time_index = reconstruction_comparison.index
+    if not isinstance(time_index, pd.DatetimeIndex):
+        time_index = pd.to_datetime(time_index)
 
-        var_idx = available_vars.index(selected_var)
-        reconstructed_centered = reconstructed_all[:, var_idx]
-
-        # 获取 factor_series 的索引
-        time_index = factor_series.index
-        n_time = len(factor_series)
-
-        # 检查 factor_series 是否有有效的日期索引
-        has_valid_date_index = isinstance(time_index, pd.DatetimeIndex)
-
-        # 如果不是 DatetimeIndex，检查是否是整数索引（RangeIndex 或 Int64Index）
-        if not has_valid_date_index:
-            if isinstance(time_index, pd.RangeIndex) or (hasattr(time_index, 'dtype') and np.issubdtype(time_index.dtype, np.integer)):
-                # 整数索引，需要从 prepared_data 获取日期
-                logger.warning("factor_series 是整数索引，从 prepared_data 获取日期索引")
-                if len(prepared_data) >= n_time:
-                    time_index = prepared_data.index[:n_time]
-                    has_valid_date_index = True
-                else:
-                    st.error("因子序列缺少日期索引，无法绘制重构对比图")
-                    return
-            else:
-                # 尝试转换为日期索引
-                try:
-                    time_index = pd.to_datetime(time_index)
-                    has_valid_date_index = True
-                except (ValueError, TypeError):
-                    st.error("因子序列索引无法转换为日期，无法绘制重构对比图")
-                    return
-
-        # 确保 time_index 是 DatetimeIndex
-        if not isinstance(time_index, pd.DatetimeIndex):
-            time_index = pd.to_datetime(time_index)
-
-        # 使用位置索引对齐原始数据（prepared_data 和 factor_series 长度相同且顺序一致）
-        if selected_var in prepared_data.columns:
-            if len(prepared_data) == n_time:
-                # 长度相同，直接使用位置索引对齐
-                original_values = prepared_data[selected_var].values
-                logger.info(f"[估计图] 位置索引对齐成功: 长度={n_time}")
-            else:
-                # 长度不同（异常情况），记录警告并尝试日期对齐
-                logger.warning(f"数据长度不匹配: prepared_data={len(prepared_data)}, factor_series={n_time}")
-                if not isinstance(prepared_data.index, pd.DatetimeIndex):
-                    prepared_data = prepared_data.copy()
-                    prepared_data.index = pd.to_datetime(prepared_data.index)
-                original_values = prepared_data[selected_var].reindex(time_index).values
-        else:
-            st.error(f"变量 {selected_var} 不在 prepared_data 中")
-            return
-
-        # 调试日志
-        logger.info(f"[估计图] 变量: {selected_var}")
-        logger.info(f"[估计图] time_index 类型: {type(time_index)}, 范围: {time_index.min()} ~ {time_index.max()}, 长度: {len(time_index)}")
-        logger.info(f"[估计图] prepared_data 索引范围: {prepared_data.index.min()} ~ {prepared_data.index.max()}, 长度: {len(prepared_data)}")
-        logger.info(f"[估计图] 对齐后原始值非空数量: {pd.notna(original_values).sum()} / {len(original_values)}")
-
-        # 获取该变量的训练期均值
-        if training_means is None or training_variable_names is None:
-            st.error("元数据中缺少训练期均值（training_means），请使用最新版本重新训练模型")
-            return
-
-        try:
-            mean_idx = list(training_variable_names).index(selected_var)
-            var_mean = training_means[mean_idx]
-        except (ValueError, IndexError):
-            st.error(f"变量 {selected_var} 的训练期均值未找到，请重新训练模型")
-            return
-
-        # 还原到原始尺度
-        reconstructed_original = reconstructed_centered + var_mean
-        original_values_original_scale = original_values  # 已经是原始尺度，无需转换
-
-        # 构建对比数据（原始尺度）
-        comparison_df = pd.DataFrame({
-            '原始值': original_values_original_scale,
-            '估计值': reconstructed_original
-        }, index=time_index)
+    comparison_df = pd.DataFrame({
+        '原始值': original_values,
+        '估计值': reconstructed_values,
+    }, index=time_index)
 
     # ===== 根据训练配置自动对齐 =====
     rmse_alignment = accessor.get('rmse_alignment', 'current')

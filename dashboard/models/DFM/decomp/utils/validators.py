@@ -12,7 +12,7 @@ from typing import Any, Tuple, List
 
 def validate_model_data(model: Any, metadata: Any) -> Tuple[bool, List[str]]:
     """
-    验证模型数据的完整性和兼容性
+    验证模型数据的完整性和当前元数据契约
 
     Args:
         model: DFM模型对象
@@ -49,23 +49,36 @@ def validate_model_data(model: Any, metadata: Any) -> Tuple[bool, List[str]]:
             errors.append("元数据不是字典格式")
         else:
             # 检查必要的元数据键
-            required_keys = ['factor_loadings_df']
+            required_keys = [
+                'selected_variables',
+                'model_params',
+                'factor_loadings_df',
+            ]
             for key in required_keys:
                 if key not in metadata:
                     errors.append(f"元数据缺少必要键: {key}")
+
+            if 'model_params' in metadata:
+                model_params = metadata['model_params']
+                if not isinstance(model_params, dict):
+                    errors.append("元数据model_params不是字典格式")
+                elif 'k_factors' not in model_params:
+                    errors.append("元数据model_params缺少k_factors字段")
+
+            if 'factor_loadings_df' in metadata and not isinstance(
+                metadata['factor_loadings_df'], pd.DataFrame
+            ):
+                errors.append("元数据factor_loadings_df不是DataFrame格式")
 
             # 检查目标变量配置（影响分解必需）
             target_variable = metadata.get('target_variable')
             if not target_variable:
                 errors.append("模型未设置目标变量，无法进行影响分解。请在模型训练时设置目标变量后重新训练。")
             elif 'complete_aligned_table' not in metadata:
-                errors.append(
-                    "模型元数据缺少 complete_aligned_table 字段。"
-                    "这可能是因为模型使用旧版本训练。请重新训练模型以使用影响分解功能。"
-                )
+                errors.append("模型元数据缺少 complete_aligned_table 字段。")
 
         # 检查nowcast数据
-        if 'complete_aligned_table' in metadata:
+        if isinstance(metadata, dict) and 'complete_aligned_table' in metadata:
             nowcast_data = metadata['complete_aligned_table']
             if not isinstance(nowcast_data, (pd.DataFrame, pd.Series)):
                 errors.append("nowcast数据格式无效")

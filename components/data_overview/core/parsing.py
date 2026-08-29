@@ -5,10 +5,9 @@
 
 from __future__ import annotations
 
-from matplotlib.colors import is_color_like
 import pandas as pd
 
-from .constants import COLOR_HEX_MAP, FREQ_PERIOD, TIME_PRESETS
+from .constants import FREQ_PERIOD, TIME_PRESETS
 
 
 def detect_frequency(dates) -> str:
@@ -102,26 +101,6 @@ def parse_csv_items(
     if expected_count is not None and len(items) != expected_count:
         return None, f"{label}应填写 {expected_count} 项，实际为 {len(items)} 项"
     return items, None
-
-
-def parse_color_sequence(
-    text: str,
-    *,
-    expected_count: int | None = None,
-) -> tuple[list[str] | None, str | None]:
-    """解析按序排列的颜色列表，支持中文颜色名和 Matplotlib 颜色值。"""
-    items, error = parse_csv_items(
-        text, "序列颜色", expected_count=expected_count
-    )
-    if error or items is None:
-        return items, error
-    colors = []
-    for item in items:
-        color = COLOR_HEX_MAP.get(item, item)
-        if not is_color_like(color):
-            return None, f"序列颜色无法识别：{item}"
-        colors.append(color)
-    return colors, None
 
 
 def parse_key_value_mapping(
@@ -237,7 +216,6 @@ def parse_shade(text: str, x_values) -> tuple[list[tuple] | None, str | None]:
 
 __all__ = [
     "detect_frequency",
-    "parse_color_sequence",
     "parse_csv_items",
     "parse_float",
     "parse_hlines",

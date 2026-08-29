@@ -127,21 +127,13 @@ class ModelLoader:
         if self._metadata is None:
             raise ModelLoadError("元数据不可用，无法检测模型类型")
 
-        # 优先从best_params检测
-        if 'best_params' in self._metadata:
-            best_params = self._metadata['best_params']
-            if 'algorithm' in best_params:
-                return best_params['algorithm']
-
-        # 从顶层检测
-        if 'algorithm' not in self._metadata:
+        model_params = self._metadata.get('model_params')
+        if not isinstance(model_params, dict) or 'algorithm' not in model_params:
             raise ModelLoadError(
-                "元数据中缺少算法信息。\n"
-                "无法确定模型类型（'classical' 或 'deep_learning'）。\n"
-                "请使用新版本训练模块重新训练模型。"
+                "元数据中缺少 model_params.algorithm，"
+                "请使用当前训练模块重新训练模型。"
             )
-
-        return self._metadata['algorithm']
+        return model_params['algorithm']
 
     def extract_saved_nowcast(self) -> SavedNowcastData:
         """
@@ -236,21 +228,14 @@ class ModelLoader:
                 error_msg = "模型兼容性验证失败:\n" + "\n".join(f"  - {error}" for error in errors)
                 raise ValidationError(error_msg)
 
-            # 额外的兼容性检查
+            # 检查模型参数与因子载荷矩阵一致性
             # 检查因子数量一致性：使用元数据中的k_factors值（而非H矩阵列数，因为H包含特质项）
-            if 'factor_loadings_df' not in metadata:
-                raise ValidationError("元数据缺少factor_loadings_df字段")
-            if 'best_params' not in metadata:
-                raise ValidationError("元数据缺少best_params字段")
-            if 'k_factors' not in metadata['best_params']:
-                raise ValidationError("元数据best_params缺少k_factors字段")
-
-            k_factors = metadata['best_params']['k_factors']
+            k_factors = metadata['model_params']['k_factors']
             factor_loadings_cols = metadata['factor_loadings_df'].shape[1]
 
             if k_factors != factor_loadings_cols:
                 raise ValidationError(
-                    f"因子数量不匹配: best_params.k_factors={k_factors}, factor_loadings_df.columns={factor_loadings_cols}"
+                    f"因子数量不匹配: model_params.k_factors={k_factors}, factor_loadings_df.columns={factor_loadings_cols}"
                 )
 
             logger.info("模型兼容性验证通过")

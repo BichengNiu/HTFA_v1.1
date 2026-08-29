@@ -28,7 +28,7 @@ def _legend_band_height(figure: MatplotlibFigure, rows: int) -> float:
     return inches / figure.get_figheight()
 
 
-def _legend_anchor_y(figure: MatplotlibFigure, rows: int) -> float:
+def _legend_anchor_y(figure: MatplotlibFigure) -> float:
     """图例下边缘锚点比例：紧贴 X 轴标题下方，互不重叠。"""
     return _XLABEL_INCHES / figure.get_figheight()
 
@@ -84,7 +84,7 @@ def _place_matplotlib_legend_at_bottom(
             handles,
             labels,
             loc="lower center",
-            bbox_to_anchor=(0.5, _legend_anchor_y(figure, rows)),
+            bbox_to_anchor=(0.5, _legend_anchor_y(figure)),
             ncol=ncol,
             frameon=False,
             fontsize=fontsize,
@@ -98,7 +98,7 @@ def _place_matplotlib_legend_at_bottom(
         if hasattr(legend, "set_loc"):
             legend.set_loc("lower center")
         legend.set_bbox_to_anchor(
-            (0.5, _legend_anchor_y(figure, rows)),
+            (0.5, _legend_anchor_y(figure)),
             transform=figure.transFigure,
         )
 

@@ -12,7 +12,6 @@ from dashboard.explore.ui.data_overview import (
     CORRELOGRAM_TRANSFORMATION_PREFIX,
     DATA_OVERVIEW_HANDOFF_WIDGET_KEYS,
     SERIES_STYLE_WIDGET_PREFIX,
-    migrate_legacy_data_overview_state,
     render_data_overview,
 )
 from dashboard.explore.ui.standalone_data_overview import (
@@ -55,7 +54,6 @@ def render_univariate_analysis_page():
         _PAGE_ID, keys=_PERSISTENT_KEYS, prefixes=_PERSISTENT_PREFIXES
     )
     try:
-        migrate_legacy_data_overview_state(st)
         uploaded_file = get_shared_dataset_file()
 
         overview_tab, stationarity_tab, structural_break_tab = st.tabs(

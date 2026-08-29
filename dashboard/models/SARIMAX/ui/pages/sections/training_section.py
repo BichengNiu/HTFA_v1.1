@@ -322,7 +322,6 @@ def _render_auto_config(
                 _AUTO_RANGE_DEFAULTS[name],
                 prefix,
                 SARIMAX_RANGE_LIMITS[name],
-                session_state=st_obj.session_state,
             )
         seasonal_columns = st_obj.columns(3)
         for column, name in zip(seasonal_columns, ("P", "D", "Q")):
@@ -332,7 +331,6 @@ def _render_auto_config(
                 _AUTO_RANGE_DEFAULTS[name],
                 prefix,
                 SARIMAX_RANGE_LIMITS[name],
-                session_state=st_obj.session_state,
             )
 
     with layout_columns[1]:
@@ -445,17 +443,10 @@ def _render_range_inputs(
     default: tuple[int, int],
     prefix: str,
     limits: tuple[int, int],
-    *,
-    session_state,
 ) -> tuple[int, int]:
     """渲染单个阶数的双端整数滑块。"""
     minimum, maximum = limits
-    old_low = session_state.get(f"{prefix}_{name}_min", default[0])
-    old_high = session_state.get(f"{prefix}_{name}_max", default[1])
-    try:
-        value = (int(old_low), int(old_high))
-    except (TypeError, ValueError):
-        value = default
+    value = default
     value = (
         max(minimum, min(maximum, value[0])),
         max(minimum, min(maximum, value[1])),

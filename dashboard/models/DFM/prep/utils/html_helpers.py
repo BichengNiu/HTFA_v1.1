@@ -56,36 +56,8 @@ def render_tag_group(items: List[str], style: str = DEFAULT_TAG_STYLE) -> str:
     return ''.join(render_tag(item, style) for item in items)
 
 
-def render_grouped_tags(
-    groups: dict,
-    group_format: str = "**[{key}]** ({count}个)"
-) -> List[tuple]:
-    """
-    渲染分组标签（用于expander内按类别显示）
-
-    Args:
-        groups: 分组字典 {组名: [项目列表]}
-        group_format: 组标题格式，支持{key}和{count}占位符
-
-    Returns:
-        List[tuple]: [(组标题markdown, 标签HTML), ...]
-
-    Example:
-        >>> groups = {"原因A": ["变量1", "变量2"], "原因B": ["变量3"]}
-        >>> result = render_grouped_tags(groups)
-        >>> # 返回: [("**[原因A]** (2个)", "<span>...</span>"), ...]
-    """
-    result = []
-    for key, items in groups.items():
-        title = group_format.format(key=key, count=len(items))
-        tags_html = render_tag_group(items)
-        result.append((title, tags_html))
-    return result
-
-
 __all__ = [
     'DEFAULT_TAG_STYLE',
     'render_tag',
-    'render_tag_group',
-    'render_grouped_tags'
+    'render_tag_group'
 ]

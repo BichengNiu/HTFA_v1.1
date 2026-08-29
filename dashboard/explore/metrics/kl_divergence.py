@@ -12,7 +12,6 @@ import pandas as pd
 
 from dashboard.explore.core.constants import (
     DEFAULT_KL_SMOOTHING_ALPHA,
-    MIN_SAMPLES_KL_DIVERGENCE,
 )
 
 logger = logging.getLogger(__name__)
@@ -174,62 +173,3 @@ def kl_divergence(
         logger.warning(f"检测到NaN/Inf，使用截断值: {kl_value}")
 
     return max(0.0, kl_value)
-
-
-def calculate_kl_divergence_series(
-    series_a: pd.Series,
-    series_b: pd.Series,
-    bins: int | None = None,
-    smoothing_alpha: float = DEFAULT_KL_SMOOTHING_ALPHA,
-    min_samples: int | None = None
-) -> tuple[float | None, str | None]:
-    """
-    计算两个序列之间的KL散度（一站式函数）
-
-    Args:
-        series_a: 第一个序列
-        series_b: 第二个序列
-        bins: 分箱数（None则使用Stata自动分箱算法）
-        smoothing_alpha: 平滑参数
-        min_samples: 最小样本数（None则使用默认值）
-
-    Returns:
-        Tuple[KL散度值, 错误消息（如果有）]
-    """
-    # 数据验证
-    series_a_clean = series_a.dropna()
-    series_b_clean = series_b.dropna()
-
-    if series_a_clean.empty:
-        return None, "序列A在移除NaN后为空"
-    if series_b_clean.empty:
-        return None, "序列B在移除NaN后为空"
-
-    # 自动计算分箱数（用于确定最小样本数）
-    if bins is None:
-        n_samples = min(len(series_a_clean), len(series_b_clean))
-        bins_for_validation = calculate_stata_bins(n_samples)
-    else:
-        bins_for_validation = bins
-
-    if min_samples is None:
-        min_samples = max(bins_for_validation * 2, MIN_SAMPLES_KL_DIVERGENCE)
-
-    if len(series_a_clean) < min_samples:
-        return None, f"序列A样本数不足: {len(series_a_clean)} < {min_samples}"
-
-    if len(series_b_clean) < min_samples:
-        return None, f"序列B样本数不足: {len(series_b_clean)} < {min_samples}"
-
-    try:
-        # 转换为分布
-        p, q, _ = series_to_distribution(series_a_clean, series_b_clean, bins)
-
-        # 计算KL散度
-        kl_val = kl_divergence(p, q, smoothing_alpha)
-
-        return kl_val, None
-
-    except ValueError as exc:
-        logger.warning(f"KL散度计算失败: {exc}")
-        return np.inf, str(exc)

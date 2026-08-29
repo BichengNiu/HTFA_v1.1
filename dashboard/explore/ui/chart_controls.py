@@ -40,7 +40,7 @@ def _state_key(scope: str, name: str) -> str:
     return f"{STATE_PREFIX}.{scope}.{name}"
 
 
-def get_applied_config(st_obj, scope: str, defaults: dict[str, Any]) -> dict[str, Any]:
+def get_applied_config(scope: str, defaults: dict[str, Any]) -> dict[str, Any]:
     """返回当前图表控件的配置；控件变更将在下一次重跑中立即生效。"""
     config = defaults.copy()
     for name, default in defaults.items():
@@ -173,7 +173,7 @@ def render_time_series_config_expander(
     defaults: dict[str, Any],
 ) -> None:
     """渲染时间序列图下方的即时生效配置。"""
-    applied = get_applied_config(st_obj, scope, defaults)
+    applied = get_applied_config(scope, defaults)
     expander = st_obj.expander("图表设置", expanded=False)
     with expander:
         expander.markdown("**标题**")
@@ -219,7 +219,7 @@ def render_correlogram_config_expander(
     maximum_lags: int,
 ) -> None:
     """渲染 ACF/PACF 组合图下方的即时生效配置。"""
-    applied = get_applied_config(st_obj, scope, defaults)
+    applied = get_applied_config(scope, defaults)
     expander = st_obj.expander("ACF/PACF 图表设置", expanded=False)
     with expander:
         expander.markdown("**标题**")
@@ -312,7 +312,7 @@ def render_correlogram_chart(
         }
         if config_defaults:
             defaults.update(config_defaults)
-        config = get_applied_config(st_obj, scope, defaults)
+        config = get_applied_config(scope, defaults)
         config["nlags"] = min(max(1, int(config["nlags"])), maximum)
         figure = create_correlogram_figure(
             series,

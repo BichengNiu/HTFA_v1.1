@@ -22,10 +22,6 @@ from dashboard.preview.domain.models import IndicatorMetadata, LoadedPreviewData
 
 
 DICTIONARY_SHEET_NAME = "指标字典"
-DICTIONARY_COLUMNS = [
-    "指标名称", "类型", "行业", "频率", "开始日期", "最新日期",
-    "缺失期数", "数据来源", "预测变量",
-]
 DICTIONARY_BASE_COLUMNS = ["指标名称", "类型", "行业"]
 METADATA_ROW_LABELS = {
     2: "指标名称",

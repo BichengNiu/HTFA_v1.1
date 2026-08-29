@@ -7,10 +7,7 @@ from dataclasses import dataclass
 from typing import Optional, Any, Dict
 import math
 import pandas as pd
-import logging
 from datetime import datetime, date
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -48,20 +45,21 @@ class DFMMetadataAccessor:
             metadata: 从pkl文件加载的元数据字典
         """
         self._metadata = metadata
-        self.logger = logging.getLogger(self.__class__.__name__)
 
     @property
     def training_info(self) -> TrainingInfo:
         """获取训练信息"""
-        best_variables = self._metadata.get('best_variables')
-        if best_variables is None:
-            raise KeyError("元数据中缺少'best_variables'字段")
-        if not isinstance(best_variables, list):
-            raise TypeError(f"'best_variables'应为list类型，实际为{type(best_variables)}")
-        n_vars = len(best_variables)
+        selected_variables = self._metadata.get('selected_variables')
+        if selected_variables is None:
+            raise KeyError("元数据中缺少'selected_variables'字段")
+        if not isinstance(selected_variables, list):
+            raise TypeError(
+                f"'selected_variables'应为list类型，实际为{type(selected_variables)}"
+            )
+        n_vars = len(selected_variables)
 
         # 计算最终行业数
-        n_industries = self._get_n_industries(best_variables)
+        n_industries = self._get_n_industries(selected_variables)
 
         return TrainingInfo(
             training_start=self._get_date_str('training_start_date'),
@@ -73,24 +71,31 @@ class DFMMetadataAccessor:
             n_factors=self._get_k_factors()
         )
 
+    def _get_model_params(self) -> Dict[str, Any]:
+        """从 metadata 获取当前模型参数。"""
+        model_params = self._metadata.get('model_params')
+        if model_params is None:
+            raise KeyError("元数据中缺少'model_params'字段")
+        if not isinstance(model_params, dict):
+            raise TypeError(
+                f"'model_params'应为dict类型，实际为{type(model_params)}"
+            )
+        return model_params
+
     def _get_k_factors(self) -> Any:
         """从metadata中获取k_factors"""
-        best_params = self._metadata.get('best_params')
-        if best_params is None:
-            raise KeyError("元数据中缺少'best_params'字段")
-        if not isinstance(best_params, dict):
-            raise TypeError(f"'best_params'应为dict类型，实际为{type(best_params)}")
-        if 'k_factors' not in best_params:
-            raise KeyError("'best_params'中缺少'k_factors'字段")
-        return best_params['k_factors']
+        model_params = self._get_model_params()
+        if 'k_factors' not in model_params:
+            raise KeyError("'model_params'中缺少'k_factors'字段")
+        return model_params['k_factors']
 
-    def _get_n_industries(self, best_variables: list) -> Any:
+    def _get_n_industries(self, selected_variables: list) -> Any:
         """计算最终行业数"""
         var_industry_map = self._metadata.get('var_industry_map')
         if not var_industry_map or not isinstance(var_industry_map, dict):
             return 'N/A'
         industries = set()
-        for var in best_variables:
+        for var in selected_variables:
             industry = var_industry_map.get(var)
             if industry:
                 industries.add(industry)
@@ -151,24 +156,20 @@ class DFMMetadataAccessor:
     @property
     def is_ddfm(self) -> bool:
         """判断是否为DDFM模型"""
-        best_params = self._metadata.get('best_params', {})
-        algorithm = best_params.get('algorithm', 'classical')
-        return algorithm == 'deep_learning'
-
-    @property
-    def complete_aligned_table(self) -> Optional[pd.DataFrame]:
-        """获取完整对齐表"""
-        return self._metadata.get('complete_aligned_table')
-
-    @property
-    def factor_loadings_df(self) -> Optional[pd.DataFrame]:
-        """获取因子载荷矩阵"""
-        return self._metadata.get('factor_loadings_df')
+        model_params = self._get_model_params()
+        if 'algorithm' not in model_params:
+            raise KeyError("'model_params'中缺少'algorithm'字段")
+        return model_params['algorithm'] == 'deep_learning'
 
     @property
     def factor_series(self) -> Optional[pd.DataFrame]:
         """获取因子时间序列"""
         return self._metadata.get('factor_series')
+
+    @property
+    def factor_loadings_df(self) -> Optional[pd.DataFrame]:
+        """获取因子载荷矩阵"""
+        return self._metadata.get('factor_loadings_df')
 
     @property
     def observation_period_start(self) -> Optional[str]:

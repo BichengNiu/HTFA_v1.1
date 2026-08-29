@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 import pandas as pd
-import streamlit as st
 
 from dashboard.analysis.uae.downloads import render_chart_download
 from dashboard.analysis.uae.foreign_labor import (

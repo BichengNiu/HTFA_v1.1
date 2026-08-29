@@ -2,7 +2,7 @@ from io import BytesIO
 
 from dashboard.explore.core.data_source import (
     fingerprint_uploaded_file,
-    load_stationarity_tables,
+    load_stationarity_data,
 )
 
 
@@ -19,7 +19,8 @@ def test_csv_is_kept_as_a_single_table():
     uploaded = BytesIO("date,value\n2026-01-01,1\n".encode())
     uploaded.name = "series.csv"
 
-    tables = load_stationarity_tables(uploaded)
+    tables, metadata = load_stationarity_data(uploaded)
 
     assert list(tables) == ["table"]
     assert tables["table"].shape == (1, 2)
+    assert metadata == {}

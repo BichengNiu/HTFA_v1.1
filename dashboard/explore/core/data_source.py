@@ -90,12 +90,6 @@ def load_explore_dataset(file_input: Any) -> ExploreDataset:
     )
 
 
-def load_stationarity_tables(file_input: Any) -> dict[str, pd.DataFrame]:
-    """解析上传文件，返回可供平稳性检验选择的非空数据表。"""
-    tables, _ = load_stationarity_data(file_input)
-    return tables
-
-
 def format_table_option(table_key: str, tables: dict[str, pd.DataFrame]) -> str:
     """生成包含频率、行数和指标数的数据表选项文本。"""
     frame = tables[table_key]
@@ -110,6 +104,5 @@ __all__ = [
     "format_table_option",
     "load_explore_dataset",
     "load_stationarity_data",
-    "load_stationarity_tables",
     "read_uploaded_bytes",
 ]

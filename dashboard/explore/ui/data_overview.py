@@ -34,18 +34,11 @@ _DATA_OVERVIEW_STATE = NamespacedStateManager(
     "data_exploration.univariate.overview"
 )
 _DATA_OVERVIEW_KEY_PREFIX = "univariate_overview"
-_LEGACY_DATA_OVERVIEW_KEY_PREFIX = "sarimax"
-_LEGACY_DATA_OVERVIEW_SHEET_KEY = "sarimax_preview_sheet"
 CORRELOGRAM_VARIABLES_KEY = "univariate_overview_correlogram_vars"
 CORRELOGRAM_TRANSFORMATION_PREFIX = (
     "univariate_overview_correlogram_transformation_"
 )
 SERIES_STYLE_WIDGET_PREFIX = "univariate_overview_preview_series_style_"
-_LEGACY_CORRELOGRAM_VARIABLES_KEY = "sarimax_correlogram_vars"
-_LEGACY_CORRELOGRAM_TRANSFORMATION_PREFIX = (
-    "sarimax_correlogram_transformation_"
-)
-_LEGACY_SERIES_STYLE_WIDGET_PREFIX = "sarimax_preview_series_style_"
 CORRELOGRAM_WIDGET_KEYS = (CORRELOGRAM_VARIABLES_KEY,)
 _PRESERVED_DATA_OVERVIEW_KEYS = set(
     selector_widget_keys(_DATA_OVERVIEW_KEY_PREFIX)
@@ -75,59 +68,6 @@ DATA_OVERVIEW_HANDOFF_WIDGET_KEYS = (
     + ("univariate_overview_preview_sheet",)
     + CORRELOGRAM_WIDGET_KEYS
 )
-
-
-def migrate_legacy_data_overview_state(st_obj) -> None:
-    """把旧版单变量概览控件迁移到当前独立命名空间。
-
-    旧版本曾把单变量概览误用 ``sarimax_*`` 键保存。迁移只在新键
-    不存在时执行，避免覆盖用户已经在当前页面设置的值；旧键保留在
-    会话中但不再被本页面读取。SARIMAX 自有数据入口使用独立前缀，
-    因而不会与本迁移发生耦合。
-    """
-
-    session = getattr(st_obj, "session_state", None)
-    if session is None:
-        return
-
-    legacy_keys = (
-        overview_widget_keys(_LEGACY_DATA_OVERVIEW_KEY_PREFIX)
-        + (_LEGACY_DATA_OVERVIEW_SHEET_KEY,)
-    )
-    for old_key in legacy_keys:
-        if old_key not in session:
-            continue
-        new_key = (
-            _DATA_OVERVIEW_KEY_PREFIX
-            + old_key[len(_LEGACY_DATA_OVERVIEW_KEY_PREFIX) :]
-        )
-        if new_key not in session:
-            session[new_key] = deepcopy(session[old_key])
-
-    if (
-        _LEGACY_CORRELOGRAM_VARIABLES_KEY in session
-        and CORRELOGRAM_VARIABLES_KEY not in session
-    ):
-        session[CORRELOGRAM_VARIABLES_KEY] = deepcopy(
-            session[_LEGACY_CORRELOGRAM_VARIABLES_KEY]
-        )
-
-    for old_key in tuple(session):
-        old_key = str(old_key)
-        if old_key.startswith(_LEGACY_CORRELOGRAM_TRANSFORMATION_PREFIX):
-            new_key = (
-                CORRELOGRAM_TRANSFORMATION_PREFIX
-                + old_key[len(_LEGACY_CORRELOGRAM_TRANSFORMATION_PREFIX) :]
-            )
-        elif old_key.startswith(_LEGACY_SERIES_STYLE_WIDGET_PREFIX):
-            new_key = (
-                SERIES_STYLE_WIDGET_PREFIX
-                + old_key[len(_LEGACY_SERIES_STYLE_WIDGET_PREFIX) :]
-            )
-        else:
-            continue
-        if new_key not in session:
-            session[new_key] = deepcopy(session[old_key])
 
 
 def _build_univariate_overview_dataset(
@@ -480,7 +420,6 @@ __all__ = [
     "SERIES_STYLE_WIDGET_PREFIX",
     "export_data_overview_widget_state",
     "mark_data_overview_handoff_restore",
-    "migrate_legacy_data_overview_state",
     "render_data_overview",
     "restore_data_overview_widget_state",
 ]

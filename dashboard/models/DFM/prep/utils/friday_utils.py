@@ -230,104 +230,6 @@ def get_yoy_friday_no_cross_month(current_friday: pd.Timestamp) -> pd.Timestamp:
     return get_monthly_friday(yoy_date)
 
 
-# ============================================================================
-# 发布日期校准专用函数（带滞后天数）
-# ============================================================================
-
-def get_friday_with_lag(
-    data_date: pd.Timestamp,
-    lag_days: int,
-    period_type: str = 'month'
-) -> pd.Timestamp:
-    """
-    计算发布日期附近的周五（用于发布日期校准）
-
-    逻辑：
-    1. 数据日期 + 滞后天数 = 发布日期
-    2. 对齐到发布日期最近的周五
-    3. 如果最近周五跨越边界，则调整到发布周期内的周五
-
-    Args:
-        data_date: 数据日期（如月度数据的月末日期）
-        lag_days: 滞后天数（如15表示下月15日发布）
-        period_type: 周期类型 ('month', 'quarter', 'year')
-
-    Returns:
-        pd.Timestamp: 发布日期附近的周五（在发布周期内）
-    """
-    # 实际发布日期 = 数据日期 + 滞后天数
-    pub_date = data_date + pd.Timedelta(days=lag_days)
-
-    if period_type == 'month':
-        return _get_friday_within_month(pub_date)
-    elif period_type == 'quarter':
-        return _get_friday_within_quarter(pub_date)
-    elif period_type == 'year':
-        return _get_friday_within_year(pub_date)
-    else:
-        # 默认返回最近周五（不限制边界）
-        return get_nearest_friday(pub_date)
-
-
-def _get_friday_within_month(pub_date: pd.Timestamp) -> pd.Timestamp:
-    """在发布月份内找到周五"""
-    year, month = pub_date.year, pub_date.month
-
-    target_friday = get_nearest_friday(pub_date)
-
-    # 检查是否跨月
-    if target_friday.month != month:
-        if target_friday.month > month or (target_friday.month == 1 and month == 12):
-            # 跨到下个月 -> 发布月份的最后一个周五
-            target_friday = _get_last_friday_of_month(year, month)
-        else:
-            # 跨到上个月 -> 发布月份的第一个周五
-            target_friday = _get_first_friday_of_month(year, month)
-
-    return target_friday
-
-
-def _get_friday_within_quarter(pub_date: pd.Timestamp) -> pd.Timestamp:
-    """在发布季度内找到周五"""
-    year = pub_date.year
-    month = pub_date.month
-    quarter = (month - 1) // 3 + 1
-    quarter_start_month = (quarter - 1) * 3 + 1
-    quarter_end_month = quarter * 3
-
-    target_friday = get_nearest_friday(pub_date)
-    target_quarter = (target_friday.month - 1) // 3 + 1
-
-    # 检查是否跨季
-    if target_friday.year != year or target_quarter != quarter:
-        if (target_friday.year > year) or (target_friday.year == year and target_quarter > quarter):
-            # 跨到下个季度 -> 发布季度的最后一个周五
-            target_friday = _get_last_friday_of_month(year, quarter_end_month)
-        else:
-            # 跨到上个季度 -> 发布季度的第一个周五
-            target_friday = _get_first_friday_of_month(year, quarter_start_month)
-
-    return target_friday
-
-
-def _get_friday_within_year(pub_date: pd.Timestamp) -> pd.Timestamp:
-    """在发布年份内找到周五"""
-    year = pub_date.year
-
-    target_friday = get_nearest_friday(pub_date)
-
-    # 检查是否跨年
-    if target_friday.year != year:
-        if target_friday.year > year:
-            # 跨到下一年 -> 发布年份的最后一个周五
-            target_friday = _get_last_friday_of_month(year, 12)
-        else:
-            # 跨到上一年 -> 发布年份的第一个周五
-            target_friday = _get_first_friday_of_month(year, 1)
-
-    return target_friday
-
-
 __all__ = [
     'get_nearest_friday',
     'get_monthly_friday',
@@ -335,5 +237,4 @@ __all__ = [
     'get_yearly_friday',
     'get_dekad_friday',
     'get_yoy_friday_no_cross_month',
-    'get_friday_with_lag',
 ]

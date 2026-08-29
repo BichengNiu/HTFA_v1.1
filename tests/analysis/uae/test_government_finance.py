@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
+from tests.analysis.uae._helpers import data_lines
 from dashboard.analysis.uae.government_finance import renderer
 from dashboard.analysis.uae.government_finance.charts import (
     YOY_SERIES,
@@ -54,15 +55,6 @@ from dashboard.analysis.uae.government_finance.search_index import (
     WORK_UAE_COLUMN,
 )
 from dashboard.analysis.uae.government_finance.renderer import _render_charts
-
-
-def _data_lines(axis):
-    """轴上带标签的真实数据线（排除模板占位/参考线，如空标签的 0 参考线）。"""
-    return [
-        line
-        for line in axis.get_lines()
-        if line.get_label() and not line.get_label().startswith("_")
-    ]
 
 
 def _workbook_bytes() -> bytes:
@@ -166,7 +158,7 @@ def test_yoy_chart_renders_two_government_credit_growth_lines() -> None:
 
     assert len(figure.axes) == 1
     axis = figure.axes[0]
-    lines = _data_lines(axis)
+    lines = data_lines(axis)
     assert [line.get_label() for line in lines] == [
         spec[1] for spec in YOY_SERIES
     ]
@@ -206,7 +198,7 @@ def test_yoy_chart_calculates_yoy_before_applying_three_year_window() -> None:
         source_text="CBUAE",
     )
 
-    lines = _data_lines(figure.axes[0])
+    lines = data_lines(figure.axes[0])
     assert {len(line.get_xdata()) for line in lines} == {37}
     assert all(pd.notna(line.get_ydata()[0]) for line in lines)
 
@@ -230,7 +222,7 @@ def test_chart_row_renders_one_yoy_view_and_downloads_only_yoy_data() -> None:
     assert len(figure.axes) == 1
     assert {
         len(line.get_xdata())
-        for line in _data_lines(figure.axes[0])
+        for line in data_lines(figure.axes[0])
     } == {13}
 
 

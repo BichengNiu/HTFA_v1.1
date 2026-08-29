@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pandas as pd
-import pytest
 
 from data_overview.core.dataset import build_overview_dataset
 from data_overview.core.parsing import (

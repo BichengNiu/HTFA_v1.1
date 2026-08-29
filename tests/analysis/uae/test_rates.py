@@ -6,6 +6,7 @@ from io import BytesIO
 import pandas as pd
 import pytest
 
+from tests.analysis.uae._helpers import data_lines
 from dashboard.analysis.uae.government_finance.rates import (
     EIBOR_ONEYEAR_DISPLAY,
     EIBOR_ONEYEAR_INDICATOR,
@@ -19,15 +20,6 @@ from dashboard.analysis.uae.government_finance.rates import (
     build_rates_figure,
     load_rates_data,
 )
-
-
-def _data_lines(axis):
-    """轴上带标签的真实数据线（排除模板占位/参考线，如空标签的 0 参考线）。"""
-    return [
-        line
-        for line in axis.get_lines()
-        if line.get_label() and not line.get_label().startswith("_")
-    ]
 
 
 def _workbook_bytes() -> bytes:
@@ -101,7 +93,7 @@ def test_rates_figure_renders_four_monthly_mean_lines() -> None:
 
     assert len(figure.axes) == 1
     axis = figure.axes[0]
-    lines = _data_lines(axis)
+    lines = data_lines(axis)
     assert [line.get_label() for line in lines] == list(RATES_SERIES)
     # 模板色板与线型循环接管：黑/深蓝/灰/深红，实/虚/点划/点
     assert [line.get_color() for line in lines] == [

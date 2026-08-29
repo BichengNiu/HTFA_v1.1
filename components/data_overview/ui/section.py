@@ -15,7 +15,7 @@ from typing import Any, Callable
 import pandas as pd
 import streamlit as st
 
-from ..core.dataset import OverviewDataset, build_overview_dataset
+from ..core.dataset import build_overview_dataset
 from ..core.options import build_chart_options, build_table_options
 from .chart_options_tabs import render_chart_options_expander
 from .chart_panel import draw_series_plot
@@ -337,7 +337,6 @@ def render_data_overview(
         selected,
         filtered,
         table_state,
-        key_prefix=key_prefix,
     )
     render_table_options_expander(
         st_obj, dataset, selected, key_prefix=key_prefix
@@ -359,9 +358,7 @@ def render_data_overview(
             st_obj, dataset, selected, filtered=filtered, options=options
         )
 
-    render_chart_options_expander(
-        st_obj, dataset, selected, key_prefix=key_prefix
-    )
+    render_chart_options_expander(st_obj, selected, key_prefix=key_prefix)
 
 
 def _render_series_charts(st_obj, dataset, selected, *, filtered, options) -> None:
