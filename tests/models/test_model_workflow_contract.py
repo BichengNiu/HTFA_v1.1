@@ -16,7 +16,7 @@ from dashboard.models.common.contracts import (
     ResidualDiagnosticView,
     SimulationRequest,
 )
-from dashboard.models.common.workflow import ModelWorkflow
+from dashboard.models.common.workflow import ModelWorkflow, SimulationWorkflow
 from dashboard.models.common.ui.data_input import create_data_input_module
 from dashboard.models.SARIMAX.core import adapters
 from dashboard.models.SARIMAX.core.adapters import (
@@ -179,18 +179,11 @@ def test_model_workflow_exposes_the_diagnostic_seam():
     assert workflow.residual_test_table(object(), lags=2) is table
 
 
-def test_model_workflow_exposes_selection_forecast_and_simulation_seams():
+def test_model_workflow_exposes_selection_and_forecast_seams():
     context = ForecastContext(model_dates=None, model_nobs=3, exog_names=("x",))
-    request = SimulationRequest(
-        n_paths=8,
-        seed=42,
-        confidence_level=0.95,
-        acf_lags=10,
-    )
     adapter = SimpleNamespace(
         select_result=lambda result, selection: (result, selection),
         forecast_context=lambda result: context,
-        simulate=lambda result, received: (result, received),
     )
     workflow = ModelWorkflow(adapter)
 
@@ -199,6 +192,20 @@ def test_model_workflow_exposes_selection_forecast_and_simulation_seams():
         "criterion",
     )
     assert workflow.forecast_context("result") is context
+
+
+def test_simulation_workflow_exposes_only_the_simulation_seam():
+    request = SimulationRequest(
+        n_paths=8,
+        seed=42,
+        confidence_level=0.95,
+        acf_lags=10,
+    )
+    adapter = SimpleNamespace(
+        simulate=lambda result, received: (result, received),
+    )
+    workflow = SimulationWorkflow(adapter)
+
     assert workflow.simulate("result", request) == ("result", request)
 
 
@@ -304,6 +311,19 @@ def test_sarimax_adapter_routes_simulation_through_stable_request(monkeypatch):
             "acf_lags": 10,
         },
     }
+
+
+def test_only_sarimax_adapter_owns_the_simulation_seam():
+    assert hasattr(SARIMAXAdapter, "simulate")
+    assert not hasattr(ARDLAdapter, "simulate")
+
+    from dashboard.models.SARIMAX.core.adapters import (
+        DynamicRegressionAdapter,
+        RDLAdapter,
+    )
+
+    assert not hasattr(RDLAdapter, "simulate")
+    assert not hasattr(DynamicRegressionAdapter, "simulate")
 
 
 def test_sarimax_adapter_owns_residual_diagnostic_result_access(monkeypatch):

@@ -23,6 +23,7 @@ from dashboard.models.SARIMAX.ui.state import (
     RESULT_KEYS,
     clear_fit_results,
     clear_widget_state,
+    restore_result_state,
     state,
 )
 
@@ -103,8 +104,7 @@ def restore_sarimax_widget_state(st_obj, widget_state: dict[str, object]) -> Non
 def restore_sarimax_result_state(result_state: dict[str, object]) -> None:
     """恢复交接的模型结果缓存，避免与来源页面共享可变对象。"""
 
-    for key in _HANDOFF_RESULT_KEYS:
-        state.set(key, deepcopy(result_state.get(key)))
+    restore_result_state(result_state, keys=_HANDOFF_RESULT_KEYS)
 
 
 def create_standalone_sarimax_model_url(st_obj) -> str | None:

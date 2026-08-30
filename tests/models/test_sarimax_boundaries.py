@@ -85,6 +85,47 @@ def test_simulation_core_contains_statistics_but_no_presentation_imports():
     assert "plot_sarimax_simulation_comparison" not in source
 
 
+def test_simulation_seam_belongs_only_to_sarimax():
+    from dashboard.models.SARIMAX.core.adapters import (
+        ARDLAdapter,
+        DynamicRegressionAdapter,
+        RDLAdapter,
+        SARIMAXAdapter,
+    )
+    from dashboard.models.common.workflow import ModelWorkflow, SimulationWorkflow
+
+    assert hasattr(SARIMAXAdapter, "simulate")
+    assert not hasattr(RDLAdapter, "simulate")
+    assert not hasattr(ARDLAdapter, "simulate")
+    assert not hasattr(DynamicRegressionAdapter, "simulate")
+    assert not hasattr(ModelWorkflow, "simulate")
+    assert hasattr(SimulationWorkflow, "simulate")
+
+
+def test_downstream_result_publication_is_not_owned_by_page_sections():
+    result_keys = (
+        "forecast",
+        "forecast_signature",
+        "diagnostics_table",
+        "diagnostics_signature",
+        "simulation_comparison",
+        "simulation_signature",
+    )
+    for filename in (
+        "training_section.py",
+        "analysis_section.py",
+        "forecast_section.py",
+    ):
+        source = (
+            PROJECT_ROOT
+            / "dashboard/models/SARIMAX/ui/pages/sections"
+            / filename
+        ).read_text(encoding="utf-8")
+        for key in result_keys:
+            assert f'state.set("{key}"' not in source
+        assert "store_downstream_result" in source
+
+
 def test_model_family_implementations_are_split_from_facades():
     """模型族拟合和参数控件必须由各自 module 承担。"""
     core_modeling = (

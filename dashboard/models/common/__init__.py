@@ -10,7 +10,12 @@ from .contracts import (
     SimulationRequest,
 )
 from .state import ModelStateLifecycle, StateStore
-from .workflow import ModelAdapter, ModelWorkflow
+from .workflow import (
+    ModelAdapter,
+    ModelWorkflow,
+    SimulationAdapter,
+    SimulationWorkflow,
+)
 
 __all__ = [
     "EstimationResultView",
@@ -23,5 +28,7 @@ __all__ = [
     "ModelStateLifecycle",
     "ModelAdapter",
     "ModelWorkflow",
+    "SimulationAdapter",
+    "SimulationWorkflow",
     "StateStore",
 ]

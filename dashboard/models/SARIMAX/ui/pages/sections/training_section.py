@@ -8,9 +8,10 @@ from dashboard.core.workspace import artifact_signature, stable_signature
 from dashboard.models.common.contracts import SimulationRequest
 from dashboard.models.common.ui.model_inputs import ModelInputModule
 from dashboard.models.common.ui.result_view import render_estimation_result
-from dashboard.models.common.workflow import ModelWorkflow
+from dashboard.models.common.workflow import ModelWorkflow, SimulationWorkflow
 from dashboard.models.SARIMAX.core.adapters import (
     DynamicRegressionAdapter,
+    SARIMAXAdapter,
     is_automatic_config,
 )
 from dashboard.models.SARIMAX.core.data_loader import (
@@ -32,15 +33,18 @@ from dashboard.models.SARIMAX.ui.pages.sections.simulation_chart import (
     render_sarimax_simulation_chart,
 )
 from dashboard.models.SARIMAX.ui.state import (
+    clear_downstream_result,
     clear_fit_results,
     clear_widget_state,
     store_fit_result,
+    store_downstream_result,
     state,
 )
 
 logger = logging.getLogger(__name__)
 _MODEL_ADAPTER = DynamicRegressionAdapter()
 _MODEL_WORKFLOW = ModelWorkflow(_MODEL_ADAPTER)
+_SIMULATION_WORKFLOW = SimulationWorkflow(SARIMAXAdapter())
 _SIMULATION_SEED = 42
 _SIMULATION_PATHS_DEFAULT = 500
 _SIMULATION_PATHS_MIN = 50
@@ -262,15 +266,21 @@ def _render_sarimax_simulation_chart(st_obj, result) -> None:
             with st_obj.spinner(
                 f"正在调用 TsSims 生成 {n_paths} 条模拟路径..."
             ):
-                comparison = _MODEL_WORKFLOW.simulate(result, request)
+                comparison = _SIMULATION_WORKFLOW.simulate(result, request)
         except Exception as exc:
             st_obj.warning(f"模拟路径比较无法绘制：{translate_ts_error(exc)}")
             logger.warning("SARIMAX 模拟路径比较生成失败", exc_info=True)
-            state.set("simulation_comparison", None)
-            state.set("simulation_signature", None)
+            clear_downstream_result(
+                "simulation_comparison",
+                "simulation_signature",
+            )
             return
-        state.set("simulation_comparison", comparison)
-        state.set("simulation_signature", signature)
+        store_downstream_result(
+            "simulation_comparison",
+            comparison,
+            "simulation_signature",
+            signature,
+        )
 
     render_sarimax_simulation_chart(st_obj, comparison)
 

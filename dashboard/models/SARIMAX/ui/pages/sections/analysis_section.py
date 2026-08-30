@@ -9,7 +9,11 @@ from dashboard.core.ui.utils.matplotlib_compat import matplotlib_date_compatibil
 from dashboard.core.workspace import stable_signature
 from dashboard.models.common.workflow import ModelWorkflow
 from dashboard.models.SARIMAX.core.adapters import DynamicRegressionAdapter
-from dashboard.models.SARIMAX.ui.state import state
+from dashboard.models.SARIMAX.ui.state import (
+    clear_downstream_result,
+    state,
+    store_downstream_result,
+)
 
 logger = logging.getLogger(__name__)
 _MODEL_WORKFLOW = ModelWorkflow(DynamicRegressionAdapter())
@@ -61,11 +65,17 @@ def _render_residual_tests(st_obj, result, diagnostic_view) -> None:
         except Exception as exc:
             st_obj.error(f"残差检验无法执行：{exc}")
             logger.exception("SARIMAX 残差检验失败")
-            state.set("diagnostics_table", None)
-            state.set("diagnostics_signature", None)
+            clear_downstream_result(
+                "diagnostics_table",
+                "diagnostics_signature",
+            )
             return
-        state.set("diagnostics_table", table)
-        state.set("diagnostics_signature", signature)
+        store_downstream_result(
+            "diagnostics_table",
+            table,
+            "diagnostics_signature",
+            signature,
+        )
 
     st_obj.dataframe(
         table,

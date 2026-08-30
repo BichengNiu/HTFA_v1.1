@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from dashboard.core.ui.utils.state_helpers import NamespacedStateManager
 from dashboard.models.common.state import ModelStateLifecycle
 
@@ -166,6 +168,35 @@ def clear_downstream_results() -> None:
     _STATE_LIFECYCLE.clear_downstream_results()
 
 
+def store_downstream_result(
+    result_key: str,
+    result,
+    signature_key: str,
+    signature,
+) -> None:
+    """发布下游结果与签名，统一校验状态键归属。"""
+    _STATE_LIFECYCLE.store_downstream_result(
+        result_key,
+        result,
+        signature_key,
+        signature,
+    )
+
+
+def clear_downstream_result(result_key: str, signature_key: str) -> None:
+    """清除一个下游结果及其签名。"""
+    _STATE_LIFECYCLE.clear_downstream_result(result_key, signature_key)
+
+
+def restore_result_state(
+    values: Mapping[str, object],
+    *,
+    keys: tuple[str, ...] = RESULT_KEYS,
+) -> None:
+    """恢复交接快照中的结果状态。"""
+    _STATE_LIFECYCLE.restore_result_state(values, keys=keys)
+
+
 def clear_widget_state(st_obj, keys: tuple[str, ...] = WIDGET_KEYS) -> None:
     """删除指定 Streamlit widget 的会话值，避免旧值残留。"""
     _STATE_LIFECYCLE.clear_widget_state(st_obj, keys=keys)
@@ -177,9 +208,12 @@ __all__ = [
     "PERSISTENT_WIDGET_KEYS",
     "RESULT_KEYS",
     "WIDGET_KEYS",
+    "clear_downstream_result",
     "clear_downstream_results",
     "clear_fit_results",
     "clear_widget_state",
+    "restore_result_state",
+    "store_downstream_result",
     "store_fit_result",
     "state",
 ]

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from dashboard.models.common.state import ModelStateLifecycle
 
 
@@ -58,6 +60,77 @@ def test_lifecycle_publishes_fit_and_invalidates_downstream_results():
         "forecast": None,
         "fit": "new-fit",
         "fit_signature": "new-signature",
+    }
+
+
+def test_lifecycle_publishes_and_clears_one_downstream_result():
+    store = Store()
+    lifecycle = ModelStateLifecycle(
+        store=store,
+        fit_result_keys=("fit", "fit_signature"),
+        downstream_result_keys=("forecast", "forecast_signature"),
+        widget_keys=(),
+    )
+
+    lifecycle.store_downstream_result(
+        "forecast",
+        "forecast-result",
+        "forecast_signature",
+        "forecast-signature",
+    )
+    assert store.values == {
+        "forecast": "forecast-result",
+        "forecast_signature": "forecast-signature",
+    }
+
+    lifecycle.clear_downstream_result("forecast", "forecast_signature")
+    assert store.values == {
+        "forecast": None,
+        "forecast_signature": None,
+    }
+
+
+def test_lifecycle_rejects_undeclared_downstream_state_keys():
+    lifecycle = ModelStateLifecycle(
+        store=Store(),
+        fit_result_keys=("fit", "fit_signature"),
+        downstream_result_keys=("forecast", "forecast_signature"),
+        widget_keys=(),
+    )
+
+    with pytest.raises(ValueError, match="下游结果键"):
+        lifecycle.store_downstream_result(
+            "diagnostics",
+            object(),
+            "diagnostics_signature",
+            "signature",
+        )
+
+
+def test_lifecycle_restores_only_declared_result_state():
+    store = Store()
+    lifecycle = ModelStateLifecycle(
+        store=store,
+        fit_result_keys=("fit", "fit_signature"),
+        downstream_result_keys=("forecast", "forecast_signature"),
+        widget_keys=(),
+    )
+
+    lifecycle.restore_result_state(
+        {
+            "fit": "fit-result",
+            "fit_signature": "fit-signature",
+            "forecast": "forecast-result",
+            "forecast_signature": "forecast-signature",
+            "unrelated": "must-not-be-restored",
+        }
+    )
+
+    assert store.values == {
+        "fit": "fit-result",
+        "fit_signature": "fit-signature",
+        "forecast": "forecast-result",
+        "forecast_signature": "forecast-signature",
     }
 
 

@@ -24,7 +24,7 @@ from dashboard.models.common.workflow import ModelWorkflow
 from dashboard.models.SARIMAX.ui.pages.sections.forecast_chart import (
     render_forecast_chart,
 )
-from dashboard.models.SARIMAX.ui.state import state
+from dashboard.models.SARIMAX.ui.state import state, store_downstream_result
 
 logger = logging.getLogger(__name__)
 _MODEL_WORKFLOW = ModelWorkflow(DynamicRegressionAdapter())
@@ -206,8 +206,12 @@ def render_forecast_section(st_obj) -> None:
             st_obj.error(translate_ts_error(exc))
             logger.exception("SARIMAX 预测失败")
             return
-        state.set("forecast", forecast)
-        state.set("forecast_signature", signature)
+        store_downstream_result(
+            "forecast",
+            forecast,
+            "forecast_signature",
+            signature,
+        )
 
     forecast = state.get("forecast")
     if forecast is None or state.get("forecast_signature") != signature:

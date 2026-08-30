@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -54,6 +55,64 @@ class ModelStateLifecycle:
         """清除诊断、预测等下游结果。"""
         self._clear(self.downstream_result_keys)
 
+    def store_downstream_result(
+        self,
+        result_key: str,
+        result: Any,
+        signature_key: str,
+        signature: Any,
+    ) -> None:
+        """发布一个已声明的下游结果及其签名。
+
+        Parameters
+        ----------
+        result_key : str
+            下游结果键。
+        result : Any
+            要发布的结果对象。
+        signature_key : str
+            与结果对应的缓存签名键。
+        signature : Any
+            当前结果的缓存签名。
+        """
+        self._ensure_downstream_key(result_key)
+        self._ensure_downstream_key(signature_key)
+        self.store.set(result_key, result)
+        self.store.set(signature_key, signature)
+
+    def clear_downstream_result(
+        self,
+        result_key: str,
+        signature_key: str,
+    ) -> None:
+        """清除一个已声明的下游结果及其签名。"""
+        self._ensure_downstream_key(result_key)
+        self._ensure_downstream_key(signature_key)
+        self.store.set(result_key, None)
+        self.store.set(signature_key, None)
+
+    def restore_result_state(
+        self,
+        values: Mapping[str, Any],
+        *,
+        keys: tuple[str, ...] | None = None,
+    ) -> None:
+        """恢复已声明的拟合或下游结果状态。
+
+        Parameters
+        ----------
+        values : Mapping[str, Any]
+            以状态键为索引的交接快照值。
+        keys : tuple[str, ...], optional
+            允许恢复的状态键；省略时恢复全部已声明结果键。
+        """
+        allowed = self.fit_result_keys + self.downstream_result_keys
+        selected = allowed if keys is None else keys
+        for key in selected:
+            if key not in allowed:
+                raise ValueError(f"状态键未声明为结果键：{key}")
+            self.store.set(key, values.get(key))
+
     def clear_widget_state(self, st_obj, keys: tuple[str, ...] | None = None) -> None:
         """只删除声明过的 widget 状态，保留无关页面状态。"""
         session = getattr(st_obj, "session_state", None)
@@ -68,6 +127,10 @@ class ModelStateLifecycle:
     def _clear(self, keys: tuple[str, ...]) -> None:
         for key in keys:
             self.store.set(key, None)
+
+    def _ensure_downstream_key(self, key: str) -> None:
+        if key not in self.downstream_result_keys:
+            raise ValueError(f"状态键未声明为下游结果键：{key}")
 
 
 __all__ = ["ModelStateLifecycle", "StateStore"]
