@@ -129,6 +129,8 @@ RESULT_KEYS = (
     "diagnostics_signature",
     "forecast",
     "forecast_signature",
+    "simulation_comparison",
+    "simulation_signature",
 )
 
 _STATE_LIFECYCLE = ModelStateLifecycle(
@@ -139,6 +141,8 @@ _STATE_LIFECYCLE = ModelStateLifecycle(
         "diagnostics_signature",
         "forecast",
         "forecast_signature",
+        "simulation_comparison",
+        "simulation_signature",
         "forecast_widget_fit_signature",
     ),
     widget_keys=WIDGET_KEYS,

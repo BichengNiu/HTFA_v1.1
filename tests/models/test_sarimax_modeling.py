@@ -7,10 +7,9 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 import pytest
-from Ts.TsSims import simulate_sarima
-
 from data_overview.core.dataset import OverviewDataset, build_overview_dataset
 from data_overview.core.file_parsing import load_dataframe
+from Ts.TsSims import simulate_sarima
 
 from dashboard.models.SARIMAX.core.data_loader import (
     dataset_time_index,
@@ -30,6 +29,7 @@ from dashboard.models.SARIMAX.core.model_config import (
 from dashboard.models.SARIMAX.core.modeling import (
     build_auto_sarimax_criterion_table,
     build_prediction_table,
+    build_sarimax_simulation_comparison,
     fit_ardl,
     fit_auto_ardl,
     fit_auto_rdl,
@@ -38,6 +38,7 @@ from dashboard.models.SARIMAX.core.modeling import (
     fit_rdl,
     fit_sarimax,
     format_sarimax_order,
+    plot_sarimax_simulation_comparison,
     produce_forecast,
     recommended_residual_diagnostic_lags,
     run_residual_diagnostics,
@@ -58,6 +59,71 @@ def make_series(n: int = 80, *, dates: bool = False) -> pd.Series:
 def dataset_from_csv(content: bytes) -> OverviewDataset:
     frame = load_dataframe(content, "data.csv")
     return build_overview_dataset(frame, "data.csv", "fingerprint")
+
+
+def test_sarimax_simulation_comparison_reuses_fit_sample_and_seed():
+    series = make_series(dates=True)
+    result = fit_sarimax(
+        series,
+        None,
+        SARIMAXConfig(order=(1, 0, 0), trend="c"),
+    )
+
+    first = build_sarimax_simulation_comparison(result, seed=123)
+    second = build_sarimax_simulation_comparison(result, seed=123)
+
+    assert len(first.actual) == result.nobs == len(first.theoretical)
+    assert first.index.equals(result.dates.rename("日期"))
+    np.testing.assert_array_equal(first.actual, result.data)
+    np.testing.assert_array_equal(first.theoretical, second.theoretical)
+    assert first.rmse >= 0.0
+    assert first.mae >= 0.0
+
+
+def test_sarimax_simulation_comparison_includes_static_exog_and_log_back_transform():
+    series = pd.Series(
+        np.exp(np.linspace(0.2, 1.0, 80) + 0.1 * np.sin(np.arange(80))),
+        index=pd.date_range("2020-01-01", periods=80, freq="MS"),
+    )
+    exog = pd.DataFrame({"x": np.linspace(-1.0, 1.0, 80)}, index=series.index)
+    result = fit_sarimax(
+        series,
+        exog,
+        SARIMAXConfig(order=(1, 0, 0), trend="n", log=True),
+    )
+
+    comparison = build_sarimax_simulation_comparison(result, seed=123)
+
+    assert comparison.index.equals(result.dates.rename("日期"))
+    assert np.all(comparison.theoretical > 0.0)
+    assert np.all(np.isfinite(comparison.theoretical))
+
+
+def test_sarimax_simulation_comparison_rejects_rdl_result():
+    result = SimpleNamespace(model_type="SARIMAX", distributed_lag_names=("x",))
+
+    with pytest.raises(ValueError, match="不支持带传递函数"):
+        build_sarimax_simulation_comparison(result)
+
+
+def test_sarimax_simulation_comparison_plot_has_two_overlayed_series():
+    import matplotlib.pyplot as plt
+
+    result = fit_sarimax(
+        make_series(dates=True),
+        None,
+        SARIMAXConfig(order=(1, 0, 0), trend="c"),
+    )
+    comparison = build_sarimax_simulation_comparison(result, seed=123)
+
+    figure, axis = plot_sarimax_simulation_comparison(comparison)
+
+    assert len(axis.lines) == 2
+    assert [line.get_label() for line in axis.lines] == [
+        "实际序列",
+        "理论模拟序列",
+    ]
+    plt.close(figure)
 
 
 def test_prepare_modeling_inputs_uses_datetime_index():
@@ -138,8 +204,8 @@ def test_forecast_chart_autoscales_y_to_selected_date_window(monkeypatch):
     from Ts.TsModels._base import PredictResult
     from Ts.TsPlots.style import GRAY
 
-    from dashboard.models.common.contracts import ForecastResult
     import dashboard.models.SARIMAX.ui.pages.sections.forecast_section as section
+    from dashboard.models.common.contracts import ForecastResult
 
     calendar = pd.date_range("2024-01-01", periods=4, freq="MS")
     prediction = PredictResult(

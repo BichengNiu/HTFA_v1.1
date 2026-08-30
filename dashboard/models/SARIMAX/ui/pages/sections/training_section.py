@@ -4,24 +4,29 @@ from __future__ import annotations
 
 import logging
 
+from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
+from dashboard.core.ui.utils.matplotlib_compat import matplotlib_date_compatibility
+from dashboard.core.workspace import artifact_signature, stable_signature
+from dashboard.models.common.ui.model_inputs import ModelInputModule
+from dashboard.models.common.ui.result_view import render_estimation_result
+from dashboard.models.common.workflow import ModelWorkflow
+from dashboard.models.SARIMAX.core.adapters import (
+    DynamicRegressionAdapter,
+    best_result,
+    is_automatic_config,
+)
 from dashboard.models.SARIMAX.core.data_loader import (
     PREPROCESSING_OPTIONS,
     dataset_time_index,
     effective_modeling_date_bounds,
     prepare_modeling_inputs,
 )
-from dashboard.core.workspace import artifact_signature
 from dashboard.models.SARIMAX.core.modeling import (
+    build_sarimax_simulation_comparison,
+    plot_sarimax_simulation_comparison,
     translate_ts_error,
     validate_fit_inputs,
 )
-from dashboard.models.SARIMAX.core.adapters import (
-    DynamicRegressionAdapter,
-    is_automatic_config,
-)
-from dashboard.models.common.ui.model_inputs import ModelInputModule
-from dashboard.models.common.ui.result_view import render_estimation_result
-from dashboard.models.common.workflow import ModelWorkflow
 from dashboard.models.SARIMAX.ui.model_options import render_model_options
 from dashboard.models.SARIMAX.ui.state import (
     clear_downstream_results,
@@ -33,6 +38,7 @@ from dashboard.models.SARIMAX.ui.state import (
 logger = logging.getLogger(__name__)
 _MODEL_ADAPTER = DynamicRegressionAdapter()
 _MODEL_WORKFLOW = ModelWorkflow(_MODEL_ADAPTER)
+_SIMULATION_SEED = 42
 _MODEL_INPUTS = ModelInputModule(
     state=state,
     clear_fit_results=clear_fit_results,
@@ -177,14 +183,16 @@ def render_training_section(st_obj) -> None:
         state.set("diagnostics_signature", None)
         state.set("forecast", None)
         state.set("forecast_signature", None)
+        state.set("simulation_comparison", None)
+        state.set("simulation_signature", None)
 
     result = state.get("fitted_result")
     if result is None or state.get("fit_signature") != signature:
         return
-    _render_fit_summary(st_obj, result)
+    _render_fit_summary(st_obj, result, model_family=family)
 
 
-def _render_fit_summary(st_obj, result) -> None:
+def _render_fit_summary(st_obj, result, *, model_family: str) -> None:
     """通过通用结果视图展示拟合摘要与关键指标。"""
     view = _MODEL_WORKFLOW.result_view(result)
     selected = render_estimation_result(
@@ -206,7 +214,52 @@ def _render_fit_summary(st_obj, result) -> None:
             selection_key="sarimax_auto_selection_criterion",
             show_selection=False,
         )
+        if model_family == "SARIMAX":
+            _render_sarimax_simulation_chart(st_obj, result)
         return
+    if model_family == "SARIMAX":
+        _render_sarimax_simulation_chart(st_obj, result)
+
+
+def _render_sarimax_simulation_chart(st_obj, result) -> None:
+    """展示实际建模序列与 TsSims 理论模拟序列的叠加图。"""
+    best = best_result(result)
+    signature = stable_signature(
+        {
+            "fit_signature": state.get("fit_signature"),
+            "seed": _SIMULATION_SEED,
+        }
+    )
+    comparison = state.get("simulation_comparison")
+    if comparison is None or state.get("simulation_signature") != signature:
+        try:
+            with st_obj.spinner("正在调用 TsSims 生成理论模拟序列..."):
+                comparison = build_sarimax_simulation_comparison(
+                    best,
+                    seed=_SIMULATION_SEED,
+                )
+        except Exception as exc:
+            st_obj.warning(f"理论序列模拟图无法绘制：{translate_ts_error(exc)}")
+            logger.warning("SARIMAX 理论模拟图生成失败", exc_info=True)
+            state.set("simulation_comparison", None)
+            state.set("simulation_signature", None)
+            return
+        state.set("simulation_comparison", comparison)
+        state.set("simulation_signature", signature)
+
+    st_obj.markdown("**实际序列与理论模拟序列**")
+    try:
+        with matplotlib_date_compatibility():
+            figure, _ = plot_sarimax_simulation_comparison(comparison)
+            render_pyplot_figure(st_obj, figure)
+    except Exception as exc:
+        st_obj.warning(f"理论序列模拟图无法绘制：{translate_ts_error(exc)}")
+        logger.warning("SARIMAX 理论模拟图绘制失败", exc_info=True)
+        return
+    st_obj.caption(
+        f"单次随机模拟（seed={comparison.seed}）；"
+        f"RMSE={comparison.rmse:.4f}，MAE={comparison.mae:.4f}。"
+    )
 
 
 __all__ = ["render_training_section"]

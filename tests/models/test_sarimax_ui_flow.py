@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import date
 import math
+from datetime import date
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -312,6 +312,19 @@ def test_full_workflow_via_ui(monkeypatch):
     metrics = {element.label: element.value for element in app.metric}
     assert "AIC" in metrics and "BIC" in metrics and "对数似然" in metrics
     assert any("已收敛" in element.value for element in app.success)
+    assert any(
+        element.value == "**实际序列与理论模拟序列**"
+        for element in app.markdown
+    )
+    assert any("seed=42" in element.value for element in app.caption)
+    assert any(
+        "RMSE=" in element.value and "MAE=" in element.value
+        for element in app.caption
+    )
+    assert not any(
+        "理论序列模拟图无法绘制" in element.value
+        for element in app.warning
+    )
 
     forecast_window = _by_key(app.select_slider, "sarimax_forecast_window")
     forecast_start, forecast_end = forecast_window.value
@@ -577,6 +590,9 @@ def test_rdl_manual_and_auto_workflows_via_ui(monkeypatch):
     app.run()
     assert not app.exception
     assert any("有效样本量" in item.value for item in app.success)
+    assert not any(
+        "实际序列与理论模拟序列" in item.value for item in app.markdown
+    )
 
     _by_key(app.segmented_control, "sarimax_config_mode").set_value("自动选阶")
     app.run()
@@ -593,6 +609,9 @@ def test_rdl_manual_and_auto_workflows_via_ui(monkeypatch):
     assert not app.exception
     _assert_completed_progress(app)
     assert any("最终采用模型" in item.value for item in app.markdown)
+    assert not any(
+        "实际序列与理论模拟序列" in item.value for item in app.markdown
+    )
 
 
 def test_ardl_manual_and_auto_workflows_via_ui(monkeypatch):
@@ -633,6 +652,9 @@ def test_ardl_manual_and_auto_workflows_via_ui(monkeypatch):
     assert not app.exception
     _assert_completed_progress(app)
     assert any("最优 ARDL" in item.value for item in app.markdown)
+    assert not any(
+        "实际序列与理论模拟序列" in item.value for item in app.markdown
+    )
 
 
 def test_data_table_options_via_ui(monkeypatch):
@@ -943,11 +965,11 @@ def test_univariate_overview_starts_at_first_valid_value(monkeypatch):
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
     content = (
-        "date,value\n"
-        "2020-01-01,0\n"
-        "2020-02-01,5\n"
-        "2020-03-01,0\n"
-    ).encode("utf-8")
+        b"date,value\n"
+        b"2020-01-01,0\n"
+        b"2020-02-01,5\n"
+        b"2020-03-01,0\n"
+    )
     app = _open_standalone_univariate_overview(
         app, ("zeros.csv", content, "text/csv")
     )

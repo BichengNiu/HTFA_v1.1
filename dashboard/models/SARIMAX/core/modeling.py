@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -17,19 +18,61 @@ from Ts.TsModels import (
     RationalLagSpec,
     SARIMAXResult,
 )
+from Ts.TsPlots import plot_series
+from Ts.TsSims import simulate_sarimax
 
 from dashboard.models.SARIMAX.core.model_config import (
+    AUTO_CRITERIA,
     ARDLConfig,
     AutoARDLConfig,
     AutoRDLConfig,
     AutoSARIMAXConfig,
-    AUTO_CRITERIA,
     RDLConfig,
     SARIMAXConfig,
 )
 
 MIN_OBSERVATIONS = 10
 ProgressCallback = Callable[[int, int], None]
+
+
+@dataclass(frozen=True)
+class SARIMAXSimulationComparison:
+    """实际建模序列与一次理论模拟路径的对比数据。"""
+
+    actual: np.ndarray
+    theoretical: np.ndarray
+    index: pd.Index
+    seed: int
+
+    def __post_init__(self) -> None:
+        actual = np.asarray(self.actual, dtype=float)
+        theoretical = np.asarray(self.theoretical, dtype=float)
+        if actual.ndim != 1 or theoretical.ndim != 1:
+            raise ValueError("实际序列和理论序列必须是一维数组")
+        if len(actual) != len(theoretical):
+            raise ValueError("实际序列和理论序列长度必须一致")
+        index = pd.Index(self.index).copy()
+        if len(index) != len(actual):
+            raise ValueError("序列索引长度必须与序列长度一致")
+        if not np.all(np.isfinite(actual)) or not np.all(np.isfinite(theoretical)):
+            raise ValueError("实际序列和理论序列必须只包含有限值")
+        if isinstance(self.seed, bool) or not isinstance(self.seed, (int, np.integer)):
+            raise TypeError("seed 必须是整数")
+        object.__setattr__(self, "actual", actual.copy())
+        object.__setattr__(self, "theoretical", theoretical.copy())
+        object.__setattr__(self, "index", index)
+        object.__setattr__(self, "seed", int(self.seed))
+
+    @property
+    def rmse(self) -> float:
+        """返回两条序列的均方根误差。"""
+        return float(np.sqrt(np.mean(np.square(self.actual - self.theoretical))))
+
+    @property
+    def mae(self) -> float:
+        """返回两条序列的平均绝对误差。"""
+        return float(np.mean(np.abs(self.actual - self.theoretical)))
+
 
 # Ts 包英文错误消息 → 用户可读中文提示的映射（按出现顺序匹配）。
 _SARIMAX_ERROR_HINTS = (
@@ -176,6 +219,186 @@ def fit_sarimax(
         method=config.fit_method,
         maxiter=config.maxiter,
         cov_type=config.cov_type,
+    )
+
+
+def _fitted_coefficients(
+    params: Any,
+    prefix: str,
+    count: int,
+    *,
+    seasonal_period: int | None = None,
+) -> list[float]:
+    """读取拟合结果中的连续 AR/MA 参数并校验数值。"""
+    coefficients = []
+    for lag in range(1, count + 1):
+        name = (
+            f"{prefix}.S.L{seasonal_period * lag}"
+            if seasonal_period is not None
+            else f"{prefix}.L{lag}"
+        )
+        try:
+            value = float(params[name])
+        except KeyError as exc:
+            raise ValueError(f"拟合结果缺少参数 {name}") from exc
+        if not np.isfinite(value):
+            raise ValueError(f"拟合参数 {name} 不是有限值")
+        coefficients.append(value)
+    return coefficients
+
+
+def build_sarimax_simulation_comparison(
+    result: Any,
+    *,
+    seed: int = 42,
+) -> SARIMAXSimulationComparison:
+    """根据已估计的纯 SARIMAX 参数生成一条理论模拟路径。
+
+    该函数把拟合结果中的趋势和静态外生变量贡献作为确定性路径，
+    再交给 ``TsSims.simulate_sarimax`` 生成同长度的 SARIMA 随机误差。
+    ``log=True`` 时，模拟过程在 log 尺度完成，最后还原到原始响应尺度。
+
+    Parameters
+    ----------
+    result : SARIMAXResult
+        已拟合的纯 SARIMAX 结果；自动选阶结果应先传入其最佳模型。
+    seed : int, default=42
+        理论模拟路径使用的随机种子；相同拟合结果和种子会产生相同路径。
+
+    Returns
+    -------
+    SARIMAXSimulationComparison
+        包含实际建模序列、理论模拟序列、共同索引和误差指标的对比对象。
+
+    Raises
+    ------
+    ValueError
+        结果不是纯 SARIMAX、参数不完整、序列长度不一致或模拟结果无效时。
+    TypeError
+        ``seed`` 不是整数时。
+    """
+    if getattr(result, "model_type", None) != "SARIMAX":
+        raise ValueError("理论模拟图只支持纯 SARIMAX 模型")
+    if getattr(result, "distributed_lag_names", ()):
+        raise ValueError("理论模拟图不支持带传递函数的 RDL 模型")
+    if isinstance(seed, bool) or not isinstance(seed, (int, np.integer)):
+        raise TypeError("seed 必须是整数")
+
+    order = getattr(result, "order", None)
+    seasonal_order = getattr(result, "seasonal_order", None)
+    if order is None or seasonal_order is None:
+        raise ValueError("拟合结果缺少 SARIMAX 阶数")
+    order = tuple(int(value) for value in order)
+    seasonal_order = tuple(int(value) for value in seasonal_order)
+    if len(order) != 3 or len(seasonal_order) != 4:
+        raise ValueError("拟合结果中的 SARIMAX 阶数格式无效")
+
+    nobs = int(getattr(result, "nobs", 0))
+    actual = np.asarray(getattr(result, "data", None), dtype=float)
+    if nobs <= 0 or actual.ndim != 1 or len(actual) != nobs:
+        raise ValueError("拟合结果的实际序列长度无效")
+    if not np.all(np.isfinite(actual)):
+        raise ValueError("拟合结果的实际序列包含非有限值")
+
+    params = getattr(result, "params", None)
+    if not hasattr(params, "__getitem__"):
+        raise ValueError("拟合结果缺少参数映射")
+    p, _d, q = order
+    P, _D, Q, seasonal_period = seasonal_order
+    ar = _fitted_coefficients(params, "ar", p)
+    ma = _fitted_coefficients(params, "ma", q)
+    seasonal_ar = _fitted_coefficients(
+        params,
+        "ar",
+        P,
+        seasonal_period=seasonal_period,
+    )
+    seasonal_ma = _fitted_coefficients(
+        params,
+        "ma",
+        Q,
+        seasonal_period=seasonal_period,
+    )
+    try:
+        sigma2 = float(params["sigma2"])
+    except KeyError as exc:
+        raise ValueError("拟合结果缺少参数 sigma2") from exc
+    if not np.isfinite(sigma2) or sigma2 <= 0.0:
+        raise ValueError("拟合参数 sigma2 必须是正的有限值")
+
+    deterministic = np.asarray(result.deterministic_component, dtype=float)
+    if deterministic.ndim != 1 or len(deterministic) != nobs:
+        raise ValueError("拟合结果的确定性响应路径长度无效")
+    simulation = simulate_sarimax(
+        n=nobs,
+        order=order,
+        seasonal_order=seasonal_order,
+        ar=ar,
+        ma=ma,
+        seasonal_ar=seasonal_ar,
+        seasonal_ma=seasonal_ma,
+        deterministic=deterministic,
+        sigma2=sigma2,
+        seed=int(seed),
+    )
+    theoretical = np.asarray(simulation.data, dtype=float)
+    if getattr(result, "log", False):
+        with np.errstate(over="ignore", invalid="ignore"):
+            theoretical = np.exp(theoretical)
+    if theoretical.ndim != 1 or len(theoretical) != nobs:
+        raise ValueError("理论模拟序列长度与实际建模序列不一致")
+    if not np.all(np.isfinite(theoretical)):
+        raise ValueError("理论模拟序列包含非有限值")
+
+    dates = getattr(result, "dates", None)
+    if dates is None:
+        index = pd.RangeIndex(1, nobs + 1, name="期数")
+    else:
+        index = pd.DatetimeIndex(pd.to_datetime(dates))
+        if len(index) != nobs or index.isna().any():
+            raise ValueError("拟合结果的日期索引长度无效")
+        index = index.rename("日期")
+    return SARIMAXSimulationComparison(
+        actual=actual,
+        theoretical=theoretical,
+        index=index,
+        seed=int(seed),
+    )
+
+
+def plot_sarimax_simulation_comparison(
+    comparison: SARIMAXSimulationComparison,
+) -> tuple[Any, Any]:
+    """用 TsPlots 绘制实际序列与理论模拟序列的叠加图。
+
+    Parameters
+    ----------
+    comparison : SARIMAXSimulationComparison
+        已生成的实际序列与理论模拟序列对比数据。
+
+    Returns
+    -------
+    tuple
+        ``(figure, axes)`` 形式的 TsPlots 图形对象。
+    """
+    frame = pd.DataFrame(
+        {
+            "实际序列": comparison.actual,
+            "理论模拟序列": comparison.theoretical,
+        },
+        index=comparison.index,
+    )
+    return plot_series(
+        frame,
+        title="实际序列与理论模拟序列",
+        xtitle="",
+        ytitle="",
+        linewidth=2.0,
+        markersize=0,
+        show_legend=True,
+        facet=False,
+        auto_dual_y=False,
+        grid=False,
     )
 
 
@@ -759,8 +982,10 @@ def build_prediction_table(forecast: dict[str, Any]) -> pd.DataFrame:
 __all__ = [
     "MIN_OBSERVATIONS",
     "DynamicConfig",
+    "SARIMAXSimulationComparison",
     "build_auto_sarimax_criterion_table",
     "build_prediction_table",
+    "build_sarimax_simulation_comparison",
     "fit_ardl",
     "fit_auto_ardl",
     "fit_auto_rdl",
@@ -770,6 +995,7 @@ __all__ = [
     "fit_sarimax",
     "format_sarimax_order",
     "future_dates",
+    "plot_sarimax_simulation_comparison",
     "produce_forecast",
     "run_residual_diagnostics",
     "select_auto_sarimax_result",
