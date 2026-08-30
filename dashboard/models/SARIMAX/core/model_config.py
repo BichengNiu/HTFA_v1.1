@@ -29,7 +29,7 @@ RDL_INITIALIZATIONS = ("auto", "zero", "steady_state")
 
 # UI 友好上限（Ts 包本身只要求非负整数）。
 _ORDER_LIMITS = {"p": (0, 6), "q": (0, 6), "d": (0, 2)}
-_SEASONAL_LIMITS = {"P": (0, 3), "Q": (0, 3), "D": (0, 2), "s": (0, 12)}
+_SEASONAL_LIMITS = {"P": (0, 3), "Q": (0, 3), "D": (0, 2), "s": (0, 365)}
 _RANGE_LIMITS = {"p": (0, 6), "q": (0, 6), "d": (0, 2),
                  "P": (0, 3), "Q": (0, 3), "D": (0, 2)}
 SARIMAX_RANGE_LIMITS = _RANGE_LIMITS.copy()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -28,6 +29,7 @@ from dashboard.models.SARIMAX.core.model_config import (
 )
 
 MIN_OBSERVATIONS = 10
+ProgressCallback = Callable[[int, int], None]
 
 # Ts 包英文错误消息 → 用户可读中文提示的映射（按出现顺序匹配）。
 _SARIMAX_ERROR_HINTS = (
@@ -71,11 +73,16 @@ _DIAGNOSTIC_ROWS = (
 
 def translate_ts_error(error: Exception) -> str:
     """把 Ts 包抛出的异常转译为面向用户的中文消息。"""
-    message = str(error)
+    message = str(error).strip()
     for fragment, hint in _SARIMAX_ERROR_HINTS:
         if fragment in message:
             return f"{hint}：{message}"
-    return message
+    if message:
+        return message
+    return (
+        f"{type(error).__name__}：异常未提供详细信息；"
+        "请缩小自动选阶范围后重试，并检查运行日志。"
+    )
 
 
 DynamicConfig = (
@@ -176,8 +183,23 @@ def fit_auto_sarimax(
     series: pd.Series,
     exog: pd.DataFrame | None,
     config: AutoSARIMAXConfig,
+    *,
+    progress_callback: ProgressCallback | None = None,
 ) -> AutoModelResult:
-    """按搜索范围自动选阶并返回 Ts 结果对象。"""
+    """按搜索范围自动选阶并返回 Ts 结果对象。
+
+    Parameters
+    ----------
+    series : pandas.Series
+        目标时间序列。
+    exog : pandas.DataFrame or None
+        可选的外生变量表。
+    config : AutoSARIMAXConfig
+        自动 SARIMAX 配置。
+    progress_callback : callable, optional
+        每完成一个候选模型后，在主进程中调用
+        ``callback(completed, total)``。
+    """
     model = AutoSARIMAX(
         series,
         p=config.p,
@@ -197,7 +219,29 @@ def fit_auto_sarimax(
         enforce_stationarity=config.enforce_stationarity,
         enforce_invertibility=config.enforce_invertibility,
     )
-    return model.fit()
+    return model.fit(progress_callback=progress_callback)
+
+
+def format_sarimax_order(
+    order: tuple[int, int, int],
+    seasonal_order: tuple[int, int, int, int] | None = None,
+) -> str:
+    """将 SARIMAX 阶数格式化为完整的 `(p,d,q)(P,D,Q,S)` 标签。
+
+    Parameters
+    ----------
+    order : tuple[int, int, int]
+        非季节阶数 `(p,d,q)`。
+    seasonal_order : tuple[int, int, int, int] or None, optional
+        季节阶数 `(P,D,Q,S)`；省略时使用无季节项 `(0,0,0,0)`。
+
+    Returns
+    -------
+    str
+        形如 ``SARIMAX(2, 0, 1)(1, 0, 1, 252)`` 的完整模型标签。
+    """
+    seasonal = (0, 0, 0, 0) if seasonal_order is None else tuple(seasonal_order)
+    return f"SARIMAX{tuple(order)}{seasonal}"
 
 
 def build_auto_sarimax_criterion_table(result: AutoModelResult) -> pd.DataFrame:
@@ -222,9 +266,7 @@ def build_auto_sarimax_criterion_table(result: AutoModelResult) -> pd.DataFrame:
             if index < len(result.candidate_seasonal_orders)
             else None
         )
-        label = f"{result.model_type}{order}"
-        if seasonal:
-            label += f" × {seasonal}"
+        label = format_sarimax_order(order, seasonal)
         rows.append(
             {
                 "模型": label,
@@ -243,7 +285,10 @@ def select_auto_sarimax_result(
     result: AutoModelResult,
     criterion: str,
 ) -> AutoModelResult:
-    """按指定信息准则从已有候选结果中选择最终模型，不重新拟合。
+    """按指定信息准则从已有候选结果中选择最终模型。
+
+    并行搜索返回轻量候选摘要时，仅对新选中的阶数重新拟合一次完整
+    SARIMAX；串行搜索仍直接复用已有候选结果。
 
     Parameters
     ----------
@@ -271,8 +316,9 @@ def select_auto_sarimax_result(
         if best_index < len(result.candidate_seasonal_orders)
         else None
     )
+    best_result = result._refit_candidate(best_index)
     return AutoModelResult.from_search(
-        best_result=result.candidate_results[best_index],
+        best_result=best_result,
         best_order=result.candidate_orders[best_index],
         candidate_results=result.candidate_results,
         candidate_orders=result.candidate_orders,
@@ -283,6 +329,9 @@ def select_auto_sarimax_result(
         best_seasonal_order=seasonal,
         candidate_seasonal_orders=result.candidate_seasonal_orders,
         search_messages=result.search_messages,
+        search_metadata=getattr(result, "search_metadata", None),
+        candidate_model_kwargs=result._candidate_model_kwargs,
+        candidate_fit_kwargs=result._candidate_fit_kwargs,
     )
 
 
@@ -330,8 +379,23 @@ def fit_auto_rdl(
     series: pd.Series,
     exog: pd.DataFrame,
     config: AutoRDLConfig,
+    *,
+    progress_callback: ProgressCallback | None = None,
 ) -> AutoModelResult:
-    """仅自动搜索 RDL 的 SARIMAX 误差阶数，传递函数保持固定。"""
+    """仅自动搜索 RDL 的 SARIMAX 误差阶数，传递函数保持固定。
+
+    Parameters
+    ----------
+    series : pandas.Series
+        目标时间序列。
+    exog : pandas.DataFrame
+        外生变量表。
+    config : AutoRDLConfig
+        自动 RDL 配置。
+    progress_callback : callable, optional
+        每完成一个候选模型后，在主进程中调用
+        ``callback(completed, total)``。
+    """
     error = config.error
     model = AutoSARIMAX(
         series,
@@ -354,7 +418,7 @@ def fit_auto_rdl(
         distributed_lags=_rdl_specs(config),
         enforce_distributed_lag_stability=config.enforce_distributed_lag_stability,
     )
-    return model.fit()
+    return model.fit(progress_callback=progress_callback)
 
 
 def fit_ardl(
@@ -382,8 +446,23 @@ def fit_auto_ardl(
     series: pd.Series,
     exog: pd.DataFrame,
     config: AutoARDLConfig,
+    *,
+    progress_callback: ProgressCallback | None = None,
 ) -> AutoARDLResult:
-    """按 AIC/BIC 自动选择标准 ARDL 的目标和逐输入滞后。"""
+    """按 AIC/BIC 自动选择标准 ARDL 的目标和逐输入滞后。
+
+    Parameters
+    ----------
+    series : pandas.Series
+        目标时间序列。
+    exog : pandas.DataFrame
+        外生变量表。
+    config : AutoARDLConfig
+        自动 ARDL 配置。
+    progress_callback : callable, optional
+        每完成一个候选模型后，在主进程中调用
+        ``callback(completed, total)``。
+    """
     model = AutoARDL(
         series,
         maxlag=config.maxlag,
@@ -398,29 +477,62 @@ def fit_auto_ardl(
         hold_back=config.hold_back,
         log=config.log,
     )
-    return model.fit(cov_type=config.cov_type)
+    return model.fit(
+        cov_type=config.cov_type,
+        progress_callback=progress_callback,
+    )
 
 
 def fit_dynamic_model(
     series: pd.Series,
     exog: pd.DataFrame | None,
     config: DynamicConfig,
+    *,
+    progress_callback: ProgressCallback | None = None,
 ):
-    """按模型族和配置方式分发到 Ts 的唯一拟合入口。"""
+    """按模型族和配置方式分发到 Ts 的唯一拟合入口。
+
+    Parameters
+    ----------
+    series : pandas.Series
+        目标时间序列。
+    exog : pandas.DataFrame or None
+        可选的外生变量表；RDL/ARDL 必须提供。
+    config : DynamicConfig
+        SARIMAX、RDL 或 ARDL 配置对象。
+    progress_callback : callable, optional
+        自动选阶时，每完成一个候选模型后在主进程中调用
+        ``callback(completed, total)``；手动模式忽略该回调。
+    """
     if isinstance(config, SARIMAXConfig):
         return fit_sarimax(series, exog, config)
     if isinstance(config, AutoSARIMAXConfig):
-        return fit_auto_sarimax(series, exog, config)
+        return fit_auto_sarimax(
+            series,
+            exog,
+            config,
+            progress_callback=progress_callback,
+        )
     if exog is None:
         raise ValueError("RDL/ARDL 需要解释变量")
     if isinstance(config, RDLConfig):
         return fit_rdl(series, exog, config)
     if isinstance(config, AutoRDLConfig):
-        return fit_auto_rdl(series, exog, config)
+        return fit_auto_rdl(
+            series,
+            exog,
+            config,
+            progress_callback=progress_callback,
+        )
     if isinstance(config, ARDLConfig):
         return fit_ardl(series, exog, config)
     if isinstance(config, AutoARDLConfig):
-        return fit_auto_ardl(series, exog, config)
+        return fit_auto_ardl(
+            series,
+            exog,
+            config,
+            progress_callback=progress_callback,
+        )
     raise TypeError(f"不支持的动态回归配置：{type(config)!r}")
 
 
@@ -456,14 +568,25 @@ def recommended_residual_diagnostic_lags(nobs: int) -> int:
     return min(10, max(1, nobs // 5))
 
 
-def future_dates(result: Any, steps: int) -> pd.DatetimeIndex | None:
-    """基于拟合日期频率推算未来预测日期；无法推断时返回 None。"""
+def future_dates(
+    result: Any,
+    steps: int,
+    fallback_dates: pd.DatetimeIndex | None = None,
+) -> pd.DatetimeIndex | None:
+    """基于拟合日期频率推算未来预测日期；无法推断时返回 None。
+
+    ``fallback_dates`` 用于拟合数据因缺失值而变得不连续时，
+    从原始数据的完整日期列补充推断频率。
+    """
     dates = result.dates
     if dates is None or len(dates) == 0:
         return None
     freq = dates.freq
     if freq is None:
         freq = pd.infer_freq(dates)
+    if freq is None and fallback_dates is not None:
+        fallback = pd.DatetimeIndex(fallback_dates)
+        freq = fallback.freq or pd.infer_freq(fallback)
     if freq is None:
         return None
     offset = pd.tseries.frequencies.to_offset(freq)
@@ -481,6 +604,7 @@ def produce_forecast(
     alpha: float = 0.05,
     dynamic: bool = False,
     future_exog: pd.DataFrame | None = None,
+    future_dates: pd.DatetimeIndex | None = None,
 ) -> dict[str, Any]:
     """对拟合结果预测，返回均值/区间/日期结构。
 
@@ -498,22 +622,29 @@ def produce_forecast(
         传递给 Ts ``predict`` 的动态预测控制。
     future_exog : pandas.DataFrame or None, optional
         从拟合样本末期到 ``end`` 的完整未来外生变量路径。
+    future_dates : pandas.DatetimeIndex or None, optional
+        日期频率无法从拟合样本推断时使用的完整未来日期路径；直接传给 Ts。
 
     Returns
     -------
     dict
         包含 ``mean``、``lower``、``upper``、``dates``、``steps``、``start``、
-        ``end`` 和 ``alpha`` 的预测结构。
+        ``end``、``alpha`` 和 Ts 原始 ``prediction`` 对象的预测结构。
     """
     if not 0.0 < alpha < 1.0:
         raise ValueError("alpha 必须在 (0, 1) 区间内")
 
+    predict_kwargs = {
+        "start": start,
+        "end": end,
+        "dynamic": dynamic,
+        "alpha": alpha,
+        "future_exog": future_exog,
+    }
+    if future_dates is not None:
+        predict_kwargs["future_dates"] = future_dates
     prediction = result.predict(
-        start=start,
-        end=end,
-        dynamic=dynamic,
-        alpha=alpha,
-        future_exog=future_exog,
+        **predict_kwargs,
     )
     mean = np.asarray(prediction.mean, dtype=float)
     lower = np.asarray(prediction.lower, dtype=float)
@@ -523,7 +654,19 @@ def produce_forecast(
         "mean": mean,
         "lower": lower,
         "upper": upper,
-        "dates": _prediction_dates(result, start, end, steps),
+        "prediction": prediction,
+        "future_dates": (
+            None
+            if future_dates is None
+            else pd.DatetimeIndex(future_dates).copy()
+        ),
+        "dates": _prediction_dates(
+            result,
+            start,
+            end,
+            steps,
+            supplied_future_dates=future_dates,
+        ),
         "steps": steps,
         "start": start,
         "end": end,
@@ -536,6 +679,7 @@ def _prediction_dates(
     start: int | str | pd.Timestamp | None,
     end: int | str | pd.Timestamp | None,
     length: int,
+    supplied_future_dates: pd.DatetimeIndex | None = None,
 ) -> pd.DatetimeIndex | None:
     """按 Ts 预测窗口位置还原结果日期。"""
     dates = result.dates
@@ -549,11 +693,22 @@ def _prediction_dates(
         end_pos = start_pos + length - 1 if end is None else int(end)
         if end_pos < len(dates):
             return dates[start_pos : end_pos + 1]
-        future = future_dates(result, end_pos - len(dates) + 1)
+        future = (
+            pd.DatetimeIndex(supplied_future_dates)
+            if supplied_future_dates is not None
+            else future_dates(result, end_pos - len(dates) + 1)
+        )
         if future is None:
             return None
         calendar = dates.append(future)
         return calendar[start_pos : end_pos + 1]
+
+    if supplied_future_dates is not None:
+        calendar = dates.append(pd.DatetimeIndex(supplied_future_dates))
+        start_date = dates[0] if start is None else pd.Timestamp(start)
+        end_date = dates[-1] if end is None else pd.Timestamp(end)
+        selection = calendar[(calendar >= start_date) & (calendar <= end_date)]
+        return pd.DatetimeIndex(selection[:length])
 
     frequency = dates.freq or pd.infer_freq(dates)
     if frequency is None:
@@ -613,6 +768,7 @@ __all__ = [
     "fit_dynamic_model",
     "fit_rdl",
     "fit_sarimax",
+    "format_sarimax_order",
     "future_dates",
     "produce_forecast",
     "run_residual_diagnostics",

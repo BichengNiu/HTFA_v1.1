@@ -13,6 +13,9 @@ from data_overview.core.dataset import OverviewDataset, build_overview_dataset
 from data_overview.core.file_parsing import load_dataframe
 
 from dashboard.models.SARIMAX.core.data_loader import (
+    dataset_time_index,
+    effective_modeling_date_bounds,
+    forecast_sample_dates,
     prepare_modeling_inputs,
 )
 from dashboard.models.SARIMAX.core.model_config import (
@@ -34,6 +37,7 @@ from dashboard.models.SARIMAX.core.modeling import (
     fit_dynamic_model,
     fit_rdl,
     fit_sarimax,
+    format_sarimax_order,
     produce_forecast,
     recommended_residual_diagnostic_lags,
     run_residual_diagnostics,
@@ -65,6 +69,120 @@ def test_prepare_modeling_inputs_uses_datetime_index():
     assert series.index.equals(index)
     assert series.name == "value"
     assert exog is not None and list(exog.columns) == ["x"]
+
+
+def test_forecast_sample_dates_stays_inside_dataset_boundary():
+    """预测样本只返回训练结束日之后的数据集日期，不生成外推日期。"""
+    dataset = dataset_from_csv(
+        b"date,value\n"
+        b"2024-03-01,3.0\n"
+        b"2024-01-01,1.0\n"
+        b"2024-02-01,2.0\n"
+    )
+
+    assert dataset_time_index(dataset).equals(
+        pd.DatetimeIndex(["2024-01-01", "2024-02-01", "2024-03-01"])
+    )
+    assert forecast_sample_dates(dataset, pd.Timestamp("2024-01-15")).equals(
+        pd.DatetimeIndex(["2024-02-01", "2024-03-01"])
+    )
+
+
+def test_forecast_chart_date_adapter_preserves_ts_actual_values():
+    """Date adaptation must not replace Ts' model-aligned Actual y values."""
+    import matplotlib.pyplot as plt
+
+    from dashboard.models.SARIMAX.ui.pages.sections.forecast_section import (
+        _remap_prediction_lines,
+    )
+
+    _, axis = plt.subplots()
+    actual = axis.plot(
+        np.arange(3),
+        np.array([10.0, 20.0, 30.0]),
+        label="Actual",
+    )[0]
+    calendar = pd.DatetimeIndex(["2024-01-01", "2024-02-01", "2024-03-01"])
+
+    _remap_prediction_lines(axis, calendar)
+
+    assert np.array_equal(actual.get_ydata(), np.array([10.0, 20.0, 30.0]))
+    assert len(actual.get_xdata()) == len(calendar)
+    plt.close(actual.figure)
+
+
+def test_forecast_chart_uses_target_ylabel_without_titles():
+    """Forecast chart labels use the target variable and omit both titles."""
+    import matplotlib.pyplot as plt
+
+    from dashboard.models.SARIMAX.ui.pages.sections.forecast_section import (
+        _apply_forecast_axis_labels,
+    )
+
+    _, axis = plt.subplots()
+    axis.set_title("Prediction Results")
+    axis.set_xlabel("Time")
+
+    _apply_forecast_axis_labels(axis, "sales")
+
+    assert axis.get_title() == ""
+    assert axis.get_xlabel() == ""
+    assert axis.get_ylabel() == "sales"
+    plt.close(axis.figure)
+
+
+def test_forecast_chart_autoscales_y_to_selected_date_window(monkeypatch):
+    """Date-window adaptation keeps the forecast y-axis local to the window."""
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import to_rgb
+    from Ts.TsModels._base import PredictResult
+    from Ts.TsPlots.style import GRAY
+
+    import dashboard.models.SARIMAX.ui.pages.sections.forecast_section as section
+
+    calendar = pd.date_range("2024-01-01", periods=4, freq="MS")
+    prediction = PredictResult(
+        mean=np.array([10.0, 11.0]),
+        lower=np.array([9.0, 10.0]),
+        upper=np.array([11.0, 12.0]),
+        is_oos=np.array([False, True]),
+        _full_data=np.array([1000.0, 10.0, 11.0, 2000.0]),
+        _full_fitted=np.array([900.0, 10.5, 11.5, 1900.0]),
+        _full_lower=np.array([800.0, 9.5, 10.5, 1800.0]),
+        _full_upper=np.array([1000.0, 11.5, 12.5, 2000.0]),
+        _start=1,
+    )
+    captured = {}
+    monkeypatch.setattr(
+        section,
+        "render_pyplot_figure",
+        lambda _st_obj, figure, **_kwargs: captured.setdefault("figure", figure),
+    )
+
+    section._render_forecast_chart(
+        SimpleNamespace(),
+        SimpleNamespace(dates=calendar),
+        {"prediction": prediction, "future_dates": None, "dates": calendar[1:3]},
+        dataset=None,
+        target="sales",
+        show_confidence_interval=True,
+    )
+
+    axis = captured["figure"].axes[0]
+    lower, upper = axis.get_ylim()
+    assert lower < 10.0
+    assert upper > 11.5
+    assert upper < 100.0
+    assert len(axis.collections) == 1
+    collection = axis.collections[0]
+    assert np.allclose(collection.get_facecolor()[0][:3], to_rgb(GRAY))
+    vertices = collection.get_paths()[0].vertices
+    x_min, x_max = axis.get_xlim()
+    assert np.all((vertices[:, 0] >= x_min) & (vertices[:, 0] <= x_max))
+    legend_labels = [text.get_text() for text in axis.get_legend().get_texts()]
+    assert "Fitted 95% CI" not in legend_labels
+    assert "Forecast 95% CI" in legend_labels
+    plt.close(axis.figure)
 
 
 def test_prepare_modeling_inputs_sorts_dates_and_keeps_exog_aligned():
@@ -111,6 +229,71 @@ def test_prepare_modeling_inputs_filters_datetime_range_inclusively():
     assert series.tolist() == [2.0, 3.0]
     assert exog is not None and exog.index.equals(expected)
     assert exog["x"].tolist() == [20.0, 30.0]
+
+
+@pytest.mark.parametrize(
+    ("preprocessing", "expected_target", "expected_exog"),
+    [
+        (("去零",), [np.nan, -1.0, 2.0], [10.0, np.nan, -2.0]),
+        (("去负",), [0.0, np.nan, 2.0], [10.0, 0.0, np.nan]),
+        (("去零", "去负"), [np.nan, np.nan, 2.0], [10.0, np.nan, np.nan]),
+    ],
+)
+def test_prepare_modeling_inputs_applies_preprocessing(
+    preprocessing, expected_target, expected_exog
+):
+    """数据预处理将选定的 0/负值转换为缺失并保持目标外生对齐。"""
+    dataset = dataset_from_csv(
+        b"date,value,x\n"
+        b"2024-01-01,0,10\n"
+        b"2024-02-01,-1,0\n"
+        b"2024-03-01,2,-2\n"
+    )
+    original = dataset.frame.copy(deep=True)
+
+    series, exog, index = prepare_modeling_inputs(
+        dataset,
+        "value",
+        ("x",),
+        preprocessing=preprocessing,
+    )
+
+    assert index.equals(series.index)
+    assert series.tolist() == pytest.approx(expected_target, nan_ok=True)
+    assert exog is not None
+    assert exog.index.equals(index)
+    assert exog["x"].tolist() == pytest.approx(expected_exog, nan_ok=True)
+    pd.testing.assert_frame_equal(dataset.frame, original)
+
+
+def test_prepare_modeling_inputs_rejects_unknown_preprocessing():
+    """数据预处理选项必须来自受支持的固定集合。"""
+    dataset = dataset_from_csv(b"value,x\n1,2\n2,3\n")
+
+    with pytest.raises(ValueError, match="数据预处理"):
+        prepare_modeling_inputs(dataset, "value", ("x",), preprocessing=("未知",))
+
+
+def test_effective_modeling_date_bounds_use_common_preprocessed_dates():
+    """训练范围按目标和外生变量预处理后的共同有效日期确定。"""
+    dataset = dataset_from_csv(
+        b"date,value,x\n"
+        b"2024-01-01,0,1\n"
+        b"2024-02-01,10,2\n"
+        b"2024-03-01,11,0\n"
+        b"2024-04-01,12,3\n"
+        b"2024-05-01,-1,4\n"
+        b"2024-06-01,14,5\n"
+    )
+
+    bounds = effective_modeling_date_bounds(
+        dataset,
+        "value",
+        ("x",),
+        preprocessing=("去零", "去负"),
+    )
+
+    assert bounds == (pd.Timestamp("2024-02-01"), pd.Timestamp("2024-06-01"))
 
 
 def test_prepare_modeling_inputs_falls_back_to_range_index():
@@ -187,9 +370,11 @@ def test_auto_sarimax_config_candidate_count_and_validation():
     assert config.enforce_invertibility is False
 
     seasonal = AutoSARIMAXConfig(
-        p=(0, 0), d=(0, 0), q=(0, 0), P=(0, 1), D=(0, 0), Q=(0, 1), s=4
+        p=(0, 0), d=(0, 0), q=(0, 0), P=(0, 1), D=(0, 0), Q=(0, 1), s=252
     )
     assert seasonal.candidate_count() == 4
+    manual_seasonal = SARIMAXConfig(seasonal_order=(1, 0, 1, 252))
+    assert manual_seasonal.seasonal_order == (1, 0, 1, 252)
 
     with pytest.raises(ValueError, match="criterion"):
         AutoSARIMAXConfig(criterion="mdl")
@@ -204,6 +389,16 @@ def test_auto_sarimax_config_candidate_count_and_validation():
         enforce_invertibility=False,
     )
     assert unconstrained.signature()[-2:] == (False, False)
+
+
+def test_format_sarimax_order_includes_complete_seasonal_order():
+    """SARIMAX 结果标签同时显示非季节和季节四元组。"""
+    assert format_sarimax_order((2, 0, 1), (1, 0, 1, 252)) == (
+        "SARIMAX(2, 0, 1)(1, 0, 1, 252)"
+    )
+    assert format_sarimax_order((2, 0, 1)) == (
+        "SARIMAX(2, 0, 1)(0, 0, 0, 0)"
+    )
 
 
 def test_dynamic_regression_configs_capture_all_lag_structure():
@@ -331,6 +526,31 @@ def test_fit_auto_sarimax_small_grid():
     assert len(result.criterion_values) == 4
 
 
+def test_fit_auto_sarimax_searches_all_seasonal_orders_when_period_is_set():
+    """设置 S 后，P/D/Q 的每个组合都进入自动搜索。"""
+    config = AutoSARIMAXConfig(
+        p=(0, 0),
+        d=(0, 0),
+        q=(0, 0),
+        P=(0, 1),
+        D=(0, 1),
+        Q=(0, 1),
+        s=4,
+        trend="n",
+    )
+    result = fit_auto_sarimax(make_series(n=100), None, config)
+
+    assert config.candidate_count() == 8
+    assert result.n_attempted == 8
+    assert len(result.candidate_seasonal_orders) == 8
+    assert set(result.candidate_seasonal_orders) == {
+        (P, D, Q, 4)
+        for P in range(2)
+        for D in range(2)
+        for Q in range(2)
+    }
+
+
 def test_auto_sarimax_criterion_table_and_post_selection():
     result = fit_auto_sarimax(
         make_series(),
@@ -353,6 +573,8 @@ def test_auto_sarimax_criterion_table_and_post_selection():
     expected_index = int(table["BIC"].idxmin())
     assert selected.selection_criterion == "bic"
     assert selected.best_order == result.candidate_orders[expected_index]
+    assert selected.search_metadata == result.search_metadata
+    assert selected.search_metadata["mode"] == "serial"
 
 
 def test_fit_auto_sarimax_passes_stationarity_constraints():
@@ -393,6 +615,7 @@ def test_fit_rdl_and_auto_rdl_keep_transfer_function_fixed():
         ),
     )
     assert tuple(automatic.best_result.distributed_lags) == ("policy",)
+    assert automatic.search_metadata["mode"] == "serial"
 
 
 def test_fit_standard_ardl_manual_auto_and_future_input_path():
@@ -480,6 +703,28 @@ def test_produce_forecast_supports_explicit_window_without_steps_compatibility()
         pd.Timestamp("2026-12-01"),
         pd.Timestamp("2027-01-01"),
     ]
+
+
+def test_produce_forecast_accepts_explicit_dates_for_irregular_model_dates():
+    """缺失值导致日期不连续时，预测可使用外部推断出的未来日历。"""
+    dates = pd.date_range("2020-01-01", periods=20, freq="MS")
+    values = np.arange(20.0)
+    values[[2, 5, 9]] = np.nan
+    result = fit_sarimax(
+        pd.Series(values, index=dates),
+        None,
+        SARIMAXConfig(order=(1, 0, 0), trend="n"),
+    )
+    forecast_dates = pd.date_range("2021-09-01", periods=3, freq="MS")
+
+    forecast = produce_forecast(
+        result,
+        start=result.nobs,
+        end=result.nobs + 2,
+        future_dates=forecast_dates,
+    )
+
+    assert list(forecast["dates"]) == list(forecast_dates)
 
 
 def test_future_exog_path_is_prefilled_from_dataset():
@@ -594,6 +839,14 @@ def test_translate_ts_error_maps_known_fragments():
     assert "未收敛" in message
 
     assert translate_ts_error(ValueError("unknown failure")) == "unknown failure"
+
+
+def test_translate_ts_error_never_returns_an_empty_message():
+    """无消息异常也必须给 UI 返回可读的失败原因。"""
+    message = translate_ts_error(MemoryError())
+
+    assert "MemoryError" in message
+    assert message
 
 
 def test_validate_fit_inputs_reports_user_problems():

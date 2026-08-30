@@ -139,8 +139,30 @@ def _dynamic_sample_csv() -> tuple[str, bytes, str]:
     return "dynamic.csv", frame.to_csv(index=False).encode("utf-8"), "text/csv"
 
 
+def _preprocessed_range_csv() -> tuple[str, bytes, str]:
+    """生成首尾值会被默认预处理规则排除的日期数据。"""
+    content = (
+        "date,value\n"
+        "2020-01-01,0\n"
+        "2020-02-01,10\n"
+        "2020-03-01,11\n"
+        "2020-04-01,12\n"
+        "2020-05-01,-1\n"
+        "2020-06-01,14\n"
+    )
+    return "preprocessed-range.csv", content.encode("utf-8"), "text/csv"
+
+
 def _by_key(elements, key: str):
     return next(element for element in elements if element.key == key)
+
+
+def _assert_completed_progress(app) -> None:
+    """断言自动选阶页面保留已完成的候选评估进度条。"""
+    progress = app.get("progress")
+    assert len(progress) == 1
+    assert progress[0].value == 100
+    assert "候选模型评估完成" in progress[0].text
 
 
 class _FakeTrendSelector:
@@ -172,6 +194,87 @@ def test_trend_multiselect_maps_to_ts_code(selected, expected):
     assert widget.kwargs["options"] == ("常数项", "线性趋势")
 
 
+def test_dynamic_regression_data_input_skips_preview(monkeypatch):
+    """动态回归数据区只显示读取设置，随后进入模型训练。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
+    _prepare_model_app(app, _sample_csv())
+
+    assert not app.exception
+    _by_key(app.number_input, "sarimax_model_preview_variable_name_row")
+    _by_key(app.number_input, "sarimax_model_preview_data_start_row")
+    _by_key(app.selectbox, "sarimax_model_preview_time_column")
+    _by_key(app.selectbox, "sarimax_target_select")
+    _by_key(app.multiselect, "sarimax_exog_select")
+
+    assert not any(
+        element.key == "sarimax_model_preview_vars" for element in app.multiselect
+    )
+    assert not any(
+        element.key.startswith("sarimax_model_table_")
+        for element in app.selectbox
+    )
+    assert not any(
+        element.key == "sarimax_model_preview_title" for element in app.text_input
+    )
+    assert not app.dataframe
+
+
+def test_training_preprocessing_selector(monkeypatch):
+    """训练区提供可多选的去零和去负预处理参数。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
+    _prepare_model_app(app, _dynamic_sample_csv())
+
+    preprocessing = _by_key(app.multiselect, "sarimax_data_preprocessing")
+    assert tuple(preprocessing.options) == ("去零", "去负")
+    assert preprocessing.value == ["去零", "去负"]
+
+
+def test_train_forecast_slider_uses_preprocessed_dates(monkeypatch):
+    """训练滑轨边界取预处理后的共同有效日期。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
+    _prepare_model_app(app, _preprocessed_range_csv())
+
+    sample_window = _by_key(app.slider, "sarimax_train_forecast_window")
+    assert pd.to_datetime(sample_window.min, unit="us").date() == date(2020, 2, 1)
+    assert pd.to_datetime(sample_window.max, unit="us").date() == date(2020, 6, 1)
+    assert tuple(
+        pd.to_datetime(value, unit="us").date() for value in sample_window.value
+    ) == (date(2020, 2, 1), date(2020, 6, 1))
+    assert not app.date_input
+
+
+def test_training_requires_a_valid_time_column(monkeypatch):
+    """不选择时间列时训练区报错，而不是静默隐藏时间范围。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
+    _prepare_model_app(app, _sample_csv())
+
+    time_column = _by_key(
+        app.selectbox,
+        "sarimax_model_preview_time_column",
+    )
+    time_column.set_value("无")
+    app.run()
+
+    assert not app.exception
+    assert any("没有找到有效时间列" in element.value for element in app.error)
+    assert not app.date_input
+    assert not any(
+        element.key == "sarimax_fit_button" for element in app.button
+    )
+
+
 def test_full_workflow_via_ui(monkeypatch):
     from streamlit.testing.v1 import AppTest
 
@@ -181,15 +284,21 @@ def test_full_workflow_via_ui(monkeypatch):
     assert not app.exception
     assert app.tabs[0].label == "动态回归模型"
     title_texts = " ".join(element.value for element in app.markdown)
-    assert "数据文件" in title_texts
-    assert "① 模型训练" in title_texts
-    assert "② 残差诊断" in title_texts
-    assert "③ 模型预测" in title_texts
+    assert "数据文件" not in title_texts
+    assert "① 模型训练" not in title_texts
+    assert "② 残差诊断" not in title_texts
+    assert "③ 模型预测" not in title_texts
     assert not app.sidebar.file_uploader
     assert any(
         element.key == "model_analysis.sarimax.upload.uploader"
         for element in app.file_uploader
     )
+    sample_window = _by_key(app.slider, "sarimax_train_forecast_window")
+    train_start, train_end = (
+        pd.to_datetime(value, unit="us").date()
+        for value in sample_window.value
+    )
+    assert date(2020, 1, 1) <= train_start <= train_end < date(2024, 12, 1)
 
     # ① 模型训练：默认手动配置 (1,0,1)，拟合按钮可用并执行
     fit_button = _by_key(app.button, "sarimax_fit_button")
@@ -199,9 +308,33 @@ def test_full_workflow_via_ui(monkeypatch):
     fit_button.click()
     app.run()
     assert not app.exception
+    assert not app.get("progress")
     metrics = {element.label: element.value for element in app.metric}
     assert "AIC" in metrics and "BIC" in metrics and "对数似然" in metrics
     assert any("已收敛" in element.value for element in app.success)
+
+    forecast_window = _by_key(app.select_slider, "sarimax_forecast_window")
+    forecast_start, forecast_end = forecast_window.value
+    assert forecast_start == train_start
+    assert forecast_end <= train_end
+    assert date(2025, 12, 1).isoformat() in forecast_window.options
+    assert not any(
+        element.key == "sarimax_forecast_oos_steps" for element in app.number_input
+    )
+    assert not _by_key(app.checkbox, "sarimax_forecast_ci").value
+    assert not any(
+        element.key == "sarimax_forecast_alpha" for element in app.radio
+    )
+    assert not any(
+        element.key == "sarimax_forecast_alpha" for element in app.selectbox
+    )
+    assert _by_key(app.checkbox, "sarimax_forecast_dynamic").label == "动态预测"
+
+    _by_key(app.checkbox, "sarimax_forecast_ci").set_value(True)
+    app.run()
+    assert not app.exception
+    assert _by_key(app.checkbox, "sarimax_forecast_ci").value
+    assert _by_key(app.radio, "sarimax_forecast_alpha").value == 0.05
 
     # ② 残差诊断：模型估计后按建议滞后阶数自动执行。
     assert not app.exception
@@ -210,24 +343,72 @@ def test_full_workflow_via_ui(monkeypatch):
     assert not any(element.key == "sarimax_diag_lags" for element in app.number_input)
     assert any(element.key == "sarimax_diag_download" for element in app.download_button)
 
-    # ③ 模型预测：生成预测后出现预测表与下载按钮
+    # ③ 模型预测：默认范围为训练样本，可显式扩展到样本外。
     forecast_button = _by_key(app.button, "sarimax_forecast_button")
     assert not forecast_button.disabled
     forecast_button.click()
     app.run()
     assert not app.exception
-    assert any(
-        list(element.value.columns) == ["日期", "预测值", "下界", "上界"]
-        or list(element.value.columns) == ["期数", "预测值", "下界", "上界"]
+    forecast_table = next(
+        element.value
         for element in app.dataframe
+        if list(element.value.columns)
+        == ["日期", "真实值", "预测值", "预测下界", "预测上界"]
     )
-    assert any(
-        element.key == "sarimax_forecast_download" for element in app.download_button
+    forecast_end = date.fromisoformat(forecast_table["日期"].iloc[0])
+    forecast_start = date.fromisoformat(forecast_table["日期"].iloc[-1])
+    assert forecast_end == _by_key(app.select_slider, "sarimax_forecast_window").value[1]
+    assert (
+        forecast_start
+        == _by_key(app.select_slider, "sarimax_forecast_window").value[0]
     )
+    assert forecast_end >= forecast_start
+    assert any("训练样本区间" in element.value for element in app.caption)
+    assert any("当前预测区间" in element.value for element in app.caption)
+    assert not any("2082" in element.value for element in app.caption)
+    assert not any("预测图无法绘制" in element.value for element in app.warning)
+    download = _by_key(app.download_button, "sarimax_forecast_download")
+    assert download.label == "下载结果"
 
 
-def test_training_time_range_limits_fit_and_invalidates_result(monkeypatch):
-    """训练范围仅传入所选样本，修改后不保留旧拟合结果。"""
+def test_forecast_window_can_extend_out_of_sample(monkeypatch):
+    """预测滑轨可直接选择训练区间外日期。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
+    _prepare_model_app(app, _sample_csv())
+
+    _by_key(app.slider, "sarimax_train_forecast_window").set_value(
+        (date(2020, 1, 1), date(2023, 12, 1))
+    )
+    app.run()
+    _by_key(app.button, "sarimax_fit_button").click()
+    app.run()
+    assert not app.exception
+
+    forecast_window = _by_key(app.select_slider, "sarimax_forecast_window")
+    forecast_start = forecast_window.value[1]
+    forecast_window.set_value((forecast_start, date(2025, 2, 1)))
+    app.run()
+    assert not app.exception
+
+    _by_key(app.button, "sarimax_forecast_button").click()
+    app.run()
+    assert not app.exception
+    forecast_table = next(
+        element.value
+        for element in app.dataframe
+        if list(element.value.columns)
+        == ["日期", "真实值", "预测值", "预测下界", "预测上界"]
+    )
+    assert date.fromisoformat(forecast_table["日期"].iloc[0]) == date(2025, 2, 1)
+    assert date.fromisoformat(forecast_table["日期"].iloc[-1]) == forecast_start
+    assert not any("预测图无法绘制" in element.value for element in app.warning)
+
+
+def test_training_slider_limits_fit_and_invalidates_result(monkeypatch):
+    """训练滑轨仅传入所选样本，修改后不保留旧拟合结果。"""
     from streamlit.testing.v1 import AppTest
 
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
@@ -235,7 +416,7 @@ def test_training_time_range_limits_fit_and_invalidates_result(monkeypatch):
     _prepare_model_app(app, _dynamic_sample_csv())
     assert not app.exception
 
-    time_range = _by_key(app.date_input, "sarimax_training_time_range")
+    time_range = _by_key(app.slider, "sarimax_train_forecast_window")
     time_range.set_value((date(2021, 1, 1), date(2023, 12, 1)))
     app.run()
     assert not app.exception
@@ -244,6 +425,11 @@ def test_training_time_range_limits_fit_and_invalidates_result(monkeypatch):
     app.run()
     assert not app.exception
     assert any(metric.label == "AIC" for metric in app.metric)
+
+    _by_key(app.multiselect, "sarimax_data_preprocessing").set_value(["去零"])
+    app.run()
+    assert not app.exception
+    assert not any(metric.label == "AIC" for metric in app.metric)
 
     response_log = _by_key(app.checkbox, "sarimax_response_log")
     response_log.set_value(True)
@@ -256,7 +442,7 @@ def test_training_time_range_limits_fit_and_invalidates_result(monkeypatch):
     assert not app.exception
     assert any(metric.label == "AIC" for metric in app.metric)
 
-    _by_key(app.date_input, "sarimax_training_time_range").set_value(
+    _by_key(app.slider, "sarimax_train_forecast_window").set_value(
         (date(2022, 1, 1), date(2023, 12, 1))
     )
     app.run()
@@ -273,7 +459,7 @@ def test_forecast_prefills_future_exog_from_dataset(monkeypatch):
     _prepare_model_app(app, _dynamic_sample_csv())
 
     _by_key(app.multiselect, "sarimax_exog_select").set_value(["policy"])
-    _by_key(app.date_input, "sarimax_training_time_range").set_value(
+    _by_key(app.slider, "sarimax_train_forecast_window").set_value(
         (date(2020, 1, 1), date(2023, 12, 1))
     )
     app.run()
@@ -281,6 +467,10 @@ def test_forecast_prefills_future_exog_from_dataset(monkeypatch):
     app.run()
 
     assert not app.exception
+    _by_key(app.select_slider, "sarimax_forecast_window").set_value(
+        (date(2023, 12, 1), date(2024, 12, 1))
+    )
+    app.run()
     source = _by_key(app.selectbox, "sarimax_future_exog_source_0")
     assert source.value == "policy"
     assert not any("还有" in warning.value for warning in app.warning)
@@ -290,7 +480,8 @@ def test_forecast_prefills_future_exog_from_dataset(monkeypatch):
     app.run()
     assert not app.exception
     assert any(
-        list(element.value.columns) == ["日期", "预测值", "下界", "上界"]
+        list(element.value.columns)
+        == ["日期", "真实值", "预测值", "预测下界", "预测上界"]
         for element in app.dataframe
     )
 
@@ -308,6 +499,7 @@ def test_auto_mode_workflow_via_ui(monkeypatch):
     _by_key(app.segmented_control, "sarimax_config_mode").set_value("自动选阶")
     app.run()
     assert not app.exception
+    assert _by_key(app.number_input, "sarimax_auto_s").max == 365
     _by_key(app.slider, "sarimax_auto_p_range").set_value((0, 1))
     _by_key(app.slider, "sarimax_auto_q_range").set_value((0, 1))
     _by_key(app.slider, "sarimax_auto_d_range").set_value((0, 0))
@@ -329,12 +521,16 @@ def test_auto_mode_workflow_via_ui(monkeypatch):
         item.value in {"搜索范围", "模型设置"} for item in app.markdown
     )
     assert any("网格搜索将尝试 4 个模型组合" in c.value for c in app.caption)
+    assert any("候选模型按规模自动调度" in c.value for c in app.caption)
 
     fit_button = _by_key(app.button, "sarimax_fit_button")
     assert not fit_button.disabled
     fit_button.click()
     app.run()
     assert not app.exception
+    _assert_completed_progress(app)
+    assert any("候选评估完成" in item.value for item in app.info)
+    assert any("本次候选调度：串行" in c.value for c in app.caption)
     assert any("最终采用模型" in m.value for m in app.markdown)
     criterion_table = next(
         element.value
@@ -342,6 +538,12 @@ def test_auto_mode_workflow_via_ui(monkeypatch):
         if list(element.value.columns) == ["模型", "AIC", "BIC", "HQIC", "AICC"]
     )
     assert len(criterion_table) == 4
+    assert all(")(" in label for label in criterion_table["模型"])
+    assert all("(0, 0, 0, 0)" in label for label in criterion_table["模型"])
+    assert any(
+        "SARIMAX(" in element.value and ")(" in element.value
+        for element in app.markdown
+    )
     _by_key(app.selectbox, "sarimax_auto_selection_criterion").set_value("bic")
     app.run()
     assert not app.exception
@@ -378,6 +580,7 @@ def test_rdl_manual_and_auto_workflows_via_ui(monkeypatch):
 
     _by_key(app.segmented_control, "sarimax_config_mode").set_value("自动选阶")
     app.run()
+    assert any("候选模型按规模自动调度" in item.value for item in app.caption)
     _by_key(app.slider, "sarimax_rdl_auto_error_p_range").set_value((0, 1))
     _by_key(app.slider, "sarimax_rdl_auto_error_d_range").set_value((0, 0))
     _by_key(app.slider, "sarimax_rdl_auto_error_q_range").set_value((0, 0))
@@ -388,6 +591,7 @@ def test_rdl_manual_and_auto_workflows_via_ui(monkeypatch):
     _by_key(app.button, "sarimax_fit_button").click()
     app.run()
     assert not app.exception
+    _assert_completed_progress(app)
     assert any("最终采用模型" in item.value for item in app.markdown)
 
 
@@ -420,12 +624,14 @@ def test_ardl_manual_and_auto_workflows_via_ui(monkeypatch):
 
     _by_key(app.segmented_control, "sarimax_config_mode").set_value("自动选阶")
     app.run()
+    assert any("候选模型按规模自动调度" in item.value for item in app.caption)
     assert _by_key(app.dataframe, "sarimax_auto_ardl_input_table")
     _by_key(app.number_input, "sarimax_auto_ardl_target_lag").set_value(1)
     app.run()
     _by_key(app.button, "sarimax_fit_button").click()
     app.run()
     assert not app.exception
+    _assert_completed_progress(app)
     assert any("最优 ARDL" in item.value for item in app.markdown)
 
 
@@ -471,7 +677,7 @@ def test_data_table_options_via_ui(monkeypatch):
     assert "≠" in filter_op.options
     assert _by_key(app.number_input, "univariate_overview_table_filter_val").label == "值"
     # 月度数据 → 时间筛选按频率渲染为「时间范围」预设下拉
-    # 训练区有一个日期范围控件；预览表的月度时间筛选不额外渲染 date_input。
+    # 训练区有一个样本日期滑轨；预览表的月度时间筛选不额外渲染 date_input。
     _by_key(app.selectbox, "univariate_overview_table_time_preset")
     assert not any(element.key == "univariate_overview_table_view_head" for element in app.checkbox)
     assert not any(element.key == "univariate_overview_table_view_tail" for element in app.checkbox)

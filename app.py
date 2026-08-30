@@ -39,6 +39,13 @@ def main() -> None:
     """渲染侧边栏并路由主内容。"""
 
     inject_cached_styles()
+    if st.query_params.get("view") == "sarimax-model":
+        from dashboard.models.SARIMAX.ui.standalone_model import (
+            render_standalone_sarimax_model,
+        )
+
+        render_standalone_sarimax_model()
+        return
     if is_standalone_data_overview_request():
         render_standalone_data_overview()
         return

@@ -74,6 +74,17 @@ def test_factory_returns_callable():
     assert "dfm_preview_vars" in overview_widget_keys("dfm")
 
 
+def test_data_overview_can_disable_preview():
+    """组件可只处理数据输入，不渲染变量、表格和图形预览。"""
+    component = DataOverview(
+        key_prefix="sarimax_model",
+        state_namespace="model_analysis.sarimax",
+        show_preview=False,
+    )
+
+    assert component.config.show_preview is False
+
+
 def test_two_instances_isolated_keys():
     """双实例（不同前缀）widget 键完全隔离。"""
     a = DataOverview(key_prefix="sarimax", state_namespace="ns.a")

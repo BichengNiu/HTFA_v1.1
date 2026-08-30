@@ -34,6 +34,8 @@ class DataOverviewConfig:
 
     不同实例必须使用不同的 key_prefix 与 state_namespace，
     以避免 widget 键与数据集缓存互相覆盖。
+    ``show_preview=False`` 时仍会完成数据读取和数据集构建，
+    但不渲染变量选择、表格、图表及其高级选项。
     """
 
     key_prefix: str = "sarimax"
@@ -44,6 +46,7 @@ class DataOverviewConfig:
     title: str = "#### ① 数据概览"
     empty_variables_message: str = "数据中没有可用的数值型变量。"
     widget_keys: tuple[str, ...] | None = None
+    show_preview: bool = True
 
 
 class DataOverview:
@@ -80,6 +83,7 @@ def create_data_overview(
     title: str = "#### ① 数据概览",
     empty_variables_message: str = "数据中没有可用的数值型变量。",
     widget_keys: tuple[str, ...] | None = None,
+    show_preview: bool = True,
 ) -> Callable[[Any], None]:
     """创建数据概览渲染函数（工厂式入口）。
 
@@ -90,6 +94,7 @@ def create_data_overview(
             state_namespace="model_analysis.dfm",
             data_source=my_source,          # None=内置上传器
             on_dataset_replaced=clear_model,  # 换文件时清理模型结果
+            show_preview=False,              # 只处理上传和读取设置
         )
         overview(st_obj)   # 渲染整段
     """
@@ -102,6 +107,7 @@ def create_data_overview(
         title=title,
         empty_variables_message=empty_variables_message,
         widget_keys=widget_keys,
+        show_preview=show_preview,
     )
     return component.render
 
@@ -122,12 +128,12 @@ class _StateManager:
 def render_data_overview(
     config: DataOverviewConfig, state: _StateManager, data_source: DataSource, st_obj
 ) -> None:
-    """展示数据集并绘制所选变量的时间序列预览图。
+    """读取数据集并按配置绘制所选变量的时间序列预览图。
 
     第一行：数据上传组件独占一行；
     第二行：工作表、变量名行、时间列和数据开始行；
-    第三行：选择变量独占一行；
-    预览表与时间序列图都受「数据表高级选项」的筛选条件驱动。
+    当 ``show_preview`` 为真时，第三行选择变量并渲染表格、图表和高级选项；
+    为假时只完成数据集构建。
     """
     key_prefix = config.key_prefix
     if config.title:
@@ -309,6 +315,9 @@ def render_data_overview(
         state.set("dataset", dataset)
         if not dataset_changed and config.on_dataset_replaced is not None:
             config.on_dataset_replaced(st_obj)
+
+    if not config.show_preview:
+        return
 
     variables = _numeric_variable_names(dataset)
     if not variables:

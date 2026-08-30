@@ -373,55 +373,14 @@ div.stSidebar[data-testid="stSidebar"][class*="st-emotion-cache"] * {
     visibility: hidden !important;
 }
 
-/* 隐藏主内容区域文件上传器中的黑色方块和tooltip图标 */
+/* 仅隐藏主内容区域文件上传器的tooltip图标 */
 .main .stFileUploader .stTooltipIcon,
 .main .stFileUploader .stTooltipHoverTarget,
 .main .stFileUploader .st-emotion-cache-oj1fi,
 .main [data-testid="stFileUploaderDropzone"] .stTooltipIcon,
 .main [data-testid="stFileUploaderDropzone"] .stTooltipHoverTarget,
 .main [data-testid="stFileUploaderDropzone"] .st-emotion-cache-oj1fi,
-/* 隐藏所有可能的黑色背景元素 */
-.main .stFileUploader div[style*="background-color: rgb(0, 0, 0)"],
-.main .stFileUploader div[style*="background: rgb(0, 0, 0)"],
-.main .stFileUploader div[style*="background-color: black"],
-.main .stFileUploader div[style*="background: black"],
-.main .stFileUploader span[style*="background-color: rgb(0, 0, 0)"],
-.main .stFileUploader span[style*="background: rgb(0, 0, 0)"],
-.main [data-testid="stFileUploaderDropzone"] div[style*="background-color: rgb(0, 0, 0)"],
-.main [data-testid="stFileUploaderDropzone"] div[style*="background: rgb(0, 0, 0)"],
-.main [data-testid="stFileUploaderDropzone"] span[style*="background-color: rgb(0, 0, 0)"],
-.main [data-testid="stFileUploaderDropzone"] span[style*="background: rgb(0, 0, 0)"],
-/* 隐藏可能的图标元素 */
-.main .stFileUploader svg[fill="black"],
-.main .stFileUploader svg[fill="#000000"],
-.main .stFileUploader svg[fill="rgb(0, 0, 0)"],
-.main [data-testid="stFileUploaderDropzone"] svg[fill="black"],
-.main [data-testid="stFileUploaderDropzone"] svg[fill="#000000"],
-.main [data-testid="stFileUploaderDropzone"] svg[fill="rgb(0, 0, 0)"],
-/* 隐藏可能的emotion CSS类生成的黑色元素 */
-.main .stFileUploader [class*="st-emotion-cache"][style*="background-color: rgb(0, 0, 0)"],
-.main .stFileUploader [class*="st-emotion-cache"][style*="background: rgb(0, 0, 0)"],
-.main [data-testid="stFileUploaderDropzone"] [class*="st-emotion-cache"][style*="background-color: rgb(0, 0, 0)"],
-.main [data-testid="stFileUploaderDropzone"] [class*="st-emotion-cache"][style*="background: rgb(0, 0, 0)"] {
-    display: none !important;
-    visibility: hidden !important;
-    opacity: 0 !important;
-}
-
-/* 完全隐藏文件上传器中的所有SVG图标 - 终极解决方案 */
-.stFileUploader svg,
-[data-testid="stFileUploaderDropzone"] svg,
-[data-testid="stFileUploaderFile"] svg,
-.stFileUploader [data-testid="stFileUploaderFile"] svg,
-/* 隐藏文件图标和删除按钮图标 */
-.stFileUploader .st-emotion-cache-10ix4kq svg,
-.stFileUploader .st-emotion-cache-12xsiil svg,
-[data-testid="stFileUploaderFile"] .st-emotion-cache-10ix4kq svg,
-[data-testid="stFileUploaderFile"] .st-emotion-cache-12xsiil svg,
-/* 隐藏所有可能的图标容器 */
-.stFileUploader button svg,
-[data-testid="stFileUploaderFile"] button svg,
-/* 隐藏tooltip和其他装饰性图标 */
+/* 隐藏tooltip，不隐藏文件、添加和删除图标 */
 .stFileUploader .stTooltipIcon,
 .stFileUploader .stTooltipHoverTarget,
 [data-testid="stFileUploaderDropzone"] .stTooltipIcon,
@@ -431,6 +390,38 @@ div.stSidebar[data-testid="stSidebar"][class*="st-emotion-cache"] * {
     opacity: 0 !important;
     width: 0 !important;
     height: 0 !important;
+}
+
+/* 恢复 Streamlit 上传器的文件、添加和删除图标 */
+.stFileUploader svg,
+[data-testid="stFileUploaderDropzone"] svg,
+[data-testid="stFileChip"] svg {
+    display: inline-block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    width: 1.25rem !important;
+    height: 1.25rem !important;
+    fill: currentColor !important;
+}
+
+/* 已上传文件的图标位于深色容器中，使用浅色图标保证对比度 */
+.stFileUploader [data-testid="stFileChip"] > div:first-child svg,
+.stFileUploader .stFileChip > div:first-child svg {
+    color: #ffffff !important;
+    fill: currentColor !important;
+}
+
+/* 已上传文件的图标容器使用中灰色，避免默认深色背景过于突兀 */
+.stFileUploader [data-testid="stFileChip"] > div:first-child,
+.stFileUploader .stFileChip > div:first-child {
+    background-color: #6b7280 !important;
+    color: #ffffff !important;
+}
+
+/* 上传/删除按钮位于浅色背景中，使用黑色图标 */
+.stFileUploader button svg {
+    color: #000000 !important;
+    fill: currentColor !important;
 }
 
 /* 主体样式 - 深沉商务风格 */

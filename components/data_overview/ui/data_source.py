@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+from io import BytesIO
 from typing import Protocol
 
 import pandas as pd
@@ -74,6 +75,26 @@ class BuiltinDataSource:
     def _key(self, name: str) -> str:
         return f"{self.namespace}.upload.{name}"
 
+    def restore_file(
+        self,
+        content: bytes,
+        name: str,
+        *,
+        sheet: str | None = None,
+    ) -> None:
+        """预置一个交接文件，供没有原上传器状态的新会话继续读取。"""
+
+        if not isinstance(content, bytes):
+            raise TypeError("恢复文件内容必须为 bytes")
+        restored_file = BytesIO(content)
+        restored_file.name = str(name)
+        st.session_state[self._key("restored_file")] = restored_file
+        st.session_state[self._key("file")] = restored_file
+        st.session_state[self._key("restored_sheet")] = sheet
+        st.session_state[self._key("sheet")] = sheet
+        for field in ("fingerprint", "sheets", "raw_rows", "data"):
+            st.session_state.pop(self._key(field), None)
+
     def render_uploader(self, st_obj, *, compact: bool = False) -> dict:
         if not compact:
             st_obj.markdown("### 数据文件")
@@ -83,6 +104,13 @@ class BuiltinDataSource:
             key=self._key("uploader"),
             help="CSV / XLSX / XLS；更换文件会重置本组件的分析状态。",
         )
+
+        restored_file = st.session_state.get(self._key("restored_file"))
+        if uploaded_file is None and restored_file is not None:
+            uploaded_file = restored_file
+        elif uploaded_file is not None:
+            st.session_state.pop(self._key("restored_file"), None)
+            st.session_state.pop(self._key("restored_sheet"), None)
 
         if uploaded_file is None:
             for name in (
@@ -108,7 +136,12 @@ class BuiltinDataSource:
             read_error = None
             try:
                 sheets = list_excel_sheets(content, uploaded_file.name)
-                sheet = sheets[0] if sheets else None
+                restored_sheet = st.session_state.get(self._key("restored_sheet"))
+                sheet = (
+                    restored_sheet
+                    if restored_sheet in (sheets or [])
+                    else (sheets[0] if sheets else None)
+                )
                 raw_rows = read_raw_rows(content, uploaded_file.name, sheet_name=sheet)
                 data = build_dataframe_from_rows(raw_rows)
             except FileParseError as exc:

@@ -1,6 +1,9 @@
 """SARIMAX 模型核心逻辑（纯计算，不依赖 streamlit 渲染）。"""
 
 from dashboard.models.SARIMAX.core.data_loader import (
+    dataset_time_index,
+    effective_modeling_date_bounds,
+    forecast_sample_dates,
     prepare_modeling_inputs,
 )
 from dashboard.models.SARIMAX.core.model_config import (
@@ -33,6 +36,7 @@ from dashboard.models.SARIMAX.core.modeling import (
     fit_dynamic_model,
     fit_rdl,
     fit_sarimax,
+    format_sarimax_order,
     future_dates,
     produce_forecast,
     recommended_residual_diagnostic_lags,
@@ -63,6 +67,8 @@ __all__ = [
     "SARIMAXConfig",
     "build_prediction_table",
     "build_auto_sarimax_criterion_table",
+    "dataset_time_index",
+    "effective_modeling_date_bounds",
     "fit_ardl",
     "fit_auto_ardl",
     "fit_auto_rdl",
@@ -70,6 +76,8 @@ __all__ = [
     "fit_dynamic_model",
     "fit_rdl",
     "fit_sarimax",
+    "format_sarimax_order",
+    "forecast_sample_dates",
     "future_dates",
     "prepare_modeling_inputs",
     "produce_forecast",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 import logging
 
 import pandas as pd
@@ -9,7 +10,12 @@ from Ts.TsModels import AutoARDLResult, AutoModelResult
 
 from data_overview.core.dataset import numeric_variable_names
 
-from dashboard.models.SARIMAX.core.data_loader import prepare_modeling_inputs
+from dashboard.models.SARIMAX.core.data_loader import (
+    PREPROCESSING_OPTIONS,
+    dataset_time_index,
+    effective_modeling_date_bounds,
+    prepare_modeling_inputs,
+)
 from dashboard.models.SARIMAX.core.model_config import (
     ARDL_CRITERIA,
     ARDL_SEARCH_METHODS,
@@ -29,6 +35,7 @@ from dashboard.core.workspace import artifact_signature
 from dashboard.models.SARIMAX.core.modeling import (
     build_auto_sarimax_criterion_table,
     fit_dynamic_model,
+    format_sarimax_order,
     select_auto_sarimax_result,
     translate_ts_error,
     validate_fit_inputs,
@@ -52,6 +59,11 @@ _AUTO_RANGE_DEFAULTS = {
 }
 _AUTO_MAX = 200
 _AUTO_SELECTION_DEFAULT = "aic"
+_DEFAULT_FORECAST_SAMPLE_SIZE = 12
+_AUTO_PARALLEL_NOTICE = (
+    "候选模型按规模自动调度：少于 8 个或预计工作量较低时串行；"
+    "其余搜索最多使用 4 个单线程数值进程。"
+)
 _TREND_COMPONENTS = ("常数项", "线性趋势")
 
 
@@ -77,7 +89,6 @@ def _render_trend_selector(st_obj, prefix: str) -> str:
 
 def render_training_section(st_obj) -> None:
     """配置并拟合 SARIMAX、RDL 或标准 ARDL 模型。"""
-    st_obj.markdown("#### ① 模型训练")
     dataset = state.get("dataset")
     if dataset is None:
         st_obj.info(
@@ -88,6 +99,10 @@ def render_training_section(st_obj) -> None:
     variables = numeric_variable_names(dataset.frame)
     if not variables:
         st_obj.error("数据中没有可用的数值型变量。")
+        return
+
+    if dataset.time_column is None:
+        st_obj.error("没有找到有效时间列，请在数据读取设置中选择有效的时间列。")
         return
 
     control_columns = st_obj.columns([1, 1, 2])
@@ -112,7 +127,8 @@ def render_training_section(st_obj) -> None:
         state.set("model_selection", (family, mode))
         clear_fit_results()
 
-    select_columns = st_obj.columns(4)
+    sarimax_family = family == "SARIMAX"
+    select_columns = st_obj.columns(4 if sarimax_family else 5)
     with select_columns[0]:
         target = st_obj.selectbox(
             "目标变量",
@@ -140,35 +156,95 @@ def render_training_section(st_obj) -> None:
         state.set("exog_variables", tuple(exog))
         clear_fit_results()
 
-    time_range = None
-    if dataset.time_column is not None:
-        time_values = pd.to_datetime(dataset.frame[dataset.time_column])
-        date_min = time_values.min().date()
-        date_max = time_values.max().date()
-        with select_columns[2]:
-            selected_range = st_obj.date_input(
-                "训练时间范围",
-                value=(date_min, date_max),
-                min_value=date_min,
-                max_value=date_max,
-                key="sarimax_training_time_range",
-                help="仅使用该闭区间内的观测值拟合模型。",
-            )
-        if not isinstance(selected_range, (tuple, list)) or len(selected_range) != 2:
-            st_obj.warning("请选择完整的训练起始日期和结束日期。")
-            return
-        time_range = tuple(pd.Timestamp(value) for value in selected_range)
-        if time_range != state.get("training_time_range"):
-            state.set("training_time_range", time_range)
-            clear_fit_results()
+    preprocessing = tuple(
+        st_obj.session_state.get(
+            "sarimax_data_preprocessing",
+            PREPROCESSING_OPTIONS,
+        )
+    )
+    if preprocessing != state.get("data_preprocessing", ()):
+        clear_fit_results()
 
-    sarimax_family = family == "SARIMAX"
+    with select_columns[2]:
+        preprocessing = tuple(
+            st_obj.multiselect(
+                "数据预处理",
+                options=PREPROCESSING_OPTIONS,
+                default=list(PREPROCESSING_OPTIONS),
+                key="sarimax_data_preprocessing",
+                help="可多选：去零将 0 值视为缺失，去负将负值视为缺失。",
+            )
+        )
+    if preprocessing != state.get("data_preprocessing", ()):
+        state.set("data_preprocessing", preprocessing)
+        clear_fit_results()
+
+    try:
+        effective_bounds = effective_modeling_date_bounds(
+            dataset,
+            target,
+            tuple(exog),
+            preprocessing=preprocessing,
+        )
+        dataset_dates = dataset_time_index(dataset)
+    except Exception as exc:  # noqa: BLE001 - 用户可读的数据准备边界
+        st_obj.error(f"数据准备失败：{exc}")
+        return
+    if effective_bounds is None or dataset_dates is None or len(dataset_dates) == 0:
+        st_obj.error("当前变量和数据预处理规则下没有有效观测值。")
+        return
+
+    effective_start, effective_end = effective_bounds
+    modeling_dates = dataset_dates[
+        (dataset_dates >= effective_start) & (dataset_dates <= effective_end)
+    ]
+    date_min, date_max = effective_start.date(), effective_end.date()
+    if len(modeling_dates) > _DEFAULT_FORECAST_SAMPLE_SIZE:
+        default_train_end = modeling_dates[-_DEFAULT_FORECAST_SAMPLE_SIZE - 1].date()
+    else:
+        default_train_end = date_max
+    default_range = (date_min, default_train_end)
+    existing_range = st_obj.session_state.get("sarimax_train_forecast_window")
+    try:
+        existing_range = tuple(
+            pd.Timestamp(value).date() for value in existing_range
+        )
+    except (TypeError, ValueError):
+        existing_range = ()
+    if (
+        len(existing_range) == 2
+        and date_min <= existing_range[0] <= existing_range[1] <= date_max
+    ):
+        range_value = existing_range
+    else:
+        range_value = default_range
+    with st_obj.container():
+        selected_range = st_obj.slider(
+            "训练样本范围（日期）",
+            min_value=date_min,
+            max_value=date_max,
+            value=range_value,
+            step=timedelta(days=1),
+            format="YYYY-MM-DD",
+            key="sarimax_train_forecast_window",
+            help=(
+                "左端和右端定义训练样本闭区间；预测区间请在模型拟合后"
+                "通过预测页滑轨单独设置。"
+            ),
+        )
+    if not isinstance(selected_range, (tuple, list)) or len(selected_range) != 2:
+        st_obj.warning("请选择完整的训练起始日期和结束日期。")
+        return
+    time_range = tuple(pd.Timestamp(value) for value in selected_range)
+    if time_range != state.get("training_time_range"):
+        state.set("training_time_range", time_range)
+        clear_fit_results()
     if sarimax_family:
         response_log = bool(
             st_obj.session_state.get("sarimax_response_log", False)
         )
     else:
-        with select_columns[3]:
+        with select_columns[4]:
             response_log = st_obj.checkbox(
                 "目标变量取对数",
                 key="sarimax_response_log",
@@ -181,6 +257,7 @@ def render_training_section(st_obj) -> None:
             target,
             tuple(exog),
             time_range=time_range,
+            preprocessing=preprocessing,
         )
     except Exception as exc:  # noqa: BLE001 - 用户可读的数据准备边界
         st_obj.error(f"数据准备失败：{exc}")
@@ -230,6 +307,7 @@ def render_training_section(st_obj) -> None:
                 if time_range is not None
                 else None
             ),
+            "preprocessing": preprocessing,
             "response_log": response_log,
             "config": config.signature(),
         },
@@ -241,10 +319,51 @@ def render_training_section(st_obj) -> None:
         disabled=bool(problems),
         key="sarimax_fit_button",
     ):
+        is_automatic = isinstance(
+            config,
+            (AutoSARIMAXConfig, AutoRDLConfig, AutoARDLConfig),
+        )
+        progress_bar = (
+            st_obj.progress(0.0, text="正在准备候选模型评估...")
+            if is_automatic
+            else None
+        )
+        progress_state = {"completed": 0, "total": 0}
+
+        def update_progress(completed: int, total: int) -> None:
+            """在主进程中更新自动选阶进度，不进入候选 worker。"""
+            progress_state["completed"] = completed
+            progress_state["total"] = total
+            if progress_bar is not None:
+                progress_bar.progress(
+                    completed / max(total, 1),
+                    text=f"正在评估候选模型：{completed}/{total}",
+                )
+
         with st_obj.spinner("正在调用 Ts 包拟合模型..."):
             try:
-                result = fit_dynamic_model(series, exog, config)
+                result = fit_dynamic_model(
+                    series,
+                    exog,
+                    config,
+                    progress_callback=update_progress if is_automatic else None,
+                )
+                if progress_bar is not None:
+                    progress_bar.progress(
+                        1.0,
+                        text=(
+                            "候选模型评估完成，正在整理最优模型结果。"
+                        ),
+                    )
             except Exception as exc:
+                if progress_bar is not None and progress_state["total"]:
+                    progress_bar.progress(
+                        progress_state["completed"] / progress_state["total"],
+                        text=(
+                            "候选模型评估中断："
+                            f"{progress_state['completed']}/{progress_state['total']}"
+                        ),
+                    )
                 st_obj.error(translate_ts_error(exc))
                 logger.exception("SARIMAX 模型拟合失败")
                 clear_fit_results()
@@ -279,10 +398,10 @@ def _render_manual_config(
     s = seasonal_columns[3].number_input(
         "s（季节周期）",
         0,
-        12,
+        365,
         0,
         key=f"{prefix}_s",
-        help="季节周期长度；0 表示无季节项（如月度数据可填 12）。",
+        help="季节周期长度；0 表示无季节项（日度数据可填 5、21、63 或 252）。",
     )
 
     (
@@ -336,9 +455,9 @@ def _render_auto_config(
     with layout_columns[1]:
         trend = _render_trend_selector(st_obj, prefix)
         s = st_obj.number_input(
-            "s（季节周期）", 0, 12, 0,
+            "s（季节周期）", 0, 365, 0,
             key=f"{prefix}_s",
-            help="0 表示不搜索季节项。",
+            help="0 表示不搜索季节项；输入 5、21、63 或 252 可搜索对应交易日周期。",
         )
 
     (
@@ -372,6 +491,7 @@ def _render_auto_config(
         st_obj.error(f"搜索范围设置有误：{exc}")
         return None
     count = config.candidate_count()
+    st_obj.caption(_AUTO_PARALLEL_NOTICE)
     st_obj.caption(f"网格搜索将尝试 {count} 个模型组合。")
     if count > _AUTO_MAX:
         st_obj.warning(
@@ -658,6 +778,7 @@ def _render_ardl_config(
             )
             if search_method == "global":
                 st_obj.warning("全局搜索会枚举滞后子集，变量较多或上限较高时计算量会迅速增加。")
+            st_obj.caption(_AUTO_PARALLEL_NOTICE)
     try:
         pairs = tuple(
             (str(row["变量"]), int(row[label]))
@@ -702,7 +823,15 @@ def _restore_table_state(
 def _render_fit_summary(st_obj, result) -> None:
     """展示拟合摘要与关键指标。"""
     if isinstance(result, AutoModelResult):
+        st_obj.divider()
         st_obj.markdown("**自动选阶结果**")
+        attempted = result.n_attempted or len(result.candidate_results)
+        successful = len(result.candidate_results)
+        st_obj.info(
+            f"候选评估完成：共尝试 {attempted} 个，成功 {successful} 个，"
+            f"失败 {max(0, attempted - successful)} 个。"
+        )
+        _render_auto_schedule_metadata(st_obj, result)
         table = build_auto_sarimax_criterion_table(result)
         st_obj.dataframe(table, width="stretch")
         current_criterion = (
@@ -727,16 +856,19 @@ def _render_fit_summary(st_obj, result) -> None:
             state.set("fitted_result", result)
             clear_downstream_results()
         st_obj.markdown(
-            f"最终采用模型：SARIMAX{result.best_order}"
-            + (
-                f" × {result.best_seasonal_order}"
-                if result.best_seasonal_order
-                else ""
+            "最终采用模型："
+            + format_sarimax_order(
+                result.best_order,
+                result.best_seasonal_order,
             )
             + f"（{result.selection_criterion.upper()} 最小）"
         )
     elif isinstance(result, AutoARDLResult):
+        st_obj.divider()
         st_obj.markdown("**自动选阶结果**")
+        st_obj.info(
+            f"候选评估完成：共评估 {len(result.criterion_table)} 个 ARDL 候选模型。"
+        )
         st_obj.markdown(
             f"最优 ARDL：目标滞后 {result.ar_lags}；"
             f"输入滞后 {result.distributed_lags}"
@@ -768,6 +900,33 @@ def _render_fit_summary(st_obj, result) -> None:
 
     with st_obj.expander("参数摘要", expanded=False):
         st_obj.code(result.summary())
+
+
+def _render_auto_schedule_metadata(st_obj, result: AutoModelResult) -> None:
+    """展示本次自动 SARIMAX 候选调度的会话级审计信息。"""
+    metadata = getattr(result, "search_metadata", {})
+    if not isinstance(metadata, dict):
+        return
+    mode = {"parallel": "并行", "serial": "串行"}.get(
+        metadata.get("mode"),
+        "未知",
+    )
+    reasons = {
+        "bounded_process_parallelism": "满足并行阈值",
+        "candidate_count_below_threshold": "候选数低于并行阈值",
+        "estimated_work_below_threshold": "预计工作量低于并行阈值",
+        "explicit_serial_request": "显式串行请求",
+        "single_available_worker": "仅有一个可用工作进程",
+    }
+    reason = reasons.get(metadata.get("reason"), "未提供")
+    elapsed = metadata.get("elapsed_seconds")
+    elapsed_text = f"{elapsed:.2f} 秒" if isinstance(elapsed, (int, float)) else "未提供"
+    st_obj.caption(
+        "本次候选调度："
+        f"{mode} · {metadata.get('worker_count', '未知')} 个工作进程"
+        f" · {metadata.get('candidate_count', '未知')} 个候选"
+        f" · 耗时 {elapsed_text} · {reason}。"
+    )
 
 
 __all__ = ["render_training_section"]
