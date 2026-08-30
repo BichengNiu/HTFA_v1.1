@@ -22,7 +22,9 @@ from dashboard.models.SARIMAX.core.data_loader import (
     prepare_modeling_inputs,
 )
 from dashboard.models.SARIMAX.core.modeling import (
+    build_sarimax_acf_comparison_table,
     build_sarimax_simulation_comparison,
+    build_sarimax_simulation_summary,
     plot_sarimax_simulation_comparison,
     translate_ts_error,
     validate_fit_inputs,
@@ -39,6 +41,11 @@ logger = logging.getLogger(__name__)
 _MODEL_ADAPTER = DynamicRegressionAdapter()
 _MODEL_WORKFLOW = ModelWorkflow(_MODEL_ADAPTER)
 _SIMULATION_SEED = 42
+_SIMULATION_PATHS_DEFAULT = 500
+_SIMULATION_PATHS_MIN = 50
+_SIMULATION_PATHS_MAX = 2000
+_SIMULATION_CONFIDENCE_LEVEL = 0.95
+_SIMULATION_ACF_LAGS = 10
 _MODEL_INPUTS = ModelInputModule(
     state=state,
     clear_fit_results=clear_fit_results,
@@ -225,43 +232,82 @@ def _render_fit_summary(st_obj, result, *, model_family: str) -> None:
 
 
 def _render_sarimax_simulation_chart(st_obj, result) -> None:
-    """展示实际建模序列与 TsSims 理论模拟序列的叠加图。"""
+    """展示实际序列与多条 TsSims 模拟路径的分布比较。"""
     best = best_result(result)
+    st_obj.markdown("**实际序列与模拟路径分布**")
+    n_paths = int(
+        st_obj.number_input(
+            "模拟路径数",
+            min_value=_SIMULATION_PATHS_MIN,
+            max_value=_SIMULATION_PATHS_MAX,
+            value=_SIMULATION_PATHS_DEFAULT,
+            step=50,
+            key="sarimax_simulation_paths",
+            help=(
+                "每条路径均由估计的 SARIMAX 参数独立生成；增加路径数会使模拟区间"
+                "更稳定，但会增加计算时间。"
+            ),
+        )
+    )
     signature = stable_signature(
         {
             "fit_signature": state.get("fit_signature"),
+            "order": getattr(best, "order", None),
+            "seasonal_order": getattr(best, "seasonal_order", None),
+            "n_paths": n_paths,
             "seed": _SIMULATION_SEED,
+            "confidence_level": _SIMULATION_CONFIDENCE_LEVEL,
+            "acf_lags": _SIMULATION_ACF_LAGS,
         }
     )
     comparison = state.get("simulation_comparison")
     if comparison is None or state.get("simulation_signature") != signature:
         try:
-            with st_obj.spinner("正在调用 TsSims 生成理论模拟序列..."):
+            with st_obj.spinner(
+                f"正在调用 TsSims 生成 {n_paths} 条模拟路径..."
+            ):
                 comparison = build_sarimax_simulation_comparison(
                     best,
+                    n_paths=n_paths,
                     seed=_SIMULATION_SEED,
+                    confidence_level=_SIMULATION_CONFIDENCE_LEVEL,
+                    acf_lags=_SIMULATION_ACF_LAGS,
                 )
         except Exception as exc:
-            st_obj.warning(f"理论序列模拟图无法绘制：{translate_ts_error(exc)}")
-            logger.warning("SARIMAX 理论模拟图生成失败", exc_info=True)
+            st_obj.warning(f"模拟路径比较无法绘制：{translate_ts_error(exc)}")
+            logger.warning("SARIMAX 模拟路径比较生成失败", exc_info=True)
             state.set("simulation_comparison", None)
             state.set("simulation_signature", None)
             return
         state.set("simulation_comparison", comparison)
         state.set("simulation_signature", signature)
 
-    st_obj.markdown("**实际序列与理论模拟序列**")
     try:
         with matplotlib_date_compatibility():
             figure, _ = plot_sarimax_simulation_comparison(comparison)
             render_pyplot_figure(st_obj, figure)
     except Exception as exc:
-        st_obj.warning(f"理论序列模拟图无法绘制：{translate_ts_error(exc)}")
-        logger.warning("SARIMAX 理论模拟图绘制失败", exc_info=True)
+        st_obj.warning(f"模拟路径比较无法绘制：{translate_ts_error(exc)}")
+        logger.warning("SARIMAX 模拟路径比较绘制失败", exc_info=True)
         return
+
     st_obj.caption(
-        f"单次随机模拟（seed={comparison.seed}）；"
-        f"RMSE={comparison.rmse:.4f}，MAE={comparison.mae:.4f}。"
+        f"{comparison.n_paths} 条独立模拟路径（seed={comparison.seed}）；"
+        f"阴影为模拟{comparison.confidence_level:.0%}区间；"
+        f"实际序列逐时覆盖率={comparison.pointwise_coverage:.1%}；"
+        f"ACF（滞后1–{comparison.acf_lags}）覆盖率={comparison.acf_coverage:.1%}。"
+    )
+    st_obj.markdown("**统计量比较**")
+    st_obj.dataframe(
+        build_sarimax_simulation_summary(comparison),
+        hide_index=True,
+        use_container_width=True,
+    )
+    st_obj.markdown("**ACF 比较明细**")
+    st_obj.dataframe(
+        build_sarimax_acf_comparison_table(comparison),
+        hide_index=True,
+        use_container_width=True,
     )
 
 

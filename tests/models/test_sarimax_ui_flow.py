@@ -313,16 +313,46 @@ def test_full_workflow_via_ui(monkeypatch):
     assert not app.success
     assert not any("模型优化状态" in element.value for element in app.markdown)
     assert any(
-        element.value == "**实际序列与理论模拟序列**"
+        element.value == "**实际序列与模拟路径分布**"
         for element in app.markdown
     )
-    assert any("seed=42" in element.value for element in app.caption)
     assert any(
-        "RMSE=" in element.value and "MAE=" in element.value
+        "500 条独立模拟路径" in element.value
+        and "实际序列逐时覆盖率=" in element.value
+        and "ACF（滞后1–10）覆盖率=" in element.value
         for element in app.caption
     )
+    paths_input = _by_key(app.number_input, "sarimax_simulation_paths")
+    assert paths_input.value == 500
+    paths_input.set_value(50)
+    app.run()
+    assert not app.exception
+    assert any("50 条独立模拟路径" in element.value for element in app.caption)
+    assert any(
+        list(element.value.columns)
+        == [
+            "统计量",
+            "实际值",
+            "模拟95%下界",
+            "模拟95%上界",
+            "是否落入模拟区间",
+        ]
+        for element in app.dataframe
+    )
+    assert any(
+        list(element.value.columns)
+        == [
+            "滞后期数",
+            "实际 ACF",
+            "模拟中位数",
+            "模拟95%下界",
+            "模拟95%上界",
+            "是否落入模拟区间",
+        ]
+        for element in app.dataframe
+    )
     assert not any(
-        "理论序列模拟图无法绘制" in element.value
+        "模拟路径比较无法绘制" in element.value
         for element in app.warning
     )
 
@@ -607,7 +637,7 @@ def test_rdl_manual_and_auto_workflows_via_ui(monkeypatch):
     assert not app.metric
     assert not app.success
     assert not any(
-        "实际序列与理论模拟序列" in item.value for item in app.markdown
+        "实际序列与模拟路径分布" in item.value for item in app.markdown
     )
 
     _by_key(app.segmented_control, "sarimax_config_mode").set_value("自动选阶")
@@ -627,7 +657,7 @@ def test_rdl_manual_and_auto_workflows_via_ui(monkeypatch):
     assert not app.metric
     assert not app.success
     assert not any(
-        "实际序列与理论模拟序列" in item.value for item in app.markdown
+        "实际序列与模拟路径分布" in item.value for item in app.markdown
     )
 
 
@@ -671,7 +701,7 @@ def test_ardl_manual_and_auto_workflows_via_ui(monkeypatch):
     assert not app.metric
     assert not app.success
     assert not any(
-        "实际序列与理论模拟序列" in item.value for item in app.markdown
+        "实际序列与模拟路径分布" in item.value for item in app.markdown
     )
 
 

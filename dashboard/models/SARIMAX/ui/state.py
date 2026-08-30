@@ -99,6 +99,7 @@ MODEL_WIDGET_KEYS = (
     "sarimax_future_exog_editor",
     "sarimax_forecast_button",
     "sarimax_forecast_download",
+    "sarimax_simulation_paths",
 )
 
 # SARIMAX 模型页的 Streamlit widget 键。

@@ -29,7 +29,9 @@ from dashboard.models.SARIMAX.core.model_config import (
 from dashboard.models.SARIMAX.core.modeling import (
     build_auto_sarimax_criterion_table,
     build_prediction_table,
+    build_sarimax_acf_comparison_table,
     build_sarimax_simulation_comparison,
+    build_sarimax_simulation_summary,
     fit_ardl,
     fit_auto_ardl,
     fit_auto_rdl,
@@ -70,15 +72,25 @@ def test_sarimax_simulation_comparison_reuses_fit_sample_and_seed():
         SARIMAXConfig(order=(1, 0, 0), trend="c"),
     )
 
-    first = build_sarimax_simulation_comparison(result, seed=123)
-    second = build_sarimax_simulation_comparison(result, seed=123)
+    first = build_sarimax_simulation_comparison(result, n_paths=8, seed=123)
+    second = build_sarimax_simulation_comparison(result, n_paths=8, seed=123)
 
-    assert len(first.actual) == result.nobs == len(first.theoretical)
+    assert len(first.actual) == result.nobs
+    assert first.simulated.shape == (8, result.nobs)
     assert first.index.equals(result.dates.rename("日期"))
     np.testing.assert_array_equal(first.actual, result.data)
-    np.testing.assert_array_equal(first.theoretical, second.theoretical)
-    assert first.rmse >= 0.0
-    assert first.mae >= 0.0
+    np.testing.assert_array_equal(first.simulated, second.simulated)
+    assert 0.0 <= first.pointwise_coverage <= 1.0
+    assert 0.0 <= first.acf_coverage <= 1.0
+    assert first.actual_turning_points >= 0
+    assert list(build_sarimax_simulation_summary(first).columns) == [
+        "统计量",
+        "实际值",
+        "模拟95%下界",
+        "模拟95%上界",
+        "是否落入模拟区间",
+    ]
+    assert len(build_sarimax_acf_comparison_table(first)) == first.acf_lags
 
 
 def test_sarimax_simulation_comparison_includes_static_exog_and_log_back_transform():
@@ -93,11 +105,11 @@ def test_sarimax_simulation_comparison_includes_static_exog_and_log_back_transfo
         SARIMAXConfig(order=(1, 0, 0), trend="n", log=True),
     )
 
-    comparison = build_sarimax_simulation_comparison(result, seed=123)
+    comparison = build_sarimax_simulation_comparison(result, n_paths=8, seed=123)
 
     assert comparison.index.equals(result.dates.rename("日期"))
-    assert np.all(comparison.theoretical > 0.0)
-    assert np.all(np.isfinite(comparison.theoretical))
+    assert np.all(comparison.simulated > 0.0)
+    assert np.all(np.isfinite(comparison.simulated))
 
 
 def test_sarimax_simulation_comparison_rejects_rdl_result():
@@ -115,15 +127,19 @@ def test_sarimax_simulation_comparison_plot_has_two_overlayed_series():
         None,
         SARIMAXConfig(order=(1, 0, 0), trend="c"),
     )
-    comparison = build_sarimax_simulation_comparison(result, seed=123)
+    comparison = build_sarimax_simulation_comparison(result, n_paths=8, seed=123)
 
-    figure, axis = plot_sarimax_simulation_comparison(comparison)
+    figure, axes = plot_sarimax_simulation_comparison(comparison)
+    time_axis, acf_axis = axes
 
-    assert len(axis.lines) == 2
-    assert [line.get_label() for line in axis.lines] == [
+    assert len(time_axis.lines) == 2
+    assert [line.get_label() for line in time_axis.lines] == [
         "实际序列",
-        "理论模拟序列",
+        "模拟中位数",
     ]
+    assert len(time_axis.collections) == 1
+    assert len(acf_axis.lines) == 3
+    assert len(acf_axis.collections) == 1
     plt.close(figure)
 
 
