@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dashboard.core.ui.utils.state_helpers import NamespacedStateManager
+from dashboard.models.common.state import ModelStateLifecycle
 
 # 所有 SARIMAX 页面共用的会话状态命名空间。
 state = NamespacedStateManager("model_analysis.sarimax")
@@ -130,31 +131,33 @@ RESULT_KEYS = (
     "forecast_signature",
 )
 
-
-def clear_fit_results() -> None:
-    """清除全部拟合与派生结果（参数变化时调用）。"""
-    for key in RESULT_KEYS:
-        state.set(key, None)
-
-
-def clear_downstream_results() -> None:
-    """清除当前模型选择之后的诊断与预测结果。"""
-    for key in (
+_STATE_LIFECYCLE = ModelStateLifecycle(
+    store=state,
+    fit_result_keys=("fitted_result", "fit_signature"),
+    downstream_result_keys=(
         "diagnostics_table",
         "diagnostics_signature",
         "forecast",
         "forecast_signature",
-    ):
-        state.set(key, None)
+        "forecast_widget_fit_signature",
+    ),
+    widget_keys=WIDGET_KEYS,
+)
+
+
+def clear_fit_results() -> None:
+    """清除全部拟合与派生结果（参数变化时调用）。"""
+    _STATE_LIFECYCLE.clear_fit_results()
+
+
+def clear_downstream_results() -> None:
+    """清除当前模型选择之后的诊断与预测结果。"""
+    _STATE_LIFECYCLE.clear_downstream_results()
 
 
 def clear_widget_state(st_obj, keys: tuple[str, ...] = WIDGET_KEYS) -> None:
     """删除指定 Streamlit widget 的会话值，避免旧值残留。"""
-    session = getattr(st_obj, "session_state", None)
-    if session is None:
-        return
-    for key in keys:
-        session.pop(key, None)
+    _STATE_LIFECYCLE.clear_widget_state(st_obj, keys=keys)
 
 
 __all__ = [

@@ -7,25 +7,30 @@ import logging
 
 import numpy as np
 import pandas as pd
-from Ts.TsModels import AutoARDLResult, AutoModelResult
 
 from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
 from dashboard.core.ui.utils.matplotlib_compat import matplotlib_date_compatibility
 from dashboard.core.workspace import stable_signature
 from data_overview.core.dataset import numeric_variable_names
+from dashboard.models.common.contracts import ForecastRequest, ForecastResult
+from dashboard.models.common.ui.forecast_view import render_forecast_result
 from dashboard.models.SARIMAX.core.data_loader import (
     dataset_time_index,
     forecast_sample_dates,
 )
 from dashboard.models.SARIMAX.core.modeling import (
-    build_prediction_table,
     future_dates,
-    produce_forecast,
     translate_ts_error,
 )
+from dashboard.models.SARIMAX.core.adapters import (
+    DynamicRegressionAdapter,
+    best_result,
+)
+from dashboard.models.common.workflow import ModelWorkflow
 from dashboard.models.SARIMAX.ui.state import state
 
 logger = logging.getLogger(__name__)
+_MODEL_WORKFLOW = ModelWorkflow(DynamicRegressionAdapter())
 
 MAX_FORECAST_EXTENSION = 12
 _FORECAST_ALPHA_OPTIONS = (0.01, 0.05, 0.10)
@@ -37,11 +42,7 @@ def render_forecast_section(st_obj) -> None:
     if result is None:
         st_obj.info("完成模型训练后可生成样本外预测。")
         return
-    best = (
-        result.best_result
-        if isinstance(result, (AutoModelResult, AutoARDLResult))
-        else result
-    )
+    best = best_result(result)
     family = state.get("model_selection", ("SARIMAX", "手动配置"))[0]
     dataset = state.get("dataset")
 
@@ -187,14 +188,16 @@ def render_forecast_section(st_obj) -> None:
     ):
         try:
             with st_obj.spinner("正在调用 Ts 包生成预测..."):
-                forecast = produce_forecast(
-                    best,
-                    alpha=float(alpha),
-                    dynamic=bool(dynamic),
-                    future_exog=future_exog,
-                    future_dates=future_dates_for_model,
-                    start=start,
-                    end=end,
+                forecast = _MODEL_WORKFLOW.forecast(
+                    result,
+                    ForecastRequest(
+                        start=start,
+                        end=end,
+                        alpha=float(alpha),
+                        dynamic=bool(dynamic),
+                        future_exog=future_exog,
+                        future_dates=future_dates_for_model,
+                    ),
                 )
         except Exception as exc:
             st_obj.error(translate_ts_error(exc))
@@ -207,27 +210,13 @@ def render_forecast_section(st_obj) -> None:
     if forecast is None or state.get("forecast_signature") != signature:
         return
 
-    table = build_prediction_table(forecast)
-    table.insert(
-        0,
-        "真实值",
-        _actual_values_for_dates(
-            dataset,
-            state.get("target_variable"),
-            table.index,
-        ),
+    target = state.get("target_variable")
+    actual_values = (
+        _actual_values_for_dates(dataset, target, forecast.dates)
+        if forecast.dates is not None
+        else None
     )
-    table = table.rename(
-        columns={"下界": "预测下界", "上界": "预测上界"}
-    ).sort_index(ascending=False)
-    # 日期索引转为字符串列显示：Streamlit 1.61 前端 statistics 对
-    # datetime 列存在单位换算 bug（min 显示为错误年份），字符串列走
-    # 文本统计显示正确日期；CSV 下载仍用原始表格（保留日期类型）。
-    display = table.reset_index()
-    if "日期" in display.columns:
-        display["日期"] = display["日期"].dt.strftime("%Y-%m-%d")
-    st_obj.markdown("**预测结果**")
-    st_obj.caption(
+    caption = (
         "训练样本区间："
         f"{model_dates[0].date().isoformat()} 至 "
         f"{training_end_option.isoformat()}；当前预测区间："
@@ -236,22 +225,26 @@ def render_forecast_section(st_obj) -> None:
         f"其中样本外 {max(0, end - model_nobs + 1)} 期；"
         f"数据集末期后最多延伸 {MAX_FORECAST_EXTENSION} 期。"
     )
-    st_obj.dataframe(display, width="stretch")
-    st_obj.download_button(
-        "下载结果",
-        data=table.to_csv(encoding="utf-8-sig").encode("utf-8-sig"),
-        file_name=f"{family}_预测_{int(forecast['steps'])}期.csv",
-        mime="text/csv",
-        key="sarimax_forecast_download",
-        type="primary",
-    )
-    _render_forecast_chart(
+
+    def render_chart(st_instance, forecast_result, *, target, show_confidence_interval):
+        _render_forecast_chart(
+            st_instance,
+            best,
+            forecast_result,
+            target=target,
+            show_confidence_interval=show_confidence_interval,
+        )
+
+    render_forecast_result(
         st_obj,
-        best,
         forecast,
-        dataset=dataset,
-        target=state.get("target_variable"),
+        actual_values=actual_values,
+        target=target,
+        caption=caption,
+        download_name=f"{family}_预测_{int(forecast.steps)}期.csv",
+        chart_renderer=render_chart,
         show_confidence_interval=show_confidence_interval,
+        download_key="sarimax_forecast_download",
     )
 
 
@@ -545,9 +538,8 @@ def _apply_forecast_axis_labels(axis, target: str | None) -> None:
 def _render_forecast_chart(
     st_obj,
     best,
-    forecast,
+    forecast: ForecastResult,
     *,
-    dataset,
     target: str | None,
     show_confidence_interval: bool = False,
 ) -> None:
@@ -556,14 +548,14 @@ def _render_forecast_chart(
         import matplotlib.dates as mdates
 
         with matplotlib_date_compatibility():
-            prediction = forecast["prediction"]
-            future_dates_for_model = forecast.get("future_dates")
+            prediction = forecast.prediction
+            prediction_dates = forecast.dates
+            if prediction_dates is None:
+                raise ValueError("无日期模型不能绘制日期预测图")
             calendar = _model_dates(best)
-            if future_dates_for_model is not None:
-                calendar = calendar.append(
-                    pd.DatetimeIndex(future_dates_for_model)
-                )
-            prediction_dates = pd.DatetimeIndex(forecast["dates"])
+            if calendar is None:
+                raise ValueError("模型没有有效日期索引")
+            calendar = calendar.append(prediction_dates).drop_duplicates().sort_values()
             prediction_positions = calendar.get_indexer(prediction_dates)
             if np.any(prediction_positions < 0):
                 raise ValueError("预测结果日期不在当前模型日历中")

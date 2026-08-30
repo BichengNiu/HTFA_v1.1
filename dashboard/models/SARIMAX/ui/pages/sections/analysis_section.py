@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 
 import numpy as np
-from Ts.TsModels import AutoARDLResult, AutoModelResult
 
 from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
 from dashboard.core.ui.utils.matplotlib_compat import matplotlib_date_compatibility
@@ -14,6 +13,7 @@ from dashboard.models.SARIMAX.core.modeling import (
     recommended_residual_diagnostic_lags,
     run_residual_diagnostics,
 )
+from dashboard.models.SARIMAX.core.adapters import best_result
 from dashboard.models.SARIMAX.ui.state import state
 
 logger = logging.getLogger(__name__)
@@ -24,11 +24,7 @@ def render_analysis_section(st_obj) -> None:
     if result is None:
         st_obj.info("完成模型训练后可查看残差诊断结果。")
         return
-    best = (
-        result.best_result
-        if isinstance(result, (AutoModelResult, AutoARDLResult))
-        else result
-    )
+    best = best_result(result)
     st_obj.markdown("**残差诊断图**")
     try:
         with matplotlib_date_compatibility():

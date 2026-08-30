@@ -185,7 +185,7 @@ class _FakeTrendSelector:
     ],
 )
 def test_trend_multiselect_maps_to_ts_code(selected, expected):
-    from dashboard.models.SARIMAX.ui.pages.sections.training_section import (
+    from dashboard.models.SARIMAX.ui.model_options import (
         _render_trend_selector,
     )
 

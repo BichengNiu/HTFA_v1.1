@@ -138,6 +138,7 @@ def test_forecast_chart_autoscales_y_to_selected_date_window(monkeypatch):
     from Ts.TsModels._base import PredictResult
     from Ts.TsPlots.style import GRAY
 
+    from dashboard.models.common.contracts import ForecastResult
     import dashboard.models.SARIMAX.ui.pages.sections.forecast_section as section
 
     calendar = pd.date_range("2024-01-01", periods=4, freq="MS")
@@ -162,8 +163,17 @@ def test_forecast_chart_autoscales_y_to_selected_date_window(monkeypatch):
     section._render_forecast_chart(
         SimpleNamespace(),
         SimpleNamespace(dates=calendar),
-        {"prediction": prediction, "future_dates": None, "dates": calendar[1:3]},
-        dataset=None,
+        ForecastResult(
+            dates=calendar[1:3],
+            mean=np.array([10.0, 11.0]),
+            lower=np.array([9.0, 10.0]),
+            upper=np.array([11.0, 12.0]),
+            alpha=0.05,
+            steps=2,
+            start=1,
+            end=2,
+            prediction=prediction,
+        ),
         target="sales",
         show_confidence_interval=True,
     )

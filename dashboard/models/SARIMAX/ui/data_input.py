@@ -5,12 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import streamlit as st
-from data_overview import create_data_overview
 from data_overview.core.file_parsing import file_fingerprint
 from data_overview.ui.data_source import BuiltinDataSource
 from data_overview.ui.widget_keys import overview_widget_keys
 
 from dashboard.core.workspace import FileAsset
+from dashboard.models.common.ui.data_input import create_data_input_module
 from dashboard.models.SARIMAX.ui.state import (
     clear_fit_results,
     clear_widget_state,
@@ -53,7 +53,7 @@ def _on_dataset_replaced(st_obj) -> None:
     clear_widget_state(st_obj)
 
 
-_render_sarimax_data_input = create_data_overview(
+_SARIMAX_DATA_INPUT = create_data_input_module(
     key_prefix=_SARIMAX_DATA_KEY_PREFIX,
     state_namespace=_SARIMAX_DATA_NAMESPACE,
     data_source=_SARIMAX_DATA_SOURCE,
@@ -66,7 +66,7 @@ _render_sarimax_data_input = create_data_overview(
 def render_sarimax_data_input(st_obj) -> None:
     """渲染 SARIMAX 专属文件上传和读取设置。"""
 
-    _render_sarimax_data_input(st_obj)
+    _SARIMAX_DATA_INPUT.render(st_obj)
 
 
 def export_sarimax_data_snapshot() -> SARIMAXDataSnapshot | None:

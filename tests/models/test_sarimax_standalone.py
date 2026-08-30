@@ -155,7 +155,7 @@ def test_sarimax_handoff_copies_fitted_diagnostics_and_forecast_results(monkeypa
         "model_analysis.sarimax.forecast"
     ]
     assert standalone_forecast is not source_forecast
-    assert standalone_forecast["prediction"] is not source_forecast["prediction"]
+    assert standalone_forecast.prediction is not source_forecast.prediction
 
     _by_key(standalone.number_input, "sarimax_p").set_value(3)
     standalone.run()
