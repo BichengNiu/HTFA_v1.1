@@ -27,12 +27,8 @@ from dashboard.models.SARIMAX.core.model_config import (
 from dashboard.models.SARIMAX.core.modeling import (
     MIN_OBSERVATIONS,
     DynamicConfig,
-    SARIMAXSimulationComparison,
     build_auto_sarimax_criterion_table,
     build_prediction_table,
-    build_sarimax_acf_comparison_table,
-    build_sarimax_simulation_comparison,
-    build_sarimax_simulation_summary,
     fit_ardl,
     fit_auto_ardl,
     fit_auto_rdl,
@@ -49,6 +45,13 @@ from dashboard.models.SARIMAX.core.modeling import (
     select_auto_sarimax_result,
     translate_ts_error,
     validate_fit_inputs,
+)
+from dashboard.models.SARIMAX.core.simulation import (
+    SARIMAXSimulationComparison,
+    build_sarimax_acf_comparison_table,
+    build_sarimax_simulation_comparison,
+    build_sarimax_simulation_summary,
+    plot_sarimax_simulation_comparison,
 )
 
 __all__ = [
@@ -88,6 +91,7 @@ __all__ = [
     "forecast_sample_dates",
     "format_sarimax_order",
     "future_dates",
+    "plot_sarimax_simulation_comparison",
     "prepare_modeling_inputs",
     "produce_forecast",
     "recommended_residual_diagnostic_lags",

@@ -29,9 +29,6 @@ from dashboard.models.SARIMAX.core.model_config import (
 from dashboard.models.SARIMAX.core.modeling import (
     build_auto_sarimax_criterion_table,
     build_prediction_table,
-    build_sarimax_acf_comparison_table,
-    build_sarimax_simulation_comparison,
-    build_sarimax_simulation_summary,
     fit_ardl,
     fit_auto_ardl,
     fit_auto_rdl,
@@ -40,7 +37,6 @@ from dashboard.models.SARIMAX.core.modeling import (
     fit_rdl,
     fit_sarimax,
     format_sarimax_order,
-    plot_sarimax_simulation_comparison,
     produce_forecast,
     recommended_residual_diagnostic_lags,
     run_residual_diagnostics,
@@ -48,6 +44,12 @@ from dashboard.models.SARIMAX.core.modeling import (
     select_auto_sarimax_result,
     translate_ts_error,
     validate_fit_inputs,
+)
+from dashboard.models.SARIMAX.core.simulation import (
+    build_sarimax_acf_comparison_table,
+    build_sarimax_simulation_comparison,
+    build_sarimax_simulation_summary,
+    plot_sarimax_simulation_comparison,
 )
 
 
@@ -62,6 +64,23 @@ def make_series(n: int = 80, *, dates: bool = False) -> pd.Series:
 def dataset_from_csv(content: bytes) -> OverviewDataset:
     frame = load_dataframe(content, "data.csv")
     return build_overview_dataset(frame, "data.csv", "fingerprint")
+
+
+def test_sarimax_simulation_is_an_independent_core_module():
+    import inspect
+
+    from dashboard.models.SARIMAX.core import simulation
+
+    assert simulation.__all__ == [
+        "SARIMAXSimulationComparison",
+        "build_sarimax_acf_comparison_table",
+        "build_sarimax_simulation_comparison",
+        "build_sarimax_simulation_summary",
+        "plot_sarimax_simulation_comparison",
+    ]
+    assert "dashboard.models.SARIMAX.core.modeling" not in inspect.getsource(
+        simulation
+    )
 
 
 def test_sarimax_simulation_comparison_reuses_fit_sample_and_seed():
