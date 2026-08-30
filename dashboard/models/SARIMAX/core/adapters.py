@@ -10,12 +10,14 @@ from collections.abc import Callable
 from typing import Any
 
 import numpy as np
+import pandas as pd
 
 from dashboard.models.common.contracts import (
     EstimationResultView,
     ForecastRequest,
     ForecastResult,
     ModelingInput,
+    ResidualDiagnosticView,
 )
 from dashboard.models.SARIMAX.core.model_config import (
     ARDLConfig,
@@ -30,8 +32,11 @@ from dashboard.models.SARIMAX.core.modeling import (
     fit_dynamic_model,
     format_sarimax_order,
     produce_forecast,
+    recommended_residual_diagnostic_lags,
+    run_residual_diagnostics,
     select_auto_sarimax_candidate,
     select_auto_sarimax_result,
+    translate_ts_error,
 )
 
 
@@ -260,6 +265,29 @@ class _TsResultAdapter:
             end=raw["end"],
             prediction=raw["prediction"],
         )
+
+    def residual_diagnostics(self, result: Any) -> ResidualDiagnosticView:
+        """准备残差诊断图和页面所需的稳定诊断上下文。"""
+        best = best_result(result)
+        residuals = np.asarray(best.residuals, dtype=float)
+        nobs = int(np.isfinite(residuals).sum())
+        lags = recommended_residual_diagnostic_lags(nobs)
+        figure = None
+        figure_error = None
+        try:
+            figure, _ = best.plot_diagnostics()
+        except Exception as exc:
+            figure_error = translate_ts_error(exc)
+        return ResidualDiagnosticView(
+            effective_nobs=nobs,
+            lags=lags,
+            figure=figure,
+            figure_error=figure_error,
+        )
+
+    def residual_test_table(self, result: Any, *, lags: int) -> pd.DataFrame:
+        """执行残差检验并隐藏底层结果对象的属性访问。"""
+        return run_residual_diagnostics(best_result(result), lags=lags)
 
 
 class SARIMAXAdapter(_TsResultAdapter):

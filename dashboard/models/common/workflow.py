@@ -5,7 +5,15 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, Protocol
 
-from .contracts import EstimationResultView, ForecastRequest, ForecastResult, ModelingInput
+import pandas as pd
+
+from .contracts import (
+    EstimationResultView,
+    ForecastRequest,
+    ForecastResult,
+    ModelingInput,
+    ResidualDiagnosticView,
+)
 
 
 class ModelAdapter(Protocol):
@@ -27,6 +35,12 @@ class ModelAdapter(Protocol):
 
     def forecast(self, result: Any, request: ForecastRequest) -> ForecastResult:
         """按通用预测请求生成稳定的预测结果。"""
+
+    def residual_diagnostics(self, result: Any) -> ResidualDiagnosticView:
+        """准备残差诊断图和诊断上下文。"""
+
+    def residual_test_table(self, result: Any, *, lags: int) -> pd.DataFrame:
+        """执行残差检验并返回稳定的结构化结果表。"""
 
 
 class ModelWorkflow:
@@ -62,6 +76,14 @@ class ModelWorkflow:
     def forecast(self, result: Any, request: ForecastRequest) -> ForecastResult:
         """通过适配器生成通用预测结果。"""
         return self.adapter.forecast(result, request)
+
+    def residual_diagnostics(self, result: Any) -> ResidualDiagnosticView:
+        """通过适配器准备残差诊断上下文。"""
+        return self.adapter.residual_diagnostics(result)
+
+    def residual_test_table(self, result: Any, *, lags: int) -> pd.DataFrame:
+        """通过适配器执行残差检验。"""
+        return self.adapter.residual_test_table(result, lags=lags)
 
 
 __all__ = ["ModelAdapter", "ModelWorkflow"]

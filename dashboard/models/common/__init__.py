@@ -5,6 +5,7 @@ from .contracts import (
     ForecastRequest,
     ForecastResult,
     ModelingInput,
+    ResidualDiagnosticView,
 )
 from .state import ModelStateLifecycle, StateStore
 from .workflow import ModelAdapter, ModelWorkflow
@@ -14,6 +15,7 @@ __all__ = [
     "ForecastRequest",
     "ForecastResult",
     "ModelingInput",
+    "ResidualDiagnosticView",
     "ModelStateLifecycle",
     "ModelAdapter",
     "ModelWorkflow",

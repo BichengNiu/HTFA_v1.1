@@ -2,31 +2,31 @@
 
 from __future__ import annotations
 
-from datetime import date
 import logging
 
-import numpy as np
 import pandas as pd
 
-from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
-from dashboard.core.ui.utils.matplotlib_compat import matplotlib_date_compatibility
 from dashboard.core.workspace import stable_signature
 from data_overview.core.dataset import numeric_variable_names
-from dashboard.models.common.contracts import ForecastRequest, ForecastResult
+from dashboard.models.common.contracts import ForecastRequest
 from dashboard.models.common.ui.forecast_view import render_forecast_result
-from dashboard.models.SARIMAX.core.data_loader import (
-    dataset_time_index,
-    forecast_sample_dates,
+from dashboard.models.SARIMAX.core.forecast_planning import (
+    actual_values_for_dates,
+    build_forecast_calendar,
+    build_future_exog,
+    normalise_date_window,
+    resolve_prediction_positions,
+    serialise_frame,
 )
-from dashboard.models.SARIMAX.core.modeling import (
-    future_dates,
-    translate_ts_error,
-)
+from dashboard.models.SARIMAX.core.modeling import translate_ts_error
 from dashboard.models.SARIMAX.core.adapters import (
     DynamicRegressionAdapter,
     best_result,
 )
 from dashboard.models.common.workflow import ModelWorkflow
+from dashboard.models.SARIMAX.ui.pages.sections.forecast_chart import (
+    render_forecast_chart,
+)
 from dashboard.models.SARIMAX.ui.state import state
 
 logger = logging.getLogger(__name__)
@@ -51,17 +51,18 @@ def render_forecast_section(st_obj) -> None:
         st_obj.error("未找到训练样本范围，请返回模型训练区设置日期滑轨。")
         return
     try:
-        model_dates = _model_dates(best)
-        base_calendar = _prediction_calendar(dataset, best, training_range[1])
-        calendar = _extend_prediction_calendar(
-            base_calendar,
+        forecast_calendar = build_forecast_calendar(
             dataset,
             best,
-            MAX_FORECAST_EXTENSION,
+            training_range[1],
+            extension_periods=MAX_FORECAST_EXTENSION,
         )
     except Exception as exc:  # noqa: BLE001 - 用户可读的数据准备边界
         st_obj.error(f"预测日期准备失败：{exc}")
         return
+    model_dates = forecast_calendar.model_dates
+    base_calendar = forecast_calendar.base_dates
+    calendar = forecast_calendar.dates
     if model_dates is None or len(model_dates) == 0:
         st_obj.error("当前模型没有有效日期索引，无法生成日期预测。")
         return
@@ -86,7 +87,7 @@ def render_forecast_section(st_obj) -> None:
         default=date_options[min(model_nobs - 1, len(date_options) - 1)],
     )
     default_window = (date_options[0], training_end_option)
-    existing_window = _normalise_date_window(
+    existing_window = normalise_date_window(
         st_obj.session_state.get("sarimax_forecast_window"),
         date_options,
     )
@@ -135,7 +136,7 @@ def render_forecast_section(st_obj) -> None:
             )
 
     try:
-        start, end = _resolve_prediction_positions(
+        start, end = resolve_prediction_positions(
             calendar,
             selected_window,
         )
@@ -177,7 +178,7 @@ def render_forecast_section(st_obj) -> None:
             "alpha": float(alpha),
             "dynamic": bool(dynamic),
             "source_columns": source_columns,
-            "future_exog": _serialise_frame(future_exog),
+            "future_exog": serialise_frame(future_exog),
         }
     )
     if st_obj.button(
@@ -212,7 +213,7 @@ def render_forecast_section(st_obj) -> None:
 
     target = state.get("target_variable")
     actual_values = (
-        _actual_values_for_dates(dataset, target, forecast.dates)
+        actual_values_for_dates(dataset, target, forecast.dates)
         if forecast.dates is not None
         else None
     )
@@ -227,7 +228,7 @@ def render_forecast_section(st_obj) -> None:
     )
 
     def render_chart(st_instance, forecast_result, *, target, show_confidence_interval):
-        _render_forecast_chart(
+        render_forecast_chart(
             st_instance,
             best,
             forecast_result,
@@ -248,91 +249,6 @@ def render_forecast_section(st_obj) -> None:
     )
 
 
-def _model_dates(best) -> pd.DatetimeIndex | None:
-    """返回拟合结果的有效日期索引。"""
-    dates = getattr(best, "dates", None)
-    if dates is None:
-        return None
-    return pd.DatetimeIndex(pd.to_datetime(dates)).drop_duplicates()
-
-
-def _prediction_calendar(
-    dataset,
-    best,
-    training_end: pd.Timestamp,
-) -> pd.DatetimeIndex:
-    """拼接模型训练日历与当前数据集已有的样本外日历。"""
-    model_dates = _model_dates(best)
-    if model_dates is None:
-        raise ValueError("模型没有有效日期索引")
-    observed_future = forecast_sample_dates(dataset, training_end)
-    calendar = model_dates
-    if observed_future is not None and len(observed_future):
-        calendar = calendar.append(pd.DatetimeIndex(observed_future))
-    return calendar.sort_values().drop_duplicates()
-
-
-def _normalise_date_window(value, options: tuple[date, ...]):
-    """校验 Streamlit 日期滑轨的已有值是否仍属于当前日历。"""
-    if not isinstance(value, (tuple, list)) or len(value) != 2:
-        return None
-    try:
-        window = tuple(pd.Timestamp(item).date() for item in value)
-    except (TypeError, ValueError):
-        return None
-    if window[0] > window[1] or any(item not in options for item in window):
-        return None
-    return window
-
-
-def _infer_calendar_offset(dataset, best):
-    """从原始数据或拟合日历中推断追加样本外期数所需的频率。"""
-    candidates = []
-    if dataset is not None:
-        dates = dataset_time_index(dataset)
-        if dates is not None:
-            candidates.append(dates)
-    model_dates = _model_dates(best)
-    if model_dates is not None:
-        candidates.append(model_dates)
-    for dates in candidates:
-        frequency = dates.freq or (pd.infer_freq(dates) if len(dates) >= 3 else None)
-        if frequency is not None:
-            return pd.tseries.frequencies.to_offset(frequency)
-    raise ValueError("无法从日期数据推断频率，请补充至少 3 个规则间隔日期")
-
-
-def _extend_prediction_calendar(base_calendar, dataset, best, periods):
-    """在当前日期日历末端追加有限的未来日期。"""
-    calendar = pd.DatetimeIndex(base_calendar).sort_values().drop_duplicates()
-    if periods <= 0:
-        return calendar
-    offset = _infer_calendar_offset(dataset, best)
-    extension = pd.date_range(
-        start=calendar[-1] + offset,
-        periods=int(periods),
-        freq=offset,
-    )
-    return calendar.append(extension)
-
-
-def _resolve_prediction_positions(
-    calendar: pd.DatetimeIndex,
-    selected_window,
-) -> tuple[int, int]:
-    """把日期滑轨转换成 Ts 的闭区间位置。"""
-    dates = tuple(pd.Timestamp(value).date() for value in calendar)
-    positions = {value: index for index, value in enumerate(dates)}
-    start_date, end_date = selected_window
-    if start_date not in positions or end_date not in positions:
-        raise ValueError("预测滑轨日期不在当前数据日历中")
-    start = positions[start_date]
-    end = positions[end_date]
-    if start > end:
-        raise ValueError("预测起始日期不能晚于预测结束日期")
-    return start, end
-
-
 def _render_future_exog_editor(
     st_obj,
     dataset,
@@ -345,10 +261,13 @@ def _render_future_exog_editor(
     numeric = [] if dataset is None else numeric_variable_names(dataset.frame)
     if not numeric:
         st_obj.error("当前数据表没有可用的数值列，无法提供未来外生变量路径。")
-        empty = pd.DataFrame(
-            np.nan,
-            index=_future_index(best, total_steps, forecast_dates),
-            columns=exog_names,
+        empty = build_future_exog(
+            None,
+            best,
+            total_steps,
+            (),
+            exog_names,
+            forecast_dates,
         )
         return empty, ()
     source_columns = []
@@ -368,14 +287,17 @@ def _render_future_exog_editor(
         source_columns.append(selected)
     source_columns = tuple(source_columns)
     if not source_columns:
-        empty = pd.DataFrame(
-            np.nan,
-            index=_future_index(best, total_steps, forecast_dates),
-            columns=exog_names,
+        empty = build_future_exog(
+            None,
+            best,
+            total_steps,
+            (),
+            exog_names,
+            forecast_dates,
         )
         return empty, source_columns
 
-    editor_frame = _future_exog_from_dataset(
+    editor_frame = build_future_exog(
         dataset,
         best,
         total_steps,
@@ -402,191 +324,6 @@ def _render_future_exog_editor(
         num_rows="fixed",
     )
     return edited.astype(float), source_columns
-
-
-def _future_exog_from_dataset(
-    dataset,
-    best,
-    total_steps: int,
-    source_columns: tuple[str, ...],
-    exog_names: tuple[str, ...],
-    forecast_dates: pd.DatetimeIndex | None = None,
-) -> pd.DataFrame:
-    """按拟合结果的未来日历从当前数据框提取外生变量路径。"""
-    if dataset is None:
-        return pd.DataFrame(
-            np.nan,
-            index=_future_index(best, total_steps, forecast_dates),
-            columns=exog_names,
-        )
-    frame = dataset.frame.copy()
-    if dataset.time_column is not None:
-        dates = pd.DatetimeIndex(pd.to_datetime(frame[dataset.time_column]))
-        frame = frame.drop(columns=[dataset.time_column])
-        frame.index = dates
-        frame = frame.sort_index()
-        index = (
-            forecast_dates
-            if forecast_dates is not None
-            else future_dates(best, total_steps, fallback_dates=dates)
-        )
-        if index is None:
-            index = pd.RangeIndex(total_steps)
-        values = {
-            model_name: pd.to_numeric(frame[source], errors="coerce").reindex(index)
-            for model_name, source in zip(exog_names, source_columns)
-        }
-        return pd.DataFrame(values, index=index)
-
-    index = _future_index(best, total_steps, forecast_dates)
-    values = {}
-    for model_name, source in zip(exog_names, source_columns):
-        series = pd.to_numeric(frame[source], errors="coerce")
-        values[model_name] = series.iloc[
-            int(best.nobs) : int(best.nobs) + total_steps
-        ].to_numpy()
-    return pd.DataFrame(values, index=index)
-
-
-def _future_index(
-    best,
-    total_steps: int,
-    forecast_dates: pd.DatetimeIndex | None = None,
-) -> pd.Index:
-    """返回与 Ts 未来路径兼容的编辑器索引。"""
-    dates = (
-        forecast_dates
-        if forecast_dates is not None
-        else future_dates(best, total_steps)
-    )
-    return dates if dates is not None else pd.RangeIndex(total_steps)
-
-
-def _serialise_frame(frame: pd.DataFrame | None):
-    """把外生变量表转换为稳定签名支持的基础类型。"""
-    if frame is None:
-        return None
-    values = frame.astype(object).where(frame.notna(), None).values.tolist()
-    return {"columns": [str(column) for column in frame.columns], "values": values}
-
-
-def _actual_values(dataset, target: str | None):
-    """返回原始数据集中的真实值，保持日期和值的排序一致。"""
-    if dataset is None or dataset.time_column is None or not target:
-        return None, None
-    frame = dataset.frame
-    if target not in frame.columns:
-        return None, None
-    dates = pd.to_datetime(frame[dataset.time_column], errors="coerce")
-    valid = dates.notna()
-    actual_dates = pd.DatetimeIndex(dates.loc[valid])
-    actual_values = pd.to_numeric(
-        frame.loc[valid, target], errors="coerce"
-    ).to_numpy(dtype=float)
-    order = np.argsort(actual_dates.asi8)
-    return actual_dates[order], actual_values[order]
-
-
-def _actual_values_for_dates(dataset, target: str | None, dates) -> np.ndarray:
-    """按预测结果日期对齐真实值，样本外未观测日期保留为空值。"""
-    actual_dates, actual_values = _actual_values(dataset, target)
-    result_dates = pd.DatetimeIndex(pd.to_datetime(dates))
-    if actual_dates is None:
-        return np.full(len(result_dates), np.nan)
-    actual = pd.Series(actual_values, index=actual_dates)
-    return actual.reindex(result_dates).to_numpy(dtype=float)
-
-
-def _date_numbers(values) -> np.ndarray:
-    """把日期转换成 Matplotlib 日期数值，避免字符串转换兼容性问题。"""
-    import matplotlib.dates as mdates
-
-    dates = pd.DatetimeIndex(pd.to_datetime(values))
-    return np.asarray(mdates.date2num(dates.to_pydatetime()), dtype=float)
-
-
-def _remap_prediction_lines(axis, calendar: pd.DatetimeIndex):
-    """把 Ts 预测图的折线和区间面片横轴转换为真实日期横轴。"""
-    calendar_numbers = _date_numbers(calendar)
-    for line in axis.lines:
-        positions = np.rint(np.asarray(line.get_xdata(), dtype=float)).astype(int)
-        if np.all((positions >= 0) & (positions < len(calendar_numbers))):
-            line.set_xdata(calendar_numbers[positions])
-    for collection in axis.collections:
-        for path in collection.get_paths():
-            vertices = np.asarray(path.vertices, dtype=float)
-            if vertices.ndim != 2 or vertices.shape[1] < 2:
-                continue
-            if not np.all(np.isfinite(vertices[:, 0])):
-                continue
-            positions = np.rint(vertices[:, 0]).astype(int)
-            if np.all(
-                np.isfinite(vertices[:, 0])
-                & (positions >= 0)
-                & (positions < len(calendar_numbers))
-            ):
-                vertices[:, 0] = calendar_numbers[positions]
-
-
-def _apply_forecast_axis_labels(axis, target: str | None) -> None:
-    """把预测图标签改为模型目标变量，并隐藏横轴与主标题。"""
-    axis.set_title("")
-    axis.set_xlabel("")
-    axis.set_ylabel(str(target) if target else "Value")
-
-
-def _render_forecast_chart(
-    st_obj,
-    best,
-    forecast: ForecastResult,
-    *,
-    target: str | None,
-    show_confidence_interval: bool = False,
-) -> None:
-    """复用 Ts 默认预测图并将横轴转换为真实日期。"""
-    try:
-        import matplotlib.dates as mdates
-
-        with matplotlib_date_compatibility():
-            prediction = forecast.prediction
-            prediction_dates = forecast.dates
-            if prediction_dates is None:
-                raise ValueError("无日期模型不能绘制日期预测图")
-            calendar = _model_dates(best)
-            if calendar is None:
-                raise ValueError("模型没有有效日期索引")
-            calendar = calendar.append(prediction_dates).drop_duplicates().sort_values()
-            prediction_positions = calendar.get_indexer(prediction_dates)
-            if np.any(prediction_positions < 0):
-                raise ValueError("预测结果日期不在当前模型日历中")
-            figure, axis = prediction.plot(
-                ci=show_confidence_interval,
-                xlim=(
-                    int(prediction_positions[0]),
-                    int(prediction_positions[-1]),
-                )
-            )
-            _remap_prediction_lines(axis, calendar)
-            _apply_forecast_axis_labels(axis, target)
-
-            x_start, x_end = _date_numbers(
-                [prediction_dates[0], prediction_dates[-1]]
-            )
-            if x_start == x_end:
-                x_start -= 0.5
-                x_end += 0.5
-            axis.set_xlim(x_start, x_end)
-            locator = mdates.AutoDateLocator(minticks=4, maxticks=8)
-            axis.xaxis.set_major_locator(locator)
-            axis.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
-            render_pyplot_figure(
-                st_obj,
-                figure,
-                place_legend_bottom=False,
-            )
-    except Exception as exc:
-        st_obj.warning(f"预测图无法绘制：{exc}")
-        logger.warning("SARIMAX 预测图绘制失败", exc_info=True)
 
 
 __all__ = ["render_forecast_section"]

@@ -52,6 +52,29 @@ def test_sarimax_pages_expose_public_render_entries():
         assert function in sections_init
 
 
+def test_forecast_planning_module_has_no_ui_or_ts_dependency():
+    """预测规划保持为可独立测试的纯 core 模块。"""
+    import ast
+
+    from dashboard.models.SARIMAX.core import forecast_planning
+
+    tree = ast.parse(Path(forecast_planning.__file__).read_text(encoding="utf-8"))
+    imported_modules = {
+        node.module
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    }
+    imported_modules.update(
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    )
+    assert not any(module.lower().startswith("streamlit") for module in imported_modules)
+    assert not any(module.startswith("Ts") for module in imported_modules)
+    assert not any(module.lower().startswith("matplotlib") for module in imported_modules)
+
+
 def test_sarimax_main_page_only_orchestrates_sections():
     """主页面只做四环节编排，不直接 import Ts。"""
     path = PROJECT_ROOT / "dashboard/models/SARIMAX/ui/pages/sarimax_page.py"
@@ -109,6 +132,23 @@ def test_section_entry_functions_do_not_import_ts_directly():
                 raise AssertionError(
                     f"{wiring_path} 直接导入了 Ts，绘图调用必须走 data_overview 组件"
                 )
+
+
+def test_analysis_section_uses_the_model_diagnostic_seam():
+    """分析页不得读取 Ts 结果属性或直接调用诊断实现。"""
+    path = PROJECT_ROOT / "dashboard/models/SARIMAX/ui/pages/sections/analysis_section.py"
+    source = path.read_text(encoding="utf-8")
+
+    assert "ModelWorkflow" in source
+    assert "residual_diagnostics" in source
+    assert "residual_test_table" in source
+    for leaked_detail in (
+        "best_result(",
+        ".residuals",
+        ".plot_diagnostics(",
+        "run_residual_diagnostics(",
+    ):
+        assert leaked_detail not in source
 
 
 def test_univariate_ts_tab_renders_without_exception():

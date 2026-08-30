@@ -27,6 +27,7 @@ from dashboard.models.SARIMAX.core.model_config import (
     RDLConfig,
     SARIMAXConfig,
 )
+from dashboard.models.SARIMAX.core.forecast_planning import future_dates
 
 MIN_OBSERVATIONS = 10
 ProgressCallback = Callable[[int, int], None]
@@ -625,35 +626,6 @@ def recommended_residual_diagnostic_lags(nobs: int) -> int:
     if nobs < 4:
         raise ValueError("有效残差至少需要 4 个才能执行残差诊断")
     return min(10, max(1, nobs // 5))
-
-
-def future_dates(
-    result: Any,
-    steps: int,
-    fallback_dates: pd.DatetimeIndex | None = None,
-) -> pd.DatetimeIndex | None:
-    """基于拟合日期频率推算未来预测日期；无法推断时返回 None。
-
-    ``fallback_dates`` 用于拟合数据因缺失值而变得不连续时，
-    从原始数据的完整日期列补充推断频率。
-    """
-    dates = result.dates
-    if dates is None or len(dates) == 0:
-        return None
-    freq = dates.freq
-    if freq is None:
-        freq = pd.infer_freq(dates)
-    if freq is None and fallback_dates is not None:
-        fallback = pd.DatetimeIndex(fallback_dates)
-        freq = fallback.freq or pd.infer_freq(fallback)
-    if freq is None:
-        return None
-    offset = pd.tseries.frequencies.to_offset(freq)
-    return pd.date_range(
-        start=dates[-1] + offset,
-        periods=steps,
-        freq=offset,
-    )
 
 
 def produce_forecast(

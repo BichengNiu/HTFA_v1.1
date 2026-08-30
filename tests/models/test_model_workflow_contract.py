@@ -12,6 +12,7 @@ from dashboard.models.common.contracts import (
     ForecastRequest,
     ForecastResult,
     ModelingInput,
+    ResidualDiagnosticView,
 )
 from dashboard.models.common.workflow import ModelWorkflow
 from dashboard.models.common.ui.data_input import create_data_input_module
@@ -139,6 +140,19 @@ def test_sarimax_adapter_is_the_workflow_fit_seam(monkeypatch):
     assert calls["config"] is config
 
 
+def test_model_workflow_exposes_the_diagnostic_seam():
+    view = ResidualDiagnosticView(effective_nobs=10, lags=2)
+    table = pd.DataFrame({"检验": ["test"]})
+    adapter = SimpleNamespace(
+        residual_diagnostics=lambda result: view,
+        residual_test_table=lambda result, *, lags: table,
+    )
+    workflow = ModelWorkflow(adapter)
+
+    assert workflow.residual_diagnostics(object()) is view
+    assert workflow.residual_test_table(object(), lags=2) is table
+
+
 def test_sarimax_adapter_surfaces_fit_and_result_conversion_failures(monkeypatch):
     def failing_fit(*_args, **_kwargs):
         raise RuntimeError("fit failed")
@@ -199,6 +213,52 @@ def test_sarimax_adapter_converts_result_and_forecast_to_neutral_views(monkeypat
     )
     assert forecast.steps == 2
     assert forecast.prediction == "prediction"
+
+
+def test_sarimax_adapter_owns_residual_diagnostic_result_access(monkeypatch):
+    figure = object()
+    best = SimpleNamespace(
+        residuals=np.array(
+            [1.0, 2.0, np.nan, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
+        ),
+        plot_diagnostics=lambda: (figure, None),
+    )
+    result = SimpleNamespace(best_result=best)
+    calls = {}
+    table = pd.DataFrame({"检验": ["test"], "统计量": [1.0]})
+
+    def fake_table(received, *, lags):
+        calls.update(result=received, lags=lags)
+        return table
+
+    monkeypatch.setattr(adapters, "run_residual_diagnostics", fake_table)
+    adapter = SARIMAXAdapter()
+
+    view = adapter.residual_diagnostics(result)
+    assert isinstance(view, ResidualDiagnosticView)
+    assert view.effective_nobs == 9
+    assert view.lags == 1
+    assert view.figure is figure
+    assert view.figure_error is None
+
+    assert adapter.residual_test_table(result, lags=view.lags) is table
+    assert calls == {"result": best, "lags": 1}
+
+
+def test_sarimax_adapter_keeps_plot_failures_in_the_diagnostic_view():
+    best = SimpleNamespace(
+        residuals=np.arange(10, dtype=float),
+        plot_diagnostics=lambda: (_ for _ in ()).throw(
+            RuntimeError("plot failed")
+        ),
+    )
+
+    view = SARIMAXAdapter().residual_diagnostics(
+        SimpleNamespace(best_result=best)
+    )
+
+    assert view.figure is None
+    assert view.figure_error == "plot failed"
 
 
 def test_ardl_adapter_is_a_separate_model_seam(monkeypatch):

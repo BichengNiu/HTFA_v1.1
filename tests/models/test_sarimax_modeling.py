@@ -45,6 +45,13 @@ from dashboard.models.SARIMAX.core.modeling import (
     translate_ts_error,
     validate_fit_inputs,
 )
+from dashboard.models.SARIMAX.core.forecast_planning import (
+    build_forecast_calendar,
+    build_future_exog,
+    normalise_date_window,
+    resolve_prediction_positions,
+    serialise_frame,
+)
 from dashboard.models.SARIMAX.core.simulation import (
     build_sarimax_acf_comparison_table,
     build_sarimax_simulation_comparison,
@@ -190,43 +197,136 @@ def test_forecast_sample_dates_stays_inside_dataset_boundary():
     )
 
 
-def test_forecast_chart_date_adapter_preserves_ts_actual_values():
-    """Date adaptation must not replace Ts' model-aligned Actual y values."""
-    import matplotlib.pyplot as plt
+def test_forecast_planning_builds_calendar_and_normalises_window():
+    dates = pd.date_range("2020-01-01", periods=5, freq="MS")
+    dataset = build_overview_dataset(
+        pd.DataFrame(
+            {
+                "date": dates,
+                "target": [10, 11, 12, 13, 14],
+            }
+        ),
+        "planning.csv",
+        "fingerprint",
+    )
+    result = SimpleNamespace(nobs=3, dates=dates[:3])
 
-    from dashboard.models.SARIMAX.ui.pages.sections.forecast_section import (
-        _remap_prediction_lines,
+    calendar = build_forecast_calendar(
+        dataset,
+        result,
+        dates[2],
+        extension_periods=2,
+    )
+    assert calendar.model_dates.equals(dates[:3])
+    assert calendar.base_dates.equals(dates)
+    assert calendar.dates.equals(
+        pd.date_range("2020-01-01", periods=7, freq="MS")
     )
 
-    _, axis = plt.subplots()
-    actual = axis.plot(
-        np.arange(3),
-        np.array([10.0, 20.0, 30.0]),
-        label="Actual",
-    )[0]
+    options = tuple(value.date() for value in calendar.dates)
+    window = normalise_date_window((options[1], options[5]), options)
+    assert window == (options[1], options[5])
+    assert resolve_prediction_positions(calendar.dates, window) == (1, 5)
+
+    frame = pd.DataFrame({"x": [1.0, np.nan]})
+    assert serialise_frame(frame) == {
+        "columns": ["x"],
+        "values": [[1.0], [None]],
+    }
+
+
+def test_forecast_chart_date_adapter_preserves_ts_actual_values(monkeypatch):
+    """Date adaptation must not replace Ts' model-aligned Actual y values."""
+    import matplotlib.pyplot as plt
+    from Ts.TsModels._base import PredictResult
+
+    import dashboard.models.SARIMAX.ui.pages.sections.forecast_chart as chart
+    from dashboard.models.common.contracts import ForecastResult
+
     calendar = pd.DatetimeIndex(["2024-01-01", "2024-02-01", "2024-03-01"])
+    prediction = PredictResult(
+        mean=np.array([10.0, 20.0, 30.0]),
+        lower=np.array([9.0, 19.0, 29.0]),
+        upper=np.array([11.0, 21.0, 31.0]),
+        is_oos=np.array([False, False, False]),
+        _full_data=np.array([10.0, 20.0, 30.0]),
+        _full_fitted=np.array([10.5, 19.5, 30.5]),
+        _start=0,
+    )
+    captured = {}
+    monkeypatch.setattr(
+        chart,
+        "render_pyplot_figure",
+        lambda _st_obj, figure, **_kwargs: captured.setdefault("figure", figure),
+    )
 
-    _remap_prediction_lines(axis, calendar)
+    chart.render_forecast_chart(
+        SimpleNamespace(warning=lambda _message: None),
+        SimpleNamespace(dates=calendar),
+        ForecastResult(
+            dates=calendar,
+            mean=np.array([10.0, 20.0, 30.0]),
+            lower=np.array([9.0, 19.0, 29.0]),
+            upper=np.array([11.0, 21.0, 31.0]),
+            alpha=0.05,
+            steps=3,
+            start=0,
+            end=2,
+            prediction=prediction,
+        ),
+        target="sales",
+    )
 
+    axis = captured["figure"].axes[0]
+    actual = next(line for line in axis.lines if line.get_label() == "Actual")
     assert np.array_equal(actual.get_ydata(), np.array([10.0, 20.0, 30.0]))
     assert len(actual.get_xdata()) == len(calendar)
     plt.close(actual.figure)
 
 
-def test_forecast_chart_uses_target_ylabel_without_titles():
+def test_forecast_chart_uses_target_ylabel_without_titles(monkeypatch):
     """Forecast chart labels use the target variable and omit both titles."""
     import matplotlib.pyplot as plt
+    from Ts.TsModels._base import PredictResult
 
-    from dashboard.models.SARIMAX.ui.pages.sections.forecast_section import (
-        _apply_forecast_axis_labels,
+    import dashboard.models.SARIMAX.ui.pages.sections.forecast_chart as chart
+    from dashboard.models.common.contracts import ForecastResult
+
+    calendar = pd.DatetimeIndex(["2024-01-01", "2024-02-01", "2024-03-01"])
+    prediction = PredictResult(
+        mean=np.array([10.0, 20.0, 30.0]),
+        lower=np.array([9.0, 19.0, 29.0]),
+        upper=np.array([11.0, 21.0, 31.0]),
+        is_oos=np.array([False, False, False]),
+        _full_data=np.array([10.0, 20.0, 30.0]),
+        _full_fitted=np.array([10.5, 19.5, 30.5]),
+        _start=0,
+    )
+    captured = {}
+    monkeypatch.setattr(
+        chart,
+        "render_pyplot_figure",
+        lambda _st_obj, figure, **_kwargs: captured.setdefault("figure", figure),
     )
 
-    _, axis = plt.subplots()
-    axis.set_title("Prediction Results")
-    axis.set_xlabel("Time")
+    chart.render_forecast_chart(
+        SimpleNamespace(warning=lambda _message: None),
+        SimpleNamespace(dates=calendar),
+        ForecastResult(
+            dates=calendar,
+            mean=np.array([10.0, 20.0, 30.0]),
+            lower=np.array([9.0, 19.0, 29.0]),
+            upper=np.array([11.0, 21.0, 31.0]),
+            alpha=0.05,
+            steps=3,
+            start=0,
+            end=2,
+            prediction=prediction,
+        ),
+        target="sales",
+    )
 
-    _apply_forecast_axis_labels(axis, "sales")
-
+    axis = captured["figure"].axes[0]
     assert axis.get_title() == ""
     assert axis.get_xlabel() == ""
     assert axis.get_ylabel() == "sales"
@@ -240,7 +340,7 @@ def test_forecast_chart_autoscales_y_to_selected_date_window(monkeypatch):
     from Ts.TsModels._base import PredictResult
     from Ts.TsPlots.style import GRAY
 
-    import dashboard.models.SARIMAX.ui.pages.sections.forecast_section as section
+    import dashboard.models.SARIMAX.ui.pages.sections.forecast_chart as chart
     from dashboard.models.common.contracts import ForecastResult
 
     calendar = pd.date_range("2024-01-01", periods=4, freq="MS")
@@ -257,12 +357,12 @@ def test_forecast_chart_autoscales_y_to_selected_date_window(monkeypatch):
     )
     captured = {}
     monkeypatch.setattr(
-        section,
+        chart,
         "render_pyplot_figure",
         lambda _st_obj, figure, **_kwargs: captured.setdefault("figure", figure),
     )
 
-    section._render_forecast_chart(
+    chart.render_forecast_chart(
         SimpleNamespace(),
         SimpleNamespace(dates=calendar),
         ForecastResult(
@@ -844,10 +944,6 @@ def test_produce_forecast_accepts_explicit_dates_for_irregular_model_dates():
 
 
 def test_future_exog_path_is_prefilled_from_dataset():
-    from dashboard.models.SARIMAX.ui.pages.sections.forecast_section import (
-        _future_exog_from_dataset,
-    )
-
     dates = pd.date_range("2020-01-01", periods=5, freq="MS")
     dataset = build_overview_dataset(
         pd.DataFrame(
@@ -862,7 +958,7 @@ def test_future_exog_path_is_prefilled_from_dataset():
     )
     best = SimpleNamespace(nobs=3, dates=dates[:3])
 
-    future = _future_exog_from_dataset(
+    future = build_future_exog(
         dataset,
         best,
         total_steps=2,

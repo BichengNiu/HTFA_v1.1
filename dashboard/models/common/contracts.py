@@ -294,9 +294,52 @@ class EstimationResultView:
             )
 
 
+@dataclass(frozen=True)
+class ResidualDiagnosticView:
+    """供模型专属诊断展示使用的稳定上下文。
+
+    ``figure`` 是不透明的绘图对象，由模型适配器负责创建；页面只负责
+    将它交给现有绘图渲染器。残差数量和滞后阶数也在适配器内确定，避免
+    页面读取底层模型结果的具体属性。
+
+    Parameters
+    ----------
+    effective_nobs : int
+        残差中参与诊断的有限观测数。
+    lags : int
+        残差检验使用的最大滞后阶数。
+    figure : object or None
+        已准备好的诊断图对象；绘图失败时为 ``None``。
+    figure_error : str or None, optional
+        诊断图准备失败时的可展示错误信息。
+    """
+
+    effective_nobs: int
+    lags: int
+    figure: Any = field(default=None, repr=False)
+    figure_error: str | None = None
+
+    def __post_init__(self) -> None:
+        if isinstance(self.effective_nobs, bool) or not isinstance(
+            self.effective_nobs, (int, np.integer)
+        ) or self.effective_nobs < 0:
+            raise ValueError("effective_nobs 必须是非负整数")
+        if isinstance(self.lags, bool) or not isinstance(
+            self.lags, (int, np.integer)
+        ) or self.lags < 1:
+            raise ValueError("lags 必须是正整数")
+        if self.figure_error is not None and not isinstance(
+            self.figure_error, str
+        ):
+            raise TypeError("figure_error 必须是字符串或 None")
+        object.__setattr__(self, "effective_nobs", int(self.effective_nobs))
+        object.__setattr__(self, "lags", int(self.lags))
+
+
 __all__ = [
     "EstimationResultView",
     "ForecastRequest",
     "ForecastResult",
     "ModelingInput",
+    "ResidualDiagnosticView",
 ]
