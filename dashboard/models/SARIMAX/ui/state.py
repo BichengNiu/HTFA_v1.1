@@ -39,6 +39,7 @@ MODEL_WIDGET_KEYS = (
     "sarimax_auto_s",
     "sarimax_auto_trend_components",
     "sarimax_auto_selection_criterion",
+    "sarimax_auto_selection_model",
     "sarimax_auto_method",
     "sarimax_auto_maxiter",
     "sarimax_auto_cov_type",

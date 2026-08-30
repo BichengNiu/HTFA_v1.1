@@ -42,6 +42,7 @@ from dashboard.models.SARIMAX.core.modeling import (
     produce_forecast,
     recommended_residual_diagnostic_lags,
     run_residual_diagnostics,
+    select_auto_sarimax_candidate,
     select_auto_sarimax_result,
     translate_ts_error,
     validate_fit_inputs,
@@ -651,6 +652,10 @@ def test_auto_sarimax_criterion_table_and_post_selection():
     assert selected.best_order == result.candidate_orders[expected_index]
     assert selected.search_metadata == result.search_metadata
     assert selected.search_metadata["mode"] == "serial"
+
+    selected_candidate = select_auto_sarimax_candidate(result, 0)
+    assert selected_candidate.best_order == result.candidate_orders[0]
+    assert selected_candidate.selection_criterion == result.selection_criterion
 
 
 def test_fit_auto_sarimax_passes_stationarity_constraints():

@@ -17,13 +17,6 @@ from dashboard.models.common.contracts import (
     ForecastResult,
     ModelingInput,
 )
-from dashboard.models.SARIMAX.core.modeling import (
-    build_auto_sarimax_criterion_table,
-    fit_dynamic_model,
-    format_sarimax_order,
-    produce_forecast,
-    select_auto_sarimax_result,
-)
 from dashboard.models.SARIMAX.core.model_config import (
     ARDLConfig,
     AutoARDLConfig,
@@ -31,6 +24,14 @@ from dashboard.models.SARIMAX.core.model_config import (
     AutoSARIMAXConfig,
     RDLConfig,
     SARIMAXConfig,
+)
+from dashboard.models.SARIMAX.core.modeling import (
+    build_auto_sarimax_criterion_table,
+    fit_dynamic_model,
+    format_sarimax_order,
+    produce_forecast,
+    select_auto_sarimax_candidate,
+    select_auto_sarimax_result,
 )
 
 
@@ -42,6 +43,53 @@ def best_result(result: Any) -> Any:
 def is_automatic_config(options: Any) -> bool:
     """判断配置是否会执行候选模型搜索。"""
     return isinstance(options, (AutoSARIMAXConfig, AutoRDLConfig, AutoARDLConfig))
+
+
+def _candidate_labels(result: Any) -> tuple[str, ...]:
+    """返回自动 SARIMAX 候选表中的用户可读模型标签。"""
+    seasonal_orders = getattr(result, "candidate_seasonal_orders", ())
+    return tuple(
+        format_sarimax_order(
+            order,
+            seasonal_orders[index] if index < len(seasonal_orders) else None,
+        )
+        for index, order in enumerate(result.candidate_orders)
+    )
+
+
+def _candidate_selection_value(result: Any, labels: tuple[str, ...]) -> str | None:
+    """返回当前候选是否偏离所选准则的最优模型。"""
+    if not labels:
+        return None
+    current_order = tuple(getattr(result, "best_order", ()))
+    current_seasonal = getattr(result, "best_seasonal_order", None)
+    current_index = None
+    for index, order in enumerate(getattr(result, "candidate_orders", ())):
+        seasonal = (
+            result.candidate_seasonal_orders[index]
+            if index < len(getattr(result, "candidate_seasonal_orders", ()))
+            else None
+        )
+        if tuple(order) == current_order and (
+            current_seasonal is None or seasonal == current_seasonal
+        ):
+            current_index = index
+            break
+    if current_index is None:
+        return None
+    criterion = getattr(result, "selection_criterion", "aic")
+    values = np.asarray(result.criterion_table[criterion], dtype=float)
+    finite = np.isfinite(values)
+    criterion_index = (
+        int(np.where(finite, values, np.inf).argmin())
+        if finite.any()
+        else None
+    )
+    return (
+        None
+        if current_index == criterion_index
+        else labels[current_index]
+    )
 
 
 def _float_attribute(result: Any, best: Any, name: str) -> float:
@@ -86,6 +134,9 @@ class _TsResultAdapter:
         selection_options: tuple[str, ...] = ()
         selection_value = None
         selection_help = None
+        candidate_options: tuple[str, ...] = ()
+        candidate_value = None
+        candidate_help = None
         metadata: dict[str, Any] = {}
 
         candidate_orders = getattr(result, "candidate_orders", None)
@@ -111,6 +162,11 @@ class _TsResultAdapter:
             selection_value = getattr(result, "selection_criterion", "aic")
             selection_help = (
                 "从上方结果表中选择一个信息准则，采用该列最小值对应的模型。"
+            )
+            candidate_options = _candidate_labels(result)
+            candidate_value = _candidate_selection_value(result, candidate_options)
+            candidate_help = (
+                "默认按左侧准则选择最优模型；选择具体模型后将直接采用该候选。"
             )
             metadata["search_metadata"] = getattr(result, "search_metadata", {})
         elif hasattr(result, "criterion_table") and hasattr(result, "ar_lags"):
@@ -154,12 +210,31 @@ class _TsResultAdapter:
             selection_options=selection_options,
             selection_value=selection_value,
             selection_help=selection_help,
+            candidate_options=candidate_options,
+            candidate_value=candidate_value,
+            candidate_help=candidate_help,
         )
 
-    def select_result(self, result: Any, criterion: str) -> Any:
+    def select_result(
+        self,
+        result: Any,
+        selection: str | tuple[str, Any],
+    ) -> Any:
         """按信息准则重新选择自动 SARIMAX 结果。"""
         if hasattr(result, "candidate_orders"):
-            return select_auto_sarimax_result(result, criterion)
+            if isinstance(selection, tuple):
+                kind, value = selection
+                if kind == "candidate":
+                    labels = _candidate_labels(result)
+                    try:
+                        candidate_index = labels.index(str(value))
+                    except ValueError as exc:
+                        raise ValueError("未找到所选候选模型") from exc
+                    return select_auto_sarimax_candidate(result, candidate_index)
+                if kind != "criterion":
+                    raise ValueError(f"不支持的模型选择类型：{kind!r}")
+                selection = value
+            return select_auto_sarimax_result(result, selection)
         raise ValueError("当前模型结果不支持重新选择信息准则")
 
     def forecast(self, result: Any, request: ForecastRequest) -> ForecastResult:

@@ -132,6 +132,7 @@ def render_training_section(st_obj) -> None:
         disabled=bool(problems),
         key="sarimax_fit_button",
     ):
+        st_obj.session_state.pop("sarimax_auto_selection_model", None)
         is_automatic = is_automatic_config(config)
         progress_bar = (
             st_obj.progress(0.0, text="正在准备候选模型评估...")
@@ -199,6 +200,7 @@ def _render_fit_summary(st_obj, result, *, model_family: str) -> None:
         st_obj,
         view,
         selection_key="sarimax_auto_selection_criterion",
+        candidate_selection_key="sarimax_auto_selection_model",
     )
     if selected is not None:
         try:
@@ -212,6 +214,7 @@ def _render_fit_summary(st_obj, result, *, model_family: str) -> None:
             st_obj,
             _MODEL_WORKFLOW.result_view(result),
             selection_key="sarimax_auto_selection_criterion",
+            candidate_selection_key="sarimax_auto_selection_model",
             show_selection=False,
         )
         if model_family == "SARIMAX":

@@ -5,8 +5,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -270,6 +271,9 @@ class EstimationResultView:
     selection_options: tuple[Any, ...] = ()
     selection_value: Any = None
     selection_help: str | None = None
+    candidate_options: tuple[Any, ...] = ()
+    candidate_value: Any = None
+    candidate_help: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.model_name, str) or not self.model_name.strip():

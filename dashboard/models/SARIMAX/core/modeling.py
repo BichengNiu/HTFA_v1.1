@@ -534,18 +534,78 @@ def select_auto_sarimax_result(
     if not finite.any():
         raise ValueError(f"{criterion} 没有可用的候选值")
     best_index = int(np.where(finite, values, np.inf).argmin())
+    return _select_auto_sarimax_candidate(
+        result,
+        best_index,
+        criterion=criterion,
+        criterion_values=values.tolist(),
+    )
+
+
+def select_auto_sarimax_candidate(
+    result: AutoModelResult,
+    candidate_index: int,
+) -> AutoModelResult:
+    """从候选表按行号选择并重新拟合任意 SARIMAX 候选模型。
+
+    Parameters
+    ----------
+    result : AutoModelResult
+        已完成网格搜索的 AutoSARIMAX 结果。
+    candidate_index : int
+        候选表中的零基行号。
+
+    Returns
+    -------
+    AutoModelResult
+        以指定候选模型为 ``best_result`` 的结果对象。
+
+    Raises
+    ------
+    TypeError
+        ``candidate_index`` 不是整数时。
+    ValueError
+        候选行号超出候选表范围时。
+    """
+    if isinstance(candidate_index, bool) or not isinstance(
+        candidate_index, (int, np.integer)
+    ):
+        raise TypeError("candidate_index 必须是整数")
+    candidate_index = int(candidate_index)
+    if not 0 <= candidate_index < len(result.candidate_orders):
+        raise ValueError("candidate_index 超出候选表范围")
+    criterion = getattr(result, "selection_criterion", AUTO_CRITERIA[0])
+    values = pd.to_numeric(
+        result.criterion_table[criterion], errors="coerce"
+    ).to_numpy(dtype=float)
+    return _select_auto_sarimax_candidate(
+        result,
+        candidate_index,
+        criterion=criterion,
+        criterion_values=values.tolist(),
+    )
+
+
+def _select_auto_sarimax_candidate(
+    result: AutoModelResult,
+    candidate_index: int,
+    *,
+    criterion: str,
+    criterion_values: list[float],
+) -> AutoModelResult:
+    """按候选行号构建重新拟合后的 AutoSARIMAX 结果。"""
     seasonal = (
-        result.candidate_seasonal_orders[best_index]
-        if best_index < len(result.candidate_seasonal_orders)
+        result.candidate_seasonal_orders[candidate_index]
+        if candidate_index < len(result.candidate_seasonal_orders)
         else None
     )
-    best_result = result._refit_candidate(best_index)
+    best_result = result._refit_candidate(candidate_index)
     return AutoModelResult.from_search(
         best_result=best_result,
-        best_order=result.candidate_orders[best_index],
+        best_order=result.candidate_orders[candidate_index],
         candidate_results=result.candidate_results,
         candidate_orders=result.candidate_orders,
-        criterion_values=values.tolist(),
+        criterion_values=criterion_values,
         selection_criterion=criterion,
         search_method=result.search_method,
         n_attempted=result.n_attempted,
@@ -998,6 +1058,7 @@ __all__ = [
     "plot_sarimax_simulation_comparison",
     "produce_forecast",
     "run_residual_diagnostics",
+    "select_auto_sarimax_candidate",
     "select_auto_sarimax_result",
     "translate_ts_error",
     "validate_fit_inputs",

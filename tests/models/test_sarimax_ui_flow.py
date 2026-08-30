@@ -309,9 +309,9 @@ def test_full_workflow_via_ui(monkeypatch):
     app.run()
     assert not app.exception
     assert not app.get("progress")
-    metrics = {element.label: element.value for element in app.metric}
-    assert "AIC" in metrics and "BIC" in metrics and "对数似然" in metrics
-    assert any("已收敛" in element.value for element in app.success)
+    assert not app.metric
+    assert not app.success
+    assert not any("模型优化状态" in element.value for element in app.markdown)
     assert any(
         element.value == "**实际序列与理论模拟序列**"
         for element in app.markdown
@@ -437,7 +437,7 @@ def test_training_slider_limits_fit_and_invalidates_result(monkeypatch):
     _by_key(app.button, "sarimax_fit_button").click()
     app.run()
     assert not app.exception
-    assert any(metric.label == "AIC" for metric in app.metric)
+    assert not app.metric
 
     _by_key(app.multiselect, "sarimax_data_preprocessing").set_value(["去零"])
     app.run()
@@ -453,7 +453,7 @@ def test_training_slider_limits_fit_and_invalidates_result(monkeypatch):
     _by_key(app.button, "sarimax_fit_button").click()
     app.run()
     assert not app.exception
-    assert any(metric.label == "AIC" for metric in app.metric)
+    assert not app.metric
 
     _by_key(app.slider, "sarimax_train_forecast_window").set_value(
         (date(2022, 1, 1), date(2023, 12, 1))
@@ -543,8 +543,10 @@ def test_auto_mode_workflow_via_ui(monkeypatch):
     assert not app.exception
     _assert_completed_progress(app)
     assert any("候选评估完成" in item.value for item in app.info)
-    assert any("本次候选调度：串行" in c.value for c in app.caption)
-    assert any("最终采用模型" in m.value for m in app.markdown)
+    assert not any("本次候选调度" in c.value for c in app.caption)
+    assert not app.metric
+    assert not app.success
+    assert not any("最终采用模型：" in m.value for m in app.markdown)
     criterion_table = next(
         element.value
         for element in app.dataframe
@@ -553,16 +555,29 @@ def test_auto_mode_workflow_via_ui(monkeypatch):
     assert len(criterion_table) == 4
     assert all(")(" in label for label in criterion_table["模型"])
     assert all("(0, 0, 0, 0)" in label for label in criterion_table["模型"])
-    assert any(
-        "SARIMAX(" in element.value and ")(" in element.value
-        for element in app.markdown
+    criterion_radio = _by_key(
+        app.radio,
+        "sarimax_auto_selection_criterion",
     )
-    _by_key(app.selectbox, "sarimax_auto_selection_criterion").set_value("bic")
+    assert set(criterion_radio.options) == {"AIC", "BIC", "HQIC", "AICC"}
+    other_model = _by_key(app.selectbox, "sarimax_auto_selection_model")
+    assert len(other_model.options) == 5
+    assert other_model.value is None
+    aic_min_label = criterion_table.loc[criterion_table["AIC"].idxmin(), "模型"]
+    other_label = next(
+        label for label in criterion_table["模型"] if label != aic_min_label
+    )
+    other_model.set_value(other_label)
     app.run()
     assert not app.exception
-    assert any("BIC 最小" in m.value for m in app.markdown)
-    metrics = {element.label: element.value for element in app.metric}
-    assert "AIC" in metrics
+    assert _by_key(app.selectbox, "sarimax_auto_selection_model").value == other_label
+
+    _by_key(app.radio, "sarimax_auto_selection_criterion").set_value("BIC")
+    app.run()
+    assert not app.exception
+    assert _by_key(app.selectbox, "sarimax_auto_selection_model").value is None
+    assert not app.metric
+    assert not app.success
 
 
 def _open_dynamic_family(app, family: str, mode: str) -> None:
@@ -589,7 +604,8 @@ def test_rdl_manual_and_auto_workflows_via_ui(monkeypatch):
     _by_key(app.button, "sarimax_fit_button").click()
     app.run()
     assert not app.exception
-    assert any("有效样本量" in item.value for item in app.success)
+    assert not app.metric
+    assert not app.success
     assert not any(
         "实际序列与理论模拟序列" in item.value for item in app.markdown
     )
@@ -608,7 +624,8 @@ def test_rdl_manual_and_auto_workflows_via_ui(monkeypatch):
     app.run()
     assert not app.exception
     _assert_completed_progress(app)
-    assert any("最终采用模型" in item.value for item in app.markdown)
+    assert not app.metric
+    assert not app.success
     assert not any(
         "实际序列与理论模拟序列" in item.value for item in app.markdown
     )
@@ -651,7 +668,8 @@ def test_ardl_manual_and_auto_workflows_via_ui(monkeypatch):
     app.run()
     assert not app.exception
     _assert_completed_progress(app)
-    assert any("最优 ARDL" in item.value for item in app.markdown)
+    assert not app.metric
+    assert not app.success
     assert not any(
         "实际序列与理论模拟序列" in item.value for item in app.markdown
     )
