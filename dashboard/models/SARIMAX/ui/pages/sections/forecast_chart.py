@@ -14,14 +14,14 @@ import pandas as pd
 from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
 from dashboard.core.ui.utils.matplotlib_compat import matplotlib_date_compatibility
 from dashboard.models.common.contracts import ForecastResult
-from dashboard.models.SARIMAX.core.forecast_planning import forecast_model_dates
+from dashboard.models.SARIMAX.core.forecast_planning import normalise_model_dates
 
 logger = logging.getLogger(__name__)
 
 
 def render_forecast_chart(
     st_obj,
-    result,
+    model_dates,
     forecast: ForecastResult,
     *,
     target: str | None,
@@ -33,8 +33,8 @@ def render_forecast_chart(
     ----------
     st_obj : object
         提供 ``warning`` 方法的 Streamlit 页面对象。
-    result : object
-        提供模型有效日期 ``dates`` 属性的拟合结果对象。
+    model_dates : sequence of datetime-like or None
+        模型适配器提供的有效样本日期。
     forecast : ForecastResult
         已生成的预测结果及其对应日期。
     target : str or None
@@ -50,7 +50,7 @@ def render_forecast_chart(
             prediction_dates = forecast.dates
             if prediction_dates is None:
                 raise ValueError("无日期模型不能绘制日期预测图")
-            model_dates = forecast_model_dates(result)
+            model_dates = normalise_model_dates(model_dates)
             if model_dates is None:
                 raise ValueError("模型没有有效日期索引")
             calendar = (

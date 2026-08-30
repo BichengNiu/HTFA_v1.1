@@ -42,6 +42,14 @@ class ModelStateLifecycle:
         self._clear(self.fit_result_keys)
         self.clear_downstream_results()
 
+    def store_fit_result(self, result: Any, signature: Any) -> None:
+        """发布新的拟合结果并原子地清除全部下游结果。"""
+        if len(self.fit_result_keys) != 2:
+            raise ValueError("fit_result_keys 必须包含结果键和签名键")
+        self.store.set(self.fit_result_keys[0], result)
+        self.store.set(self.fit_result_keys[1], signature)
+        self.clear_downstream_results()
+
     def clear_downstream_results(self) -> None:
         """清除诊断、预测等下游结果。"""
         self._clear(self.downstream_result_keys)

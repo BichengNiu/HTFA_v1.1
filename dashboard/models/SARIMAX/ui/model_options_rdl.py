@@ -1,0 +1,152 @@
+"""RDL 模型族的参数控件。"""
+
+from __future__ import annotations
+
+import pandas as pd
+
+from dashboard.models.SARIMAX.core.rdl_config import (
+    AutoRDLConfig,
+    RDLConfig,
+    RDLInputConfig,
+)
+from dashboard.models.SARIMAX.ui.model_options_shared import (
+    parse_sparse_lags,
+    restore_table_state,
+)
+from dashboard.models.SARIMAX.ui.model_options_sarimax import (
+    render_sarimax_error_options,
+)
+from dashboard.models.SARIMAX.ui.state import state
+
+
+def render_rdl_options(
+    st_obj,
+    exog: pd.DataFrame | None,
+    *,
+    automatic: bool,
+    response_log: bool,
+) -> RDLConfig | AutoRDLConfig | None:
+    """渲染 RDL 的误差结构、输入动态与估计设置。
+
+    Parameters
+    ----------
+    st_obj : object
+        具有 Streamlit 控件方法的对象。
+    exog : pandas.DataFrame or None
+        当前选择的外生变量表。
+    automatic : bool
+        是否自动搜索 SARIMAX 误差阶数。
+    response_log : bool
+        目标变量对数变换状态。
+
+    Returns
+    -------
+    RDLConfig or AutoRDLConfig or None
+        构建好的 RDL 配置；控件参数无效时返回 ``None``。
+    """
+    if exog is None or exog.empty:
+        st_obj.warning("RDL 需要至少一个解释变量；请在上方变量选择中添加。")
+        return None
+    with st_obj.container(border=True):
+        st_obj.markdown("**响应 / 误差结构**")
+        error = render_sarimax_error_options(
+            st_obj,
+            "sarimax_rdl_auto_error" if automatic else "sarimax_rdl_error",
+            automatic=automatic,
+            response_log=response_log,
+        )
+    if error is None:
+        return None
+    with st_obj.container(border=True):
+        st_obj.markdown("**输入动态**")
+        inputs = _render_rdl_inputs(st_obj, exog)
+    if inputs is None:
+        return None
+    with st_obj.container(border=True):
+        st_obj.markdown("**估计设置**")
+        stable = st_obj.checkbox(
+            "强制传递函数分母稳定",
+            value=True,
+            key="sarimax_rdl_enforce_stability",
+        )
+        st_obj.caption(
+            "自动 RDL 只搜索 SARIMAX 误差阶数，以上传递函数结构保持固定。"
+        )
+    try:
+        config_type = AutoRDLConfig if automatic else RDLConfig
+        kwargs = {
+            "inputs": inputs,
+            "error": error,
+            "enforce_distributed_lag_stability": stable,
+        }
+        return config_type(**kwargs)
+    except (TypeError, ValueError) as exc:
+        st_obj.error(f"RDL 设置有误：{exc}")
+        return None
+
+
+def _render_rdl_inputs(
+    st_obj,
+    exog: pd.DataFrame,
+) -> tuple[RDLInputConfig, ...] | None:
+    """渲染固定行的 RDL 传递函数参数表与可选稀疏滞后设置。"""
+    names = list(exog.columns)
+    basic = restore_table_state(
+        "rdl_input_table",
+        pd.DataFrame(
+            {"变量": names, "分子阶数": 0, "分母阶数": 0, "延迟": 0}
+        ),
+        names,
+    )
+    edited = st_obj.data_editor(
+        basic,
+        key="sarimax_rdl_input_table",
+        num_rows="fixed",
+        disabled=("变量",),
+        width="stretch",
+    )
+    state.set("rdl_input_table", edited.copy())
+    with st_obj.expander("高级：稀疏滞后与初始化策略", expanded=False):
+        st_obj.caption("留空即采用上表连续阶数；分母稀疏滞后从 1 开始。")
+        advanced = st_obj.data_editor(
+            restore_table_state(
+                "rdl_advanced_table",
+                pd.DataFrame(
+                    {
+                        "变量": names,
+                        "分子稀疏滞后": "",
+                        "分母稀疏滞后": "",
+                        "初始化": "auto",
+                    }
+                ),
+                names,
+            ),
+            key="sarimax_rdl_advanced_table",
+            num_rows="fixed",
+            disabled=("变量",),
+            width="stretch",
+        )
+        state.set("rdl_advanced_table", advanced.copy())
+    try:
+        return tuple(
+            RDLInputConfig(
+                name=str(name),
+                numerator_order=int(edited.iloc[index]["分子阶数"]),
+                denominator_order=int(edited.iloc[index]["分母阶数"]),
+                delay=int(edited.iloc[index]["延迟"]),
+                numerator_lags=parse_sparse_lags(
+                    advanced.iloc[index]["分子稀疏滞后"], minimum=0
+                ),
+                denominator_lags=parse_sparse_lags(
+                    advanced.iloc[index]["分母稀疏滞后"], minimum=1
+                ),
+                initialization=str(advanced.iloc[index]["初始化"]),
+            )
+            for index, name in enumerate(names)
+        )
+    except (TypeError, ValueError) as exc:
+        st_obj.error(f"RDL 输入动态设置有误：{exc}")
+        return None
+
+
+__all__ = ["render_rdl_options"]

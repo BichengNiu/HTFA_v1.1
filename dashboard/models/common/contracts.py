@@ -116,6 +116,44 @@ class ModelingInput:
 
 
 @dataclass(frozen=True)
+class ForecastContext:
+    """模型预测前置阶段所需的稳定上下文。
+
+    Parameters
+    ----------
+    model_dates : pandas.DatetimeIndex or None
+        拟合模型对应的有效日期索引；没有日期模型时为 ``None``。
+    model_nobs : int
+        拟合模型使用的有效观测数。
+    exog_names : tuple[str, ...]
+        模型外生变量名称及其顺序。
+    """
+
+    model_dates: pd.DatetimeIndex | None
+    model_nobs: int
+    exog_names: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if isinstance(self.model_nobs, bool) or not isinstance(
+            self.model_nobs, (int, np.integer)
+        ) or self.model_nobs < 0:
+            raise ValueError("model_nobs 必须是非负整数")
+        dates = self.model_dates
+        if dates is not None:
+            dates = pd.DatetimeIndex(pd.to_datetime(dates)).copy()
+            if dates.hasnans:
+                raise ValueError("model_dates 不能包含无效日期")
+            if len(dates) != int(self.model_nobs):
+                raise ValueError("model_dates 长度必须与 model_nobs 一致")
+            object.__setattr__(self, "model_dates", dates)
+        names = tuple(str(name) for name in self.exog_names)
+        if len(names) != len(set(names)):
+            raise ValueError("exog_names 不能包含重复变量")
+        object.__setattr__(self, "model_nobs", int(self.model_nobs))
+        object.__setattr__(self, "exog_names", names)
+
+
+@dataclass(frozen=True)
 class ForecastRequest:
     """跨模型共享的预测请求。
 
@@ -170,6 +208,50 @@ class ForecastRequest:
                 self.future_exog.copy(deep=True),
             )
         object.__setattr__(self, "alpha", float(self.alpha))
+
+
+@dataclass(frozen=True)
+class SimulationRequest:
+    """SARIMAX 模拟路径比较的稳定请求。
+
+    Parameters
+    ----------
+    n_paths : int
+        模拟路径数量，至少为 2。
+    seed : int
+        随机种子，必须为非负整数。
+    confidence_level : float
+        模拟中心区间的置信水平，必须严格位于 0 和 1 之间。
+    acf_lags : int
+        ACF 比较的最大滞后阶数，必须为正整数。
+    """
+
+    n_paths: int
+    seed: int
+    confidence_level: float
+    acf_lags: int
+
+    def __post_init__(self) -> None:
+        for name, value in (("n_paths", self.n_paths), ("seed", self.seed)):
+            if isinstance(value, bool) or not isinstance(value, (int, np.integer)):
+                raise TypeError(f"{name} 必须是整数")
+        if self.n_paths < 2:
+            raise ValueError("n_paths 至少为 2")
+        if self.seed < 0:
+            raise ValueError("seed 必须是非负整数")
+        if isinstance(self.acf_lags, bool) or not isinstance(
+            self.acf_lags, (int, np.integer)
+        ) or self.acf_lags < 1:
+            raise ValueError("acf_lags 必须是正整数")
+        if isinstance(self.confidence_level, bool):
+            raise TypeError("confidence_level 必须是 0 到 1 之间的数字")
+        confidence_level = float(self.confidence_level)
+        if not 0.0 < confidence_level < 1.0:
+            raise ValueError("confidence_level 必须严格位于 0 和 1 之间")
+        object.__setattr__(self, "n_paths", int(self.n_paths))
+        object.__setattr__(self, "seed", int(self.seed))
+        object.__setattr__(self, "acf_lags", int(self.acf_lags))
+        object.__setattr__(self, "confidence_level", confidence_level)
 
 
 @dataclass(frozen=True)
@@ -338,8 +420,10 @@ class ResidualDiagnosticView:
 
 __all__ = [
     "EstimationResultView",
+    "ForecastContext",
     "ForecastRequest",
     "ForecastResult",
     "ModelingInput",
     "ResidualDiagnosticView",
+    "SimulationRequest",
 ]

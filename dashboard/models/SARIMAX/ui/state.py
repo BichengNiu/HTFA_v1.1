@@ -156,6 +156,11 @@ def clear_fit_results() -> None:
     _STATE_LIFECYCLE.clear_fit_results()
 
 
+def store_fit_result(result, signature) -> None:
+    """发布拟合结果、签名并清除依赖旧结果的下游状态。"""
+    _STATE_LIFECYCLE.store_fit_result(result, signature)
+
+
 def clear_downstream_results() -> None:
     """清除当前模型选择之后的诊断与预测结果。"""
     _STATE_LIFECYCLE.clear_downstream_results()
@@ -175,5 +180,6 @@ __all__ = [
     "clear_downstream_results",
     "clear_fit_results",
     "clear_widget_state",
+    "store_fit_result",
     "state",
 ]

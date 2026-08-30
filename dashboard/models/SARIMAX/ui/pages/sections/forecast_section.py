@@ -19,10 +19,7 @@ from dashboard.models.SARIMAX.core.forecast_planning import (
     serialise_frame,
 )
 from dashboard.models.SARIMAX.core.modeling import translate_ts_error
-from dashboard.models.SARIMAX.core.adapters import (
-    DynamicRegressionAdapter,
-    best_result,
-)
+from dashboard.models.SARIMAX.core.adapters import DynamicRegressionAdapter
 from dashboard.models.common.workflow import ModelWorkflow
 from dashboard.models.SARIMAX.ui.pages.sections.forecast_chart import (
     render_forecast_chart,
@@ -42,7 +39,11 @@ def render_forecast_section(st_obj) -> None:
     if result is None:
         st_obj.info("完成模型训练后可生成样本外预测。")
         return
-    best = best_result(result)
+    try:
+        forecast_context = _MODEL_WORKFLOW.forecast_context(result)
+    except Exception as exc:  # noqa: BLE001 - 用户可读的模型上下文边界
+        st_obj.error(f"预测模型上下文准备失败：{exc}")
+        return
     family = state.get("model_selection", ("SARIMAX", "手动配置"))[0]
     dataset = state.get("dataset")
 
@@ -53,7 +54,7 @@ def render_forecast_section(st_obj) -> None:
     try:
         forecast_calendar = build_forecast_calendar(
             dataset,
-            best,
+            forecast_context.model_dates,
             training_range[1],
             extension_periods=MAX_FORECAST_EXTENSION,
         )
@@ -70,7 +71,7 @@ def render_forecast_section(st_obj) -> None:
         st_obj.error("当前数据集没有有效时间列，无法生成日期预测。")
         return
 
-    model_nobs = int(best.nobs)
+    model_nobs = forecast_context.model_nobs
     if model_nobs != len(model_dates):
         st_obj.error("模型有效样本与日期索引长度不一致，无法安全生成预测。")
         return
@@ -157,13 +158,14 @@ def render_forecast_section(st_obj) -> None:
         st_obj.warning("预测终点不能早于预测起点。")
         return
     future_exog = None
-    exog_names = tuple(best.exog_names)
+    exog_names = forecast_context.exog_names
     source_columns: tuple[str, ...] = ()
     if exog_names and future_dates_for_model is not None:
         future_exog, source_columns = _render_future_exog_editor(
             st_obj,
             dataset,
-            best,
+            model_nobs,
+            forecast_context.model_dates,
             total_steps,
             exog_names,
             future_dates_for_model,
@@ -230,7 +232,7 @@ def render_forecast_section(st_obj) -> None:
     def render_chart(st_instance, forecast_result, *, target, show_confidence_interval):
         render_forecast_chart(
             st_instance,
-            best,
+            forecast_context.model_dates,
             forecast_result,
             target=target,
             show_confidence_interval=show_confidence_interval,
@@ -252,7 +254,8 @@ def render_forecast_section(st_obj) -> None:
 def _render_future_exog_editor(
     st_obj,
     dataset,
-    best,
+    model_nobs: int,
+    model_dates: pd.DatetimeIndex | None,
     total_steps: int,
     exog_names: tuple[str, ...],
     forecast_dates: pd.DatetimeIndex | None = None,
@@ -263,7 +266,8 @@ def _render_future_exog_editor(
         st_obj.error("当前数据表没有可用的数值列，无法提供未来外生变量路径。")
         empty = build_future_exog(
             None,
-            best,
+            model_nobs,
+            model_dates,
             total_steps,
             (),
             exog_names,
@@ -289,7 +293,8 @@ def _render_future_exog_editor(
     if not source_columns:
         empty = build_future_exog(
             None,
-            best,
+            model_nobs,
+            model_dates,
             total_steps,
             (),
             exog_names,
@@ -299,7 +304,8 @@ def _render_future_exog_editor(
 
     editor_frame = build_future_exog(
         dataset,
-        best,
+        model_nobs,
+        model_dates,
         total_steps,
         source_columns,
         exog_names,
@@ -307,7 +313,7 @@ def _render_future_exog_editor(
     )
     editor_signature = stable_signature(
         {
-            "start": int(best.nobs),
+            "start": int(model_nobs),
             "steps": total_steps,
             "sources": source_columns,
             "index": [str(value) for value in editor_frame.index],

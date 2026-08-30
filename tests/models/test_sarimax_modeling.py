@@ -56,7 +56,9 @@ from dashboard.models.SARIMAX.core.simulation import (
     build_sarimax_acf_comparison_table,
     build_sarimax_simulation_comparison,
     build_sarimax_simulation_summary,
-    plot_sarimax_simulation_comparison,
+)
+from dashboard.models.SARIMAX.ui.pages.sections.simulation_chart import (
+    _plot_sarimax_simulation_comparison,
 )
 
 
@@ -83,7 +85,6 @@ def test_sarimax_simulation_is_an_independent_core_module():
         "build_sarimax_acf_comparison_table",
         "build_sarimax_simulation_comparison",
         "build_sarimax_simulation_summary",
-        "plot_sarimax_simulation_comparison",
     ]
     assert "dashboard.models.SARIMAX.core.modeling" not in inspect.getsource(
         simulation
@@ -155,7 +156,7 @@ def test_sarimax_simulation_comparison_plot_has_two_overlayed_series():
     )
     comparison = build_sarimax_simulation_comparison(result, n_paths=8, seed=123)
 
-    figure, axes = plot_sarimax_simulation_comparison(comparison)
+    figure, axes = _plot_sarimax_simulation_comparison(comparison)
     time_axis, acf_axis = axes
 
     assert len(time_axis.lines) == 2
@@ -213,7 +214,7 @@ def test_forecast_planning_builds_calendar_and_normalises_window():
 
     calendar = build_forecast_calendar(
         dataset,
-        result,
+        result.dates,
         dates[2],
         extension_periods=2,
     )
@@ -262,7 +263,7 @@ def test_forecast_chart_date_adapter_preserves_ts_actual_values(monkeypatch):
 
     chart.render_forecast_chart(
         SimpleNamespace(warning=lambda _message: None),
-        SimpleNamespace(dates=calendar),
+        calendar,
         ForecastResult(
             dates=calendar,
             mean=np.array([10.0, 20.0, 30.0]),
@@ -311,7 +312,7 @@ def test_forecast_chart_uses_target_ylabel_without_titles(monkeypatch):
 
     chart.render_forecast_chart(
         SimpleNamespace(warning=lambda _message: None),
-        SimpleNamespace(dates=calendar),
+        calendar,
         ForecastResult(
             dates=calendar,
             mean=np.array([10.0, 20.0, 30.0]),
@@ -363,8 +364,8 @@ def test_forecast_chart_autoscales_y_to_selected_date_window(monkeypatch):
     )
 
     chart.render_forecast_chart(
-        SimpleNamespace(),
-        SimpleNamespace(dates=calendar),
+        SimpleNamespace(warning=lambda _message: None),
+        calendar,
         ForecastResult(
             dates=calendar[1:3],
             mean=np.array([10.0, 11.0]),
@@ -960,7 +961,8 @@ def test_future_exog_path_is_prefilled_from_dataset():
 
     future = build_future_exog(
         dataset,
-        best,
+        best.nobs,
+        best.dates,
         total_steps=2,
         source_columns=("policy",),
         exog_names=("policy",),

@@ -9,10 +9,12 @@ import pandas as pd
 
 from .contracts import (
     EstimationResultView,
+    ForecastContext,
     ForecastRequest,
     ForecastResult,
     ModelingInput,
     ResidualDiagnosticView,
+    SimulationRequest,
 )
 
 
@@ -33,8 +35,21 @@ class ModelAdapter(Protocol):
     def result_view(self, result: Any) -> EstimationResultView:
         """将底层结果转换为通用估计结果视图。"""
 
+    def select_result(
+        self,
+        result: Any,
+        selection: str | tuple[str, Any],
+    ) -> Any:
+        """按页面选择重新确定当前模型结果。"""
+
+    def forecast_context(self, result: Any) -> ForecastContext:
+        """提取预测规划所需的稳定模型上下文。"""
+
     def forecast(self, result: Any, request: ForecastRequest) -> ForecastResult:
         """按通用预测请求生成稳定的预测结果。"""
+
+    def simulate(self, result: Any, request: SimulationRequest) -> Any:
+        """按模型特有实现生成模拟分析结果。"""
 
     def residual_diagnostics(self, result: Any) -> ResidualDiagnosticView:
         """准备残差诊断图和诊断上下文。"""
@@ -73,9 +88,25 @@ class ModelWorkflow:
         """通过适配器生成通用估计结果视图。"""
         return self.adapter.result_view(result)
 
+    def select_result(
+        self,
+        result: Any,
+        selection: str | tuple[str, Any],
+    ) -> Any:
+        """通过适配器重新确定当前模型结果。"""
+        return self.adapter.select_result(result, selection)
+
+    def forecast_context(self, result: Any) -> ForecastContext:
+        """通过适配器提取预测规划上下文。"""
+        return self.adapter.forecast_context(result)
+
     def forecast(self, result: Any, request: ForecastRequest) -> ForecastResult:
         """通过适配器生成通用预测结果。"""
         return self.adapter.forecast(result, request)
+
+    def simulate(self, result: Any, request: SimulationRequest) -> Any:
+        """通过适配器生成模型特有模拟结果。"""
+        return self.adapter.simulate(result, request)
 
     def residual_diagnostics(self, result: Any) -> ResidualDiagnosticView:
         """通过适配器准备残差诊断上下文。"""

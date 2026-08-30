@@ -50,8 +50,8 @@ from dashboard.models.SARIMAX.core.forecast_planning import (
     actual_values_for_dates,
     build_forecast_calendar,
     build_future_exog,
-    forecast_model_dates,
     future_dates,
+    normalise_model_dates,
     normalise_date_window,
     resolve_prediction_positions,
     serialise_frame,
@@ -61,7 +61,6 @@ from dashboard.models.SARIMAX.core.simulation import (
     build_sarimax_acf_comparison_table,
     build_sarimax_simulation_comparison,
     build_sarimax_simulation_summary,
-    plot_sarimax_simulation_comparison,
 )
 
 __all__ = [
@@ -101,13 +100,12 @@ __all__ = [
     "fit_dynamic_model",
     "fit_rdl",
     "fit_sarimax",
-    "forecast_model_dates",
     "forecast_sample_dates",
     "format_sarimax_order",
     "future_dates",
+    "normalise_model_dates",
     "actual_values_for_dates",
     "normalise_date_window",
-    "plot_sarimax_simulation_comparison",
     "prepare_modeling_inputs",
     "produce_forecast",
     "recommended_residual_diagnostic_lags",

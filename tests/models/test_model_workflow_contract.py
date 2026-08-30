@@ -9,10 +9,12 @@ from types import SimpleNamespace
 
 from dashboard.models.common.contracts import (
     EstimationResultView,
+    ForecastContext,
     ForecastRequest,
     ForecastResult,
     ModelingInput,
     ResidualDiagnosticView,
+    SimulationRequest,
 )
 from dashboard.models.common.workflow import ModelWorkflow
 from dashboard.models.common.ui.data_input import create_data_input_module
@@ -56,6 +58,30 @@ def test_forecast_request_requires_a_closed_window_and_valid_alpha():
         ForecastRequest(start=0, end=2, alpha=0.0)
     with pytest.raises(ValueError, match="结束"):
         ForecastRequest(start=3, end=2)
+
+
+def test_forecast_context_and_simulation_request_are_stable_value_objects():
+    dates = pd.date_range("2024-01-01", periods=3, freq="MS")
+    context = ForecastContext(
+        model_dates=dates,
+        model_nobs=3,
+        exog_names=("x",),
+    )
+    request = SimulationRequest(
+        n_paths=8,
+        seed=42,
+        confidence_level=0.95,
+        acf_lags=10,
+    )
+
+    assert context.model_dates.equals(dates)
+    assert context.exog_names == ("x",)
+    assert request.n_paths == 8
+    assert request.confidence_level == 0.95
+    with pytest.raises(ValueError, match="model_nobs"):
+        ForecastContext(model_dates=dates, model_nobs=2)
+    with pytest.raises(ValueError, match="至少为 2"):
+        SimulationRequest(n_paths=1, seed=42, confidence_level=0.95, acf_lags=10)
 
 
 def test_forecast_result_requires_aligned_finite_arrays():
@@ -153,6 +179,29 @@ def test_model_workflow_exposes_the_diagnostic_seam():
     assert workflow.residual_test_table(object(), lags=2) is table
 
 
+def test_model_workflow_exposes_selection_forecast_and_simulation_seams():
+    context = ForecastContext(model_dates=None, model_nobs=3, exog_names=("x",))
+    request = SimulationRequest(
+        n_paths=8,
+        seed=42,
+        confidence_level=0.95,
+        acf_lags=10,
+    )
+    adapter = SimpleNamespace(
+        select_result=lambda result, selection: (result, selection),
+        forecast_context=lambda result: context,
+        simulate=lambda result, received: (result, received),
+    )
+    workflow = ModelWorkflow(adapter)
+
+    assert workflow.select_result("result", "criterion") == (
+        "result",
+        "criterion",
+    )
+    assert workflow.forecast_context("result") is context
+    assert workflow.simulate("result", request) == ("result", request)
+
+
 def test_sarimax_adapter_surfaces_fit_and_result_conversion_failures(monkeypatch):
     def failing_fit(*_args, **_kwargs):
         raise RuntimeError("fit failed")
@@ -213,6 +262,48 @@ def test_sarimax_adapter_converts_result_and_forecast_to_neutral_views(monkeypat
     )
     assert forecast.steps == 2
     assert forecast.prediction == "prediction"
+
+
+def test_sarimax_adapter_converts_raw_model_metadata_to_forecast_context():
+    dates = pd.date_range("2024-01-01", periods=3, freq="MS")
+    best = SimpleNamespace(nobs=3, dates=dates, exog_names=("x",))
+
+    context = SARIMAXAdapter().forecast_context(
+        SimpleNamespace(best_result=best)
+    )
+
+    assert context.model_nobs == 3
+    assert context.model_dates.equals(dates)
+    assert context.exog_names == ("x",)
+
+
+def test_sarimax_adapter_routes_simulation_through_stable_request(monkeypatch):
+    best = object()
+    result = SimpleNamespace(best_result=best)
+    request = SimulationRequest(
+        n_paths=8,
+        seed=42,
+        confidence_level=0.95,
+        acf_lags=10,
+    )
+    calls = {}
+
+    def fake_simulation(received, **kwargs):
+        calls.update(result=received, kwargs=kwargs)
+        return "comparison"
+
+    monkeypatch.setattr(adapters, "build_sarimax_simulation_comparison", fake_simulation)
+
+    assert SARIMAXAdapter().simulate(result, request) == "comparison"
+    assert calls == {
+        "result": best,
+        "kwargs": {
+            "n_paths": 8,
+            "seed": 42,
+            "confidence_level": 0.95,
+            "acf_lags": 10,
+        },
+    }
 
 
 def test_sarimax_adapter_owns_residual_diagnostic_result_access(monkeypatch):

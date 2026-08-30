@@ -7,7 +7,6 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from Ts.TsPlots import plot_series
 from Ts.TsSims import simulate_sarimax
 
 
@@ -488,142 +487,9 @@ def build_sarimax_acf_comparison_table(
     )
 
 
-def plot_sarimax_simulation_comparison(
-    comparison: SARIMAXSimulationComparison,
-) -> tuple[Any, tuple[Any, Any]]:
-    """用 TsPlots 风格绘制模拟路径区间和 ACF 区间。
-
-    Parameters
-    ----------
-    comparison : SARIMAXSimulationComparison
-        已生成的实际序列与理论模拟序列对比数据。
-
-    Returns
-    -------
-    tuple
-        ``(figure, (time_axis, acf_axis))`` 形式的图形对象。
-    """
-    import matplotlib.pyplot as plt
-    from matplotlib.patches import Patch
-    from Ts.TsPlots.style import (
-        AXIS_LABEL_FONTSIZE,
-        BAND_ALPHA,
-        BAND_COLOR,
-        BLACK,
-        DARK_BLUE,
-        REFERENCE_LINE_STYLE,
-        REFERENCE_LINE_WIDTH,
-        TIGHT_PAD,
-        ZERO_LINE_COLOR,
-        _ensure_fonts,
-        style_axes,
-    )
-
-    _ensure_fonts()
-    figure, axes = plt.subplots(
-        2,
-        1,
-        figsize=(12, 8),
-        gridspec_kw={"height_ratios": (3, 1)},
-    )
-    time_axis, acf_axis = axes
-    frame = pd.DataFrame(
-        {
-            "实际序列": comparison.actual,
-            "模拟中位数": comparison.simulated_median,
-        },
-        index=comparison.index,
-    )
-    plot_series(
-        frame,
-        ax=time_axis,
-        title="实际序列与模拟路径分布",
-        xtitle="",
-        ytitle="",
-        linewidth=2.0,
-        markersize=0,
-        show_legend=True,
-        legend_loc="upper left",
-        facet=False,
-        auto_dual_y=False,
-        grid=False,
-    )
-    time_axis.fill_between(
-        comparison.index,
-        comparison.simulated_lower,
-        comparison.simulated_upper,
-        color=BAND_COLOR,
-        alpha=BAND_ALPHA,
-        linewidth=0,
-        zorder=0,
-    )
-    handles = list(time_axis.lines)
-    labels = [line.get_label() for line in time_axis.lines]
-    handles.append(
-        Patch(
-            facecolor=BAND_COLOR,
-            edgecolor="none",
-            alpha=BAND_ALPHA,
-        )
-    )
-    labels.append(f"模拟{comparison.confidence_level:.0%}区间")
-    time_axis.legend(handles, labels, frameon=False)
-
-    lags = np.arange(1, comparison.acf_lags + 1)
-    acf_axis.fill_between(
-        lags,
-        comparison.simulated_acf_lower,
-        comparison.simulated_acf_upper,
-        color=BAND_COLOR,
-        alpha=BAND_ALPHA,
-        linewidth=0,
-        zorder=0,
-    )
-    acf_axis.plot(
-        lags,
-        comparison.actual_acf,
-        color=BLACK,
-        linewidth=2.0,
-        marker="o",
-        markersize=4,
-        label="实际 ACF",
-        zorder=3,
-    )
-    acf_axis.plot(
-        lags,
-        comparison.simulated_acf_median,
-        color=DARK_BLUE,
-        linewidth=2.0,
-        marker="s",
-        markersize=4,
-        label="模拟 ACF 中位数",
-        zorder=3,
-    )
-    acf_axis.axhline(
-        0.0,
-        color=ZERO_LINE_COLOR,
-        linestyle=REFERENCE_LINE_STYLE,
-        linewidth=REFERENCE_LINE_WIDTH,
-        zorder=2,
-    )
-    acf_axis.set_title(
-        f"ACF 比较（滞后 1–{comparison.acf_lags}）",
-        fontsize=AXIS_LABEL_FONTSIZE,
-        fontweight="normal",
-        pad=6,
-    )
-    acf_axis.set_xlabel("滞后期数", fontsize=AXIS_LABEL_FONTSIZE)
-    acf_axis.set_ylabel("ACF值", fontsize=AXIS_LABEL_FONTSIZE)
-    acf_axis.set_xticks(lags)
-    style_axes(acf_axis, grid=False)
-    figure.tight_layout(pad=TIGHT_PAD)
-    return figure, (time_axis, acf_axis)
-
-
 __all__ = [
     "SARIMAXSimulationComparison",
     "build_sarimax_acf_comparison_table",
     "build_sarimax_simulation_comparison",
     "build_sarimax_simulation_summary",
-    "plot_sarimax_simulation_comparison",
 ]

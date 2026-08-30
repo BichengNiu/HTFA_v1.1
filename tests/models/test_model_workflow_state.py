@@ -42,6 +42,25 @@ def test_lifecycle_clears_fit_and_downstream_results_by_dependency():
     assert all(store.get(key) is None for key in ("diag", "diag_signature", "forecast"))
 
 
+def test_lifecycle_publishes_fit_and_invalidates_downstream_results():
+    store = Store()
+    lifecycle = ModelStateLifecycle(
+        store=store,
+        fit_result_keys=("fit", "fit_signature"),
+        downstream_result_keys=("forecast",),
+        widget_keys=(),
+    )
+    store.set("forecast", "stale")
+
+    lifecycle.store_fit_result("new-fit", "new-signature")
+
+    assert store.values == {
+        "forecast": None,
+        "fit": "new-fit",
+        "fit_signature": "new-signature",
+    }
+
+
 def test_lifecycle_clears_only_declared_widgets():
     store = Store()
     session = Session()

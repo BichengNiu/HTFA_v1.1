@@ -4,15 +4,13 @@ from __future__ import annotations
 
 import logging
 
-from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
-from dashboard.core.ui.utils.matplotlib_compat import matplotlib_date_compatibility
 from dashboard.core.workspace import artifact_signature, stable_signature
+from dashboard.models.common.contracts import SimulationRequest
 from dashboard.models.common.ui.model_inputs import ModelInputModule
 from dashboard.models.common.ui.result_view import render_estimation_result
 from dashboard.models.common.workflow import ModelWorkflow
 from dashboard.models.SARIMAX.core.adapters import (
     DynamicRegressionAdapter,
-    best_result,
     is_automatic_config,
 )
 from dashboard.models.SARIMAX.core.data_loader import (
@@ -27,15 +25,16 @@ from dashboard.models.SARIMAX.core.modeling import (
 )
 from dashboard.models.SARIMAX.core.simulation import (
     build_sarimax_acf_comparison_table,
-    build_sarimax_simulation_comparison,
     build_sarimax_simulation_summary,
-    plot_sarimax_simulation_comparison,
 )
 from dashboard.models.SARIMAX.ui.model_options import render_model_options
+from dashboard.models.SARIMAX.ui.pages.sections.simulation_chart import (
+    render_sarimax_simulation_chart,
+)
 from dashboard.models.SARIMAX.ui.state import (
-    clear_downstream_results,
     clear_fit_results,
     clear_widget_state,
+    store_fit_result,
     state,
 )
 
@@ -187,14 +186,7 @@ def render_training_section(st_obj) -> None:
                 logger.exception("SARIMAX 模型拟合失败")
                 clear_fit_results()
                 return
-        state.set("fitted_result", result)
-        state.set("fit_signature", signature)
-        state.set("diagnostics_table", None)
-        state.set("diagnostics_signature", None)
-        state.set("forecast", None)
-        state.set("forecast_signature", None)
-        state.set("simulation_comparison", None)
-        state.set("simulation_signature", None)
+        store_fit_result(result, signature)
 
     result = state.get("fitted_result")
     if result is None or state.get("fit_signature") != signature:
@@ -213,12 +205,11 @@ def _render_fit_summary(st_obj, result, *, model_family: str) -> None:
     )
     if selected is not None:
         try:
-            result = _MODEL_ADAPTER.select_result(result, selected)
+            result = _MODEL_WORKFLOW.select_result(result, selected)
         except Exception as exc:  # noqa: BLE001 - 用户可读的选阶边界
             st_obj.error(f"重新选择模型失败：{translate_ts_error(exc)}")
             return
-        state.set("fitted_result", result)
-        clear_downstream_results()
+        store_fit_result(result, state.get("fit_signature"))
         render_estimation_result(
             st_obj,
             _MODEL_WORKFLOW.result_view(result),
@@ -235,7 +226,6 @@ def _render_fit_summary(st_obj, result, *, model_family: str) -> None:
 
 def _render_sarimax_simulation_chart(st_obj, result) -> None:
     """展示实际序列与多条 TsSims 模拟路径的分布比较。"""
-    best = best_result(result)
     st_obj.markdown("**实际序列与模拟路径分布**")
     n_paths = int(
         st_obj.number_input(
@@ -251,15 +241,19 @@ def _render_sarimax_simulation_chart(st_obj, result) -> None:
             ),
         )
     )
+    request = SimulationRequest(
+        n_paths=n_paths,
+        seed=_SIMULATION_SEED,
+        confidence_level=_SIMULATION_CONFIDENCE_LEVEL,
+        acf_lags=_SIMULATION_ACF_LAGS,
+    )
     signature = stable_signature(
         {
             "fit_signature": state.get("fit_signature"),
-            "order": getattr(best, "order", None),
-            "seasonal_order": getattr(best, "seasonal_order", None),
-            "n_paths": n_paths,
-            "seed": _SIMULATION_SEED,
-            "confidence_level": _SIMULATION_CONFIDENCE_LEVEL,
-            "acf_lags": _SIMULATION_ACF_LAGS,
+            "n_paths": request.n_paths,
+            "seed": request.seed,
+            "confidence_level": request.confidence_level,
+            "acf_lags": request.acf_lags,
         }
     )
     comparison = state.get("simulation_comparison")
@@ -268,13 +262,7 @@ def _render_sarimax_simulation_chart(st_obj, result) -> None:
             with st_obj.spinner(
                 f"正在调用 TsSims 生成 {n_paths} 条模拟路径..."
             ):
-                comparison = build_sarimax_simulation_comparison(
-                    best,
-                    n_paths=n_paths,
-                    seed=_SIMULATION_SEED,
-                    confidence_level=_SIMULATION_CONFIDENCE_LEVEL,
-                    acf_lags=_SIMULATION_ACF_LAGS,
-                )
+                comparison = _MODEL_WORKFLOW.simulate(result, request)
         except Exception as exc:
             st_obj.warning(f"模拟路径比较无法绘制：{translate_ts_error(exc)}")
             logger.warning("SARIMAX 模拟路径比较生成失败", exc_info=True)
@@ -284,14 +272,7 @@ def _render_sarimax_simulation_chart(st_obj, result) -> None:
         state.set("simulation_comparison", comparison)
         state.set("simulation_signature", signature)
 
-    try:
-        with matplotlib_date_compatibility():
-            figure, _ = plot_sarimax_simulation_comparison(comparison)
-            render_pyplot_figure(st_obj, figure)
-    except Exception as exc:
-        st_obj.warning(f"模拟路径比较无法绘制：{translate_ts_error(exc)}")
-        logger.warning("SARIMAX 模拟路径比较绘制失败", exc_info=True)
-        return
+    render_sarimax_simulation_chart(st_obj, comparison)
 
     st_obj.caption(
         f"{comparison.n_paths} 条独立模拟路径（seed={comparison.seed}）；"

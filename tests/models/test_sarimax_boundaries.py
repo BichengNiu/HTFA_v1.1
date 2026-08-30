@@ -75,6 +75,64 @@ def test_forecast_planning_module_has_no_ui_or_ts_dependency():
     assert not any(module.lower().startswith("matplotlib") for module in imported_modules)
 
 
+def test_simulation_core_contains_statistics_but_no_presentation_imports():
+    """模拟统计 module 不应承担 Matplotlib 或 TsPlots 渲染。"""
+    path = PROJECT_ROOT / "dashboard/models/SARIMAX/core/simulation.py"
+    source = path.read_text(encoding="utf-8")
+
+    assert "matplotlib" not in source.lower()
+    assert "Ts.TsPlots" not in source
+    assert "plot_sarimax_simulation_comparison" not in source
+
+
+def test_model_family_implementations_are_split_from_facades():
+    """模型族拟合和参数控件必须由各自 module 承担。"""
+    core_modeling = (
+        PROJECT_ROOT / "dashboard/models/SARIMAX/core/modeling.py"
+    ).read_text(encoding="utf-8")
+    options_facade = (
+        PROJECT_ROOT / "dashboard/models/SARIMAX/ui/model_options.py"
+    ).read_text(encoding="utf-8")
+
+    assert "from Ts.TsModels" not in core_modeling
+    assert "def fit_sarimax" not in core_modeling
+    assert "def fit_rdl" not in core_modeling
+    assert "def fit_ardl" not in core_modeling
+    assert "def _render_manual_config" not in options_facade
+    assert "def _render_rdl_config" not in options_facade
+    assert "def _render_ardl_config" not in options_facade
+    for module in (
+        "sarimax_modeling.py",
+        "rdl_modeling.py",
+        "ardl_modeling.py",
+        "model_options_sarimax.py",
+        "model_options_rdl.py",
+        "model_options_ardl.py",
+    ):
+        assert (PROJECT_ROOT / "dashboard/models/SARIMAX" / (
+            "core" if module.endswith("modeling.py") else "ui"
+        ) / module).exists()
+
+
+def test_forecast_and_training_pages_consume_stable_seams():
+    """页面编排不得读取底层拟合结果的模型属性。"""
+    for filename in ("training_section.py", "forecast_section.py"):
+        source = (
+            PROJECT_ROOT
+            / "dashboard/models/SARIMAX/ui/pages/sections"
+            / filename
+        ).read_text(encoding="utf-8")
+        for leaked_detail in (
+            "best_result(",
+            "best.nobs",
+            "best.exog_names",
+            "best.dates",
+            "best.order",
+            "best.seasonal_order",
+        ):
+            assert leaked_detail not in source
+
+
 def test_sarimax_main_page_only_orchestrates_sections():
     """主页面只做四环节编排，不直接 import Ts。"""
     path = PROJECT_ROOT / "dashboard/models/SARIMAX/ui/pages/sarimax_page.py"

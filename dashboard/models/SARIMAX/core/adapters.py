@@ -14,10 +14,12 @@ import pandas as pd
 
 from dashboard.models.common.contracts import (
     EstimationResultView,
+    ForecastContext,
     ForecastRequest,
     ForecastResult,
     ModelingInput,
     ResidualDiagnosticView,
+    SimulationRequest,
 )
 from dashboard.models.SARIMAX.core.model_config import (
     ARDLConfig,
@@ -27,20 +29,26 @@ from dashboard.models.SARIMAX.core.model_config import (
     RDLConfig,
     SARIMAXConfig,
 )
+from dashboard.models.SARIMAX.core.diagnostics import (
+    recommended_residual_diagnostic_lags,
+    run_residual_diagnostics,
+)
+from dashboard.models.SARIMAX.core.forecasting import produce_forecast
 from dashboard.models.SARIMAX.core.modeling import (
     build_auto_sarimax_criterion_table,
     fit_dynamic_model,
     format_sarimax_order,
-    produce_forecast,
-    recommended_residual_diagnostic_lags,
-    run_residual_diagnostics,
     select_auto_sarimax_candidate,
     select_auto_sarimax_result,
     translate_ts_error,
 )
+from dashboard.models.SARIMAX.core.forecast_planning import normalise_model_dates
+from dashboard.models.SARIMAX.core.simulation import (
+    build_sarimax_simulation_comparison,
+)
 
 
-def best_result(result: Any) -> Any:
+def _best_result(result: Any) -> Any:
     """取得自动选阶结果的最佳拟合对象，不暴露具体 Ts 类。"""
     return getattr(result, "best_result", result)
 
@@ -131,7 +139,7 @@ class _TsResultAdapter:
 
     def result_view(self, result: Any) -> EstimationResultView:
         """将 SARIMAX 族结果转换为通用估计视图。"""
-        best = best_result(result)
+        best = _best_result(result)
         selection_table = None
         selection_title = None
         selection_message = None
@@ -242,9 +250,18 @@ class _TsResultAdapter:
             return select_auto_sarimax_result(result, selection)
         raise ValueError("当前模型结果不支持重新选择信息准则")
 
+    def forecast_context(self, result: Any) -> ForecastContext:
+        """提取预测规划需要的日期、样本数和外生变量名称。"""
+        best = _best_result(result)
+        return ForecastContext(
+            model_dates=normalise_model_dates(getattr(best, "dates", None)),
+            model_nobs=int(getattr(best, "nobs", 0)),
+            exog_names=tuple(getattr(best, "exog_names", ())),
+        )
+
     def forecast(self, result: Any, request: ForecastRequest) -> ForecastResult:
         """使用 Ts 预测并转换为稳定预测结果。"""
-        best = best_result(result)
+        best = _best_result(result)
         raw = produce_forecast(
             best,
             start=request.start,
@@ -266,9 +283,19 @@ class _TsResultAdapter:
             prediction=raw["prediction"],
         )
 
+    def simulate(self, result: Any, request: SimulationRequest) -> Any:
+        """按稳定模拟请求生成 SARIMAX 模拟路径比较结果。"""
+        return build_sarimax_simulation_comparison(
+            _best_result(result),
+            n_paths=request.n_paths,
+            seed=request.seed,
+            confidence_level=request.confidence_level,
+            acf_lags=request.acf_lags,
+        )
+
     def residual_diagnostics(self, result: Any) -> ResidualDiagnosticView:
         """准备残差诊断图和页面所需的稳定诊断上下文。"""
-        best = best_result(result)
+        best = _best_result(result)
         residuals = np.asarray(best.residuals, dtype=float)
         nobs = int(np.isfinite(residuals).sum())
         lags = recommended_residual_diagnostic_lags(nobs)
@@ -287,7 +314,7 @@ class _TsResultAdapter:
 
     def residual_test_table(self, result: Any, *, lags: int) -> pd.DataFrame:
         """执行残差检验并隐藏底层结果对象的属性访问。"""
-        return run_residual_diagnostics(best_result(result), lags=lags)
+        return run_residual_diagnostics(_best_result(result), lags=lags)
 
 
 class SARIMAXAdapter(_TsResultAdapter):
@@ -343,6 +370,5 @@ __all__ = [
     "DynamicRegressionAdapter",
     "RDLAdapter",
     "SARIMAXAdapter",
-    "best_result",
     "is_automatic_config",
 ]

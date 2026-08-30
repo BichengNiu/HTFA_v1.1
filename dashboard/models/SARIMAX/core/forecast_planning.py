@@ -38,20 +38,21 @@ class ForecastCalendar:
     dates: pd.DatetimeIndex | None
 
 
-def forecast_model_dates(result: Any) -> pd.DatetimeIndex | None:
-    """返回拟合结果的有效日期索引。
+def normalise_model_dates(
+    dates: Any,
+) -> pd.DatetimeIndex | None:
+    """规范化模型有效日期索引。
 
     Parameters
     ----------
-    result : object
-        提供可选 ``dates`` 属性的拟合结果对象。
+    dates : sequence of datetime-like or None
+        模型适配器提取出的有效日期序列；没有日期模型时为 ``None``。
 
     Returns
     -------
     pandas.DatetimeIndex or None
         去重后的日期索引；结果没有日期时返回 ``None``。
     """
-    dates = getattr(result, "dates", None)
     if dates is None:
         return None
     return pd.DatetimeIndex(pd.to_datetime(dates)).drop_duplicates()
@@ -59,7 +60,7 @@ def forecast_model_dates(result: Any) -> pd.DatetimeIndex | None:
 
 def build_forecast_calendar(
     dataset: Any,
-    result: Any,
+    model_dates: pd.DatetimeIndex | None,
     training_end: pd.Timestamp,
     extension_periods: int = 12,
 ) -> ForecastCalendar:
@@ -69,8 +70,8 @@ def build_forecast_calendar(
     ----------
     dataset : OverviewDataset or None
         当前数据概览数据集，用于补充训练结束日之后的观测日期和推断频率。
-    result : object
-        拟合结果对象，必须提供 ``dates`` 日期属性。
+    model_dates : pandas.DatetimeIndex or None
+        模型适配器提供的有效样本日期。
     training_end : pandas.Timestamp or datetime-like
         训练样本结束日期；该日期本身属于训练样本。
     extension_periods : int, default=12
@@ -86,9 +87,9 @@ def build_forecast_calendar(
     ValueError
         模型没有有效日期，或无法从数据集/模型日期推断追加频率。
     """
-    model_dates = forecast_model_dates(result)
     if model_dates is None:
         raise ValueError("模型没有有效日期索引")
+    model_dates = normalise_model_dates(model_dates)
 
     observed_future = (
         forecast_sample_dates(dataset, training_end)
@@ -182,7 +183,7 @@ def resolve_prediction_positions(
 
 
 def future_dates(
-    result: Any,
+    dates: pd.DatetimeIndex | None,
     steps: int,
     fallback_dates: pd.DatetimeIndex | None = None,
 ) -> pd.DatetimeIndex | None:
@@ -190,8 +191,8 @@ def future_dates(
 
     Parameters
     ----------
-    result : object
-        提供 ``dates`` 日期属性的拟合结果对象。
+    dates : pandas.DatetimeIndex or None
+        模型适配器提供的有效日期序列。
     steps : int
         需要生成的未来期数。
     fallback_dates : pandas.DatetimeIndex or None, optional
@@ -202,10 +203,11 @@ def future_dates(
     pandas.DatetimeIndex or None
         从拟合结果最后日期开始生成的未来日期；无法推断频率时返回 ``None``。
     """
-    dates = getattr(result, "dates", None)
     if dates is None or len(dates) == 0:
         return None
-    dates = pd.DatetimeIndex(dates)
+    dates = normalise_model_dates(dates)
+    if dates is None or len(dates) == 0:
+        return None
     freq = dates.freq
     if freq is None:
         freq = pd.infer_freq(dates)
@@ -224,7 +226,8 @@ def future_dates(
 
 def build_future_exog(
     dataset: Any,
-    result: Any,
+    model_nobs: int,
+    model_dates: pd.DatetimeIndex | None,
     total_steps: int,
     source_columns: tuple[str, ...],
     exog_names: tuple[str, ...],
@@ -236,8 +239,10 @@ def build_future_exog(
     ----------
     dataset : OverviewDataset or None
         当前数据概览数据集；为 ``None`` 时返回全为空值的路径。
-    result : object
-        提供 ``nobs`` 和 ``dates`` 属性的拟合结果对象。
+    model_nobs : int
+        模型适配器提供的有效样本数，用于无日期数据的位置切片。
+    model_dates : pandas.DatetimeIndex or None
+        模型适配器提供的有效样本日期，用于推断未来频率。
     total_steps : int
         从拟合样本末期开始需要准备的未来期数。
     source_columns : tuple[str, ...]
@@ -253,7 +258,7 @@ def build_future_exog(
         以未来日期或位置为索引、以模型外生变量名为列的路径表。
         无法取得数据的单元格保留为 ``NaN``。
     """
-    index = _future_index(result, total_steps, forecast_dates)
+    index = _future_index(model_dates, total_steps, forecast_dates)
     if dataset is None:
         return pd.DataFrame(np.nan, index=index, columns=exog_names)
 
@@ -266,7 +271,7 @@ def build_future_exog(
         index = (
             pd.DatetimeIndex(forecast_dates)
             if forecast_dates is not None
-            else future_dates(result, total_steps, fallback_dates=dates)
+            else future_dates(model_dates, total_steps, fallback_dates=dates)
         )
         if index is None:
             index = pd.RangeIndex(total_steps)
@@ -280,7 +285,7 @@ def build_future_exog(
     for model_name, source in zip(exog_names, source_columns):
         series = pd.to_numeric(frame[source], errors="coerce")
         values[model_name] = series.iloc[
-            int(result.nobs) : int(result.nobs) + total_steps
+            int(model_nobs) : int(model_nobs) + total_steps
         ].to_numpy()
     return pd.DataFrame(values, index=index)
 
@@ -355,7 +360,7 @@ def _infer_calendar_offset(dataset: Any, model_dates: pd.DatetimeIndex):
 
 
 def _future_index(
-    result: Any,
+    model_dates: pd.DatetimeIndex | None,
     total_steps: int,
     forecast_dates: pd.DatetimeIndex | None = None,
 ) -> pd.Index:
@@ -363,7 +368,7 @@ def _future_index(
     dates = (
         forecast_dates
         if forecast_dates is not None
-        else future_dates(result, total_steps)
+        else future_dates(model_dates, total_steps)
     )
     return dates if dates is not None else pd.RangeIndex(total_steps)
 
@@ -393,7 +398,7 @@ __all__ = [
     "actual_values_for_dates",
     "build_forecast_calendar",
     "build_future_exog",
-    "forecast_model_dates",
+    "normalise_model_dates",
     "future_dates",
     "normalise_date_window",
     "resolve_prediction_positions",
