@@ -176,7 +176,11 @@ def render_training_section(st_obj) -> None:
         store_fit_result(result, signature)
 
     result = state.get("fitted_result")
-    if result is None or state.get("fit_signature") != signature:
+    if result is None:
+        return
+    if state.get("fit_signature") != signature:
+        # 当前参数已变化，旧拟合结果及其诊断/预测结果全部失效。
+        clear_fit_results()
         return
     _render_fit_summary(st_obj, result, model_family=family)
 

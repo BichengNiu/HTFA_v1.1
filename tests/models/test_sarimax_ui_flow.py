@@ -441,6 +441,14 @@ def test_training_slider_limits_fit_and_invalidates_result(monkeypatch):
     assert not app.exception
     assert not app.metric
 
+    _by_key(app.number_input, "sarimax_p").set_value(2)
+    app.run()
+    assert not app.exception
+    assert any(
+        "完成模型训练后可查看残差诊断结果" in item.value
+        for item in app.info
+    )
+
     _by_key(app.slider, "sarimax_train_forecast_window").set_value(
         (date(2022, 1, 1), date(2023, 12, 1))
     )
