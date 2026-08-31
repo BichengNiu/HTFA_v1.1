@@ -9,6 +9,7 @@ import pandas as pd
 import pytest
 from data_overview.core.dataset import OverviewDataset, build_overview_dataset
 from data_overview.core.file_parsing import load_dataframe
+from statsmodels.tsa.statespace.sarimax import SARIMAX as StatsmodelsSARIMAX
 from Ts.TsSims import simulate_sarima
 
 from dashboard.models.SARIMAX.core.data_loader import (
@@ -545,6 +546,69 @@ def test_fit_sarimax_manual_order():
     assert np.isfinite(result.aic)
     assert len(result.params) >= 2  # ar.L1 + sigma2（含常数）
     assert len(result.fitted_values) == 80
+
+
+def test_htfa_sarimax_matches_direct_statsmodels_for_same_data_and_config():
+    """相同输入和设置下，HTFA 不得改变 statsmodels 的 SARIMAX 结果。"""
+    rng = np.random.default_rng(20260831)
+    log_data = np.log(1000.0) + np.cumsum(
+        0.001 + rng.normal(0.0, 0.01, size=100)
+    )
+    series = pd.Series(np.exp(log_data))
+    config = SARIMAXConfig(
+        order=(1, 1, 1),
+        trend="c",
+        log=True,
+        enforce_stationarity=False,
+        enforce_invertibility=False,
+        fit_method="bfgs",
+        maxiter=500,
+        cov_type="oim",
+    )
+
+    htfa = fit_sarimax(series, None, config)
+    direct = StatsmodelsSARIMAX(
+        np.log(series.to_numpy(dtype=float)),
+        order=config.order,
+        seasonal_order=config.seasonal_order,
+        trend=config.trend,
+        enforce_stationarity=config.enforce_stationarity,
+        enforce_invertibility=config.enforce_invertibility,
+        missing="drop",
+    ).fit(
+        method=config.fit_method,
+        maxiter=config.maxiter,
+        cov_type=config.cov_type,
+        disp=False,
+    )
+    htfa_raw = htfa._statsmodels_result
+
+    assert htfa_raw.param_names == direct.param_names
+    np.testing.assert_array_equal(htfa_raw.params, direct.params)
+    np.testing.assert_array_equal(htfa_raw.fittedvalues, direct.fittedvalues)
+    np.testing.assert_array_equal(htfa_raw.resid, direct.resid)
+    assert htfa_raw.llf == direct.llf
+    assert htfa_raw.aic == direct.aic
+    assert htfa_raw.bic == direct.bic
+    assert htfa.likelihood_burn == direct.loglikelihood_burn
+
+    start = htfa.likelihood_burn
+    end = htfa.nobs + 4
+    forecast = produce_forecast(htfa, start=start, end=end, alpha=0.05)
+    direct_prediction = direct.get_prediction(start=start, end=end)
+    direct_frame = direct_prediction.summary_frame(alpha=0.05)
+    direct_mean = np.asarray(direct_frame["mean"], dtype=float)
+    direct_variance = np.asarray(direct_prediction.var_pred_mean, dtype=float)
+    expected_mean = np.exp(direct_mean + 0.5 * direct_variance)
+    expected_lower = np.exp(
+        np.asarray(direct_frame["mean_ci_lower"], dtype=float)
+    )
+    expected_upper = np.exp(
+        np.asarray(direct_frame["mean_ci_upper"], dtype=float)
+    )
+    np.testing.assert_array_equal(forecast["mean"], expected_mean)
+    np.testing.assert_array_equal(forecast["lower"], expected_lower)
+    np.testing.assert_array_equal(forecast["upper"], expected_upper)
 
 
 def test_fit_sarimax_masks_state_initialization_fitted_values():

@@ -314,7 +314,8 @@ def test_full_workflow_via_ui(monkeypatch):
     assert not any("模型优化状态" in element.value for element in app.markdown)
     forecast_window = _by_key(app.select_slider, "sarimax_forecast_window")
     forecast_start, forecast_end = forecast_window.value
-    assert forecast_start == train_start
+    assert forecast_start >= train_start
+    assert forecast_start == pd.Timestamp(forecast_window.options[0]).date()
     assert forecast_end <= train_end
     assert date(2025, 12, 1).isoformat() in forecast_window.options
     assert not any(
@@ -404,6 +405,46 @@ def test_forecast_window_can_extend_out_of_sample(monkeypatch):
     assert date.fromisoformat(forecast_table["日期"].iloc[0]) == date(2025, 2, 1)
     assert date.fromisoformat(forecast_table["日期"].iloc[-1]) == forecast_start
     assert not any("预测图无法绘制" in element.value for element in app.warning)
+
+
+def test_log_differenced_forecast_starts_after_state_initialization(monkeypatch):
+    """log 差分模型默认预测不应把弥散初始化值送入结果契约。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
+    _prepare_model_app(app, _dynamic_sample_csv())
+
+    _by_key(app.checkbox, "sarimax_response_log").set_value(True)
+    _by_key(app.number_input, "sarimax_d").set_value(1)
+    app.run()
+    assert not app.exception
+
+    _by_key(app.button, "sarimax_fit_button").click()
+    app.run()
+    assert not app.exception
+
+    forecast_window = _by_key(app.select_slider, "sarimax_forecast_window")
+    raw_train_start = _by_key(app.slider, "sarimax_train_forecast_window").value[0]
+    train_start = (
+        pd.to_datetime(raw_train_start, unit="us").date()
+        if isinstance(raw_train_start, (int, float))
+        else pd.Timestamp(raw_train_start).date()
+    )
+    forecast_start = forecast_window.value[0]
+    assert forecast_start > train_start
+
+    _by_key(app.checkbox, "sarimax_forecast_dynamic").set_value(True)
+    app.run()
+    assert not app.exception
+    _by_key(app.button, "sarimax_forecast_button").click()
+    app.run()
+    assert not app.exception
+    assert any(
+        list(element.value.columns)
+        == ["日期", "真实值", "预测值", "预测下界", "预测上界"]
+        for element in app.dataframe
+    )
 
 
 def test_training_slider_limits_fit_and_invalidates_result(monkeypatch):

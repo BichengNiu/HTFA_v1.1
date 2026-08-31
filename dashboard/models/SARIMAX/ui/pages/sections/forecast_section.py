@@ -75,6 +75,10 @@ def render_forecast_section(st_obj) -> None:
     if model_nobs != len(model_dates):
         st_obj.error("模型有效样本与日期索引长度不一致，无法安全生成预测。")
         return
+    minimum_prediction_start = forecast_context.minimum_prediction_start
+    if minimum_prediction_start >= model_nobs:
+        st_obj.error("模型没有可用于预测的有效样本区间。")
+        return
 
     fit_signature = state.get("fit_signature")
     if state.get("forecast_widget_fit_signature") != fit_signature:
@@ -87,10 +91,19 @@ def render_forecast_section(st_obj) -> None:
         (value for value in date_options if value <= training_end.date()),
         default=date_options[min(model_nobs - 1, len(date_options) - 1)],
     )
-    default_window = (date_options[0], training_end_option)
+    available_date_options = date_options[minimum_prediction_start:]
+    available_training_end = max(
+        (
+            value
+            for value in available_date_options
+            if value <= training_end.date()
+        ),
+        default=available_date_options[0],
+    )
+    default_window = (available_date_options[0], available_training_end)
     existing_window = normalise_date_window(
         st_obj.session_state.get("sarimax_forecast_window"),
-        date_options,
+        available_date_options,
     )
     if existing_window is None:
         st_obj.session_state.pop("sarimax_forecast_window", None)
@@ -98,16 +111,21 @@ def render_forecast_section(st_obj) -> None:
 
     selected_window = st_obj.select_slider(
         "预测区间（训练内拟合；训练结束日后为预测）",
-        options=date_options,
+        options=available_date_options,
         value=existing_window,
         format_func=lambda value: value.isoformat(),
         key="sarimax_forecast_window",
         help=(
-            "预测起点不得早于训练样本起点；预测区间进入训练结束日之后时，"
+            "预测起点从状态空间初始化期之后开始；预测区间进入训练结束日之后时，"
             "使用样本外预测。滑轨日期来自已预处理后的模型数据日历，"
             f"数据集末期后默认再提供 {MAX_FORECAST_EXTENSION} 期。"
         ),
     )
+    if minimum_prediction_start > 0:
+        st_obj.caption(
+            "已跳过状态空间初始化期的 "
+            f"{minimum_prediction_start} 期，避免无效的初始预测值。"
+        )
 
     control_columns = st_obj.columns([1, 4])
     with control_columns[0]:

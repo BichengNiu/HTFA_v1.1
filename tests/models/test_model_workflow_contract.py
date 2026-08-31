@@ -246,7 +246,12 @@ def test_sarimax_adapter_converts_result_and_forecast_to_neutral_views(monkeypat
 
 def test_sarimax_adapter_converts_raw_model_metadata_to_forecast_context():
     dates = pd.date_range("2024-01-01", periods=3, freq="MS")
-    best = SimpleNamespace(nobs=3, dates=dates, exog_names=("x",))
+    best = SimpleNamespace(
+        nobs=3,
+        dates=dates,
+        exog_names=("x",),
+        likelihood_burn=1,
+    )
 
     context = SARIMAXAdapter().forecast_context(
         SimpleNamespace(best_result=best)
@@ -255,6 +260,7 @@ def test_sarimax_adapter_converts_raw_model_metadata_to_forecast_context():
     assert context.model_nobs == 3
     assert context.model_dates.equals(dates)
     assert context.exog_names == ("x",)
+    assert context.minimum_prediction_start == 1
 
 
 def test_sarimax_adapter_owns_residual_diagnostic_result_access(monkeypatch):

@@ -111,10 +111,13 @@ class _TsResultAdapter:
     def forecast_context(self, result: Any) -> ForecastContext:
         """提取预测规划需要的日期、样本数和外生变量名称。"""
         best = _best_result(result)
+        model_nobs = int(getattr(best, "nobs", 0))
+        likelihood_burn = max(0, int(getattr(best, "likelihood_burn", 0)))
         return ForecastContext(
             model_dates=normalise_model_dates(getattr(best, "dates", None)),
-            model_nobs=int(getattr(best, "nobs", 0)),
+            model_nobs=model_nobs,
             exog_names=tuple(getattr(best, "exog_names", ())),
+            minimum_prediction_start=min(likelihood_burn, model_nobs),
         )
 
     def forecast(self, result: Any, request: ForecastRequest) -> ForecastResult:

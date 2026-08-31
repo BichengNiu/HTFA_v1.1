@@ -127,11 +127,15 @@ class ForecastContext:
         拟合模型使用的有效观测数。
     exog_names : tuple[str, ...]
         模型外生变量名称及其顺序。
+    minimum_prediction_start : int, default=0
+        预测允许使用的最早样本位置。状态空间模型的弥散初始化期
+        不提供有效预测时，该位置用于避免把无效预测送入展示层。
     """
 
     model_dates: pd.DatetimeIndex | None
     model_nobs: int
     exog_names: tuple[str, ...] = ()
+    minimum_prediction_start: int = 0
 
     def __post_init__(self) -> None:
         if isinstance(self.model_nobs, bool) or not isinstance(
@@ -151,6 +155,21 @@ class ForecastContext:
             raise ValueError("exog_names 不能包含重复变量")
         object.__setattr__(self, "model_nobs", int(self.model_nobs))
         object.__setattr__(self, "exog_names", names)
+        if isinstance(self.minimum_prediction_start, bool) or not isinstance(
+            self.minimum_prediction_start,
+            (int, np.integer),
+        ):
+            raise ValueError("minimum_prediction_start 必须是整数")
+        minimum_prediction_start = int(self.minimum_prediction_start)
+        if not 0 <= minimum_prediction_start <= int(self.model_nobs):
+            raise ValueError(
+                "minimum_prediction_start 必须位于 0 和 model_nobs 之间"
+            )
+        object.__setattr__(
+            self,
+            "minimum_prediction_start",
+            minimum_prediction_start,
+        )
 
 
 @dataclass(frozen=True)
