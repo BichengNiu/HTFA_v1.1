@@ -51,6 +51,9 @@ class SARIMAXSimulationComparison:
     seed: int
     confidence_level: float = 0.95
     acf_lags: int = 10
+    acf_actual_values: np.ndarray | None = field(default=None, repr=False)
+    acf_simulated_values: np.ndarray | None = field(default=None, repr=False)
+    acf_scale_label: str = "水平序列"
     _actual_acf: np.ndarray = field(init=False, repr=False)
     _simulated_acf: np.ndarray = field(init=False, repr=False)
 
@@ -68,6 +71,31 @@ class SARIMAXSimulationComparison:
             raise ValueError("序列索引长度必须与序列长度一致")
         if not np.all(np.isfinite(actual)) or not np.all(np.isfinite(simulated)):
             raise ValueError("实际序列和模拟路径必须只包含有限值")
+        acf_actual_values = (
+            actual
+            if self.acf_actual_values is None
+            else np.asarray(self.acf_actual_values, dtype=float)
+        )
+        acf_simulated_values = (
+            simulated
+            if self.acf_simulated_values is None
+            else np.asarray(self.acf_simulated_values, dtype=float)
+        )
+        if (
+            acf_actual_values.ndim != 1
+            or acf_simulated_values.ndim != 2
+            or acf_simulated_values.shape[1] != len(acf_actual_values)
+            or acf_simulated_values.shape[0] != simulated.shape[0]
+        ):
+            raise ValueError("ACF 比较序列的形状无效")
+        if (
+            len(acf_actual_values) < 3
+            or not np.all(np.isfinite(acf_actual_values))
+            or not np.all(np.isfinite(acf_simulated_values))
+        ):
+            raise ValueError("ACF 比较序列必须至少含 3 个有限值")
+        if not isinstance(self.acf_scale_label, str) or not self.acf_scale_label:
+            raise TypeError("acf_scale_label 必须是非空字符串")
         if isinstance(self.seed, bool) or not isinstance(self.seed, (int, np.integer)):
             raise TypeError("seed 必须是整数")
         if isinstance(self.confidence_level, bool):
@@ -82,13 +110,13 @@ class SARIMAXSimulationComparison:
             self.acf_lags, (int, np.integer)
         ):
             raise TypeError("acf_lags 必须是正整数")
-        acf_lags = min(int(self.acf_lags), len(actual) - 2)
+        acf_lags = min(int(self.acf_lags), len(acf_actual_values) - 2)
         if acf_lags < 1:
             raise ValueError("实际序列至少需要 3 个观测值才能比较 ACF")
 
-        actual_acf = _sample_acf(actual, acf_lags)
+        actual_acf = _sample_acf(acf_actual_values, acf_lags)
         simulated_acf = np.vstack(
-            [_sample_acf(path, acf_lags) for path in simulated]
+            [_sample_acf(path, acf_lags) for path in acf_simulated_values]
         )
         object.__setattr__(self, "actual", actual.copy())
         object.__setattr__(self, "simulated", simulated.copy())
@@ -96,6 +124,12 @@ class SARIMAXSimulationComparison:
         object.__setattr__(self, "seed", int(self.seed))
         object.__setattr__(self, "confidence_level", confidence_level)
         object.__setattr__(self, "acf_lags", acf_lags)
+        object.__setattr__(self, "acf_actual_values", acf_actual_values.copy())
+        object.__setattr__(
+            self,
+            "acf_simulated_values",
+            acf_simulated_values.copy(),
+        )
         object.__setattr__(self, "_actual_acf", actual_acf)
         object.__setattr__(self, "_simulated_acf", simulated_acf)
 
@@ -174,7 +208,7 @@ class SARIMAXSimulationComparison:
 
     @property
     def actual_acf(self) -> np.ndarray:
-        """返回实际序列滞后 1 至 ``acf_lags`` 的 ACF。"""
+        """返回 ACF 比较尺度下实际序列滞后 1 至 ``acf_lags`` 的 ACF。"""
         return self._actual_acf.copy()
 
     @property
@@ -266,6 +300,94 @@ def _fitted_coefficients(
             raise ValueError(f"拟合参数 {name} 不是有限值")
         coefficients.append(value)
     return coefficients
+
+
+def _model_scale_values(values: np.ndarray, *, log: bool) -> np.ndarray:
+    """返回拟合模型所使用的响应尺度。"""
+    values = np.asarray(values, dtype=float)
+    if not log:
+        return values.copy()
+    if np.any(values <= 0.0):
+        raise ValueError("对数模型的实际序列必须为正数")
+    return np.log(values)
+
+
+def _difference_for_acf(
+    values: np.ndarray,
+    *,
+    d: int,
+    D: int,
+    seasonal_period: int,
+) -> np.ndarray:
+    """在模型尺度按 SARIMA 阶数差分，用于路径相关性比较。"""
+    differenced = np.asarray(values, dtype=float)
+    for _ in range(d):
+        differenced = np.diff(differenced, axis=-1)
+    for _ in range(D):
+        if seasonal_period < 2 or differenced.shape[-1] <= seasonal_period:
+            raise ValueError("季节差分后的序列不足以比较 ACF")
+        differenced = (
+            differenced[..., seasonal_period:]
+            - differenced[..., :-seasonal_period]
+        )
+    return differenced
+
+
+def _acf_scale_label(*, log: bool, d: int, D: int, seasonal_period: int) -> str:
+    """返回 ACF 比较所用模型尺度的可读名称。"""
+    terms = []
+    if d:
+        terms.append("一阶差分" if d == 1 else f"{d} 阶差分")
+    if D:
+        terms.append(
+            f"季节差分（周期 {seasonal_period}）"
+            if D == 1
+            else f"{D} 阶季节差分（周期 {seasonal_period}）"
+        )
+    if not terms:
+        return "对数尺度" if log else "水平序列"
+    label = " + ".join(terms)
+    return f"{label}（对数尺度）" if log else label
+
+
+def _conditional_simulation_inputs(
+    result: Any,
+    *,
+    actual: np.ndarray,
+    deterministic: np.ndarray,
+    order: tuple[int, int, int],
+    seasonal_order: tuple[int, int, int, int],
+    params: Any,
+) -> tuple[np.ndarray, float, float | None]:
+    """将拟合结果拆为差分误差的截距、静态响应和条件初值。"""
+    _p, d, _q = order
+    _P, D, _Q, _s = seasonal_order
+    if d == 0 and D == 0:
+        return deterministic, 0.0, None
+
+    trend = getattr(result, "trend", "n")
+    if trend not in {"n", "c"}:
+        raise ValueError(
+            "带差分模型的理论模拟暂不支持线性趋势；请选择无趋势或仅常数项"
+        )
+    intercept = 0.0
+    static_response = deterministic.copy()
+    if trend == "c":
+        try:
+            intercept = float(params["intercept"])
+        except KeyError as exc:
+            raise ValueError("带常数项的拟合结果缺少 intercept 参数") from exc
+        if not np.isfinite(intercept):
+            raise ValueError("拟合参数 intercept 不是有限值")
+        static_response = static_response - intercept
+
+    initial_value = (
+        _model_scale_values(actual, log=bool(getattr(result, "log", False)))[0]
+        - static_response[0]
+    )
+    return static_response, intercept, float(initial_value)
+
+
 def build_sarimax_simulation_comparison(
     result: Any,
     *,
@@ -339,8 +461,8 @@ def build_sarimax_simulation_comparison(
     params = getattr(result, "params", None)
     if not hasattr(params, "__getitem__"):
         raise ValueError("拟合结果缺少参数映射")
-    p, _d, q = order
-    P, _D, Q, seasonal_period = seasonal_order
+    p, d, q = order
+    P, D, Q, seasonal_period = seasonal_order
     ar = _fitted_coefficients(params, "ar", p)
     ma = _fitted_coefficients(params, "ma", q)
     seasonal_ar = _fitted_coefficients(
@@ -365,8 +487,17 @@ def build_sarimax_simulation_comparison(
     deterministic = np.asarray(result.deterministic_component, dtype=float)
     if deterministic.ndim != 1 or len(deterministic) != nobs:
         raise ValueError("拟合结果的确定性响应路径长度无效")
+    deterministic, const, initial_value = _conditional_simulation_inputs(
+        result,
+        actual=actual,
+        deterministic=deterministic,
+        order=order,
+        seasonal_order=seasonal_order,
+        params=params,
+    )
     path_seeds = np.random.SeedSequence(int(seed)).generate_state(int(n_paths))
     simulated_paths = []
+    model_scale_paths = []
     for path_seed in path_seeds:
         simulation = simulate_sarimax(
             n=nobs,
@@ -376,11 +507,14 @@ def build_sarimax_simulation_comparison(
             ma=ma,
             seasonal_ar=seasonal_ar,
             seasonal_ma=seasonal_ma,
+            const=const,
             deterministic=deterministic,
+            initial_value=initial_value,
             sigma2=sigma2,
             seed=int(path_seed),
         )
         path = np.asarray(simulation.data, dtype=float)
+        model_scale_paths.append(path.copy())
         if getattr(result, "log", False):
             with np.errstate(over="ignore", invalid="ignore"):
                 path = np.exp(path)
@@ -389,6 +523,23 @@ def build_sarimax_simulation_comparison(
         if not np.all(np.isfinite(path)):
             raise ValueError("理论模拟路径包含非有限值")
         simulated_paths.append(path)
+
+    model_scale_actual = _model_scale_values(
+        actual,
+        log=bool(getattr(result, "log", False)),
+    )
+    acf_actual_values = _difference_for_acf(
+        model_scale_actual,
+        d=d,
+        D=D,
+        seasonal_period=seasonal_period,
+    )
+    acf_simulated_values = _difference_for_acf(
+        np.vstack(model_scale_paths),
+        d=d,
+        D=D,
+        seasonal_period=seasonal_period,
+    )
 
     dates = getattr(result, "dates", None)
     if dates is None:
@@ -405,6 +556,14 @@ def build_sarimax_simulation_comparison(
         seed=int(seed),
         confidence_level=confidence_level,
         acf_lags=acf_lags,
+        acf_actual_values=acf_actual_values,
+        acf_simulated_values=acf_simulated_values,
+        acf_scale_label=_acf_scale_label(
+            log=bool(getattr(result, "log", False)),
+            d=d,
+            D=D,
+            seasonal_period=seasonal_period,
+        ),
     )
 
 

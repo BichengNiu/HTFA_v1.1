@@ -24,7 +24,7 @@ def render_sarimax_simulation_chart(
     st_obj: Any,
     comparison: SARIMAXSimulationComparison,
 ) -> None:
-    """用 TsPlots 风格渲染模拟路径区间和 ACF 区间。
+    """用 TsPlots 风格渲染模拟路径区间和模型尺度 ACF 区间。
 
     Parameters
     ----------
@@ -130,7 +130,7 @@ def _plot_sarimax_simulation_comparison(
         linewidth=2.0,
         marker="o",
         markersize=4,
-        label="实际 ACF",
+        label=f"实际 ACF（{comparison.acf_scale_label}）",
         zorder=3,
     )
     acf_axis.plot(
@@ -151,7 +151,7 @@ def _plot_sarimax_simulation_comparison(
         zorder=2,
     )
     acf_axis.set_title(
-        f"ACF 比较（滞后 1–{comparison.acf_lags}）",
+        f"ACF 比较（{comparison.acf_scale_label}，滞后 1–{comparison.acf_lags}）",
         fontsize=AXIS_LABEL_FONTSIZE,
         fontweight="normal",
         pad=6,

@@ -139,6 +139,36 @@ def test_sarimax_simulation_comparison_includes_static_exog_and_log_back_transfo
     assert np.all(np.isfinite(comparison.simulated))
 
 
+def test_integrated_log_simulation_is_anchored_and_compares_differences():
+    """Integrated simulations retain the observed log level and use Δlog ACF."""
+    nobs = 200
+    increments = 0.008 + np.random.default_rng(42).normal(0.0, 0.01, nobs - 1)
+    actual = np.exp(np.log(1_000.0) + np.r_[0.0, np.cumsum(increments)])
+    result = SimpleNamespace(
+        model_type="SARIMAX",
+        distributed_lag_names=(),
+        order=(1, 1, 0),
+        seasonal_order=(0, 0, 0, 0),
+        nobs=nobs,
+        data=actual,
+        params={"ar.L1": 0.4, "intercept": 0.01, "sigma2": 0.0001},
+        deterministic_component=np.full(nobs, 0.01),
+        dates=None,
+        log=True,
+        trend="c",
+    )
+
+    comparison = build_sarimax_simulation_comparison(
+        result,
+        n_paths=8,
+        seed=123,
+    )
+
+    np.testing.assert_allclose(comparison.simulated[:, 0], actual[0])
+    assert comparison.acf_scale_label == "一阶差分（对数尺度）"
+    assert np.max(np.abs(comparison.actual_acf)) < 0.2
+
+
 def test_sarimax_simulation_comparison_rejects_rdl_result():
     result = SimpleNamespace(model_type="SARIMAX", distributed_lag_names=("x",))
 
