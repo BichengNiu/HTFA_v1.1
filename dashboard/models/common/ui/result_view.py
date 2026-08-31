@@ -56,8 +56,10 @@ def render_estimation_result(
             if view.selection_value in options
             else options[0]
         )
+        # Keep the alternative-model selector beside the criterion selector;
+        # reserve the remaining row width at the end instead of between them.
         selection_columns = (
-            st_obj.columns([1, 1])
+            st_obj.columns([2, 1, 3])
             if view.candidate_options
             else (st_obj,)
         )
