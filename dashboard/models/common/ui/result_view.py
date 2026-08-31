@@ -56,12 +56,17 @@ def render_estimation_result(
             if view.selection_value in options
             else options[0]
         )
-        # Keep the alternative-model selector beside the criterion selector;
-        # reserve the remaining row width at the end instead of between them.
-        selection_columns = (
-            st_obj.columns([2, 1, 3])
+        # Use a content-sized horizontal row so the second control follows the
+        # criterion selector immediately instead of inheriting page-width gaps.
+        selection_row = (
+            st_obj.container(
+                horizontal=True,
+                horizontal_alignment="left",
+                gap="xxsmall",
+                width="content",
+            )
             if view.candidate_options
-            else (st_obj,)
+            else st_obj
         )
         candidate_key = candidate_selection_key or f"{selection_key}_model"
         radio_kwargs = {}
@@ -70,7 +75,7 @@ def render_estimation_result(
                 "on_change": _reset_candidate_selection,
                 "args": (st_obj.session_state, candidate_key),
             }
-        selected = selection_columns[0].radio(
+        selected = selection_row.radio(
             "最终采用模型",
             options=options,
             index=options.index(current),
@@ -87,7 +92,7 @@ def render_estimation_result(
                 if view.candidate_value in candidate_options
                 else None
             )
-            selected_candidate = selection_columns[1].selectbox(
+            selected_candidate = selection_row.selectbox(
                 "其他模型",
                 options=candidate_options,
                 index=candidate_options.index(candidate_value),
@@ -98,6 +103,7 @@ def render_estimation_result(
                 ),
                 key=candidate_key,
                 help=view.candidate_help,
+                width=320,
             )
         if selected != view.selection_value:
             if on_selection_changed is not None:
