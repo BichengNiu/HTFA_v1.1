@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import logging
 
-from dashboard.core.workspace import artifact_signature, stable_signature
-from dashboard.models.common.contracts import SimulationRequest
+from dashboard.core.workspace import artifact_signature
 from dashboard.models.common.ui.model_inputs import ModelInputModule
 from dashboard.models.common.ui.result_view import render_estimation_result
-from dashboard.models.common.workflow import ModelWorkflow, SimulationWorkflow
+from dashboard.models.common.workflow import ModelWorkflow
 from dashboard.models.SARIMAX.core.adapters import (
     DynamicRegressionAdapter,
     SARIMAXAdapter,
@@ -24,33 +23,17 @@ from dashboard.models.SARIMAX.core.modeling import (
     translate_ts_error,
     validate_fit_inputs,
 )
-from dashboard.models.SARIMAX.core.simulation import (
-    build_sarimax_acf_comparison_table,
-    build_sarimax_simulation_summary,
-)
 from dashboard.models.SARIMAX.ui.model_options import render_model_options
-from dashboard.models.SARIMAX.ui.pages.sections.simulation_chart import (
-    render_sarimax_simulation_chart,
-)
 from dashboard.models.SARIMAX.ui.state import (
-    clear_downstream_result,
     clear_fit_results,
     clear_widget_state,
     store_fit_result,
-    store_downstream_result,
     state,
 )
 
 logger = logging.getLogger(__name__)
 _MODEL_ADAPTER = DynamicRegressionAdapter()
 _MODEL_WORKFLOW = ModelWorkflow(_MODEL_ADAPTER)
-_SIMULATION_WORKFLOW = SimulationWorkflow(SARIMAXAdapter())
-_SIMULATION_SEED = 42
-_SIMULATION_PATHS_DEFAULT = 500
-_SIMULATION_PATHS_MIN = 50
-_SIMULATION_PATHS_MAX = 2000
-_SIMULATION_CONFIDENCE_LEVEL = 0.95
-_SIMULATION_ACF_LAGS = 10
 _MODEL_INPUTS = ModelInputModule(
     state=state,
     clear_fit_results=clear_fit_results,
@@ -221,87 +204,5 @@ def _render_fit_summary(st_obj, result, *, model_family: str) -> None:
             candidate_selection_key="sarimax_auto_selection_model",
             show_selection=False,
         )
-        if model_family == "SARIMAX":
-            _render_sarimax_simulation_chart(st_obj, result)
         return
-    if model_family == "SARIMAX":
-        _render_sarimax_simulation_chart(st_obj, result)
-
-
-def _render_sarimax_simulation_chart(st_obj, result) -> None:
-    """展示实际序列与多条 TsSims 模拟路径的分布比较。"""
-    st_obj.markdown("**实际序列与模拟路径分布**")
-    n_paths = int(
-        st_obj.number_input(
-            "模拟路径数",
-            min_value=_SIMULATION_PATHS_MIN,
-            max_value=_SIMULATION_PATHS_MAX,
-            value=_SIMULATION_PATHS_DEFAULT,
-            step=50,
-            key="sarimax_simulation_paths",
-            help=(
-                "每条路径均由估计的 SARIMAX 参数独立生成；增加路径数会使模拟区间"
-                "更稳定，但会增加计算时间。"
-            ),
-        )
-    )
-    request = SimulationRequest(
-        n_paths=n_paths,
-        seed=_SIMULATION_SEED,
-        confidence_level=_SIMULATION_CONFIDENCE_LEVEL,
-        acf_lags=_SIMULATION_ACF_LAGS,
-    )
-    signature = stable_signature(
-        {
-            "fit_signature": state.get("fit_signature"),
-            "n_paths": request.n_paths,
-            "seed": request.seed,
-            "confidence_level": request.confidence_level,
-            "acf_lags": request.acf_lags,
-        }
-    )
-    comparison = state.get("simulation_comparison")
-    if comparison is None or state.get("simulation_signature") != signature:
-        try:
-            with st_obj.spinner(
-                f"正在调用 TsSims 生成 {n_paths} 条模拟路径..."
-            ):
-                comparison = _SIMULATION_WORKFLOW.simulate(result, request)
-        except Exception as exc:
-            st_obj.warning(f"模拟路径比较无法绘制：{translate_ts_error(exc)}")
-            logger.warning("SARIMAX 模拟路径比较生成失败", exc_info=True)
-            clear_downstream_result(
-                "simulation_comparison",
-                "simulation_signature",
-            )
-            return
-        store_downstream_result(
-            "simulation_comparison",
-            comparison,
-            "simulation_signature",
-            signature,
-        )
-
-    render_sarimax_simulation_chart(st_obj, comparison)
-
-    st_obj.caption(
-        f"{comparison.n_paths} 条独立模拟路径（seed={comparison.seed}）；"
-        f"阴影为模拟{comparison.confidence_level:.0%}区间；"
-        f"实际序列逐时覆盖率={comparison.pointwise_coverage:.1%}；"
-        f"ACF（滞后1–{comparison.acf_lags}）覆盖率={comparison.acf_coverage:.1%}。"
-    )
-    st_obj.markdown("**统计量比较**")
-    st_obj.dataframe(
-        build_sarimax_simulation_summary(comparison),
-        hide_index=True,
-        use_container_width=True,
-    )
-    st_obj.markdown("**ACF 比较明细**")
-    st_obj.dataframe(
-        build_sarimax_acf_comparison_table(comparison),
-        hide_index=True,
-        use_container_width=True,
-    )
-
-
 __all__ = ["render_training_section"]

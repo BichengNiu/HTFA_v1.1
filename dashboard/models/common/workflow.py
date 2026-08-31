@@ -14,7 +14,6 @@ from .contracts import (
     ForecastResult,
     ModelingInput,
     ResidualDiagnosticView,
-    SimulationRequest,
 )
 
 
@@ -110,33 +109,7 @@ class ModelWorkflow:
         return self.adapter.residual_test_table(result, lags=lags)
 
 
-class SimulationAdapter(Protocol):
-    """需要模拟能力的模型适配器协议。"""
-
-    def simulate(self, result: Any, request: SimulationRequest) -> Any:
-        """按模型特有实现生成模拟分析结果。"""
-
-
-class SimulationWorkflow:
-    """把模型模拟请求限制在明确提供模拟能力的 adapter 上。
-
-    Parameters
-    ----------
-    adapter : SimulationAdapter
-        承担模拟实现的模型适配器；当前只有纯 SARIMAX 提供该能力。
-    """
-
-    def __init__(self, adapter: SimulationAdapter) -> None:
-        self.adapter = adapter
-
-    def simulate(self, result: Any, request: SimulationRequest) -> Any:
-        """通过模拟适配器生成模拟结果。"""
-        return self.adapter.simulate(result, request)
-
-
 __all__ = [
     "ModelAdapter",
     "ModelWorkflow",
-    "SimulationAdapter",
-    "SimulationWorkflow",
 ]

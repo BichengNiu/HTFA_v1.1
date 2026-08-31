@@ -1,8 +1,8 @@
 """SARIMAX 族的模型适配器。
 
 该模块是 SARIMAX 页面与通用模型工作流之间的适配层；通用 UI 不需要
-识别 Ts 的具体结果类型。模型结果视图和模拟能力分别由模型族 adapter
-拥有，共享 adapter 只承载真正中性的结果行为。
+识别 Ts 的具体结果类型。模型族 adapter 负责模型特有结果视图，共享
+adapter 只承载真正中性的结果行为。
 """
 
 from __future__ import annotations
@@ -20,7 +20,6 @@ from dashboard.models.common.contracts import (
     ForecastResult,
     ModelingInput,
     ResidualDiagnosticView,
-    SimulationRequest,
 )
 from dashboard.models.SARIMAX.core.model_config import (
     ARDLConfig,
@@ -48,9 +47,6 @@ from dashboard.models.SARIMAX.core.result_views import (
     build_ardl_result_view,
     build_rdl_result_view,
     build_sarimax_result_view,
-)
-from dashboard.models.SARIMAX.core.simulation import (
-    build_sarimax_simulation_comparison,
 )
 
 
@@ -85,7 +81,7 @@ class _TsResultAdapter:
     """共享 Ts 结果中性行为的内部适配器基类。
 
     这里仅保留所有模型族都需要的拟合、预测和残差诊断行为；模型族
-    选阶视图与模拟能力由具体 adapter 自己拥有。
+    选阶视图由具体 adapter 自己拥有。
     """
 
     model_name = "动态回归模型"
@@ -170,7 +166,7 @@ class _TsResultAdapter:
 
 
 class SARIMAXAdapter(_TsResultAdapter):
-    """承载手动和自动 SARIMAX 的模型特有配置、视图和模拟能力。"""
+    """承载手动和自动 SARIMAX 的模型特有配置和结果视图。"""
 
     model_name = "SARIMAX"
     config_types = (SARIMAXConfig, AutoSARIMAXConfig)
@@ -186,17 +182,6 @@ class SARIMAXAdapter(_TsResultAdapter):
     ) -> Any:
         """按信息准则或候选模型重新选择 SARIMAX 结果。"""
         return _select_auto_sarimax_result(result, selection)
-
-    def simulate(self, result: Any, request: SimulationRequest) -> Any:
-        """按稳定模拟请求生成纯 SARIMAX 模拟路径比较结果。"""
-        return build_sarimax_simulation_comparison(
-            _best_result(result),
-            n_paths=request.n_paths,
-            seed=request.seed,
-            confidence_level=request.confidence_level,
-            acf_lags=request.acf_lags,
-        )
-
 
 class RDLAdapter(_TsResultAdapter):
     """承载固定传递函数加 SARIMAX 误差的 RDL 配置和结果视图。"""

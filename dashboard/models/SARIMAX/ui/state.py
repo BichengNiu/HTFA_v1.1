@@ -101,7 +101,6 @@ MODEL_WIDGET_KEYS = (
     "sarimax_future_exog_editor",
     "sarimax_forecast_button",
     "sarimax_forecast_download",
-    "sarimax_simulation_paths",
 )
 
 # SARIMAX 模型页的 Streamlit widget 键。
@@ -133,8 +132,6 @@ RESULT_KEYS = (
     "diagnostics_signature",
     "forecast",
     "forecast_signature",
-    "simulation_comparison",
-    "simulation_signature",
 )
 
 _STATE_LIFECYCLE = ModelStateLifecycle(
@@ -145,8 +142,6 @@ _STATE_LIFECYCLE = ModelStateLifecycle(
         "diagnostics_signature",
         "forecast",
         "forecast_signature",
-        "simulation_comparison",
-        "simulation_signature",
         "forecast_widget_fit_signature",
     ),
     widget_keys=WIDGET_KEYS,

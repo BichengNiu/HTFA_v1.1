@@ -14,9 +14,8 @@ from dashboard.models.common.contracts import (
     ForecastResult,
     ModelingInput,
     ResidualDiagnosticView,
-    SimulationRequest,
 )
-from dashboard.models.common.workflow import ModelWorkflow, SimulationWorkflow
+from dashboard.models.common.workflow import ModelWorkflow
 from dashboard.models.common.ui.data_input import create_data_input_module
 from dashboard.models.SARIMAX.core import adapters
 from dashboard.models.SARIMAX.core.adapters import (
@@ -60,28 +59,17 @@ def test_forecast_request_requires_a_closed_window_and_valid_alpha():
         ForecastRequest(start=3, end=2)
 
 
-def test_forecast_context_and_simulation_request_are_stable_value_objects():
+def test_forecast_context_is_a_stable_value_object():
     dates = pd.date_range("2024-01-01", periods=3, freq="MS")
     context = ForecastContext(
         model_dates=dates,
         model_nobs=3,
         exog_names=("x",),
     )
-    request = SimulationRequest(
-        n_paths=8,
-        seed=42,
-        confidence_level=0.95,
-        acf_lags=10,
-    )
-
     assert context.model_dates.equals(dates)
     assert context.exog_names == ("x",)
-    assert request.n_paths == 8
-    assert request.confidence_level == 0.95
     with pytest.raises(ValueError, match="model_nobs"):
         ForecastContext(model_dates=dates, model_nobs=2)
-    with pytest.raises(ValueError, match="至少为 2"):
-        SimulationRequest(n_paths=1, seed=42, confidence_level=0.95, acf_lags=10)
 
 
 def test_forecast_result_requires_aligned_finite_arrays():
@@ -194,21 +182,6 @@ def test_model_workflow_exposes_selection_and_forecast_seams():
     assert workflow.forecast_context("result") is context
 
 
-def test_simulation_workflow_exposes_only_the_simulation_seam():
-    request = SimulationRequest(
-        n_paths=8,
-        seed=42,
-        confidence_level=0.95,
-        acf_lags=10,
-    )
-    adapter = SimpleNamespace(
-        simulate=lambda result, received: (result, received),
-    )
-    workflow = SimulationWorkflow(adapter)
-
-    assert workflow.simulate("result", request) == ("result", request)
-
-
 def test_sarimax_adapter_surfaces_fit_and_result_conversion_failures(monkeypatch):
     def failing_fit(*_args, **_kwargs):
         raise RuntimeError("fit failed")
@@ -282,48 +255,6 @@ def test_sarimax_adapter_converts_raw_model_metadata_to_forecast_context():
     assert context.model_nobs == 3
     assert context.model_dates.equals(dates)
     assert context.exog_names == ("x",)
-
-
-def test_sarimax_adapter_routes_simulation_through_stable_request(monkeypatch):
-    best = object()
-    result = SimpleNamespace(best_result=best)
-    request = SimulationRequest(
-        n_paths=8,
-        seed=42,
-        confidence_level=0.95,
-        acf_lags=10,
-    )
-    calls = {}
-
-    def fake_simulation(received, **kwargs):
-        calls.update(result=received, kwargs=kwargs)
-        return "comparison"
-
-    monkeypatch.setattr(adapters, "build_sarimax_simulation_comparison", fake_simulation)
-
-    assert SARIMAXAdapter().simulate(result, request) == "comparison"
-    assert calls == {
-        "result": best,
-        "kwargs": {
-            "n_paths": 8,
-            "seed": 42,
-            "confidence_level": 0.95,
-            "acf_lags": 10,
-        },
-    }
-
-
-def test_only_sarimax_adapter_owns_the_simulation_seam():
-    assert hasattr(SARIMAXAdapter, "simulate")
-    assert not hasattr(ARDLAdapter, "simulate")
-
-    from dashboard.models.SARIMAX.core.adapters import (
-        DynamicRegressionAdapter,
-        RDLAdapter,
-    )
-
-    assert not hasattr(RDLAdapter, "simulate")
-    assert not hasattr(DynamicRegressionAdapter, "simulate")
 
 
 def test_sarimax_adapter_owns_residual_diagnostic_result_access(monkeypatch):

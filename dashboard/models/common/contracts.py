@@ -211,50 +211,6 @@ class ForecastRequest:
 
 
 @dataclass(frozen=True)
-class SimulationRequest:
-    """SARIMAX 模拟路径比较的稳定请求。
-
-    Parameters
-    ----------
-    n_paths : int
-        模拟路径数量，至少为 2。
-    seed : int
-        随机种子，必须为非负整数。
-    confidence_level : float
-        模拟中心区间的置信水平，必须严格位于 0 和 1 之间。
-    acf_lags : int
-        ACF 比较的最大滞后阶数，必须为正整数。
-    """
-
-    n_paths: int
-    seed: int
-    confidence_level: float
-    acf_lags: int
-
-    def __post_init__(self) -> None:
-        for name, value in (("n_paths", self.n_paths), ("seed", self.seed)):
-            if isinstance(value, bool) or not isinstance(value, (int, np.integer)):
-                raise TypeError(f"{name} 必须是整数")
-        if self.n_paths < 2:
-            raise ValueError("n_paths 至少为 2")
-        if self.seed < 0:
-            raise ValueError("seed 必须是非负整数")
-        if isinstance(self.acf_lags, bool) or not isinstance(
-            self.acf_lags, (int, np.integer)
-        ) or self.acf_lags < 1:
-            raise ValueError("acf_lags 必须是正整数")
-        if isinstance(self.confidence_level, bool):
-            raise TypeError("confidence_level 必须是 0 到 1 之间的数字")
-        confidence_level = float(self.confidence_level)
-        if not 0.0 < confidence_level < 1.0:
-            raise ValueError("confidence_level 必须严格位于 0 和 1 之间")
-        object.__setattr__(self, "n_paths", int(self.n_paths))
-        object.__setattr__(self, "seed", int(self.seed))
-        object.__setattr__(self, "acf_lags", int(self.acf_lags))
-        object.__setattr__(self, "confidence_level", confidence_level)
-
-
-@dataclass(frozen=True)
 class ForecastResult:
     """统一预测结果，表格和图形必须共同消费该对象。
 
@@ -425,5 +381,4 @@ __all__ = [
     "ForecastResult",
     "ModelingInput",
     "ResidualDiagnosticView",
-    "SimulationRequest",
 ]

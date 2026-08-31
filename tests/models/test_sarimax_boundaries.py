@@ -75,47 +75,14 @@ def test_forecast_planning_module_has_no_ui_or_ts_dependency():
     assert not any(module.lower().startswith("matplotlib") for module in imported_modules)
 
 
-def test_simulation_core_contains_statistics_but_no_presentation_imports():
-    """模拟统计 module 不应承担 Matplotlib 或 TsPlots 渲染。"""
-    path = PROJECT_ROOT / "dashboard/models/SARIMAX/core/simulation.py"
-    source = path.read_text(encoding="utf-8")
-
-    assert "matplotlib" not in source.lower()
-    assert "Ts.TsPlots" not in source
-    assert "plot_sarimax_simulation_comparison" not in source
-
-
-def test_simulation_seam_belongs_only_to_sarimax():
-    from dashboard.models.SARIMAX.core.adapters import (
-        ARDLAdapter,
-        DynamicRegressionAdapter,
-        RDLAdapter,
-        SARIMAXAdapter,
-    )
-    from dashboard.models.common.workflow import ModelWorkflow, SimulationWorkflow
-
-    assert hasattr(SARIMAXAdapter, "simulate")
-    assert not hasattr(RDLAdapter, "simulate")
-    assert not hasattr(ARDLAdapter, "simulate")
-    assert not hasattr(DynamicRegressionAdapter, "simulate")
-    assert not hasattr(ModelWorkflow, "simulate")
-    assert hasattr(SimulationWorkflow, "simulate")
-
-
 def test_downstream_result_publication_is_not_owned_by_page_sections():
     result_keys = (
         "forecast",
         "forecast_signature",
         "diagnostics_table",
         "diagnostics_signature",
-        "simulation_comparison",
-        "simulation_signature",
     )
-    for filename in (
-        "training_section.py",
-        "analysis_section.py",
-        "forecast_section.py",
-    ):
+    for filename in ("analysis_section.py", "forecast_section.py"):
         source = (
             PROJECT_ROOT
             / "dashboard/models/SARIMAX/ui/pages/sections"
