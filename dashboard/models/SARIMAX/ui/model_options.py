@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import pandas as pd
 
+from dashboard.models.common.state import StateStore
+from dashboard.models.SARIMAX.ui.state import state
+
 from dashboard.models.SARIMAX.ui.model_options_ardl import render_ardl_options
 from dashboard.models.SARIMAX.ui.model_options_rdl import render_rdl_options
 from dashboard.models.SARIMAX.ui.model_options_sarimax import (
@@ -25,6 +28,9 @@ def render_model_options(
     exog: pd.DataFrame | None,
     *,
     response_log: bool = False,
+    exog_log_names: tuple[str, ...] = (),
+    key_prefix: str = "sarimax",
+    state_manager: StateStore = state,
 ):
     """渲染模型族特有参数并返回模型配置。
 
@@ -40,6 +46,8 @@ def render_model_options(
         当前选择的外生变量表；RDL/ARDL 需要至少一列。
     response_log : bool, default=False
         通用输入模块提供的目标变量对数变换状态。
+    exog_log_names : tuple[str, ...], default=()
+        需要对数变换的 SARIMAX 外生变量名称。
 
     Returns
     -------
@@ -52,6 +60,9 @@ def render_model_options(
             mode,
             exog=exog,
             response_log=response_log,
+            exog_log_names=exog_log_names,
+            prefix=key_prefix,
+            state_manager=state_manager,
         )
     if family == "RDL":
         return render_rdl_options(
@@ -59,6 +70,8 @@ def render_model_options(
             exog,
             automatic=mode == "自动选阶",
             response_log=response_log,
+            prefix=key_prefix,
+            state_manager=state_manager,
         )
     if family == "ARDL":
         return render_ardl_options(
@@ -66,6 +79,8 @@ def render_model_options(
             exog,
             automatic=mode == "自动选阶",
             response_log=response_log,
+            key_prefix=key_prefix,
+            state_manager=state_manager,
         )
     raise ValueError(f"不支持的模型族：{family}")
 

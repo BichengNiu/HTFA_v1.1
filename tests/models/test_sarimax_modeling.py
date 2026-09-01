@@ -628,8 +628,14 @@ def test_sarimax_config_signature_serializes_exog_operators(config_type):
             exog_operators={"x": TimeSeriesOperator(lag=2, difference=1)}
         ).signature()
     )
+    logged = stable_signature(
+        config_type(
+            exog_operators={"x": TimeSeriesOperator(lag=1, difference=1, log=True)}
+        ).signature()
+    )
 
     assert signature != changed
+    assert signature != logged
 
 
 def test_auto_sarimax_config_candidate_count_and_validation():

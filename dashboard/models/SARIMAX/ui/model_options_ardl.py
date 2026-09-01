@@ -17,6 +17,7 @@ from dashboard.models.SARIMAX.ui.model_options_shared import (
     restore_table_state,
 )
 from dashboard.models.SARIMAX.ui.state import state
+from dashboard.models.common.state import StateStore
 
 _AUTO_PARALLEL_NOTICE = (
     "候选模型按规模自动调度：少于 8 个或预计工作量较低时串行；"
@@ -30,6 +31,8 @@ def render_ardl_options(
     *,
     automatic: bool,
     response_log: bool,
+    key_prefix: str = "sarimax_ardl",
+    state_manager: StateStore = state,
 ) -> ARDLConfig | AutoARDLConfig | None:
     """渲染标准 ARDL 的目标/输入滞后与自动选阶设置。
 
@@ -52,7 +55,7 @@ def render_ardl_options(
     if exog is None or exog.empty:
         st_obj.warning("ARDL 需要至少一个解释变量；请在上方变量选择中添加。")
         return None
-    prefix = "sarimax_auto_ardl" if automatic else "sarimax_ardl"
+    prefix = f"{key_prefix}_auto" if automatic else key_prefix
     with st_obj.container(border=True):
         st_obj.markdown("**响应 / 误差结构**")
         response_columns = st_obj.columns(3)
@@ -81,13 +84,14 @@ def render_ardl_options(
                 f"{prefix}_input_table",
                 pd.DataFrame({"变量": list(exog.columns), label: 0}),
                 list(exog.columns),
+                state_manager=state_manager,
             ),
             key=f"{prefix}_input_table",
             num_rows="fixed",
             disabled=("变量",),
             width="stretch",
         )
-        state.set(f"{prefix}_input_table", orders.copy())
+        state_manager.set(f"{prefix}_input_table", orders.copy())
     with st_obj.container(border=True):
         st_obj.markdown("**估计设置**")
         settings = st_obj.columns(2)

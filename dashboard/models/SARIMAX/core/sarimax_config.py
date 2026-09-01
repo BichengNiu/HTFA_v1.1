@@ -56,11 +56,12 @@ def _normalise_exog_operators(
 
 def _exog_operator_signature(
     operators: tuple[tuple[str, TimeSeriesOperator], ...],
-) -> tuple[tuple[str, int, int, int, int | None], ...]:
+) -> tuple[tuple[str, bool, int, int, int, int | None], ...]:
     """将 Ts 算子编码为稳定签名可接受的基础类型。"""
     return tuple(
         (
             name,
+            operator.log,
             operator.lag,
             operator.difference,
             operator.seasonal_difference,

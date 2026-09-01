@@ -17,6 +17,7 @@ from dashboard.models.SARIMAX.ui.model_options_sarimax import (
     render_sarimax_error_options,
 )
 from dashboard.models.SARIMAX.ui.state import state
+from dashboard.models.common.state import StateStore
 
 
 def render_rdl_options(
@@ -25,6 +26,8 @@ def render_rdl_options(
     *,
     automatic: bool,
     response_log: bool,
+    prefix: str = "sarimax_rdl",
+    state_manager: StateStore = state,
 ) -> RDLConfig | AutoRDLConfig | None:
     """渲染 RDL 的误差结构、输入动态与估计设置。
 
@@ -51,15 +54,16 @@ def render_rdl_options(
         st_obj.markdown("**响应 / 误差结构**")
         error = render_sarimax_error_options(
             st_obj,
-            "sarimax_rdl_auto_error" if automatic else "sarimax_rdl_error",
+            f"{prefix}_auto_error" if automatic else f"{prefix}_error",
             automatic=automatic,
             response_log=response_log,
+            state_manager=state_manager,
         )
     if error is None:
         return None
     with st_obj.container(border=True):
         st_obj.markdown("**输入动态**")
-        inputs = _render_rdl_inputs(st_obj, exog)
+        inputs = _render_rdl_inputs(st_obj, exog, prefix=prefix, state_manager=state_manager)
     if inputs is None:
         return None
     with st_obj.container(border=True):
@@ -67,7 +71,7 @@ def render_rdl_options(
         stable = st_obj.checkbox(
             "强制传递函数分母稳定",
             value=True,
-            key="sarimax_rdl_enforce_stability",
+            key=f"{prefix}_enforce_stability",
         )
         st_obj.caption(
             "自动 RDL 只搜索 SARIMAX 误差阶数，以上传递函数结构保持固定。"
@@ -88,29 +92,33 @@ def render_rdl_options(
 def _render_rdl_inputs(
     st_obj,
     exog: pd.DataFrame,
+    *,
+    prefix: str,
+    state_manager: StateStore,
 ) -> tuple[RDLInputConfig, ...] | None:
     """渲染固定行的 RDL 传递函数参数表与可选稀疏滞后设置。"""
     names = list(exog.columns)
     basic = restore_table_state(
-        "rdl_input_table",
+        f"{prefix}_input_table",
         pd.DataFrame(
             {"变量": names, "分子阶数": 0, "分母阶数": 0, "延迟": 0}
         ),
         names,
+        state_manager=state_manager,
     )
     edited = st_obj.data_editor(
         basic,
-        key="sarimax_rdl_input_table",
+        key=f"{prefix}_input_table",
         num_rows="fixed",
         disabled=("变量",),
         width="stretch",
     )
-    state.set("rdl_input_table", edited.copy())
+    state_manager.set(f"{prefix}_input_table", edited.copy())
     with st_obj.expander("高级：稀疏滞后与初始化策略", expanded=False):
         st_obj.caption("留空即采用上表连续阶数；分母稀疏滞后从 1 开始。")
         advanced = st_obj.data_editor(
             restore_table_state(
-                "rdl_advanced_table",
+                f"{prefix}_advanced_table",
                 pd.DataFrame(
                     {
                         "变量": names,
@@ -120,13 +128,14 @@ def _render_rdl_inputs(
                     }
                 ),
                 names,
+                state_manager=state_manager,
             ),
-            key="sarimax_rdl_advanced_table",
+            key=f"{prefix}_advanced_table",
             num_rows="fixed",
             disabled=("变量",),
             width="stretch",
         )
-        state.set("rdl_advanced_table", advanced.copy())
+        state_manager.set(f"{prefix}_advanced_table", advanced.copy())
     try:
         return tuple(
             RDLInputConfig(

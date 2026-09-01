@@ -52,6 +52,8 @@ class ModelInputModule:
         默认从共同有效样本末端预留的期数。
     show_response_log : bool, default=True
         是否显示通用目标变量对数变换控件。
+    show_exog_log : bool, default=False
+        是否为每个已选外生变量显示独立的对数变换控件。
     """
 
     state: StateStore
@@ -64,6 +66,7 @@ class ModelInputModule:
     key_prefix: str = "model"
     default_forecast_sample_size: int = 12
     show_response_log: bool = True
+    show_exog_log: bool = False
     missing_value_options: tuple[str, ...] = ("无",)
     show_preprocessing: bool = True
 
@@ -102,11 +105,23 @@ class ModelInputModule:
                 ),
                 key=target_key,
             )
+            if self.show_response_log:
+                response_log = bool(
+                    st_obj.checkbox(
+                        "目标变量取对数",
+                        key=response_log_key,
+                        help="勾选时要求目标变量严格为正，预测结果将回到原始刻度。",
+                    )
+                )
+            else:
+                response_log = False
         if target != self.state.get("target_variable"):
             self.state.set("target_variable", target)
             self.state.set("exog_variables", ())
+            self.state.set("exog_log_names", ())
             self.clear_fit_results()
             self.clear_widget_state(st_obj, (exog_key,))
+            self._clear_exog_log_widgets(st_obj)
 
         with select_columns[1]:
             exog_options = [name for name in variables if name != target]
@@ -116,8 +131,25 @@ class ModelInputModule:
                 key=exog_key,
                 help="外生变量的观测日期必须与目标变量完全对齐。",
             )
+            exog_log_names = []
+            if self.show_exog_log and exog:
+                st_obj.caption("外生变量取对数（逐变量设置）")
+                for name in exog:
+                    if st_obj.checkbox(
+                        f"{name} 取对数",
+                        key=self._exog_log_key(name),
+                        help="勾选后，该外生变量以自然对数进入 SARIMAX。",
+                    ):
+                        exog_log_names.append(name)
         if tuple(exog) != self.state.get("exog_variables", ()):
             self.state.set("exog_variables", tuple(exog))
+            self.clear_fit_results()
+        exog_log_names = tuple(exog_log_names)
+        if exog_log_names != self.state.get("exog_log_names", ()):
+            self.state.set("exog_log_names", exog_log_names)
+            self.clear_fit_results()
+        if response_log != self.state.get("response_log"):
+            self.state.set("response_log", response_log)
             self.clear_fit_results()
 
         if self.show_preprocessing:
@@ -258,20 +290,6 @@ class ModelInputModule:
             self.state.set("training_time_range", time_range)
             self.clear_fit_results()
 
-        if self.show_response_log:
-            response_log = bool(
-                st_obj.checkbox(
-                    "目标变量取对数",
-                    key=response_log_key,
-                    help="勾选时要求目标变量严格为正，预测结果将回到原始刻度。",
-                )
-            )
-        else:
-            response_log = False
-        if response_log != self.state.get("response_log"):
-            self.state.set("response_log", response_log)
-            self.clear_fit_results()
-
         try:
             series, exog_frame, index = self.prepare_inputs(
                 dataset,
@@ -298,7 +316,22 @@ class ModelInputModule:
             preprocessing=preprocessing,
             missing_value_method=missing_value_method,
             response_log=response_log,
+            exog_log_names=exog_log_names,
         )
+
+    def _exog_log_key(self, name: str) -> str:
+        """Return a stable widget key for one exogenous-variable log switch."""
+        return f"{self.key_prefix}_exog_log_{name}"
+
+    def _clear_exog_log_widgets(self, st_obj) -> None:
+        """Clear dynamic exogenous-log switches when the target changes."""
+        session = getattr(st_obj, "session_state", None)
+        if session is None:
+            return
+        prefix = f"{self.key_prefix}_exog_log_"
+        for key in list(session.keys()):
+            if isinstance(key, str) and key.startswith(prefix):
+                session.pop(key, None)
 
 
 __all__ = ["ModelInputModule"]

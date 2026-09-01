@@ -43,18 +43,18 @@ def _navigate_to_univariate_overview(app) -> None:
     app.run()
 
 
-def _prepare_model_app(app, payload) -> None:
-    """在 SARIMAX 自有数据输入区上传文件。"""
+def _prepare_model_app(app, payload, *, model_prefix: str = "sarimax") -> None:
+    """在指定模型 Tab 的独立数据输入区上传文件。"""
     _navigate_to_sarimax(app)
     uploader = next(
         element
         for element in app.file_uploader
-        if element.key == "model_analysis.sarimax.upload.uploader"
+        if element.key == f"model_analysis.{model_prefix}.upload.uploader"
     )
     uploader.upload(*payload)
     app.run()
     assert not app.exception
-    _by_key(app.button, "sarimax_start_processing_button").click()
+    _by_key(app.button, f"{model_prefix}_start_processing_button").click()
     app.run()
     assert not app.exception
 
@@ -333,7 +333,18 @@ def test_full_workflow_via_ui(monkeypatch):
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
     _prepare_model_app(app, _sample_csv())
     assert not app.exception
-    assert app.tabs[0].label == "动态回归模型"
+    assert [tab.label for tab in app.tabs] == ["SARIMAX", "RDL", "ARDL"]
+    assert not any(
+        control.key == "sarimax_model_family" for control in app.segmented_control
+    )
+    assert any(
+        element.key == "model_analysis.rdl.upload.uploader"
+        for element in app.file_uploader
+    )
+    assert any(
+        element.key == "model_analysis.ardl.upload.uploader"
+        for element in app.file_uploader
+    )
     title_texts = " ".join(element.value for element in app.markdown)
     assert "数据文件" not in title_texts
     assert "① 模型训练" not in title_texts
@@ -359,6 +370,8 @@ def test_full_workflow_via_ui(monkeypatch):
     fit_button.click()
     app.run()
     assert not app.exception
+    assert any(item.value == "**参数估计结果**" for item in app.markdown)
+    assert not any(item.label == "参数摘要" for item in app.expander)
     assert not app.get("progress")
     assert not app.metric
     assert not app.success
@@ -699,6 +712,31 @@ def test_sarimax_sparse_order_operator_and_roots_controls_render(monkeypatch):
     assert any("Roots 稳定性图" in item.value for item in app.markdown)
 
 
+def test_sarimax_exog_log_switch_prefixes_parameter_estimate(monkeypatch):
+    """每个外生变量独立取对数，并在参数结果中保留 log 前缀。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=90).run()
+    _prepare_model_app(app, _dynamic_sample_csv())
+    _by_key(app.multiselect, "sarimax_exog_select").set_value(["policy"])
+    app.run()
+
+    log_switch = _by_key(app.checkbox, "sarimax_exog_log_policy")
+    assert log_switch.label == "policy 取对数"
+    assert not log_switch.value
+    log_switch.set_value(True)
+    app.run()
+    assert not app.exception
+
+    _by_key(app.button, "sarimax_fit_button").click()
+    app.run()
+    assert not app.exception
+    result = app.session_state["model_analysis.sarimax.fitted_result"]
+    assert "log.policy" in result.params
+    assert any("log.policy" in element.value for element in app.code)
+
+
 def test_sarimax_missing_exog_keeps_fit_button_enabled(monkeypatch):
     """SARIMAX 外生变量缺失时显示提示但不禁用拟合按钮。"""
     from streamlit.testing.v1 import AppTest
@@ -735,14 +773,12 @@ def test_sarimax_ar2_roots_show_cycle_diagnostic(monkeypatch):
     assert any("周期由 AR(2) 复根的角频率计算" in item.value for item in app.caption)
 
 
-def _open_dynamic_family(app, family: str, mode: str) -> None:
-    """上传连续多变量样本，切换到指定动态回归模型族。"""
-    _prepare_model_app(app, _dynamic_sample_csv())
-    _by_key(app.multiselect, "sarimax_exog_select").set_value(["policy"])
+def _open_model_tab(app, model_prefix: str, mode: str) -> None:
+    """初始化一个独立模型 Tab，并设置解释变量和配置方式。"""
+    _prepare_model_app(app, _dynamic_sample_csv(), model_prefix=model_prefix)
+    _by_key(app.multiselect, f"{model_prefix}_exog_select").set_value(["policy"])
     app.run()
-    _by_key(app.segmented_control, "sarimax_model_family").set_value(family)
-    app.run()
-    _by_key(app.segmented_control, "sarimax_config_mode").set_value(mode)
+    _by_key(app.segmented_control, f"{model_prefix}_config_mode").set_value(mode)
     app.run()
     assert not app.exception
 
@@ -754,24 +790,24 @@ def test_rdl_manual_and_auto_workflows_via_ui(monkeypatch):
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=90).run()
     _navigate_to_sarimax(app)
-    _open_dynamic_family(app, "RDL", "手动配置")
-    assert _by_key(app.dataframe, "sarimax_rdl_input_table")
-    _by_key(app.button, "sarimax_fit_button").click()
+    _open_model_tab(app, "rdl", "手动配置")
+    assert _by_key(app.dataframe, "rdl_input_table")
+    _by_key(app.button, "rdl_fit_button").click()
     app.run()
     assert not app.exception
     assert not app.metric
     assert not app.success
-    _by_key(app.segmented_control, "sarimax_config_mode").set_value("自动选阶")
+    _by_key(app.segmented_control, "rdl_config_mode").set_value("自动选阶")
     app.run()
     assert any("候选模型按规模自动调度" in item.value for item in app.caption)
-    _by_key(app.slider, "sarimax_rdl_auto_error_p_range").set_value((0, 1))
-    _by_key(app.slider, "sarimax_rdl_auto_error_d_range").set_value((0, 0))
-    _by_key(app.slider, "sarimax_rdl_auto_error_q_range").set_value((0, 0))
-    _by_key(app.slider, "sarimax_rdl_auto_error_P_range").set_value((0, 0))
-    _by_key(app.slider, "sarimax_rdl_auto_error_D_range").set_value((0, 0))
-    _by_key(app.slider, "sarimax_rdl_auto_error_Q_range").set_value((0, 0))
+    _by_key(app.slider, "rdl_auto_error_p_range").set_value((0, 1))
+    _by_key(app.slider, "rdl_auto_error_d_range").set_value((0, 0))
+    _by_key(app.slider, "rdl_auto_error_q_range").set_value((0, 0))
+    _by_key(app.slider, "rdl_auto_error_P_range").set_value((0, 0))
+    _by_key(app.slider, "rdl_auto_error_D_range").set_value((0, 0))
+    _by_key(app.slider, "rdl_auto_error_Q_range").set_value((0, 0))
     app.run()
-    _by_key(app.button, "sarimax_fit_button").click()
+    _by_key(app.button, "rdl_fit_button").click()
     app.run()
     assert not app.exception
     _assert_completed_progress(app)
@@ -784,33 +820,23 @@ def test_ardl_manual_and_auto_workflows_via_ui(monkeypatch):
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=90).run()
     _navigate_to_sarimax(app)
-    _open_dynamic_family(app, "ARDL", "手动配置")
-    assert _by_key(app.dataframe, "sarimax_ardl_input_table")
+    _open_model_tab(app, "ardl", "手动配置")
+    assert _by_key(app.dataframe, "ardl_input_table")
     assert not any(
         item.key == "sarimax_rdl_input_table" for item in app.dataframe
     )
-    _by_key(app.button, "sarimax_fit_button").click()
+    _by_key(app.button, "ardl_fit_button").click()
     app.run()
     assert not app.exception
     assert any(item.value == "**残差诊断图**" for item in app.markdown)
 
-    # 切换模型族必须清除旧 ARDL 结果，并且只留下 RDL 控件。
-    _by_key(app.segmented_control, "sarimax_model_family").set_value("RDL")
-    app.run()
-    assert not app.exception
-    assert _by_key(app.dataframe, "sarimax_rdl_input_table")
-    assert not any(metric.label == "AIC" for metric in app.metric)
-    _by_key(app.segmented_control, "sarimax_model_family").set_value("ARDL")
-    app.run()
-    assert _by_key(app.dataframe, "sarimax_ardl_input_table")
-
-    _by_key(app.segmented_control, "sarimax_config_mode").set_value("自动选阶")
+    _by_key(app.segmented_control, "ardl_config_mode").set_value("自动选阶")
     app.run()
     assert any("候选模型按规模自动调度" in item.value for item in app.caption)
-    assert _by_key(app.dataframe, "sarimax_auto_ardl_input_table")
-    _by_key(app.number_input, "sarimax_auto_ardl_target_lag").set_value(1)
+    assert _by_key(app.dataframe, "ardl_auto_input_table")
+    _by_key(app.number_input, "ardl_auto_target_lag").set_value(1)
     app.run()
-    _by_key(app.button, "sarimax_fit_button").click()
+    _by_key(app.button, "ardl_fit_button").click()
     app.run()
     assert not app.exception
     _assert_completed_progress(app)

@@ -24,7 +24,7 @@ from dashboard.models.common.workflow import ModelWorkflow
 from dashboard.models.SARIMAX.ui.pages.sections.forecast_chart import (
     render_forecast_chart,
 )
-from dashboard.models.SARIMAX.ui.state import state, store_downstream_result
+from dashboard.models.SARIMAX.ui.state import ModelPageScope, SARIMAX_SCOPE
 
 logger = logging.getLogger(__name__)
 _MODEL_WORKFLOW = ModelWorkflow(DynamicRegressionAdapter())
@@ -33,18 +33,20 @@ MAX_FORECAST_EXTENSION = 12
 _FORECAST_ALPHA_OPTIONS = (0.01, 0.05, 0.10)
 
 
-def render_forecast_section(st_obj) -> None:
+def render_forecast_section(st_obj, scope: ModelPageScope = SARIMAX_SCOPE) -> None:
     """配置预测区间并生成统一的拟合值/预测值结果。"""
+    state = scope.state
     result = state.get("fitted_result")
     if result is None:
         st_obj.info("完成模型训练后可生成样本外预测。")
         return
+    st_obj.markdown("**预测结果**")
     try:
         forecast_context = _MODEL_WORKFLOW.forecast_context(result)
     except Exception as exc:  # noqa: BLE001 - 用户可读的模型上下文边界
         st_obj.error(f"预测模型上下文准备失败：{exc}")
         return
-    family = state.get("model_selection", ("SARIMAX", "手动配置"))[0]
+    family = scope.family
     dataset = state.get("dataset")
 
     training_range = state.get("training_time_range")
@@ -82,7 +84,7 @@ def render_forecast_section(st_obj) -> None:
 
     fit_signature = state.get("fit_signature")
     if state.get("forecast_widget_fit_signature") != fit_signature:
-        st_obj.session_state.pop("sarimax_forecast_window", None)
+        st_obj.session_state.pop(scope.key("forecast_window"), None)
         state.set("forecast_widget_fit_signature", fit_signature)
 
     date_options = tuple(pd.Timestamp(value).date() for value in calendar)
@@ -102,11 +104,11 @@ def render_forecast_section(st_obj) -> None:
     )
     default_window = (available_date_options[0], available_training_end)
     existing_window = normalise_date_window(
-        st_obj.session_state.get("sarimax_forecast_window"),
+        st_obj.session_state.get(scope.key("forecast_window")),
         available_date_options,
     )
     if existing_window is None:
-        st_obj.session_state.pop("sarimax_forecast_window", None)
+        st_obj.session_state.pop(scope.key("forecast_window"), None)
         existing_window = default_window
 
     selected_window = st_obj.select_slider(
@@ -114,7 +116,7 @@ def render_forecast_section(st_obj) -> None:
         options=available_date_options,
         value=existing_window,
         format_func=lambda value: value.isoformat(),
-        key="sarimax_forecast_window",
+        key=scope.key("forecast_window"),
         help=(
             "预测起点从状态空间初始化期之后开始；预测区间进入训练结束日之后时，"
             "使用样本外预测。滑轨日期来自已预处理后的模型数据日历，"
@@ -131,16 +133,16 @@ def render_forecast_section(st_obj) -> None:
     with control_columns[0]:
         dynamic = st_obj.checkbox(
             "动态预测",
-            key="sarimax_forecast_dynamic",
+            key=scope.key("forecast_dynamic"),
             help="传递给 Ts 的 dynamic 参数；样本外窗口本身已经采用递推。",
         )
     with control_columns[1]:
         show_confidence_interval = st_obj.checkbox(
             "置信区间",
-            key="sarimax_forecast_ci",
+            key=scope.key("forecast_ci"),
             help="勾选后在预测图中显示浅灰色置信区间。",
         )
-        alpha = st_obj.session_state.get("sarimax_forecast_alpha", 0.05)
+        alpha = st_obj.session_state.get(scope.key("forecast_alpha"), 0.05)
         if alpha not in _FORECAST_ALPHA_OPTIONS:
             alpha = 0.05
         if show_confidence_interval:
@@ -150,7 +152,7 @@ def render_forecast_section(st_obj) -> None:
                 index=1,
                 format_func=lambda value: f"{1 - value:.0%}",
                 horizontal=True,
-                key="sarimax_forecast_alpha",
+                key=scope.key("forecast_alpha"),
                 help="选择预测区间的置信水平。",
             )
 
@@ -187,6 +189,7 @@ def render_forecast_section(st_obj) -> None:
             total_steps,
             exog_names,
             future_dates_for_model,
+            scope,
         )
 
     signature = stable_signature(
@@ -204,7 +207,7 @@ def render_forecast_section(st_obj) -> None:
     if st_obj.button(
         "生成预测",
         type="primary",
-        key="sarimax_forecast_button",
+        key=scope.key("forecast_button"),
         disabled=future_exog is not None and bool(future_exog.isna().any().any()),
     ):
         try:
@@ -224,7 +227,7 @@ def render_forecast_section(st_obj) -> None:
             st_obj.error(translate_ts_error(exc))
             logger.exception("SARIMAX 预测失败")
             return
-        store_downstream_result(
+        scope.store_downstream_result(
             "forecast",
             forecast,
             "forecast_signature",
@@ -269,7 +272,7 @@ def render_forecast_section(st_obj) -> None:
         download_name=f"{family}_预测_{int(forecast.steps)}期.csv",
         chart_renderer=render_chart,
         show_confidence_interval=show_confidence_interval,
-        download_key="sarimax_forecast_download",
+        download_key=scope.key("forecast_download"),
     )
 
 
@@ -281,6 +284,7 @@ def _render_future_exog_editor(
     total_steps: int,
     exog_names: tuple[str, ...],
     forecast_dates: pd.DatetimeIndex | None = None,
+    scope: ModelPageScope = SARIMAX_SCOPE,
 ) -> tuple[pd.DataFrame, tuple[str, ...]]:
     """从数据集预填未来外生路径，并允许用户选择来源列及编辑数值。"""
     numeric = [] if dataset is None else numeric_variable_names(dataset.frame)
@@ -307,7 +311,7 @@ def _render_future_exog_editor(
             f"{model_name} 的未来值来源",
             options=numeric,
             index=numeric.index(default) if default in numeric else 0,
-            key=f"sarimax_future_exog_source_{position}",
+            key=f"{scope.key_prefix}_future_exog_source_{position}",
             help="从当前数据表选择该模型外生变量的未来路径。",
         )
         source_columns.append(selected)
@@ -341,14 +345,14 @@ def _render_future_exog_editor(
             "index": [str(value) for value in editor_frame.index],
         }
     )
-    if state.get("future_exog_editor_signature") != editor_signature:
-        st_obj.session_state.pop("sarimax_future_exog_editor", None)
-        state.set("future_exog_editor_signature", editor_signature)
+    if scope.state.get("future_exog_editor_signature") != editor_signature:
+        st_obj.session_state.pop(scope.key("future_exog_editor"), None)
+        scope.state.set("future_exog_editor_signature", editor_signature)
     st_obj.markdown("**未来外生变量路径**")
     st_obj.caption("默认从当前数据表提取；空值可直接在下表补录。")
     edited = st_obj.data_editor(
         editor_frame,
-        key="sarimax_future_exog_editor",
+        key=scope.key("future_exog_editor"),
         num_rows="fixed",
     )
     return edited.astype(float), source_columns

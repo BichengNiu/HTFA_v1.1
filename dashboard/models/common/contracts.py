@@ -64,6 +64,8 @@ class ModelingInput:
         已应用的缺失值处理方式。
     response_log : bool
         是否对目标变量应用对数变换。
+    exog_log_names : tuple[str, ...]
+        需要对数变换的外生变量名称；必须是 ``exog_names`` 的子集。
     """
 
     series: pd.Series
@@ -76,6 +78,7 @@ class ModelingInput:
     preprocessing: tuple[str, ...] = ()
     missing_value_method: str = "无"
     response_log: bool = False
+    exog_log_names: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.series, pd.Series):
@@ -86,9 +89,14 @@ class ModelingInput:
         if not self.series.index.equals(index):
             raise ValueError("目标序列与建模索引不一致")
         exog_names = tuple(str(name) for name in self.exog_names)
+        exog_log_names = tuple(str(name) for name in self.exog_log_names)
+        if len(set(exog_log_names)) != len(exog_log_names):
+            raise ValueError("exog_log_names 不能包含重复变量")
         if self.exog is None:
             if exog_names:
                 raise ValueError("没有外生变量表时不能提供 exog_names")
+            if exog_log_names:
+                raise ValueError("没有外生变量表时不能提供 exog_log_names")
         else:
             if not isinstance(self.exog, pd.DataFrame):
                 raise TypeError("exog 必须是 pandas.DataFrame 或 None")
@@ -96,6 +104,12 @@ class ModelingInput:
                 raise ValueError("外生变量与建模索引不一致")
             if tuple(map(str, self.exog.columns)) != exog_names:
                 raise ValueError("exog_names 与外生变量列不一致")
+            unknown_log_names = set(exog_log_names).difference(exog_names)
+            if unknown_log_names:
+                raise ValueError(
+                    "exog_log_names 必须是 exog_names 的子集，"
+                    f"未知变量：{sorted(unknown_log_names)!r}"
+                )
         if not isinstance(self.response_log, bool):
             raise TypeError("response_log 必须是布尔值")
         if not isinstance(self.missing_value_method, str):
@@ -108,6 +122,7 @@ class ModelingInput:
         )
         object.__setattr__(self, "index", index)
         object.__setattr__(self, "exog_names", exog_names)
+        object.__setattr__(self, "exog_log_names", exog_log_names)
         object.__setattr__(
             self,
             "training_range",

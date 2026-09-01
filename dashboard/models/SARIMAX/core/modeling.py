@@ -55,6 +55,10 @@ _SARIMAX_ERROR_HINTS = (
         "已启用 log 变换，但数据存在非正值",
     ),
     (
+        "log transformation requires strictly positive exogenous data",
+        "已启用外生变量 log 变换，但数据存在非正值",
+    ),
+    (
         "SARIMAX optimization failed to converge",
         "模型优化未收敛，请尝试更换优化器、增大最大迭代次数或简化阶数",
     ),

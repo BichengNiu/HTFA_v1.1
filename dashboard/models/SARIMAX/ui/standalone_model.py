@@ -35,7 +35,10 @@ _HANDOFF_SIGNATURE_STATE_KEY = (
     "model_analysis.sarimax.standalone.handoff_signature"
 )
 _HANDOFF_RESTORE_STATE_KEY = "model_analysis.sarimax.standalone.restored"
-_HANDOFF_PREFIXES = ("sarimax_future_exog_source_",)
+_HANDOFF_PREFIXES = (
+    "sarimax_future_exog_source_",
+    "sarimax_exog_log_",
+)
 _HANDOFF_RESULT_KEYS = RESULT_KEYS + ("forecast_widget_fit_signature",)
 
 SARIMAX_HANDOFF_WIDGET_KEYS = tuple(
@@ -202,12 +205,16 @@ def _clear_previous_model_state() -> None:
 
     clear_fit_results()
     clear_widget_state(st)
+    for key in list(st.session_state.keys()):
+        if isinstance(key, str) and key.startswith(_HANDOFF_PREFIXES):
+            st.session_state.pop(key, None)
     for key, value in (
         ("dataset", None),
         ("source_fingerprint", None),
         ("time_options_signature", None),
         ("target_variable", None),
         ("exog_variables", ()),
+        ("exog_log_names", ()),
         ("training_time_range", None),
         ("data_preprocessing", ()),
         ("missing_value_method", "无"),
@@ -256,10 +263,10 @@ def _seed_sarimax_input_state(widget_state: dict[str, object]) -> None:
     mode = widget_state.get("sarimax_config_mode", "手动配置")
     if isinstance(family, str) and isinstance(mode, str):
         state.set("model_selection", (family, mode))
-    state.set(
-        "response_log",
-        bool(widget_state.get("sarimax_response_log", False)),
-    )
+        state.set(
+            "response_log",
+            bool(widget_state.get("sarimax_response_log", False)),
+        )
 
 
 def _read_handoff_rows(widget_state: dict[str, object]) -> tuple[int, int]:

@@ -11,18 +11,15 @@ from dashboard.core.ui.utils.matplotlib_compat import matplotlib_date_compatibil
 from dashboard.core.workspace import stable_signature
 from dashboard.models.common.workflow import ModelWorkflow
 from dashboard.models.SARIMAX.core.adapters import DynamicRegressionAdapter
-from dashboard.models.SARIMAX.ui.state import (
-    clear_downstream_result,
-    state,
-    store_downstream_result,
-)
+from dashboard.models.SARIMAX.ui.state import ModelPageScope, SARIMAX_SCOPE
 
 logger = logging.getLogger(__name__)
 _MODEL_WORKFLOW = ModelWorkflow(DynamicRegressionAdapter())
 
 
-def render_analysis_section(st_obj) -> None:
+def render_analysis_section(st_obj, scope: ModelPageScope = SARIMAX_SCOPE) -> None:
     """展示已拟合模型的残差诊断图与残差检验。"""
+    state = scope.state
     result = state.get("fitted_result")
     if result is None:
         st_obj.info("完成模型训练后可查看残差诊断结果。")
@@ -39,11 +36,11 @@ def render_analysis_section(st_obj) -> None:
     if diagnostic_view.figure_error:
         st_obj.warning(f"残差诊断图无法绘制：{diagnostic_view.figure_error}")
         logger.warning("动态回归诊断图绘制失败：%s", diagnostic_view.figure_error)
-    _render_residual_tests(st_obj, result, diagnostic_view)
-    _render_model_diagnostics(st_obj, result)
+    _render_residual_tests(st_obj, result, diagnostic_view, scope)
+    _render_model_diagnostics(st_obj, result, scope)
 
 
-def _render_model_diagnostics(st_obj, result) -> None:
+def _render_model_diagnostics(st_obj, result, scope: ModelPageScope) -> None:
     """展示 ARMA 创新响应、RDL 输入响应和 AR/MA 根诊断。"""
     model_result = getattr(result, "best_result", result)
     ar_roots = tuple(getattr(model_result, "arroots", ()))
@@ -93,6 +90,7 @@ def _render_model_diagnostics(st_obj, result) -> None:
         chart_columns[0],
         model_result,
         session_state=st_obj.session_state,
+        key=scope.key("innovation_irf_steps"),
     )
     _render_roots_plot(chart_columns[1], model_result)
 
@@ -109,10 +107,10 @@ def _render_innovation_impulse_response(
     model_result,
     *,
     session_state,
+    key: str,
 ) -> None:
     """在布局列中展示 ARMA 创新脉冲响应图。"""
     st_obj.markdown("**ARMA 创新脉冲响应图**")
-    key = "sarimax_innovation_irf_steps"
     if key not in session_state:
         session_state[key] = 20
     steps = st_obj.number_input(
@@ -220,7 +218,7 @@ def _render_cycle_diagnostics(st_obj, model_result) -> None:
     )
 
 
-def _render_residual_tests(st_obj, result, diagnostic_view) -> None:
+def _render_residual_tests(st_obj, result, diagnostic_view, scope: ModelPageScope) -> None:
     """按建议滞后阶数自动运行并展示残差诊断检验。"""
     st_obj.markdown("**残差诊断检验**")
     st_obj.caption(
@@ -230,12 +228,12 @@ def _render_residual_tests(st_obj, result, diagnostic_view) -> None:
     )
     signature = stable_signature(
         {
-            "fit_signature": state.get("fit_signature"),
+            "fit_signature": scope.state.get("fit_signature"),
             "lags": diagnostic_view.lags,
         }
     )
-    table = state.get("diagnostics_table")
-    if table is None or state.get("diagnostics_signature") != signature:
+    table = scope.state.get("diagnostics_table")
+    if table is None or scope.state.get("diagnostics_signature") != signature:
         try:
             with st_obj.spinner("正在执行残差检验..."):
                 table = _MODEL_WORKFLOW.residual_test_table(
@@ -245,12 +243,12 @@ def _render_residual_tests(st_obj, result, diagnostic_view) -> None:
         except Exception as exc:
             st_obj.error(f"残差检验无法执行：{exc}")
             logger.exception("SARIMAX 残差检验失败")
-            clear_downstream_result(
+            scope.clear_downstream_result(
                 "diagnostics_table",
                 "diagnostics_signature",
             )
             return
-        store_downstream_result(
+        scope.store_downstream_result(
             "diagnostics_table",
             table,
             "diagnostics_signature",
@@ -272,9 +270,9 @@ def _render_residual_tests(st_obj, result, diagnostic_view) -> None:
             encoding="utf-8-sig",
             float_format="%.3f",
         ).encode("utf-8-sig"),
-        file_name="SARIMAX_残差检验.csv",
+        file_name=f"{scope.family}_残差检验.csv",
         mime="text/csv",
-        key="sarimax_diag_download",
+        key=scope.key("diag_download"),
         type="primary",
     )
 

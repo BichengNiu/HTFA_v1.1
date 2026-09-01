@@ -115,8 +115,9 @@ def render_estimation_result(
                 if selected_candidate is None
                 else ("candidate", selected_candidate)
             )
-    with st_obj.expander("参数摘要", expanded=False):
-        st_obj.code(view.summary)
+    st_obj.divider()
+    st_obj.markdown("**参数估计结果**")
+    st_obj.code(view.summary)
     return None
 
 

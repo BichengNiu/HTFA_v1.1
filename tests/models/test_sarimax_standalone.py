@@ -33,6 +33,8 @@ def _upload_model_file(app, name: str, content: bytes) -> None:
     )
     uploader.upload(name, content, "text/csv")
     app.run()
+    _by_key(app.button, "sarimax_start_processing_button").click()
+    app.run()
 
 
 def _by_key(elements, key: str):

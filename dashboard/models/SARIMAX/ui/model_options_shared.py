@@ -8,6 +8,7 @@ from dashboard.models.SARIMAX.core.config_shared import (
     SARIMAX_COV_TYPES,
     SARIMAX_OPTIMIZERS,
 )
+from dashboard.models.common.state import StateStore
 from dashboard.models.SARIMAX.ui.state import state
 
 _TREND_COMPONENTS = ("常数项", "线性趋势")
@@ -130,9 +131,11 @@ def restore_table_state(
     state_key: str,
     defaults: pd.DataFrame,
     variable_names: list[str],
+    *,
+    state_manager: StateStore = state,
 ) -> pd.DataFrame:
     """仅在变量结构仍兼容时恢复 data_editor 内容。"""
-    saved = state.get(state_key)
+    saved = state_manager.get(state_key)
     if not isinstance(saved, pd.DataFrame):
         return defaults
     if list(saved.columns) != list(defaults.columns):

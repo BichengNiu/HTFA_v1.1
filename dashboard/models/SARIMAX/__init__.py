@@ -5,6 +5,14 @@
 ① 模型训练 → ② 残差诊断 → ③ 模型预测。
 """
 
-from dashboard.models.SARIMAX.ui.pages import render_sarimax_model_page
+from dashboard.models.SARIMAX.ui.pages import (
+    render_ardl_model_page,
+    render_rdl_model_page,
+    render_sarimax_model_page,
+)
 
-__all__ = ["render_sarimax_model_page"]
+__all__ = [
+    "render_ardl_model_page",
+    "render_rdl_model_page",
+    "render_sarimax_model_page",
+]

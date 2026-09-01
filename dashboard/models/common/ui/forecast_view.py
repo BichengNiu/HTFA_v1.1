@@ -62,7 +62,6 @@ def render_forecast_result(
     display = download_table.reset_index()
     if "日期" in display.columns:
         display["日期"] = display["日期"].dt.strftime("%Y-%m-%d")
-    st_obj.markdown("**预测结果**")
     if caption:
         st_obj.caption(caption)
     st_obj.dataframe(display, width="stretch")

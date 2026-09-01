@@ -42,6 +42,7 @@ def test_modeling_input_copies_and_normalises_public_fields():
         dataset_fingerprint="fingerprint",
         preprocessing=("去零",),
         response_log=False,
+        exog_log_names=("x",),
     )
 
     assert inputs.series is not series
@@ -49,6 +50,7 @@ def test_modeling_input_copies_and_normalises_public_fields():
     assert inputs.index.equals(dates)
     assert inputs.target == "target"
     assert inputs.exog_names == ("x",)
+    assert inputs.exog_log_names == ("x",)
     assert inputs.training_range == (dates[0], dates[-1])
 
 

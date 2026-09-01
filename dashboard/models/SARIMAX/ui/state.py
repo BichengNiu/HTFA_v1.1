@@ -1,225 +1,179 @@
-"""SARIMAX 模型 UI 共享状态与结果缓存失效逻辑。"""
+"""动态回归各模型页的隔离状态与结果生命周期。"""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass, field
 
 from dashboard.core.ui.utils.state_helpers import NamespacedStateManager
 from dashboard.models.common.state import ModelStateLifecycle
 
-# 所有 SARIMAX 页面共用的会话状态命名空间。
-state = NamespacedStateManager("model_analysis.sarimax")
 
-# 训练 / 分析 / 预测环节的 widget 键。
-MODEL_WIDGET_KEYS = (
-    "sarimax_target_select",
-    "sarimax_exog_select",
-    "sarimax_train_forecast_window",
-    "sarimax_data_preprocessing",
-    "sarimax_missing_value_method",
-    "sarimax_response_log",
-    "sarimax_model_family",
-    "sarimax_config_mode",
-    "sarimax_p",
-    "sarimax_d",
-    "sarimax_q",
-    "sarimax_P",
-    "sarimax_D",
-    "sarimax_Q",
-    "sarimax_s",
-    "sarimax_ar_lags",
-    "sarimax_ma_lags",
-    "sarimax_seasonal_ar_lags",
-    "sarimax_seasonal_ma_lags",
-    "sarimax_exog_operators",
-    "sarimax_trend_components",
-    "sarimax_method",
-    "sarimax_maxiter",
-    "sarimax_cov_type",
-    "sarimax_enforce_stationarity",
-    "sarimax_enforce_invertibility",
-    "sarimax_auto_p_range",
-    "sarimax_auto_d_range",
-    "sarimax_auto_q_range",
-    "sarimax_auto_P_range",
-    "sarimax_auto_D_range",
-    "sarimax_auto_Q_range",
-    "sarimax_auto_s",
-    "sarimax_auto_exog_operators",
-    "sarimax_auto_trend_components",
-    "sarimax_auto_selection_criterion",
-    "sarimax_auto_selection_model",
-    "sarimax_auto_method",
-    "sarimax_auto_maxiter",
-    "sarimax_auto_cov_type",
-    "sarimax_auto_enforce_stationarity",
-    "sarimax_auto_enforce_invertibility",
-    "sarimax_start_processing_button",
-    "sarimax_rdl_error_p",
-    "sarimax_rdl_error_d",
-    "sarimax_rdl_error_q",
-    "sarimax_rdl_error_P",
-    "sarimax_rdl_error_D",
-    "sarimax_rdl_error_Q",
-    "sarimax_rdl_error_s",
-    "sarimax_rdl_error_trend_components",
-    "sarimax_rdl_error_method",
-    "sarimax_rdl_error_maxiter",
-    "sarimax_rdl_error_cov_type",
-    "sarimax_rdl_error_enforce_stationarity",
-    "sarimax_rdl_error_enforce_invertibility",
-    "sarimax_rdl_auto_error_p_range",
-    "sarimax_rdl_auto_error_d_range",
-    "sarimax_rdl_auto_error_q_range",
-    "sarimax_rdl_auto_error_P_range",
-    "sarimax_rdl_auto_error_D_range",
-    "sarimax_rdl_auto_error_Q_range",
-    "sarimax_rdl_auto_error_s",
-    "sarimax_rdl_auto_error_trend_components",
-    "sarimax_rdl_auto_error_criterion",
-    "sarimax_rdl_auto_error_enforce_stationarity",
-    "sarimax_rdl_auto_error_enforce_invertibility",
-    "sarimax_rdl_input_table",
-    "sarimax_rdl_advanced_table",
-    "sarimax_rdl_enforce_stability",
-    "sarimax_ardl_target_lag",
-    "sarimax_ardl_trend_components",
-    "sarimax_ardl_causal",
-    "sarimax_ardl_seasonal",
-    "sarimax_ardl_period",
-    "sarimax_ardl_input_table",
-    "sarimax_ardl_hold_back",
-    "sarimax_ardl_cov_type",
-    "sarimax_auto_ardl_target_lag",
-    "sarimax_auto_ardl_trend_components",
-    "sarimax_auto_ardl_causal",
-    "sarimax_auto_ardl_seasonal",
-    "sarimax_auto_ardl_period",
-    "sarimax_auto_ardl_input_table",
-    "sarimax_auto_ardl_hold_back",
-    "sarimax_auto_ardl_cov_type",
-    "sarimax_auto_ardl_criterion",
-    "sarimax_auto_ardl_search_method",
-    "sarimax_fit_button",
-    "sarimax_diag_download",
-    "sarimax_innovation_irf_steps",
-    "sarimax_forecast_window",
-    "sarimax_forecast_alpha",
-    "sarimax_forecast_dynamic",
-    "sarimax_forecast_ci",
-    "sarimax_future_exog_editor",
-    "sarimax_forecast_button",
-    "sarimax_forecast_download",
+_COMMON_WIDGET_SUFFIXES = (
+    "target_select", "exog_select", "train_forecast_window",
+    "data_preprocessing", "missing_value_method", "response_log",
+    "config_mode", "start_processing_button", "fit_button", "diag_download",
+    "innovation_irf_steps", "forecast_window", "forecast_alpha",
+    "forecast_dynamic", "forecast_ci", "future_exog_editor", "forecast_button",
+    "forecast_download",
+)
+_SARIMAX_WIDGET_SUFFIXES = (
+    "p", "d", "q", "P", "D", "Q", "s", "ar_lags", "ma_lags",
+    "seasonal_ar_lags", "seasonal_ma_lags", "exog_operators",
+    "trend_components", "method", "maxiter", "cov_type",
+    "enforce_stationarity", "enforce_invertibility", "auto_p_range",
+    "auto_d_range", "auto_q_range", "auto_P_range", "auto_D_range",
+    "auto_Q_range", "auto_s", "auto_exog_operators",
+    "auto_trend_components", "auto_selection_criterion", "auto_selection_model",
+    "auto_method", "auto_maxiter", "auto_cov_type",
+    "auto_enforce_stationarity", "auto_enforce_invertibility",
+)
+_RDL_WIDGET_SUFFIXES = (
+    "error_p", "error_d", "error_q", "error_P", "error_D", "error_Q",
+    "error_s", "error_trend_components", "error_method", "error_maxiter",
+    "error_cov_type", "error_enforce_stationarity", "error_enforce_invertibility",
+    "error_ar_lags", "error_ma_lags", "error_seasonal_ar_lags",
+    "error_seasonal_ma_lags",
+    "auto_error_p_range", "auto_error_d_range", "auto_error_q_range",
+    "auto_error_P_range", "auto_error_D_range", "auto_error_Q_range",
+    "auto_error_s", "auto_error_trend_components", "auto_error_method",
+    "auto_error_maxiter", "auto_error_cov_type",
+    "auto_error_enforce_stationarity", "auto_error_enforce_invertibility",
+    "input_table", "advanced_table", "enforce_stability", "auto_selection_criterion",
+    "auto_selection_model",
+)
+_ARDL_WIDGET_SUFFIXES = (
+    "target_lag", "trend_components", "causal", "seasonal", "period",
+    "input_table", "hold_back", "cov_type", "auto_target_lag",
+    "auto_trend_components", "auto_causal", "auto_seasonal", "auto_period",
+    "auto_input_table", "auto_hold_back", "auto_cov_type", "auto_criterion",
+    "auto_search_method",
+)
+_TABLE_SUFFIXES = (
+    "input_table", "advanced_table", "exog_operators", "future_exog_editor",
+)
+_RESULT_KEYS = (
+    "fitted_result", "fit_signature", "diagnostics_table", "diagnostics_signature",
+    "forecast", "forecast_signature",
 )
 
-# SARIMAX 模型页的 Streamlit widget 键。
+
+@dataclass(frozen=True)
+class ModelPageScope:
+    """一个模型 Tab 的页面标识、控件前缀和私有状态域。"""
+
+    family: str
+    namespace: str
+    key_prefix: str
+    data_key_prefix: str
+    widget_suffixes: tuple[str, ...]
+    state: NamespacedStateManager = field(init=False)
+    widget_keys: tuple[str, ...] = field(init=False)
+    persistent_widget_keys: tuple[str, ...] = field(init=False)
+    lifecycle: ModelStateLifecycle = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        widget_keys = tuple(dict.fromkeys(
+            f"{self.key_prefix}_{suffix}"
+            for suffix in _COMMON_WIDGET_SUFFIXES + self.widget_suffixes
+        ))
+        state = NamespacedStateManager(self.namespace)
+        persistent = tuple(
+            key for key in widget_keys
+            if not key.endswith(("_button", "_download"))
+            and not key.endswith(_TABLE_SUFFIXES)
+        )
+        lifecycle = ModelStateLifecycle(
+            store=state,
+            fit_result_keys=("fitted_result", "fit_signature"),
+            downstream_result_keys=(
+                "diagnostics_table", "diagnostics_signature", "forecast",
+                "forecast_signature", "forecast_widget_fit_signature",
+            ),
+            widget_keys=widget_keys,
+        )
+        object.__setattr__(self, "state", state)
+        object.__setattr__(self, "widget_keys", widget_keys)
+        object.__setattr__(self, "persistent_widget_keys", persistent)
+        object.__setattr__(self, "lifecycle", lifecycle)
+
+    def key(self, suffix: str) -> str:
+        """返回当前模型 Tab 的 Streamlit widget key。"""
+        return f"{self.key_prefix}_{suffix}"
+
+    def clear_fit_results(self) -> None:
+        self.lifecycle.clear_fit_results()
+
+    def store_fit_result(self, result, signature) -> None:
+        self.lifecycle.store_fit_result(result, signature)
+
+    def clear_downstream_result(self, result_key: str, signature_key: str) -> None:
+        self.lifecycle.clear_downstream_result(result_key, signature_key)
+
+    def store_downstream_result(self, result_key: str, result, signature_key: str, signature) -> None:
+        self.lifecycle.store_downstream_result(result_key, result, signature_key, signature)
+
+    def clear_widget_state(self, st_obj, keys: tuple[str, ...] | None = None) -> None:
+        self.lifecycle.clear_widget_state(st_obj, keys=keys)
+
+    def restore_result_state(self, values: Mapping[str, object], *, keys: tuple[str, ...] = _RESULT_KEYS) -> None:
+        self.lifecycle.restore_result_state(values, keys=keys)
+
+
+SARIMAX_SCOPE = ModelPageScope(
+    family="SARIMAX", namespace="model_analysis.sarimax", key_prefix="sarimax",
+    data_key_prefix="sarimax_model", widget_suffixes=_SARIMAX_WIDGET_SUFFIXES,
+)
+RDL_SCOPE = ModelPageScope(
+    family="RDL", namespace="model_analysis.rdl", key_prefix="rdl",
+    data_key_prefix="rdl_model", widget_suffixes=_RDL_WIDGET_SUFFIXES,
+)
+ARDL_SCOPE = ModelPageScope(
+    family="ARDL", namespace="model_analysis.ardl", key_prefix="ardl",
+    data_key_prefix="ardl_model", widget_suffixes=_ARDL_WIDGET_SUFFIXES,
+)
+
+# 兼容 SARIMAX 独立页交接模块的既有公共名称。
+state = SARIMAX_SCOPE.state
+MODEL_WIDGET_KEYS = SARIMAX_SCOPE.widget_keys
 WIDGET_KEYS = MODEL_WIDGET_KEYS
-
-# 跨模块切换时保留用户可编辑的页面输入；提交、下载与运行按钮不保存，
-# 以免切回页面后重复执行操作。
-PERSISTENT_WIDGET_KEYS = tuple(
-    key
-    for key in WIDGET_KEYS
-    if not key.endswith(("_button", "_download"))
-    and key
-    not in {
-        "sarimax_rdl_input_table",
-        "sarimax_rdl_advanced_table",
-        "sarimax_ardl_input_table",
-        "sarimax_auto_ardl_input_table",
-        "sarimax_exog_operators",
-        "sarimax_auto_exog_operators",
-        "sarimax_future_exog_editor",
-    }
-)
-
-# 数据集变化时清除模型页的 widget 状态。
+PERSISTENT_WIDGET_KEYS = SARIMAX_SCOPE.persistent_widget_keys
 DATASET_REPLACED_WIDGET_KEYS = MODEL_WIDGET_KEYS
-
-RESULT_KEYS = (
-    "fitted_result",
-    "fit_signature",
-    "diagnostics_table",
-    "diagnostics_signature",
-    "forecast",
-    "forecast_signature",
-)
-
-_STATE_LIFECYCLE = ModelStateLifecycle(
-    store=state,
-    fit_result_keys=("fitted_result", "fit_signature"),
-    downstream_result_keys=(
-        "diagnostics_table",
-        "diagnostics_signature",
-        "forecast",
-        "forecast_signature",
-        "forecast_widget_fit_signature",
-    ),
-    widget_keys=WIDGET_KEYS,
-)
+RESULT_KEYS = _RESULT_KEYS
 
 
 def clear_fit_results() -> None:
-    """清除全部拟合与派生结果（参数变化时调用）。"""
-    _STATE_LIFECYCLE.clear_fit_results()
+    SARIMAX_SCOPE.clear_fit_results()
 
 
 def store_fit_result(result, signature) -> None:
-    """发布拟合结果、签名并清除依赖旧结果的下游状态。"""
-    _STATE_LIFECYCLE.store_fit_result(result, signature)
+    SARIMAX_SCOPE.store_fit_result(result, signature)
 
 
 def clear_downstream_results() -> None:
-    """清除当前模型选择之后的诊断与预测结果。"""
-    _STATE_LIFECYCLE.clear_downstream_results()
+    SARIMAX_SCOPE.lifecycle.clear_downstream_results()
 
 
-def store_downstream_result(
-    result_key: str,
-    result,
-    signature_key: str,
-    signature,
-) -> None:
-    """发布下游结果与签名，统一校验状态键归属。"""
-    _STATE_LIFECYCLE.store_downstream_result(
-        result_key,
-        result,
-        signature_key,
-        signature,
-    )
+def store_downstream_result(result_key: str, result, signature_key: str, signature) -> None:
+    SARIMAX_SCOPE.store_downstream_result(result_key, result, signature_key, signature)
 
 
 def clear_downstream_result(result_key: str, signature_key: str) -> None:
-    """清除一个下游结果及其签名。"""
-    _STATE_LIFECYCLE.clear_downstream_result(result_key, signature_key)
+    SARIMAX_SCOPE.clear_downstream_result(result_key, signature_key)
 
 
-def restore_result_state(
-    values: Mapping[str, object],
-    *,
-    keys: tuple[str, ...] = RESULT_KEYS,
-) -> None:
-    """恢复交接快照中的结果状态。"""
-    _STATE_LIFECYCLE.restore_result_state(values, keys=keys)
+def restore_result_state(values: Mapping[str, object], *, keys: tuple[str, ...] = RESULT_KEYS) -> None:
+    SARIMAX_SCOPE.restore_result_state(values, keys=keys)
 
 
 def clear_widget_state(st_obj, keys: tuple[str, ...] = WIDGET_KEYS) -> None:
-    """删除指定 Streamlit widget 的会话值，避免旧值残留。"""
-    _STATE_LIFECYCLE.clear_widget_state(st_obj, keys=keys)
+    SARIMAX_SCOPE.clear_widget_state(st_obj, keys)
 
 
 __all__ = [
-    "DATASET_REPLACED_WIDGET_KEYS",
-    "MODEL_WIDGET_KEYS",
-    "PERSISTENT_WIDGET_KEYS",
-    "RESULT_KEYS",
-    "WIDGET_KEYS",
-    "clear_downstream_result",
-    "clear_downstream_results",
-    "clear_fit_results",
-    "clear_widget_state",
-    "restore_result_state",
-    "store_downstream_result",
-    "store_fit_result",
-    "state",
+    "ARDL_SCOPE", "DATASET_REPLACED_WIDGET_KEYS", "MODEL_WIDGET_KEYS",
+    "ModelPageScope", "PERSISTENT_WIDGET_KEYS", "RDL_SCOPE", "RESULT_KEYS",
+    "SARIMAX_SCOPE", "WIDGET_KEYS", "clear_downstream_result",
+    "clear_downstream_results", "clear_fit_results", "clear_widget_state",
+    "restore_result_state", "state", "store_downstream_result", "store_fit_result",
 ]

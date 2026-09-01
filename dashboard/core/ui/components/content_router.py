@@ -118,10 +118,16 @@ def render_model_analysis_content(sub_module: str | None) -> None:
         return
 
     if sub_module == "单变量模型":
-        from dashboard.models.SARIMAX.ui.pages import render_sarimax_model_page
+        from dashboard.models.SARIMAX.ui.pages import (
+            render_ardl_model_page,
+            render_rdl_model_page,
+            render_sarimax_model_page,
+        )
 
         all_tabs = [
-            ("动态回归模型", lambda: render_sarimax_model_page(st)),
+            ("SARIMAX", lambda: render_sarimax_model_page(st)),
+            ("RDL", lambda: render_rdl_model_page(st)),
+            ("ARDL", lambda: render_ardl_model_page(st)),
         ]
         _render_model_submodule_tabs(all_tabs)
         return

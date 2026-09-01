@@ -8,7 +8,7 @@ from pathlib import Path
 from dashboard.navigation_config import MODULE_CONFIG
 
 SUB_MODULE = "单变量模型"
-EXPECTED_TABS = ("动态回归模型",)
+EXPECTED_TABS = ("SARIMAX", "RDL", "ARDL")
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 SECTION_FUNCTIONS = (
@@ -30,7 +30,11 @@ def test_content_router_dispatches_univariate_ts_submodule():
 
     assert '"单变量模型"' in source
     assert "render_sarimax_model_page" in source
-    assert "动态回归模型" in source
+    assert "render_rdl_model_page" in source
+    assert "render_ardl_model_page" in source
+    assert '"SARIMAX"' in source
+    assert '"RDL"' in source
+    assert '"ARDL"' in source
     assert "_render_model_submodule_tabs" in source
 
 
@@ -39,17 +43,38 @@ def test_sarimax_pages_expose_public_render_entries():
         PROJECT_ROOT / "dashboard/models/SARIMAX/ui/pages/__init__.py"
     ).read_text(encoding="utf-8")
     assert "render_sarimax_model_page" in pages_init
+    assert "render_rdl_model_page" in pages_init
+    assert "render_ardl_model_page" in pages_init
 
     model_init = (
         PROJECT_ROOT / "dashboard/models/SARIMAX/__init__.py"
     ).read_text(encoding="utf-8")
     assert "render_sarimax_model_page" in model_init
+    assert "render_rdl_model_page" in model_init
+    assert "render_ardl_model_page" in model_init
 
     sections_init = (
         PROJECT_ROOT / "dashboard/models/SARIMAX/ui/pages/sections/__init__.py"
     ).read_text(encoding="utf-8")
     for function in SECTION_FUNCTIONS:
         assert function in sections_init
+
+
+def test_model_tabs_have_isolated_state_and_widget_namespaces():
+    """三个同级模型 Tab 不共享上传、控件或结果缓存命名空间。"""
+    from dashboard.models.SARIMAX.ui.state import (
+        ARDL_SCOPE,
+        RDL_SCOPE,
+        SARIMAX_SCOPE,
+    )
+
+    scopes = (SARIMAX_SCOPE, RDL_SCOPE, ARDL_SCOPE)
+    assert tuple(scope.family for scope in scopes) == ("SARIMAX", "RDL", "ARDL")
+    assert len({scope.namespace for scope in scopes}) == 3
+    assert len({scope.data_key_prefix for scope in scopes}) == 3
+    assert not set(SARIMAX_SCOPE.widget_keys) & set(RDL_SCOPE.widget_keys)
+    assert not set(SARIMAX_SCOPE.widget_keys) & set(ARDL_SCOPE.widget_keys)
+    assert not set(RDL_SCOPE.widget_keys) & set(ARDL_SCOPE.widget_keys)
 
 
 def test_forecast_planning_module_has_no_ui_or_ts_dependency():

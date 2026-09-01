@@ -18,6 +18,7 @@ from dashboard.models.SARIMAX.ui.model_options_shared import (
     restore_table_state,
 )
 from dashboard.models.SARIMAX.ui.state import state
+from dashboard.models.common.state import StateStore
 
 _AUTO_RANGE_DEFAULTS = {
     "p": (0, 3),
@@ -41,6 +42,9 @@ def render_sarimax_options(
     *,
     exog: pd.DataFrame | None = None,
     response_log: bool = False,
+    exog_log_names: tuple[str, ...] = (),
+    prefix: str = "sarimax",
+    state_manager: StateStore = state,
 ) -> SARIMAXConfig | AutoSARIMAXConfig | None:
     """渲染 SARIMAX 模型族的手动或自动配置。
 
@@ -54,6 +58,8 @@ def render_sarimax_options(
         当前选择的外生变量；存在时显示逐变量时序算子表。
     response_log : bool, default=False
         通用输入模块提供的目标变量对数变换状态。
+    exog_log_names : tuple[str, ...], default=()
+        需要对数变换的外生变量名称。
 
     Returns
     -------
@@ -61,8 +67,22 @@ def render_sarimax_options(
         构建好的配置；控件参数无效时返回 ``None``。
     """
     if mode == "手动配置":
-        return _render_manual_config(st_obj, log=response_log, exog=exog)
-    return _render_auto_config(st_obj, log=response_log, exog=exog)
+        return _render_manual_config(
+            st_obj,
+            prefix,
+            log=response_log,
+            exog=exog,
+            exog_log_names=exog_log_names,
+            state_manager=state_manager,
+        )
+    return _render_auto_config(
+        st_obj,
+        f"{prefix}_auto",
+        log=response_log,
+        exog=exog,
+        exog_log_names=exog_log_names,
+        state_manager=state_manager,
+    )
 
 
 def render_sarimax_error_options(
@@ -71,6 +91,7 @@ def render_sarimax_error_options(
     *,
     automatic: bool,
     response_log: bool = False,
+    state_manager: StateStore = state,
 ) -> SARIMAXConfig | AutoSARIMAXConfig | None:
     """渲染 RDL 使用的 SARIMAX 误差结构配置。
 
@@ -91,9 +112,9 @@ def render_sarimax_error_options(
         RDL 误差项配置。
     """
     return (
-        _render_auto_config(st_obj, prefix, log=response_log)
+        _render_auto_config(st_obj, prefix, log=response_log, state_manager=state_manager)
         if automatic
-        else _render_manual_config(st_obj, prefix, log=response_log)
+        else _render_manual_config(st_obj, prefix, log=response_log, state_manager=state_manager)
     )
 
 
@@ -103,6 +124,8 @@ def _render_manual_config(
     *,
     log: bool | None = False,
     exog: pd.DataFrame | None = None,
+    exog_log_names: tuple[str, ...] = (),
+    state_manager: StateStore = state,
 ) -> SARIMAXConfig | None:
     """渲染手动 SARIMAX 阶数与高级设置。"""
     order_columns = st_obj.columns(4)
@@ -161,7 +184,13 @@ def _render_manual_config(
                 _sparse_or_continuous(seasonal_ma_lags, Q, maximum=3),
                 int(s),
             ),
-            exog_operators=_render_exog_operators(st_obj, exog, prefix),
+            exog_operators=_render_exog_operators(
+                st_obj,
+                exog,
+                prefix,
+                state_manager,
+                exog_log_names=exog_log_names,
+            ),
             trend=trend,
             log=response_log,
             enforce_stationarity=enforce_stationarity,
@@ -181,6 +210,8 @@ def _render_auto_config(
     *,
     log: bool | None = False,
     exog: pd.DataFrame | None = None,
+    exog_log_names: tuple[str, ...] = (),
+    state_manager: StateStore = state,
 ) -> AutoSARIMAXConfig | None:
     """渲染 AutoSARIMAX 搜索范围；范围非法时提示并返回 None。"""
     layout_columns = st_obj.columns([2, 1])
@@ -231,7 +262,13 @@ def _render_auto_config(
             D=ranges["D"],
             Q=ranges["Q"],
             s=int(s),
-            exog_operators=_render_exog_operators(st_obj, exog, prefix),
+            exog_operators=_render_exog_operators(
+                st_obj,
+                exog,
+                prefix,
+                state_manager,
+                exog_log_names=exog_log_names,
+            ),
             trend=trend,
             criterion=_AUTO_SELECTION_DEFAULT,
             log=response_log,
@@ -273,6 +310,9 @@ def _render_exog_operators(
     st_obj,
     exog: pd.DataFrame | None,
     prefix: str,
+    state_manager: StateStore,
+    *,
+    exog_log_names: tuple[str, ...] = (),
 ) -> dict[str, TimeSeriesOperator]:
     """渲染逐变量时序算子，并返回非恒等映射。"""
     if exog is None or exog.empty:
@@ -293,13 +333,13 @@ def _render_exog_operators(
         )
         table_key = f"{prefix}_exog_operators_table"
         edited = st_obj.data_editor(
-            restore_table_state(table_key, defaults, names),
+            restore_table_state(table_key, defaults, names, state_manager=state_manager),
             key=f"{prefix}_exog_operators",
             num_rows="fixed",
             disabled=("变量",),
             width="stretch",
         )
-        state.set(table_key, edited.copy())
+        state_manager.set(table_key, edited.copy())
     operators: dict[str, TimeSeriesOperator] = {}
     for _, row in edited.iterrows():
         seasonal_difference = int(row["季节差分 D"])
@@ -309,6 +349,7 @@ def _render_exog_operators(
             difference=int(row["普通差分 d"]),
             seasonal_difference=seasonal_difference,
             seasonal_period=(seasonal_period if seasonal_difference else None),
+            log=str(row["变量"]) in exog_log_names,
         )
         if not operator.is_identity:
             operators[str(row["变量"])] = operator
