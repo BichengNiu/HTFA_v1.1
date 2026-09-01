@@ -59,7 +59,9 @@ class ModelingInput:
     dataset_fingerprint : str
         原始数据集身份指纹。
     preprocessing : tuple[str, ...]
-        已应用的预处理规则。
+        已应用的数据替换规则。
+    missing_value_method : str, default="无"
+        已应用的缺失值处理方式。
     response_log : bool
         是否对目标变量应用对数变换。
     """
@@ -72,6 +74,7 @@ class ModelingInput:
     training_range: tuple[Any, Any] | None = None
     dataset_fingerprint: str = ""
     preprocessing: tuple[str, ...] = ()
+    missing_value_method: str = "无"
     response_log: bool = False
 
     def __post_init__(self) -> None:
@@ -95,6 +98,8 @@ class ModelingInput:
                 raise ValueError("exog_names 与外生变量列不一致")
         if not isinstance(self.response_log, bool):
             raise TypeError("response_log 必须是布尔值")
+        if not isinstance(self.missing_value_method, str):
+            raise TypeError("missing_value_method 必须是字符串")
         object.__setattr__(self, "series", self.series.copy(deep=True))
         object.__setattr__(
             self,
@@ -112,6 +117,11 @@ class ModelingInput:
             self,
             "preprocessing",
             tuple(str(item) for item in self.preprocessing),
+        )
+        object.__setattr__(
+            self,
+            "missing_value_method",
+            self.missing_value_method,
         )
 
 

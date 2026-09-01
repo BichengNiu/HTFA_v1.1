@@ -14,12 +14,14 @@ from dashboard.models.SARIMAX.core.adapters import (
     is_automatic_config,
 )
 from dashboard.models.SARIMAX.core.data_loader import (
-    PREPROCESSING_OPTIONS,
+    DATA_REPLACEMENT_OPTIONS,
+    MISSING_VALUE_OPTIONS,
     dataset_time_index,
     effective_modeling_date_bounds,
     prepare_modeling_inputs,
 )
 from dashboard.models.SARIMAX.core.modeling import (
+    fit_input_warnings,
     translate_ts_error,
     validate_fit_inputs,
 )
@@ -41,7 +43,9 @@ _MODEL_INPUTS = ModelInputModule(
     prepare_inputs=prepare_modeling_inputs,
     effective_date_bounds=effective_modeling_date_bounds,
     dataset_time_index=dataset_time_index,
-    preprocessing_options=PREPROCESSING_OPTIONS,
+    preprocessing_options=DATA_REPLACEMENT_OPTIONS,
+    missing_value_options=MISSING_VALUE_OPTIONS,
+    show_preprocessing=False,
     key_prefix="sarimax",
 )
 
@@ -100,8 +104,11 @@ def render_training_section(st_obj) -> None:
         inputs.exog,
         config,
     )
+    warnings = fit_input_warnings(inputs.exog) if family == "SARIMAX" else []
     for problem in problems:
         st_obj.warning(problem)
+    for warning in warnings:
+        st_obj.warning(warning)
 
     signature = artifact_signature(
         data_fingerprint=str(state.get("file_fingerprint") or ""),
@@ -116,6 +123,7 @@ def render_training_section(st_obj) -> None:
                 else None
             ),
             "preprocessing": inputs.preprocessing,
+            "missing_value_method": inputs.missing_value_method,
             "response_log": inputs.response_log,
             "config": config.signature(),
         },

@@ -205,7 +205,7 @@ def _infer_numeric_columns(frame: pd.DataFrame) -> pd.DataFrame:
         if pd.api.types.is_datetime64_any_dtype(result[column]):
             continue
         converted = pd.to_numeric(result[column], errors="coerce")
-        nonblank = result[column].notna()
+        nonblank = result[column].map(lambda value: not _is_blank(value))
         if converted[nonblank].notna().all():
             result[column] = converted
     return result

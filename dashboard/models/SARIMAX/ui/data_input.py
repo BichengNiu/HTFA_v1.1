@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import pandas as pd
 import streamlit as st
 from data_overview.core.file_parsing import file_fingerprint
 from data_overview.ui.data_source import BuiltinDataSource
@@ -11,9 +12,15 @@ from data_overview.ui.widget_keys import overview_widget_keys
 
 from dashboard.core.workspace import FileAsset
 from dashboard.models.common.ui.data_input import create_data_input_module
+from dashboard.models.SARIMAX.core.data_loader import (
+    DATA_REPLACEMENT_OPTIONS,
+    MISSING_VALUE_OPTIONS,
+    preprocess_modeling_frame,
+)
 from dashboard.models.SARIMAX.ui.state import (
     clear_fit_results,
     clear_widget_state,
+    MODEL_WIDGET_KEYS,
     state,
 )
 
@@ -24,6 +31,26 @@ SARIMAX_DATA_OVERVIEW_WIDGET_KEYS = overview_widget_keys(
     _SARIMAX_DATA_KEY_PREFIX
 ) + (
     f"{_SARIMAX_DATA_KEY_PREFIX}_preview_sheet",
+    "sarimax_data_preprocessing",
+    "sarimax_missing_value_method",
+)
+
+_DATA_PROCESSING_BASE_KEY = "data_processing_base_fingerprint"
+_DATA_PROCESSING_SIGNATURE_KEY = "data_processing_signature"
+_DATA_PROCESSING_FRAME_KEY = "data_processing_frame"
+_DATA_PROCESSING_AUTO_START_KEY = "data_processing_auto_start"
+_DATA_PROCESSING_WIDGET_KEYS = (
+    "sarimax_data_preprocessing",
+    "sarimax_missing_value_method",
+)
+_DATA_PROCESSING_WIDGET_STATE_KEYS = (
+    *_DATA_PROCESSING_WIDGET_KEYS,
+    "sarimax_start_processing_button",
+)
+_MODEL_WIDGET_KEYS_WITHOUT_DATA_PROCESSING = tuple(
+    key
+    for key in MODEL_WIDGET_KEYS
+    if key not in _DATA_PROCESSING_WIDGET_STATE_KEYS
 )
 
 
@@ -46,17 +73,107 @@ def _on_dataset_replaced(st_obj) -> None:
     state.set("target_variable", None)
     state.set("exog_variables", ())
     state.set("training_time_range", None)
-    state.set("data_preprocessing", ())
     state.set("response_log", False)
     state.set("future_exog_editor_signature", None)
     clear_fit_results()
-    clear_widget_state(st_obj)
+    # 数据处理控件在数据输入组件中已经渲染；保留它们，避免点击“开始处理”
+    # 后被回调清掉，导致模型输入元数据与实际处理规则不一致。
+    clear_widget_state(st_obj, _MODEL_WIDGET_KEYS_WITHOUT_DATA_PROCESSING)
+
+
+def _render_and_process_sarimax_data(
+    st_obj,
+    frame: pd.DataFrame,
+    fingerprint: str,
+) -> pd.DataFrame | None:
+    """渲染数据处理控件，并按按钮提交处理后的数据集。"""
+
+    base_fingerprint = state.get(_DATA_PROCESSING_BASE_KEY)
+    if base_fingerprint != fingerprint:
+        state.set(_DATA_PROCESSING_BASE_KEY, fingerprint)
+        state.set(_DATA_PROCESSING_SIGNATURE_KEY, None)
+        state.set(_DATA_PROCESSING_FRAME_KEY, None)
+        if not state.get(_DATA_PROCESSING_AUTO_START_KEY, False):
+            for key in _DATA_PROCESSING_WIDGET_STATE_KEYS:
+                st_obj.session_state.pop(key, None)
+            state.set("data_preprocessing", ())
+            state.set("missing_value_method", "无")
+
+    preprocessing_key, missing_value_key = _DATA_PROCESSING_WIDGET_KEYS
+    processing_columns = st_obj.columns(2)
+    with processing_columns[0]:
+        preprocessing_kwargs = {
+            "options": DATA_REPLACEMENT_OPTIONS,
+            "key": preprocessing_key,
+            "help": "可多选：去零将 0 值替换为缺失，去负将负值替换为缺失。",
+        }
+        if preprocessing_key not in st_obj.session_state:
+            preprocessing_kwargs["default"] = list(DATA_REPLACEMENT_OPTIONS)
+        preprocessing = tuple(
+            st_obj.multiselect("数据替换", **preprocessing_kwargs)
+        )
+    with processing_columns[1]:
+        stored_method = st_obj.session_state.get(
+            missing_value_key,
+            MISSING_VALUE_OPTIONS[0],
+        )
+        if stored_method not in MISSING_VALUE_OPTIONS:
+            stored_method = MISSING_VALUE_OPTIONS[0]
+            st_obj.session_state[missing_value_key] = stored_method
+        missing_value_method = st_obj.selectbox(
+            "缺失值处理",
+            options=MISSING_VALUE_OPTIONS,
+            index=MISSING_VALUE_OPTIONS.index(stored_method),
+            key=missing_value_key,
+            help=(
+                "数据替换后对全部数值型变量应用缺失值处理；"
+                "插值方法仅填补可根据现有观测推断的位置。"
+            ),
+        )
+    state.set("data_preprocessing", preprocessing)
+    state.set("missing_value_method", missing_value_method)
+
+    processing_signature = (
+        fingerprint,
+        preprocessing,
+        missing_value_method,
+    )
+    applied_signature = state.get(_DATA_PROCESSING_SIGNATURE_KEY)
+    start_processing = st_obj.button(
+        "开始处理",
+        type="primary",
+        key="sarimax_start_processing_button",
+    )
+    if start_processing or (
+        state.get(_DATA_PROCESSING_AUTO_START_KEY, False)
+        and applied_signature != processing_signature
+    ):
+        state.set(_DATA_PROCESSING_AUTO_START_KEY, False)
+        with st_obj.spinner("正在解析和预处理数据..."):
+            processed = preprocess_modeling_frame(
+                frame,
+                preprocessing=preprocessing,
+                missing_value_method=missing_value_method,
+            )
+        state.set(_DATA_PROCESSING_FRAME_KEY, processed)
+        state.set(_DATA_PROCESSING_SIGNATURE_KEY, processing_signature)
+        st_obj.success("数据处理完成，可以继续设置模型参数。")
+        return processed
+
+    if applied_signature == processing_signature:
+        processed = state.get(_DATA_PROCESSING_FRAME_KEY)
+        if isinstance(processed, pd.DataFrame):
+            return processed
+
+    st_obj.info("请确认数据处理参数后，点击“开始处理”。")
+    return None
 
 
 _SARIMAX_DATA_INPUT = create_data_input_module(
     key_prefix=_SARIMAX_DATA_KEY_PREFIX,
     state_namespace=_SARIMAX_DATA_NAMESPACE,
     data_source=_SARIMAX_DATA_SOURCE,
+    dataset_processor=_render_and_process_sarimax_data,
     on_dataset_replaced=_on_dataset_replaced,
     title="",
     show_preview=False,
@@ -139,6 +256,7 @@ def mark_sarimax_handoff_restore(
         # 首次组件渲染会再次读取并展示原始错误；这里不能吞掉交接流程。
         pass
     st_obj.session_state[_HANDOFF_RESTORE_GUARD_KEY] = True
+    state.set(_DATA_PROCESSING_AUTO_START_KEY, True)
 
 
 __all__ = [

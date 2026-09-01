@@ -1,9 +1,13 @@
 """SARIMAX 模型核心逻辑（纯计算，不依赖 streamlit 渲染）。"""
 
 from dashboard.models.SARIMAX.core.data_loader import (
+    DATA_REPLACEMENT_OPTIONS,
+    MISSING_VALUE_OPTIONS,
+    PREPROCESSING_OPTIONS,
     dataset_time_index,
     effective_modeling_date_bounds,
     forecast_sample_dates,
+    preprocess_modeling_frame,
     prepare_modeling_inputs,
 )
 from dashboard.models.SARIMAX.core.model_config import (
@@ -34,6 +38,7 @@ from dashboard.models.SARIMAX.core.modeling import (
     fit_auto_rdl,
     fit_auto_sarimax,
     fit_dynamic_model,
+    fit_input_warnings,
     fit_rdl,
     fit_sarimax,
     format_sarimax_order,
@@ -61,7 +66,10 @@ __all__ = [
     "ARDL_CRITERIA",
     "ARDL_SEARCH_METHODS",
     "AUTO_CRITERIA",
+    "DATA_REPLACEMENT_OPTIONS",
     "MIN_OBSERVATIONS",
+    "MISSING_VALUE_OPTIONS",
+    "PREPROCESSING_OPTIONS",
     "RDL_INITIALIZATIONS",
     "SARIMAX_COV_TYPES",
     "SARIMAX_OPTIMIZERS",
@@ -88,6 +96,7 @@ __all__ = [
     "fit_auto_rdl",
     "fit_auto_sarimax",
     "fit_dynamic_model",
+    "fit_input_warnings",
     "fit_rdl",
     "fit_sarimax",
     "forecast_sample_dates",
@@ -96,6 +105,7 @@ __all__ = [
     "normalise_model_dates",
     "actual_values_for_dates",
     "normalise_date_window",
+    "preprocess_modeling_frame",
     "prepare_modeling_inputs",
     "produce_forecast",
     "recommended_residual_diagnostic_lags",

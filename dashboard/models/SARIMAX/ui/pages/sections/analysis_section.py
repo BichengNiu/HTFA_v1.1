@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 
+import pandas as pd
+
 from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
 from dashboard.core.ui.utils.matplotlib_compat import matplotlib_date_compatibility
 from dashboard.core.workspace import stable_signature
@@ -46,27 +48,6 @@ def _render_model_diagnostics(st_obj, result) -> None:
     model_result = getattr(result, "best_result", result)
     ar_roots = tuple(getattr(model_result, "arroots", ()))
     ma_roots = tuple(getattr(model_result, "maroots", ()))
-    if ar_roots or ma_roots:
-        st_obj.markdown("**ARMA 创新脉冲响应**")
-        steps = st_obj.number_input(
-            "创新响应期数",
-            min_value=1,
-            max_value=200,
-            value=20,
-            step=1,
-            key="sarimax_innovation_irf_steps",
-        )
-        try:
-            with matplotlib_date_compatibility():
-                figure = _plot_figure(
-                    model_result.plot_innovation_impulse_response(
-                        steps=int(steps)
-                    )
-                )
-                render_pyplot_figure(st_obj, figure)
-        except Exception as exc:
-            st_obj.warning(f"ARMA 创新脉冲响应无法绘制：{exc}")
-            logger.warning("ARMA 创新脉冲响应绘制失败", exc_info=True)
     if getattr(model_result, "distributed_lag_names", ()):
         st_obj.markdown("**RDL 输入冲击响应**")
         try:
@@ -80,12 +61,15 @@ def _render_model_diagnostics(st_obj, result) -> None:
             logger.warning("RDL 输入冲击响应绘制失败", exc_info=True)
     if not (ar_roots or ma_roots):
         return
-    st_obj.markdown("**Roots 稳定性**")
+
     try:
         roots = model_result.root_diagnostics
         ar_status = "平稳" if model_result.is_stationary else "不平稳"
         ma_status = "可逆" if model_result.is_invertible else "不可逆"
-        st_obj.caption(f"AR：{ar_status}；MA：{ma_status}。根的模大于 1 表示位于单位圆外。")
+        st_obj.markdown("**Roots 稳定性表**")
+        st_obj.caption(
+            f"AR：{ar_status}；MA：{ma_status}。根的模大于 1 表示位于单位圆外。"
+        )
         st_obj.dataframe(
             roots.rename(
                 columns={
@@ -99,11 +83,18 @@ def _render_model_diagnostics(st_obj, result) -> None:
             ),
             width="stretch",
         )
-        with matplotlib_date_compatibility():
-            render_pyplot_figure(st_obj, _plot_figure(model_result.plot_roots()))
     except Exception as exc:
         st_obj.warning(f"Roots 稳定性无法计算：{exc}")
         logger.warning("SARIMAX Roots 诊断失败", exc_info=True)
+    _render_cycle_diagnostics(st_obj, model_result)
+
+    chart_columns = st_obj.columns(2)
+    _render_innovation_impulse_response(
+        chart_columns[0],
+        model_result,
+        session_state=st_obj.session_state,
+    )
+    _render_roots_plot(chart_columns[1], model_result)
 
 
 def _plot_figure(plot_result):
@@ -111,6 +102,122 @@ def _plot_figure(plot_result):
     if isinstance(plot_result, tuple):
         return plot_result[0]
     return plot_result
+
+
+def _render_innovation_impulse_response(
+    st_obj,
+    model_result,
+    *,
+    session_state,
+) -> None:
+    """在布局列中展示 ARMA 创新脉冲响应图。"""
+    st_obj.markdown("**ARMA 创新脉冲响应图**")
+    key = "sarimax_innovation_irf_steps"
+    if key not in session_state:
+        session_state[key] = 20
+    steps = st_obj.number_input(
+        "创新响应期数",
+        min_value=1,
+        max_value=200,
+        step=1,
+        key=key,
+    )
+    try:
+        with matplotlib_date_compatibility():
+            figure = _plot_figure(
+                model_result.plot_innovation_impulse_response(steps=int(steps))
+            )
+            render_pyplot_figure(st_obj, figure)
+    except Exception as exc:
+        st_obj.warning(f"ARMA 创新脉冲响应无法绘制：{exc}")
+        logger.warning("ARMA 创新脉冲响应绘制失败", exc_info=True)
+
+
+def _render_roots_plot(st_obj, model_result) -> None:
+    """在布局列中展示 Roots 稳定性图。"""
+    st_obj.markdown("**Roots 稳定性图**")
+    try:
+        with matplotlib_date_compatibility():
+            render_pyplot_figure(st_obj, _plot_figure(model_result.plot_roots()))
+    except Exception as exc:
+        st_obj.warning(f"Roots 稳定性图无法绘制：{exc}")
+        logger.warning("SARIMAX Roots 稳定性图绘制失败", exc_info=True)
+
+
+def _cycle_diagnostics(model_result) -> tuple:
+    """收集 Ts 提供的可用 AR(2) 周期诊断。"""
+    cycle_period = getattr(model_result, "cycle_period", None)
+    if not callable(cycle_period):
+        return ()
+
+    diagnostics = []
+    for seasonal in (False, True):
+        try:
+            diagnostics.append(cycle_period(seasonal=seasonal))
+        except ValueError:
+            # Ts 以 ValueError 表示该模型没有对应的连续 AR(1, 2) 分量。
+            continue
+        except (RuntimeError, TypeError) as exc:
+            logger.warning(
+                "SARIMAX %s AR(2) 周期诊断失败：%s",
+                "季节" if seasonal else "非季节",
+                exc,
+            )
+    return tuple(diagnostics)
+
+
+def _cycle_conclusion(diagnostic) -> str:
+    """将 Ts ARCycleResult 的条件诊断转换为页面文案。"""
+    if diagnostic.period is not None:
+        return "已识别阻尼周期"
+    if not diagnostic.has_complex_roots:
+        return "实根：不构成振荡周期"
+    if not diagnostic.is_stationary:
+        return "复根，但 AR 不平稳"
+    return "复根，但未形成有效周期"
+
+
+def _render_cycle_diagnostics(st_obj, model_result) -> None:
+    """展示 Ts AR(2) 复根周期识别结果。"""
+    diagnostics = _cycle_diagnostics(model_result)
+    if not diagnostics:
+        return
+
+    st_obj.markdown("**AR(2) 周期识别**")
+    st_obj.caption(
+        "周期由 AR(2) 复根的角频率计算；季节 AR(2) 已按季节周期 s 换算为原始观测期数。"
+    )
+    rows = []
+    for diagnostic in diagnostics:
+        component = (
+            "季节 AR(2)"
+            if diagnostic.component == "seasonal"
+            else "非季节 AR(2)"
+        )
+        if diagnostic.component == "seasonal":
+            component += f"（s={diagnostic.lag_scale}）"
+        rows.append(
+            {
+                "组成": component,
+                "φ₁": diagnostic.phi1,
+                "φ₂": diagnostic.phi2,
+                "判别式 Δ": diagnostic.discriminant,
+                "复根": "是" if diagnostic.has_complex_roots else "否",
+                "AR 平稳": "是" if diagnostic.is_stationary else "否",
+                "周期（观测期）": diagnostic.period,
+                "结论": _cycle_conclusion(diagnostic),
+            }
+        )
+    st_obj.dataframe(
+        pd.DataFrame(rows),
+        width="stretch",
+        column_config={
+            "φ₁": st_obj.column_config.NumberColumn(format="%.4f"),
+            "φ₂": st_obj.column_config.NumberColumn(format="%.4f"),
+            "判别式 Δ": st_obj.column_config.NumberColumn(format="%.4f"),
+            "周期（观测期）": st_obj.column_config.NumberColumn(format="%.2f"),
+        },
+    )
 
 
 def _render_residual_tests(st_obj, result, diagnostic_view) -> None:

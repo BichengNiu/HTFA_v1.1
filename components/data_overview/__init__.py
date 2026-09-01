@@ -36,7 +36,12 @@ from .core import (
     series_style_widget_key,
     time_mask,
 )
-from .ui import DataOverview, DataOverviewConfig, create_data_overview
+from .ui import (
+    DataOverview,
+    DataOverviewConfig,
+    DatasetProcessor,
+    create_data_overview,
+)
 from .ui.data_source import BuiltinDataSource, DataSource
 from .ui.legend import place_chart_legend_at_bottom, render_pyplot_figure
 from .ui.widget_keys import (
@@ -55,6 +60,7 @@ __all__ = [
     "BuiltinDataSource",
     "DataOverview",
     "DataOverviewConfig",
+    "DatasetProcessor",
     "DataSource",
     "OverviewDataset",
     "build_chart_options",

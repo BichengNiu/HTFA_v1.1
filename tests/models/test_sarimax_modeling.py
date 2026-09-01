@@ -13,10 +13,13 @@ from statsmodels.tsa.statespace.sarimax import SARIMAX as StatsmodelsSARIMAX
 from Ts.TsModels import TimeSeriesOperator
 from Ts.TsSims import simulate_sarima
 
+from dashboard.core.workspace import stable_signature
 from dashboard.models.SARIMAX.core.data_loader import (
+    MISSING_VALUE_OPTIONS,
     dataset_time_index,
     effective_modeling_date_bounds,
     forecast_sample_dates,
+    preprocess_modeling_frame,
     prepare_modeling_inputs,
 )
 from dashboard.models.SARIMAX.core.model_config import (
@@ -36,6 +39,7 @@ from dashboard.models.SARIMAX.core.modeling import (
     fit_auto_rdl,
     fit_auto_sarimax,
     fit_dynamic_model,
+    fit_input_warnings,
     fit_rdl,
     fit_sarimax,
     format_sarimax_order,
@@ -384,6 +388,124 @@ def test_prepare_modeling_inputs_rejects_unknown_preprocessing():
         prepare_modeling_inputs(dataset, "value", ("x",), preprocessing=("未知",))
 
 
+@pytest.mark.parametrize("method", MISSING_VALUE_OPTIONS)
+def test_prepare_modeling_inputs_applies_missing_value_method(method):
+    """缺失值处理规则同时作用于目标和外生变量且不修改源数据。"""
+    dataset = dataset_from_csv(
+        b"date,value,x\n"
+        b"2024-01-01,1,10\n"
+        b"2024-02-01,,20\n"
+        b"2024-03-01,3,\n"
+        b"2024-04-01,,40\n"
+        b"2024-05-01,5,50\n"
+        b"2024-06-01,6,60\n"
+    )
+    original = dataset.frame.copy(deep=True)
+
+    series, exog, index = prepare_modeling_inputs(
+        dataset,
+        "value",
+        ("x",),
+        missing_value_method=method,
+    )
+
+    assert series.index.equals(index)
+    assert exog is not None and exog.index.equals(index)
+    if method == "无":
+        assert series.isna().sum() == 2
+        assert exog.isna().sum().sum() == 1
+    else:
+        assert series.notna().all()
+        assert exog.notna().all().all()
+    pd.testing.assert_frame_equal(dataset.frame, original)
+
+
+def test_prepare_modeling_inputs_rejects_unknown_missing_value_method():
+    """缺失值处理方式必须来自固定选项集合。"""
+    dataset = dataset_from_csv(b"value,x\n1,2\n2,3\n")
+
+    with pytest.raises(ValueError, match="缺失值处理"):
+        prepare_modeling_inputs(
+            dataset,
+            "value",
+            ("x",),
+            missing_value_method="未知",
+        )
+
+
+def test_preprocess_modeling_frame_applies_rules_before_model_selection():
+    """数据输入阶段处理整张数值表，且不修改原始数据框。"""
+    frame = pd.DataFrame(
+        {
+            "date": pd.date_range("2024-01-01", periods=3, freq="MS"),
+            "value": [0.0, 2.0, 4.0],
+            "x": [1.0, np.nan, 3.0],
+            "label": ["a", "b", "c"],
+        }
+    )
+    original = frame.copy(deep=True)
+
+    processed = preprocess_modeling_frame(
+        frame,
+        preprocessing=("去零",),
+        missing_value_method="线性内插",
+    )
+
+    assert pd.isna(processed.loc[0, "value"])
+    assert processed["x"].tolist() == [1.0, 2.0, 3.0]
+    assert processed["label"].tolist() == ["a", "b", "c"]
+    pd.testing.assert_frame_equal(frame, original)
+
+
+@pytest.mark.parametrize("method", MISSING_VALUE_OPTIONS)
+def test_preprocess_modeling_frame_keeps_missing_values_outside_valid_span(method):
+    """缺失值处理只覆盖替换后的首末有效值之间。"""
+    frame = pd.DataFrame(
+        {
+            "value": [
+                0.0,
+                1.0,
+                np.nan,
+                3.0,
+                -1.0,
+                5.0,
+                np.nan,
+                7.0,
+                np.nan,
+                0.0,
+            ],
+            "x": [
+                np.nan,
+                10.0,
+                np.nan,
+                30.0,
+                np.nan,
+                50.0,
+                np.nan,
+                70.0,
+                np.nan,
+                0.0,
+            ],
+        }
+    )
+
+    processed = preprocess_modeling_frame(
+        frame,
+        preprocessing=("去零", "去负"),
+        missing_value_method=method,
+    )
+
+    # 去零/去负发生在前，替换后首个有效值为第 2 行，最后一个有效值为第 8 行。
+    assert processed["value"].iloc[[0, 8, 9]].isna().all()
+    assert processed["x"].iloc[[0, 8, 9]].isna().all()
+    if method == "无":
+        assert processed["value"].iloc[[2, 4, 6]].isna().all()
+        assert processed["x"].iloc[[2, 4, 6]].isna().all()
+    else:
+        assert processed["value"].iloc[[2, 4, 6]].notna().all()
+        assert processed["x"].iloc[[2, 4, 6]].notna().all()
+
+
 def test_effective_modeling_date_bounds_use_common_preprocessed_dates():
     """训练范围按目标和外生变量预处理后的共同有效日期确定。"""
     dataset = dataset_from_csv(
@@ -491,6 +613,23 @@ def test_sarimax_config_supports_sparse_orders_and_exog_operators():
         SARIMAXConfig(order=((0, 3), 0, 0))
     with pytest.raises(ValueError, match="Q 必须"):
         SARIMAXConfig(seasonal_order=(0, 0, (4,), 12))
+
+
+@pytest.mark.parametrize("config_type", [SARIMAXConfig, AutoSARIMAXConfig])
+def test_sarimax_config_signature_serializes_exog_operators(config_type):
+    """外生变量算子签名必须可被会话缓存签名稳定序列化。"""
+    config = config_type(
+        exog_operators={"x": TimeSeriesOperator(lag=1, difference=1)}
+    )
+
+    signature = stable_signature(config.signature())
+    changed = stable_signature(
+        config_type(
+            exog_operators={"x": TimeSeriesOperator(lag=2, difference=1)}
+        ).signature()
+    )
+
+    assert signature != changed
 
 
 def test_auto_sarimax_config_candidate_count_and_validation():
@@ -1100,6 +1239,21 @@ def test_validate_fit_inputs_reports_user_problems():
     assert any("索引不一致" in problem for problem in problems)
 
     assert validate_fit_inputs(series, None, SARIMAXConfig()) == []
+
+
+def test_sarimax_missing_exog_is_a_warning_not_a_blocking_problem():
+    """SARIMAX 缺失外生变量时允许由 Ts 按 missing='drop' 继续拟合。"""
+    series = make_series()
+    exog = pd.DataFrame({"x": np.arange(len(series), dtype=float)})
+    exog.iloc[5, 0] = np.nan
+
+    problems = validate_fit_inputs(series, exog, SARIMAXConfig())
+
+    assert not any("外生变量存在" in problem for problem in problems)
+    assert any(
+        "外生变量存在 1 个缺失值" in warning
+        for warning in fit_input_warnings(exog)
+    )
 
 
 def test_dynamic_regression_validation_rejects_missing_and_no_input():

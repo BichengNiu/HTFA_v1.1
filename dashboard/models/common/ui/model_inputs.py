@@ -40,7 +40,12 @@ class ModelInputModule:
     dataset_time_index : callable
         返回数据集完整日期索引的纯函数。
     preprocessing_options : tuple[str, ...]
-        可选的数据预处理规则。
+        可选的数据替换规则。
+    missing_value_options : tuple[str, ...], default=("无",)
+        可选的缺失值处理方式。
+    show_preprocessing : bool, default=True
+        是否在本模块显示数据替换和缺失值处理控件；关闭时使用上游数据输入模块
+        已提交的处理结果。
     key_prefix : str, default="model"
         Streamlit 控件键前缀。
     default_forecast_sample_size : int, default=12
@@ -59,6 +64,8 @@ class ModelInputModule:
     key_prefix: str = "model"
     default_forecast_sample_size: int = 12
     show_response_log: bool = True
+    missing_value_options: tuple[str, ...] = ("无",)
+    show_preprocessing: bool = True
 
     def render(
         self,
@@ -79,10 +86,11 @@ class ModelInputModule:
         target_key = f"{self.key_prefix}_target_select"
         exog_key = f"{self.key_prefix}_exog_select"
         preprocessing_key = f"{self.key_prefix}_data_preprocessing"
+        missing_value_key = f"{self.key_prefix}_missing_value_method"
         training_range_key = f"{self.key_prefix}_train_forecast_window"
         response_log_key = f"{self.key_prefix}_response_log"
 
-        select_columns = st_obj.columns(3)
+        select_columns = st_obj.columns(2 if not self.show_preprocessing else 4)
         with select_columns[0]:
             target = st_obj.selectbox(
                 "目标变量",
@@ -112,41 +120,94 @@ class ModelInputModule:
             self.state.set("exog_variables", tuple(exog))
             self.clear_fit_results()
 
-        preprocessing = tuple(
-            st_obj.session_state.get(
-                preprocessing_key,
-                self.preprocessing_options,
-            )
-        )
-        if preprocessing != self.state.get("data_preprocessing", ()):
-            self.clear_fit_results()
-        with select_columns[2]:
+        if self.show_preprocessing:
             preprocessing = tuple(
-                st_obj.multiselect(
-                    "数据预处理",
-                    options=self.preprocessing_options,
-                    default=list(self.preprocessing_options),
-                    key=preprocessing_key,
-                    help="可多选：去零将 0 值视为缺失，去负将负值视为缺失。",
+                st_obj.session_state.get(
+                    preprocessing_key,
+                    self.preprocessing_options,
                 )
             )
-        if preprocessing != self.state.get("data_preprocessing", ()):
-            self.state.set("data_preprocessing", preprocessing)
-            self.clear_fit_results()
+            if preprocessing != self.state.get("data_preprocessing", ()):
+                self.clear_fit_results()
+            with select_columns[2]:
+                preprocessing = tuple(
+                    st_obj.multiselect(
+                        "数据替换",
+                        options=self.preprocessing_options,
+                        default=list(self.preprocessing_options),
+                        key=preprocessing_key,
+                        help="可多选：去零将 0 值替换为缺失，去负将负值替换为缺失。",
+                    )
+                )
+            if preprocessing != self.state.get("data_preprocessing", ()):
+                self.state.set("data_preprocessing", preprocessing)
+                self.clear_fit_results()
+
+            missing_value_method = st_obj.session_state.get(
+                missing_value_key,
+                self.missing_value_options[0] if self.missing_value_options else "无",
+            )
+            if missing_value_method not in self.missing_value_options:
+                missing_value_method = (
+                    self.missing_value_options[0]
+                    if self.missing_value_options
+                    else "无"
+                )
+                st_obj.session_state[missing_value_key] = missing_value_method
+            with select_columns[3]:
+                missing_value_method = st_obj.selectbox(
+                    "缺失值处理",
+                    options=self.missing_value_options,
+                    index=self.missing_value_options.index(missing_value_method),
+                    key=missing_value_key,
+                    help=(
+                        "选择目标变量和外生变量的缺失值处理方式；"
+                        "插值方法仅填补可根据现有观测推断的位置。"
+                    ),
+                )
+            if missing_value_method != self.state.get("missing_value_method", "无"):
+                self.state.set("missing_value_method", missing_value_method)
+                self.clear_fit_results()
+        else:
+            preprocessing = tuple(self.state.get("data_preprocessing", ()))
+            missing_value_method = self.state.get(
+                "missing_value_method",
+                self.missing_value_options[0] if self.missing_value_options else "无",
+            )
+            if missing_value_method not in self.missing_value_options:
+                missing_value_method = (
+                    self.missing_value_options[0]
+                    if self.missing_value_options
+                    else "无"
+                )
+
+        effective_preprocessing = (
+            preprocessing if self.show_preprocessing else ()
+        )
+        effective_missing_value_method = (
+            missing_value_method
+            if self.show_preprocessing
+            else (
+                self.missing_value_options[0]
+                if self.missing_value_options
+                else "无"
+            )
+        )
 
         try:
             effective_bounds = self.effective_date_bounds(
                 dataset,
                 target,
                 tuple(exog),
-                preprocessing=preprocessing,
+                preprocessing=effective_preprocessing,
+                missing_value_method=effective_missing_value_method,
             )
             dataset_dates = self.dataset_time_index(dataset)
         except Exception as exc:  # noqa: BLE001 - 用户可读的数据准备边界
             st_obj.error(f"数据准备失败：{exc}")
             return None
         if effective_bounds is None or dataset_dates is None or len(dataset_dates) == 0:
-            st_obj.error("当前变量和数据预处理规则下没有有效观测值。")
+            st_obj.error("当前变量、数据替换和缺失值处理规则下没有有效观测值。")
             return None
 
         effective_start, effective_end = effective_bounds
@@ -217,7 +278,8 @@ class ModelInputModule:
                 target,
                 tuple(exog),
                 time_range=time_range,
-                preprocessing=preprocessing,
+                preprocessing=effective_preprocessing,
+                missing_value_method=effective_missing_value_method,
             )
         except Exception as exc:  # noqa: BLE001 - 用户可读的数据准备边界
             st_obj.error(f"数据准备失败：{exc}")
@@ -234,6 +296,7 @@ class ModelInputModule:
             training_range=time_range,
             dataset_fingerprint=dataset_fingerprint,
             preprocessing=preprocessing,
+            missing_value_method=missing_value_method,
             response_log=response_log,
         )
 

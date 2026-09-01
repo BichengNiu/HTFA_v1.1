@@ -54,6 +54,22 @@ def _normalise_exog_operators(
     return tuple(sorted(normalized, key=lambda item: item[0]))
 
 
+def _exog_operator_signature(
+    operators: tuple[tuple[str, TimeSeriesOperator], ...],
+) -> tuple[tuple[str, int, int, int, int | None], ...]:
+    """将 Ts 算子编码为稳定签名可接受的基础类型。"""
+    return tuple(
+        (
+            name,
+            operator.lag,
+            operator.difference,
+            operator.seasonal_difference,
+            operator.seasonal_period,
+        )
+        for name, operator in operators
+    )
+
+
 @dataclass(frozen=True)
 class SARIMAXConfig:
     """手动 SARIMAX 拟合配置。"""
@@ -133,7 +149,7 @@ class SARIMAXConfig:
             "manual",
             self.order,
             self.seasonal_order,
-            self.exog_operators,
+            _exog_operator_signature(self.exog_operators),
             self.trend,
             self.log,
             self.enforce_stationarity,
@@ -235,7 +251,7 @@ class AutoSARIMAXConfig:
             self.D,
             self.Q,
             self.s,
-            self.exog_operators,
+            _exog_operator_signature(self.exog_operators),
             self.trend,
             self.criterion,
             self.log,

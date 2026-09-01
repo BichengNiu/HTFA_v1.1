@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 from data_overview import create_data_overview
 from data_overview.ui.data_source import DataSource
@@ -21,6 +22,8 @@ class DataInputModule:
         数据源和共享状态使用的命名空间。
     data_source : DataSource
         文件读取和工作表选择适配器。
+    dataset_processor : callable or None
+        在构建数据集前处理数据；返回 ``None`` 时等待上游提交处理。
     on_dataset_replaced : callable or None
         数据集身份变化时调用的状态清理函数。
     title : str
@@ -35,6 +38,7 @@ class DataInputModule:
     on_dataset_replaced: Callable[[object], None] | None = None
     title: str = ""
     show_preview: bool = False
+    dataset_processor: Callable[[Any, Any, str], Any] | None = None
     _renderer: Callable[[object], None] = field(
         init=False,
         repr=False,
@@ -46,6 +50,7 @@ class DataInputModule:
             key_prefix=self.key_prefix,
             state_namespace=self.state_namespace,
             data_source=self.data_source,
+            dataset_processor=self.dataset_processor,
             on_dataset_replaced=self.on_dataset_replaced,
             title=self.title,
             show_preview=self.show_preview,
@@ -62,6 +67,7 @@ def create_data_input_module(
     key_prefix: str,
     state_namespace: str,
     data_source: DataSource,
+    dataset_processor: Callable[[Any, Any, str], Any] | None = None,
     on_dataset_replaced: Callable[[object], None] | None = None,
     title: str = "",
     show_preview: bool = False,
@@ -71,6 +77,7 @@ def create_data_input_module(
         key_prefix=key_prefix,
         state_namespace=state_namespace,
         data_source=data_source,
+        dataset_processor=dataset_processor,
         on_dataset_replaced=on_dataset_replaced,
         title=title,
         show_preview=show_preview,

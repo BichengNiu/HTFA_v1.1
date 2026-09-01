@@ -210,6 +210,11 @@ def _clear_previous_model_state() -> None:
         ("exog_variables", ()),
         ("training_time_range", None),
         ("data_preprocessing", ()),
+        ("missing_value_method", "无"),
+        ("data_processing_base_fingerprint", None),
+        ("data_processing_signature", None),
+        ("data_processing_frame", None),
+        ("data_processing_auto_start", False),
         ("response_log", False),
         ("model_selection", None),
         ("future_exog_editor_signature", None),
@@ -241,6 +246,12 @@ def _seed_sarimax_input_state(widget_state: dict[str, object]) -> None:
             "data_preprocessing",
             tuple(str(value) for value in preprocessing),
         )
+    missing_value_method = widget_state.get(
+        "sarimax_missing_value_method",
+        "无",
+    )
+    if isinstance(missing_value_method, str):
+        state.set("missing_value_method", missing_value_method)
     family = widget_state.get("sarimax_model_family", "SARIMAX")
     mode = widget_state.get("sarimax_config_mode", "手动配置")
     if isinstance(family, str) and isinstance(mode, str):

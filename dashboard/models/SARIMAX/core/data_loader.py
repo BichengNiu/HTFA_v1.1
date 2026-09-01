@@ -4,9 +4,144 @@ from __future__ import annotations
 
 import pandas as pd
 
-from data_overview.core.dataset import OverviewDataset
+from data_overview.core.dataset import OverviewDataset, numeric_variable_names
+from Ts.TsUtils import interpolate_missing
 
-PREPROCESSING_OPTIONS = ("去零", "去负")
+DATA_REPLACEMENT_OPTIONS = ("去零", "去负")
+PREPROCESSING_OPTIONS = DATA_REPLACEMENT_OPTIONS
+MISSING_VALUE_OPTIONS = (
+    "无",
+    "向前填补",
+    "向后填补",
+    "线性内插",
+    "样条内插",
+    "多项式内插",
+    "卡尔曼滤波",
+)
+_MISSING_VALUE_METHOD_MAP = {
+    "向前填补": "ffill",
+    "向后填补": "bfill",
+    "线性内插": "linear",
+    "样条内插": "spline",
+    "多项式内插": "polynomial",
+    "卡尔曼滤波": "kalman",
+}
+
+
+def _apply_missing_value_method(
+    series: pd.Series,
+    method: str,
+) -> pd.Series:
+    """仅在单个序列首末有效值之间调用 TsUtils 处理缺失值。"""
+    if method == "无":
+        return series.copy()
+    try:
+        ts_method = _MISSING_VALUE_METHOD_MAP[method]
+    except KeyError as exc:
+        raise ValueError(f"不支持的缺失值处理：{method}") from exc
+
+    valid_positions = series.notna().to_numpy().nonzero()[0]
+    if valid_positions.size < 2:
+        return series.copy()
+    first = int(valid_positions[0])
+    last = int(valid_positions[-1])
+    window = series.iloc[first : last + 1]
+    if not window.isna().any():
+        return series.copy()
+
+    # 先按每列识别有效区间，再处理区间内部，避免 ffill/bfill/kalman
+    # 等方法把首个有效值之前或末个有效值之后的缺失值带入结果。
+    filled_window = interpolate_missing(
+        window,
+        method=ts_method,
+        edge="keep",
+    ).data
+    result = series.copy(deep=True)
+    result.iloc[first : last + 1] = pd.Series(
+        filled_window,
+        index=window.index,
+        name=series.name,
+    ).to_numpy()
+    return result
+
+
+def _apply_missing_value_method_to_frame(
+    frame: pd.DataFrame,
+    method: str,
+) -> pd.DataFrame:
+    """逐列处理首末有效值之间的缺失，保持列名和索引不变。"""
+    if method == "无":
+        return frame.copy()
+    # 每个变量的有效区间可能不同，不能以整张宽表的共同边界替代单列边界。
+    return pd.DataFrame(
+        {
+            column: _apply_missing_value_method(frame[column], method)
+            for column in frame.columns
+        },
+        index=frame.index,
+    )
+
+
+def preprocess_modeling_frame(
+    frame: pd.DataFrame,
+    preprocessing: tuple[str, ...] = (),
+    missing_value_method: str = "无",
+) -> pd.DataFrame:
+    """在建模数据集阶段统一应用数据替换和缺失值处理。
+
+    Parameters
+    ----------
+    frame : pandas.DataFrame
+        已按用户选择的表头、数据起始行和时间列解析的数据框。
+    preprocessing : tuple[str, ...], default=()
+        数据替换规则；``"去零"`` 将 0 替换为缺失，``"去负"`` 将负值替换为缺失。
+    missing_value_method : str, default="无"
+        数据替换后应用于全部数值型变量的缺失值处理方式；每个变量仅在
+        其第一个有效值和最后一个有效值之间处理缺失，区间外缺失保持不变。
+
+    Returns
+    -------
+    pandas.DataFrame
+        不修改输入对象的处理后数据框；非数值列保持不变，数值列首末有效值
+        之外的缺失值保持不变。
+
+    Raises
+    ------
+    ValueError
+        ``preprocessing`` 或 ``missing_value_method`` 包含不支持的选项时抛出。
+    """
+    if not isinstance(frame, pd.DataFrame):
+        raise TypeError("待处理数据必须是 pandas.DataFrame")
+
+    selected_preprocessing = tuple(dict.fromkeys(preprocessing or ()))
+    unknown_preprocessing = [
+        option
+        for option in selected_preprocessing
+        if option not in DATA_REPLACEMENT_OPTIONS
+    ]
+    if unknown_preprocessing:
+        raise ValueError(
+            "不支持的数据预处理："
+            + ", ".join(str(option) for option in unknown_preprocessing)
+        )
+    if missing_value_method not in MISSING_VALUE_OPTIONS:
+        raise ValueError(f"不支持的缺失值处理：{missing_value_method}")
+
+    result = frame.copy(deep=True)
+    numeric_columns = numeric_variable_names(result)
+    if not numeric_columns:
+        return result
+
+    # 处理可能引入 NaN；先把整数列提升为浮点，避免向 int64 列写入缺失值。
+    values = result.loc[:, numeric_columns].astype(float)
+    if "去零" in selected_preprocessing:
+        values = values.mask(values == 0.0)
+    if "去负" in selected_preprocessing:
+        values = values.mask(values < 0.0)
+    values = _apply_missing_value_method_to_frame(values, missing_value_method)
+    for column in numeric_columns:
+        result[column] = values[column]
+    return result
 
 
 def dataset_time_index(dataset: OverviewDataset) -> pd.DatetimeIndex | None:
@@ -77,6 +212,7 @@ def prepare_modeling_inputs(
     exog_columns: tuple[str, ...] = (),
     time_range: tuple[pd.Timestamp, pd.Timestamp] | None = None,
     preprocessing: tuple[str, ...] = (),
+    missing_value_method: str = "无",
 ) -> tuple[pd.Series, pd.DataFrame | None, pd.Index]:
     """Build the target series and exogenous frame from the overview dataset.
 
@@ -91,9 +227,14 @@ def prepare_modeling_inputs(
     time_range : tuple[pd.Timestamp, pd.Timestamp] or None, default=None
         Inclusive training range for dated data; ``None`` uses all observations.
     preprocessing : tuple[str, ...], default=()
-        Selected preprocessing rules. ``"去零"`` treats zero values as missing;
-        ``"去负"`` treats negative values as missing. Rules apply to the target
-        and selected exogenous variables after the training range is applied.
+        Selected data replacement rules. ``"去零"`` treats zero values as
+        missing; ``"去负"`` treats negative values as missing. Rules apply to
+        the target and selected exogenous variables after the training range is
+        applied.
+    missing_value_method : str, default="无"
+        Missing-value handling method applied after data replacement. Supported
+        values are ``"无"``, ``"向前填补"``, ``"向后填补"``, ``"线性内插"``,
+        ``"样条内插"``, ``"多项式内插"`` and ``"卡尔曼滤波"``.
 
     Returns
     -------
@@ -103,20 +244,22 @@ def prepare_modeling_inputs(
     Raises
     ------
     ValueError
-        If the target/exogenous variables, preprocessing options, or requested
-        time range is invalid.
+        If the target/exogenous variables, data replacement or missing-value
+        options, or requested time range is invalid.
     """
     selected_preprocessing = tuple(dict.fromkeys(preprocessing or ()))
     unknown_preprocessing = [
         option
         for option in selected_preprocessing
-        if option not in PREPROCESSING_OPTIONS
+        if option not in DATA_REPLACEMENT_OPTIONS
     ]
     if unknown_preprocessing:
         raise ValueError(
             "不支持的数据预处理："
             + ", ".join(str(option) for option in unknown_preprocessing)
         )
+    if missing_value_method not in MISSING_VALUE_OPTIONS:
+        raise ValueError(f"不支持的缺失值处理：{missing_value_method}")
 
     frame = dataset.frame
     base = frame.copy()
@@ -172,6 +315,16 @@ def prepare_modeling_inputs(
         if exog_frame is not None:
             exog_frame = exog_frame.mask(exog_frame < 0.0)
 
+    target_series = _apply_missing_value_method(
+        target_series,
+        missing_value_method,
+    )
+    if exog_frame is not None:
+        exog_frame = _apply_missing_value_method_to_frame(
+            exog_frame,
+            missing_value_method,
+        )
+
     return target_series, exog_frame, index
 
 
@@ -180,6 +333,7 @@ def effective_modeling_date_bounds(
     target: str,
     exog_columns: tuple[str, ...] = (),
     preprocessing: tuple[str, ...] = (),
+    missing_value_method: str = "无",
 ) -> tuple[pd.Timestamp, pd.Timestamp] | None:
     """返回预处理后参与建模变量的共同有效日期首尾边界。
 
@@ -192,7 +346,9 @@ def effective_modeling_date_bounds(
     exog_columns : tuple[str, ...], default=()
         外生变量列名；所有外生变量也必须在该日期有有效值。
     preprocessing : tuple[str, ...], default=()
-        应用于目标变量和外生变量的预处理规则。
+        应用于目标变量和外生变量的数据替换规则。
+    missing_value_method : str, default="无"
+        应用于数据替换后目标变量和外生变量的缺失值处理方式。
 
     Returns
     -------
@@ -208,6 +364,7 @@ def effective_modeling_date_bounds(
         target,
         exog_columns,
         preprocessing=preprocessing,
+        missing_value_method=missing_value_method,
     )
     valid = series.notna().to_numpy(copy=True)
     if exog_frame is not None:
@@ -219,9 +376,12 @@ def effective_modeling_date_bounds(
 
 
 __all__ = [
+    "DATA_REPLACEMENT_OPTIONS",
+    "MISSING_VALUE_OPTIONS",
     "PREPROCESSING_OPTIONS",
     "dataset_time_index",
     "effective_modeling_date_bounds",
     "forecast_sample_dates",
+    "preprocess_modeling_frame",
     "prepare_modeling_inputs",
 ]

@@ -26,6 +26,8 @@ from .widget_keys import overview_widget_keys, preview_key
 
 # 数据集构建器签名：``(frame, file_name, fingerprint) -> dataset``。
 DatasetBuilder = Callable[[Any, str, str], Any]
+# 数据集处理器签名：返回处理后的 frame；返回 ``None`` 表示尚未点击处理按钮。
+DatasetProcessor = Callable[[Any, pd.DataFrame, str], pd.DataFrame | None]
 
 
 @dataclass(frozen=True)
@@ -34,8 +36,9 @@ class DataOverviewConfig:
 
     不同实例必须使用不同的 key_prefix 与 state_namespace，
     以避免 widget 键与数据集缓存互相覆盖。
-    ``show_preview=False`` 时仍会完成数据读取和数据集构建，
-    但不渲染变量选择、表格、图表及其高级选项。
+    ``show_preview=False`` 时仍会完成数据读取和数据集构建（如果配置了
+    ``dataset_processor``，则由处理器决定何时构建），但不渲染变量选择、表格、
+    图表及其高级选项。
     """
 
     key_prefix: str = "sarimax"
@@ -47,6 +50,7 @@ class DataOverviewConfig:
     empty_variables_message: str = "数据中没有可用的数值型变量。"
     widget_keys: tuple[str, ...] | None = None
     show_preview: bool = True
+    dataset_processor: DatasetProcessor | None = None
 
 
 class DataOverview:
@@ -79,6 +83,7 @@ def create_data_overview(
     state_namespace: str = "model_analysis.sarimax",
     data_source: DataSource | None = None,
     dataset_builder: DatasetBuilder = build_overview_dataset,
+    dataset_processor: DatasetProcessor | None = None,
     on_dataset_replaced: Callable[[Any], None] | None = None,
     title: str = "#### ① 数据概览",
     empty_variables_message: str = "数据中没有可用的数值型变量。",
@@ -93,6 +98,7 @@ def create_data_overview(
             key_prefix="dfm",
             state_namespace="model_analysis.dfm",
             data_source=my_source,          # None=内置上传器
+            dataset_processor=process_data, # 可选：按钮确认后处理数据
             on_dataset_replaced=clear_model,  # 换文件时清理模型结果
             show_preview=False,              # 只处理上传和读取设置
         )
@@ -103,6 +109,7 @@ def create_data_overview(
         state_namespace=state_namespace,
         data_source=data_source,
         dataset_builder=dataset_builder,
+        dataset_processor=dataset_processor,
         on_dataset_replaced=on_dataset_replaced,
         title=title,
         empty_variables_message=empty_variables_message,
@@ -299,6 +306,18 @@ def render_data_overview(
         clear_dataset()
         st_obj.error(f"数据读取失败：{exc}")
         return
+
+    if config.dataset_processor is not None:
+        try:
+            processed_data = config.dataset_processor(st_obj, data, fingerprint)
+        except Exception as exc:  # noqa: BLE001 - 用户可读的数据预处理边界
+            clear_dataset()
+            st_obj.error(f"数据预处理失败：{exc}")
+            return
+        if processed_data is None:
+            clear_dataset()
+            return
+        data = processed_data
 
     if dataset is None or dataset.fingerprint != fingerprint:
         try:
@@ -512,5 +531,6 @@ def _suggest_time_column(frame: pd.DataFrame) -> str:
 __all__ = [
     "DataOverview",
     "DataOverviewConfig",
+    "DatasetProcessor",
     "create_data_overview",
 ]

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from datetime import date
+from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -51,6 +52,9 @@ def _prepare_model_app(app, payload) -> None:
         if element.key == "model_analysis.sarimax.upload.uploader"
     )
     uploader.upload(*payload)
+    app.run()
+    assert not app.exception
+    _by_key(app.button, "sarimax_start_processing_button").click()
     app.run()
     assert not app.exception
 
@@ -139,6 +143,14 @@ def _dynamic_sample_csv() -> tuple[str, bytes, str]:
     return "dynamic.csv", frame.to_csv(index=False).encode("utf-8"), "text/csv"
 
 
+def _dynamic_sample_csv_with_missing_exog() -> tuple[str, bytes, str]:
+    """生成含缺失外生变量的 SARIMAX 测试数据。"""
+    name, content, mime = _dynamic_sample_csv()
+    frame = pd.read_csv(BytesIO(content))
+    frame.loc[5, "policy"] = None
+    return name, frame.to_csv(index=False).encode("utf-8"), mime
+
+
 def _preprocessed_range_csv() -> tuple[str, bytes, str]:
     """生成首尾值会被默认预处理规则排除的日期数据。"""
     content = (
@@ -195,17 +207,30 @@ def test_trend_multiselect_maps_to_ts_code(selected, expected):
 
 
 def test_dynamic_regression_data_input_skips_preview(monkeypatch):
-    """动态回归数据区只显示读取设置，随后进入模型训练。"""
+    """动态回归数据区只显示读取设置，处理后进入模型训练。"""
     from streamlit.testing.v1 import AppTest
 
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
-    _prepare_model_app(app, _sample_csv())
+    _navigate_to_sarimax(app)
+    uploader = next(
+        element
+        for element in app.file_uploader
+        if element.key == "model_analysis.sarimax.upload.uploader"
+    )
+    uploader.upload(*_sample_csv())
+    app.run()
 
     assert not app.exception
     _by_key(app.number_input, "sarimax_model_preview_variable_name_row")
     _by_key(app.number_input, "sarimax_model_preview_data_start_row")
     _by_key(app.selectbox, "sarimax_model_preview_time_column")
+    assert not any(element.key == "sarimax_target_select" for element in app.selectbox)
+    assert _by_key(app.button, "sarimax_start_processing_button").label == "开始处理"
+
+    _by_key(app.button, "sarimax_start_processing_button").click()
+    app.run()
+    assert not app.exception
     _by_key(app.selectbox, "sarimax_target_select")
     _by_key(app.multiselect, "sarimax_exog_select")
 
@@ -223,7 +248,7 @@ def test_dynamic_regression_data_input_skips_preview(monkeypatch):
 
 
 def test_training_preprocessing_selector(monkeypatch):
-    """训练区提供可多选的去零和去负预处理参数。"""
+    """数据输入区提供可多选的去零和去负替换参数。"""
     from streamlit.testing.v1 import AppTest
 
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
@@ -233,6 +258,30 @@ def test_training_preprocessing_selector(monkeypatch):
     preprocessing = _by_key(app.multiselect, "sarimax_data_preprocessing")
     assert tuple(preprocessing.options) == ("去零", "去负")
     assert preprocessing.value == ["去零", "去负"]
+
+
+def test_training_missing_value_selector(monkeypatch):
+    """数据输入区在数据替换右侧提供缺失值处理选项，默认不处理。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
+    _prepare_model_app(app, _dynamic_sample_csv())
+
+    replacement = _by_key(app.multiselect, "sarimax_data_preprocessing")
+    missing = _by_key(app.selectbox, "sarimax_missing_value_method")
+    assert replacement.label == "数据替换"
+    assert missing.label == "缺失值处理"
+    assert tuple(missing.options) == (
+        "无",
+        "向前填补",
+        "向后填补",
+        "线性内插",
+        "样条内插",
+        "多项式内插",
+        "卡尔曼滤波",
+    )
+    assert missing.value == "无"
 
 
 def test_train_forecast_slider_uses_preprocessed_dates(monkeypatch):
@@ -265,6 +314,8 @@ def test_training_requires_a_valid_time_column(monkeypatch):
         "sarimax_model_preview_time_column",
     )
     time_column.set_value("无")
+    app.run()
+    _by_key(app.button, "sarimax_start_processing_button").click()
     app.run()
 
     assert not app.exception
@@ -471,6 +522,10 @@ def test_training_slider_limits_fit_and_invalidates_result(monkeypatch):
     assert not app.exception
     assert not any(metric.label == "AIC" for metric in app.metric)
 
+    _by_key(app.button, "sarimax_start_processing_button").click()
+    app.run()
+    assert not app.exception
+
     response_log = _by_key(app.checkbox, "sarimax_response_log")
     response_log.set_value(True)
     app.run()
@@ -639,6 +694,45 @@ def test_sarimax_sparse_order_operator_and_roots_controls_render(monkeypatch):
     assert _by_key(app.number_input, "sarimax_innovation_irf_steps").value == 20
     assert any("ARMA 创新脉冲响应" in item.value for item in app.markdown)
     assert any("Roots 稳定性" in item.value for item in app.markdown)
+    assert any("Roots 稳定性表" in item.value for item in app.markdown)
+    assert any("ARMA 创新脉冲响应图" in item.value for item in app.markdown)
+    assert any("Roots 稳定性图" in item.value for item in app.markdown)
+
+
+def test_sarimax_missing_exog_keeps_fit_button_enabled(monkeypatch):
+    """SARIMAX 外生变量缺失时显示提示但不禁用拟合按钮。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=90).run()
+    _prepare_model_app(app, _dynamic_sample_csv_with_missing_exog())
+    _by_key(app.multiselect, "sarimax_exog_select").set_value(["policy"])
+    app.run()
+
+    assert not app.exception
+    fit_button = _by_key(app.button, "sarimax_fit_button")
+    assert not fit_button.disabled
+    assert any(
+        "外生变量存在 1 个缺失值" in item.value for item in app.warning
+    )
+
+
+def test_sarimax_ar2_roots_show_cycle_diagnostic(monkeypatch):
+    """连续 AR(1, 2) 模型在 Roots 区域显示周期识别结果。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=90).run()
+    _prepare_model_app(app, _dynamic_sample_csv())
+    _by_key(app.text_input, "sarimax_ar_lags").set_value("1,2")
+    app.run()
+
+    _by_key(app.button, "sarimax_fit_button").click()
+    app.run()
+
+    assert not app.exception
+    assert any("AR(2) 周期识别" in item.value for item in app.markdown)
+    assert any("周期由 AR(2) 复根的角频率计算" in item.value for item in app.caption)
 
 
 def _open_dynamic_family(app, family: str, mode: str) -> None:

@@ -44,6 +44,17 @@ def test_load_dataframe_parses_csv_and_infers_numeric_and_time_columns():
     assert result["value"].tolist() == [1.5, 2.5]
 
 
+def test_load_dataframe_infers_numeric_columns_with_blank_cells():
+    """CSV 数值列含空单元格时仍保留为可建模的数值列。"""
+    content = b"date,value,exog\n2025-01-31,1.5,10\n2025-02-28,2.5,\n"
+
+    result = load_dataframe(content, "data.csv")
+
+    assert pd.api.types.is_numeric_dtype(result["exog"])
+    assert result["exog"].iloc[0] == 10.0
+    assert pd.isna(result["exog"].iloc[1])
+
+
 def test_load_dataframe_uses_selected_rows_and_explicit_time_column():
     content = (
         "说明行\n"

@@ -119,6 +119,19 @@ def _is_dynamic_regression(config: DynamicConfig) -> bool:
     )
 
 
+def fit_input_warnings(exog: pd.DataFrame | None) -> list[str]:
+    """返回不会阻止 SARIMAX 拟合的输入提示。"""
+    if exog is None:
+        return []
+    missing = int(exog.isna().sum().sum())
+    if not missing:
+        return []
+    return [
+        f"外生变量存在 {missing} 个缺失值，拟合时将按 missing='drop' "
+        "丢弃对应行"
+    ]
+
+
 def validate_fit_inputs(
     series: pd.Series,
     exog: pd.DataFrame | None,
@@ -157,12 +170,6 @@ def validate_fit_inputs(
     if exog is not None:
         if not exog.index.equals(series.index):
             problems.append("外生变量与目标序列索引不一致，请重新选择外生变量")
-        missing = int(exog.isna().sum().sum())
-        if missing:
-            problems.append(
-                f"外生变量存在 {missing} 个缺失值，拟合时将按 missing='drop' "
-                "丢弃对应行"
-            )
 
     if _is_dynamic_regression(config):
         if exog is None or exog.shape[1] == 0:
@@ -268,6 +275,7 @@ __all__ = [
     "fit_rdl",
     "fit_sarimax",
     "format_sarimax_order",
+    "fit_input_warnings",
     "future_dates",
     "produce_forecast",
     "recommended_residual_diagnostic_lags",
