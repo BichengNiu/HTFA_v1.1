@@ -3,21 +3,21 @@
 from __future__ import annotations
 
 import pandas as pd
+from Ts.TsModels import TimeSeriesOperator
 
-from dashboard.models.SARIMAX.core.config_shared import (
-    SARIMAX_COV_TYPES,
-    SARIMAX_OPTIMIZERS,
-    SARIMAX_RANGE_LIMITS,
-)
+from dashboard.models.SARIMAX.core.config_shared import SARIMAX_RANGE_LIMITS
 from dashboard.models.SARIMAX.core.sarimax_config import (
     AutoSARIMAXConfig,
     SARIMAXConfig,
 )
 from dashboard.models.SARIMAX.ui.model_options_shared import (
+    parse_sparse_lags,
     render_range_inputs,
     render_sarimax_advanced_settings,
     render_trend_selector,
+    restore_table_state,
 )
+from dashboard.models.SARIMAX.ui.state import state
 
 _AUTO_RANGE_DEFAULTS = {
     "p": (0, 3),
@@ -39,6 +39,7 @@ def render_sarimax_options(
     st_obj,
     mode: str,
     *,
+    exog: pd.DataFrame | None = None,
     response_log: bool = False,
 ) -> SARIMAXConfig | AutoSARIMAXConfig | None:
     """渲染 SARIMAX 模型族的手动或自动配置。
@@ -49,6 +50,8 @@ def render_sarimax_options(
         具有 Streamlit 控件方法的对象。
     mode : str
         配置方式，支持 ``手动配置`` 和 ``自动选阶``。
+    exog : pandas.DataFrame or None, optional
+        当前选择的外生变量；存在时显示逐变量时序算子表。
     response_log : bool, default=False
         通用输入模块提供的目标变量对数变换状态。
 
@@ -58,8 +61,8 @@ def render_sarimax_options(
         构建好的配置；控件参数无效时返回 ``None``。
     """
     if mode == "手动配置":
-        return _render_manual_config(st_obj, log=response_log)
-    return _render_auto_config(st_obj, log=response_log)
+        return _render_manual_config(st_obj, log=response_log, exog=exog)
+    return _render_auto_config(st_obj, log=response_log, exog=exog)
 
 
 def render_sarimax_error_options(
@@ -99,7 +102,8 @@ def _render_manual_config(
     prefix: str = "sarimax",
     *,
     log: bool | None = False,
-) -> SARIMAXConfig:
+    exog: pd.DataFrame | None = None,
+) -> SARIMAXConfig | None:
     """渲染手动 SARIMAX 阶数与高级设置。"""
     order_columns = st_obj.columns(4)
     p = order_columns[0].number_input("p（AR 阶数）", 0, 6, 1, key=f"{prefix}_p")
@@ -118,6 +122,24 @@ def _render_manual_config(
         key=f"{prefix}_s",
         help="季节周期长度；0 表示无季节项（日度数据可填 5、21、63 或 252）。",
     )
+    with st_obj.expander("高级：活动 AR/MA 滞后", expanded=False):
+        st_obj.caption(
+            "非空值覆盖上方连续阶数；例如 1,3 表示仅估计第 1 和第 3 阶，"
+            "中间滞后固定为零。"
+        )
+        sparse_columns = st_obj.columns(2)
+        ar_lags = sparse_columns[0].text_input(
+            "活动 AR 滞后", key=f"{prefix}_ar_lags", placeholder="例如 1,3"
+        )
+        ma_lags = sparse_columns[1].text_input(
+            "活动 MA 滞后", key=f"{prefix}_ma_lags", placeholder="例如 1,3"
+        )
+        seasonal_ar_lags = sparse_columns[0].text_input(
+            "活动季节 AR 滞后", key=f"{prefix}_seasonal_ar_lags", placeholder="例如 1,2"
+        )
+        seasonal_ma_lags = sparse_columns[1].text_input(
+            "活动季节 MA 滞后", key=f"{prefix}_seasonal_ma_lags", placeholder="例如 1,2"
+        )
     (
         response_log,
         enforce_stationarity,
@@ -126,17 +148,31 @@ def _render_manual_config(
         maxiter,
         cov_type,
     ) = render_sarimax_advanced_settings(st_obj, prefix, log=log)
-    return SARIMAXConfig(
-        order=(int(p), int(d), int(q)),
-        seasonal_order=(int(P), int(D), int(Q), int(s)),
-        trend=trend,
-        log=response_log,
-        enforce_stationarity=enforce_stationarity,
-        enforce_invertibility=enforce_invertibility,
-        fit_method=method,
-        maxiter=int(maxiter),
-        cov_type=cov_type,
-    )
+    try:
+        return SARIMAXConfig(
+            order=(
+                _sparse_or_continuous(ar_lags, p, maximum=6),
+                int(d),
+                _sparse_or_continuous(ma_lags, q, maximum=6),
+            ),
+            seasonal_order=(
+                _sparse_or_continuous(seasonal_ar_lags, P, maximum=3),
+                int(D),
+                _sparse_or_continuous(seasonal_ma_lags, Q, maximum=3),
+                int(s),
+            ),
+            exog_operators=_render_exog_operators(st_obj, exog, prefix),
+            trend=trend,
+            log=response_log,
+            enforce_stationarity=enforce_stationarity,
+            enforce_invertibility=enforce_invertibility,
+            fit_method=method,
+            maxiter=int(maxiter),
+            cov_type=cov_type,
+        )
+    except (TypeError, ValueError) as exc:
+        st_obj.error(f"SARIMAX 设置有误：{exc}")
+        return None
 
 
 def _render_auto_config(
@@ -144,6 +180,7 @@ def _render_auto_config(
     prefix: str = "sarimax_auto",
     *,
     log: bool | None = False,
+    exog: pd.DataFrame | None = None,
 ) -> AutoSARIMAXConfig | None:
     """渲染 AutoSARIMAX 搜索范围；范围非法时提示并返回 None。"""
     layout_columns = st_obj.columns([2, 1])
@@ -194,6 +231,7 @@ def _render_auto_config(
             D=ranges["D"],
             Q=ranges["Q"],
             s=int(s),
+            exog_operators=_render_exog_operators(st_obj, exog, prefix),
             trend=trend,
             criterion=_AUTO_SELECTION_DEFAULT,
             log=response_log,
@@ -214,6 +252,67 @@ def _render_auto_config(
             f"组合数超过 {_AUTO_MAX}，拟合耗时可能很长，建议缩小搜索范围。"
         )
     return config
+
+
+def _sparse_or_continuous(
+    text: object,
+    fallback: int,
+    *,
+    maximum: int,
+) -> int | tuple[int, ...]:
+    """优先使用用户填写的稀疏活动滞后，并保持 UI 上限。"""
+    lags = parse_sparse_lags(text, minimum=1)
+    if lags is None:
+        return int(fallback)
+    if any(lag > maximum for lag in lags):
+        raise ValueError(f"活动滞后必须不大于 {maximum}")
+    return lags
+
+
+def _render_exog_operators(
+    st_obj,
+    exog: pd.DataFrame | None,
+    prefix: str,
+) -> dict[str, TimeSeriesOperator]:
+    """渲染逐变量时序算子，并返回非恒等映射。"""
+    if exog is None or exog.empty:
+        return {}
+    names = [str(name) for name in exog.columns]
+    with st_obj.expander("外生变量时序算子", expanded=False):
+        st_obj.caption(
+            "算子按季节差分、普通差分、滞后依次作用；未来外生变量仍应填写原始路径。"
+        )
+        defaults = pd.DataFrame(
+            {
+                "变量": names,
+                "滞后 L": 0,
+                "普通差分 d": 0,
+                "季节差分 D": 0,
+                "季节周期 s": 0,
+            }
+        )
+        table_key = f"{prefix}_exog_operators_table"
+        edited = st_obj.data_editor(
+            restore_table_state(table_key, defaults, names),
+            key=f"{prefix}_exog_operators",
+            num_rows="fixed",
+            disabled=("变量",),
+            width="stretch",
+        )
+        state.set(table_key, edited.copy())
+    operators: dict[str, TimeSeriesOperator] = {}
+    for _, row in edited.iterrows():
+        seasonal_difference = int(row["季节差分 D"])
+        seasonal_period = int(row["季节周期 s"])
+        operator = TimeSeriesOperator(
+            lag=int(row["滞后 L"]),
+            difference=int(row["普通差分 d"]),
+            seasonal_difference=seasonal_difference,
+            seasonal_period=(seasonal_period if seasonal_difference else None),
+        )
+        if not operator.is_identity:
+            operators[str(row["变量"])] = operator
+    return operators
 
 
 __all__ = ["render_sarimax_error_options", "render_sarimax_options"]

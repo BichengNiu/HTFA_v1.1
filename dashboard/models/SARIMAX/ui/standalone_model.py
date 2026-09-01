@@ -19,7 +19,7 @@ from dashboard.models.SARIMAX.ui.data_input import (
     mark_sarimax_handoff_restore,
 )
 from dashboard.models.SARIMAX.ui.state import (
-    MODEL_WIDGET_KEYS,
+    PERSISTENT_WIDGET_KEYS,
     RESULT_KEYS,
     clear_fit_results,
     clear_widget_state,
@@ -41,8 +41,7 @@ _HANDOFF_RESULT_KEYS = RESULT_KEYS + ("forecast_widget_fit_signature",)
 SARIMAX_HANDOFF_WIDGET_KEYS = tuple(
     dict.fromkeys(
         key
-        for key in SARIMAX_DATA_OVERVIEW_WIDGET_KEYS + MODEL_WIDGET_KEYS
-        if not key.endswith(("_button", "_download"))
+        for key in SARIMAX_DATA_OVERVIEW_WIDGET_KEYS + PERSISTENT_WIDGET_KEYS
     )
 )
 

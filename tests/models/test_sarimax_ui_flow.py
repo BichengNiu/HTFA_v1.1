@@ -615,6 +615,32 @@ def test_auto_mode_workflow_via_ui(monkeypatch):
     assert not app.success
 
 
+def test_sarimax_sparse_order_operator_and_roots_controls_render(monkeypatch):
+    """标准 SARIMAX 页面显示稀疏阶、外生算子与创新/roots 分析。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=90).run()
+    _prepare_model_app(app, _dynamic_sample_csv())
+    _by_key(app.multiselect, "sarimax_exog_select").set_value(["policy"])
+    app.run()
+
+    _by_key(app.text_input, "sarimax_ar_lags").set_value("1,3")
+    _by_key(app.text_input, "sarimax_ma_lags")
+    _by_key(app.text_input, "sarimax_seasonal_ar_lags")
+    _by_key(app.text_input, "sarimax_seasonal_ma_lags")
+    _by_key(app.dataframe, "sarimax_exog_operators")
+    app.run()
+    assert not app.exception
+
+    _by_key(app.button, "sarimax_fit_button").click()
+    app.run()
+    assert not app.exception
+    assert _by_key(app.number_input, "sarimax_innovation_irf_steps").value == 20
+    assert any("ARMA 创新脉冲响应" in item.value for item in app.markdown)
+    assert any("Roots 稳定性" in item.value for item in app.markdown)
+
+
 def _open_dynamic_family(app, family: str, mode: str) -> None:
     """上传连续多变量样本，切换到指定动态回归模型族。"""
     _prepare_model_app(app, _dynamic_sample_csv())

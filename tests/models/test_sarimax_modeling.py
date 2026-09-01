@@ -10,6 +10,7 @@ import pytest
 from data_overview.core.dataset import OverviewDataset, build_overview_dataset
 from data_overview.core.file_parsing import load_dataframe
 from statsmodels.tsa.statespace.sarimax import SARIMAX as StatsmodelsSARIMAX
+from Ts.TsModels import TimeSeriesOperator
 from Ts.TsSims import simulate_sarima
 
 from dashboard.models.SARIMAX.core.data_loader import (
@@ -472,6 +473,26 @@ def test_sarimax_config_defaults_and_validation():
         SARIMAXConfig(maxiter=0)
 
 
+def test_sarimax_config_supports_sparse_orders_and_exog_operators():
+    """手动配置保留 Ts 的稀疏 ARMA 语义与逐变量算子。"""
+    config = SARIMAXConfig(
+        order=((1, 3), 0, (1, 3)),
+        seasonal_order=((1, 2), 0, (1,), 12),
+        exog_operators={"x": TimeSeriesOperator(lag=1, difference=1)},
+    )
+
+    assert config.order == ((1, 3), 0, (1, 3))
+    assert config.seasonal_order == ((1, 2), 0, (1,), 12)
+    assert config.operator_mapping() == {
+        "x": TimeSeriesOperator(lag=1, difference=1)
+    }
+    assert config.signature() != SARIMAXConfig().signature()
+    with pytest.raises(ValueError, match="p 必须"):
+        SARIMAXConfig(order=((0, 3), 0, 0))
+    with pytest.raises(ValueError, match="Q 必须"):
+        SARIMAXConfig(seasonal_order=(0, 0, (4,), 12))
+
+
 def test_auto_sarimax_config_candidate_count_and_validation():
     config = AutoSARIMAXConfig(p=(0, 1), d=(0, 0), q=(0, 1))
     assert config.candidate_count() == 4
@@ -647,6 +668,22 @@ def test_fit_sarimax_with_exog():
     assert "x" in result.params
 
 
+def test_fit_sarimax_passes_exog_time_operators_to_ts():
+    """HTFA 只传递原始路径，实际变换由 Ts 统一完成。"""
+    series = make_series()
+    exog = pd.DataFrame({"x": np.arange(len(series), dtype=float)})
+    config = SARIMAXConfig(
+        order=(0, 0, 0),
+        trend="n",
+        exog_operators={"x": TimeSeriesOperator(lag=1)},
+    )
+
+    result = fit_sarimax(series, exog, config)
+
+    assert result.exog_operators == {"x": TimeSeriesOperator(lag=1)}
+    assert result.nobs == len(series) - 1
+
+
 def test_fit_sarimax_seasonal_order():
     simulated = simulate_sarima(
         n=120,
@@ -696,6 +733,27 @@ def test_fit_auto_sarimax_small_grid():
     assert result.best_result is not None
     assert len(result.best_order) == 3
     assert len(result.criterion_values) == 4
+
+
+def test_fit_auto_sarimax_passes_exog_time_operators_to_ts():
+    series = make_series()
+    exog = pd.DataFrame({"x": np.arange(len(series), dtype=float)})
+    config = AutoSARIMAXConfig(
+        p=(0, 0),
+        d=(0, 0),
+        q=(0, 0),
+        P=(0, 0),
+        D=(0, 0),
+        Q=(0, 0),
+        trend="n",
+        exog_operators={"x": TimeSeriesOperator(difference=1)},
+    )
+
+    result = fit_auto_sarimax(series, exog, config)
+
+    assert result.best_result.exog_operators == {
+        "x": TimeSeriesOperator(difference=1)
+    }
 
 
 def test_fit_auto_sarimax_searches_all_seasonal_orders_when_period_is_set():

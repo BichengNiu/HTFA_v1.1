@@ -38,6 +38,79 @@ def render_analysis_section(st_obj) -> None:
         st_obj.warning(f"残差诊断图无法绘制：{diagnostic_view.figure_error}")
         logger.warning("动态回归诊断图绘制失败：%s", diagnostic_view.figure_error)
     _render_residual_tests(st_obj, result, diagnostic_view)
+    _render_model_diagnostics(st_obj, result)
+
+
+def _render_model_diagnostics(st_obj, result) -> None:
+    """展示 ARMA 创新响应、RDL 输入响应和 AR/MA 根诊断。"""
+    model_result = getattr(result, "best_result", result)
+    ar_roots = tuple(getattr(model_result, "arroots", ()))
+    ma_roots = tuple(getattr(model_result, "maroots", ()))
+    if ar_roots or ma_roots:
+        st_obj.markdown("**ARMA 创新脉冲响应**")
+        steps = st_obj.number_input(
+            "创新响应期数",
+            min_value=1,
+            max_value=200,
+            value=20,
+            step=1,
+            key="sarimax_innovation_irf_steps",
+        )
+        try:
+            with matplotlib_date_compatibility():
+                figure = _plot_figure(
+                    model_result.plot_innovation_impulse_response(
+                        steps=int(steps)
+                    )
+                )
+                render_pyplot_figure(st_obj, figure)
+        except Exception as exc:
+            st_obj.warning(f"ARMA 创新脉冲响应无法绘制：{exc}")
+            logger.warning("ARMA 创新脉冲响应绘制失败", exc_info=True)
+    if getattr(model_result, "distributed_lag_names", ()):
+        st_obj.markdown("**RDL 输入冲击响应**")
+        try:
+            with matplotlib_date_compatibility():
+                render_pyplot_figure(
+                    st_obj,
+                    _plot_figure(model_result.plot_impulse_response()),
+                )
+        except Exception as exc:
+            st_obj.warning(f"RDL 输入冲击响应无法绘制：{exc}")
+            logger.warning("RDL 输入冲击响应绘制失败", exc_info=True)
+    if not (ar_roots or ma_roots):
+        return
+    st_obj.markdown("**Roots 稳定性**")
+    try:
+        roots = model_result.root_diagnostics
+        ar_status = "平稳" if model_result.is_stationary else "不平稳"
+        ma_status = "可逆" if model_result.is_invertible else "不可逆"
+        st_obj.caption(f"AR：{ar_status}；MA：{ma_status}。根的模大于 1 表示位于单位圆外。")
+        st_obj.dataframe(
+            roots.rename(
+                columns={
+                    "component": "组成",
+                    "root_real": "实部",
+                    "root_imag": "虚部",
+                    "modulus": "根模",
+                    "inverse_modulus": "逆根模",
+                    "outside_unit_circle": "单位圆外",
+                }
+            ),
+            width="stretch",
+        )
+        with matplotlib_date_compatibility():
+            render_pyplot_figure(st_obj, _plot_figure(model_result.plot_roots()))
+    except Exception as exc:
+        st_obj.warning(f"Roots 稳定性无法计算：{exc}")
+        logger.warning("SARIMAX Roots 诊断失败", exc_info=True)
+
+
+def _plot_figure(plot_result):
+    """兼容 Ts 绘图 API 返回 Figure 或 ``(Figure, Axes)`` 的形式。"""
+    if isinstance(plot_result, tuple):
+        return plot_result[0]
+    return plot_result
 
 
 def _render_residual_tests(st_obj, result, diagnostic_view) -> None:

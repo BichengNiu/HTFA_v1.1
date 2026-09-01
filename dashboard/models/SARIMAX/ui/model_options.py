@@ -47,7 +47,12 @@ def render_model_options(
         对应模型配置；控件参数无效时返回 ``None``。
     """
     if family == "SARIMAX":
-        return render_sarimax_options(st_obj, mode, response_log=response_log)
+        return render_sarimax_options(
+            st_obj,
+            mode,
+            exog=exog,
+            response_log=response_log,
+        )
     if family == "RDL":
         return render_rdl_options(
             st_obj,

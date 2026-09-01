@@ -97,7 +97,9 @@ def test_sarimax_model_opens_independent_tab_with_editable_inputs(monkeypatch):
         standalone.number_input,
         "sarimax_model_preview_data_start_row",
     ).value == 2
-    assert not standalone.dataframe
+    assert all(
+        item.key == "sarimax_exog_operators" for item in standalone.dataframe
+    )
 
     _by_key(standalone.number_input, "sarimax_p").set_value(3)
     standalone.run()
