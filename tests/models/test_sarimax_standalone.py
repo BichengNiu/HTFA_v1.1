@@ -230,6 +230,8 @@ def test_model_library_is_shared_with_standalone_and_keeps_current_result(
     source.run()
     assert any("SARIMAX" in item.label for item in source.sidebar.expander)
     _navigate_to_univariate_overview(source)
+    assert not source.sidebar.expander
+    _navigate_to_sarimax(source)
     assert any("SARIMAX" in item.label for item in source.sidebar.expander)
 
     delete_button = _by_key(

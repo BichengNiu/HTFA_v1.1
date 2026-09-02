@@ -11,9 +11,12 @@ def test_browser_tab_uses_platform_name() -> None:
 
 
 def test_public_entry_renders_navigation_without_exception():
+    from dashboard.models.common.model_library import MODEL_LIBRARY_TOKEN_KEY
+
     app = AppTest.from_file(APP_PATH, default_timeout=30).run()
 
     assert not app.exception
+    assert MODEL_LIBRARY_TOKEN_KEY not in app.session_state
     assert [button.label for button in app.sidebar.button] == [
         "数据预览",
         "模型分析",
@@ -31,6 +34,22 @@ def test_public_entry_renders_navigation_without_exception():
         in markdown.value
         for markdown in app.sidebar.markdown
     )
+
+
+def test_model_library_is_not_initialized_outside_model_analysis():
+    from dashboard.models.common.model_library import MODEL_LIBRARY_TOKEN_KEY
+
+    app = AppTest.from_file(APP_PATH, default_timeout=30).run()
+    next(
+        button
+        for button in app.sidebar.button
+        if button.label == "数据探索"
+    ).click()
+    app.run()
+
+    assert not app.exception
+    assert not app.sidebar.expander
+    assert MODEL_LIBRARY_TOKEN_KEY not in app.session_state
 
 
 def test_navigation_reaches_dfm_pages_without_exception():
