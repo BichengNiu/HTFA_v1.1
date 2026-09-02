@@ -205,6 +205,15 @@ def test_model_library_is_shared_with_standalone_and_keeps_current_result(
     standalone.query_params = parse_qs(urlparse(url).query)
     standalone.run()
     assert not standalone.exception
+    markdown_values = [item.value for item in standalone.markdown]
+    assert markdown_values.index("**预测结果**") < markdown_values.index(
+        "**保存结果**"
+    )
+    assert any("加入模型库" == item.label for item in standalone.button)
+    assert any(
+        "在新标签页打开动态回归模型" == item.label
+        for item in standalone.get("link_button")
+    )
     _by_key(
         standalone.button,
         next(

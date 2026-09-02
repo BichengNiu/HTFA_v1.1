@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dashboard.core.workspace import SessionWorkspace
+from dashboard.models.common.model_library import ModelContext
+from dashboard.models.common.ui.model_library import render_model_library_save_control
 from dashboard.models.SARIMAX.ui.data_input import (
     get_model_data_input,
     render_model_data_input,
@@ -50,27 +52,66 @@ def _render_model_page(
     try:
         render_model_data_input(st_obj, scope)
         st_obj.markdown("---")
-        render_training_section(st_obj, scope)
+        model_context = render_training_section(st_obj, scope)
         st_obj.markdown("---")
         render_analysis_section(st_obj, scope)
         st_obj.markdown("---")
         render_forecast_section(st_obj, scope)
-        if show_standalone_launcher:
-            st_obj.markdown("---")
-            _render_standalone_model_launcher(st_obj)
+        st_obj.markdown("---")
+        _render_save_results_section(
+            st_obj,
+            scope,
+            model_context,
+            show_standalone_launcher=show_standalone_launcher,
+        )
     finally:
         workspace.end_page(scope.namespace)
 
 
-def _render_standalone_model_launcher(st_obj) -> None:
-    """复制 SARIMAX 输入上下文到浏览器独立标签页。"""
-    st_obj.markdown("**复制到独立标签页**")
-    st_obj.caption("新页面会复制当前文件、读取设置以及当前的拟合、诊断和预测结果；两边之后可分别继续操作。")
-    url = create_standalone_sarimax_model_url(st_obj)
-    if url is None:
-        st_obj.info("请先上传并读取 SARIMAX 数据文件。")
+def _render_save_results_section(
+    st_obj,
+    scope: ModelPageScope,
+    model_context: ModelContext | None,
+    *,
+    show_standalone_launcher: bool,
+) -> None:
+    """在预测结果之后并排提供模型库保存和独立页入口。"""
+
+    st_obj.markdown("**保存结果**")
+    columns = st_obj.columns(2 if show_standalone_launcher else 1)
+    with columns[0]:
+        st_obj.markdown("**保存到模型库**")
+        result = scope.state.get("fitted_result")
+        signature = scope.state.get("fit_signature")
+        if model_context is None or result is None or not signature:
+            st_obj.info("完成模型训练后可将当前模型加入模型库。")
+        else:
+            render_model_library_save_control(
+                st_obj,
+                result,
+                family=scope.family,
+                signature=signature,
+                context=model_context,
+            )
+
+    if not show_standalone_launcher:
         return
-    st_obj.link_button("在新标签页打开动态回归模型", url, icon=":material/open_in_new:")
+    with columns[1]:
+        st_obj.markdown("**暂存到独立标签页**")
+        st_obj.caption(
+            "新页面会复制当前文件、读取设置以及当前的拟合、诊断和预测结果；"
+            "两边之后可分别继续操作。"
+        )
+        url = create_standalone_sarimax_model_url(st_obj)
+        if url is None:
+            st_obj.info("请先上传并读取 SARIMAX 数据文件。")
+            return
+        st_obj.link_button(
+            "在新标签页打开动态回归模型",
+            url,
+            icon=":material/open_in_new:",
+            width="stretch",
+        )
 
 
 __all__ = [

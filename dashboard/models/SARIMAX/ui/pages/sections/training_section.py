@@ -7,7 +7,6 @@ import logging
 from dashboard.core.workspace import artifact_signature
 from dashboard.models.common.model_library import ModelContext
 from dashboard.models.common.ui.model_inputs import ModelInputModule
-from dashboard.models.common.ui.model_library import render_model_library_save_control
 from dashboard.models.common.ui.result_view import render_estimation_result
 from dashboard.models.common.workflow import ModelWorkflow
 from dashboard.models.SARIMAX.core.adapters import DynamicRegressionAdapter, is_automatic_config
@@ -49,8 +48,11 @@ def _model_inputs(scope: ModelPageScope) -> ModelInputModule:
     return module
 
 
-def render_training_section(st_obj, scope: ModelPageScope = SARIMAX_SCOPE) -> None:
-    """配置并拟合一个独立 Tab 固定的模型族。"""
+def render_training_section(
+    st_obj,
+    scope: ModelPageScope = SARIMAX_SCOPE,
+) -> ModelContext | None:
+    """配置并拟合一个独立 Tab 固定的模型族，返回当前结果上下文。"""
     state = scope.state
     dataset = state.get("dataset")
     if dataset is None:
@@ -147,22 +149,14 @@ def render_training_section(st_obj, scope: ModelPageScope = SARIMAX_SCOPE) -> No
     if state.get("fit_signature") != signature:
         scope.clear_fit_results()
         return
-    _render_fit_summary(
-        st_obj,
-        result,
-        scope,
-        signature=signature,
-        context=context,
-    )
+    _render_fit_summary(st_obj, result, scope)
+    return context
 
 
 def _render_fit_summary(
     st_obj,
     result,
     scope: ModelPageScope,
-    *,
-    signature: str,
-    context: ModelContext,
 ) -> None:
     """通过通用结果视图展示拟合摘要与关键指标。"""
     selected = render_estimation_result(
@@ -171,13 +165,6 @@ def _render_fit_summary(
         candidate_selection_key=scope.key("auto_selection_model"),
     )
     if selected is None:
-        render_model_library_save_control(
-            st_obj,
-            result,
-            family=scope.family,
-            signature=signature,
-            context=context,
-        )
         return
     try:
         result = _MODEL_WORKFLOW.select_result(result, selected)
@@ -189,13 +176,6 @@ def _render_fit_summary(
         st_obj, _MODEL_WORKFLOW.result_view(result),
         selection_key=scope.key("auto_selection_criterion"),
         candidate_selection_key=scope.key("auto_selection_model"), show_selection=False,
-    )
-    render_model_library_save_control(
-        st_obj,
-        result,
-        family=scope.family,
-        signature=signature,
-        context=context,
     )
 
 

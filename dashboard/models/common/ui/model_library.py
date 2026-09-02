@@ -69,7 +69,6 @@ def render_model_library_save_control(
     if label_key not in st_obj.session_state:
         st_obj.session_state[label_key] = existing.label if existing else ""
 
-    st_obj.markdown("**模型库**")
     if existing is not None:
         st_obj.caption(
             "该模型已在模型库中；再次保存会更新模型对象和保存时间，"
@@ -87,6 +86,7 @@ def render_model_library_save_control(
         "加入模型库",
         key=_save_key(family, signature),
         type="secondary",
+        width="stretch",
     ):
         try:
             record = library.save(
