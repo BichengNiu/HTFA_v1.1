@@ -161,6 +161,7 @@ def test_sarimax_handoff_keeps_selected_sheet_and_target_variables(
         pd.DataFrame(
             {
                 "daily_date": pd.date_range("2020-01-01", periods=3, freq="D"),
+                "daily_period": pd.date_range("2020-01-02", periods=3, freq="D"),
                 "daily_target": [4, 5, 6],
             }
         ).to_excel(writer, sheet_name="日表", index=False)
@@ -175,6 +176,13 @@ def test_sarimax_handoff_keeps_selected_sheet_and_target_variables(
     _by_key(source.button, "sarimax_start_processing_button").click()
     source.run()
     _by_key(source.selectbox, "sarimax_model_preview_sheet").select("日表")
+    source.run()
+    assert not any(
+        item.key == "sarimax_target_select" for item in source.selectbox
+    )
+    _by_key(source.selectbox, "sarimax_model_preview_time_column").select(
+        "daily_period"
+    )
     source.run()
     assert not any(
         item.key == "sarimax_target_select" for item in source.selectbox
@@ -198,7 +206,10 @@ def test_sarimax_handoff_keeps_selected_sheet_and_target_variables(
     ).value == "日表"
     assert _by_key(
         standalone.selectbox, "sarimax_model_preview_time_column"
-    ).options == ["无", "daily_date", "daily_target"]
+    ).options == ["无", "daily_date", "daily_period", "daily_target"]
+    assert _by_key(
+        standalone.selectbox, "sarimax_model_preview_time_column"
+    ).value == "daily_period"
     target_box = _by_key(standalone.selectbox, "sarimax_target_select")
     assert target_box.options == ["daily_target"]
     assert target_box.value == "daily_target"

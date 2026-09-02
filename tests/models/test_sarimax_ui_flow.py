@@ -1504,12 +1504,14 @@ def test_model_target_variables_follow_selected_sheet_across_model_tabs(
             {
                 "first_date": pd.date_range("2020-01-01", periods=3, freq="D"),
                 "first_target": [1, 2, 3],
+                "first_exog": [7, 8, 9],
             }
         ).to_excel(writer, sheet_name="第一表", index=False)
         pd.DataFrame(
             {
                 "second_date": pd.date_range("2021-01-01", periods=3, freq="D"),
                 "second_target": [4, 5, 6],
+                "second_exog": [10, 11, 12],
             }
         ).to_excel(writer, sheet_name="第二表", index=False)
 
@@ -1524,13 +1526,23 @@ def test_model_target_variables_follow_selected_sheet_across_model_tabs(
         model_prefix=model_prefix,
     )
     target_key = f"{model_prefix}_target_select"
+    exog_key = f"{model_prefix}_exog_select"
     sheet_key = f"{model_prefix}_model_preview_sheet"
-    assert _by_key(app.selectbox, target_key).options == ["first_target"]
+    assert _by_key(app.selectbox, target_key).options == [
+        "first_target",
+        "first_exog",
+    ]
+    assert _by_key(app.multiselect, exog_key).options == ["first_exog"]
+    assert _by_key(app.slider, f"{model_prefix}_train_forecast_window")
 
     _by_key(app.selectbox, sheet_key).select("第二表")
     app.run()
     assert not app.exception
     assert not any(item.key == target_key for item in app.selectbox)
+    assert not any(item.key == exog_key for item in app.multiselect)
+    assert not any(
+        item.key == f"{model_prefix}_train_forecast_window" for item in app.slider
+    )
     time_box = _by_key(app.selectbox, f"{model_prefix}_model_preview_time_column")
     assert "second_date" in time_box.options
     assert "first_date" not in time_box.options
@@ -1538,4 +1550,9 @@ def test_model_target_variables_follow_selected_sheet_across_model_tabs(
     _by_key(app.button, f"{model_prefix}_start_processing_button").click()
     app.run()
     assert not app.exception
-    assert _by_key(app.selectbox, target_key).options == ["second_target"]
+    assert _by_key(app.selectbox, target_key).options == [
+        "second_target",
+        "second_exog",
+    ]
+    assert _by_key(app.multiselect, exog_key).options == ["second_exog"]
+    assert _by_key(app.slider, f"{model_prefix}_train_forecast_window")
