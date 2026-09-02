@@ -253,10 +253,10 @@ def render_data_overview(
         f"::variable_name_row={variable_name_row}"
         f"::data_start_row={data_start_row}"
     )
-    dataset_changed = dataset is not None and not str(
+    base_settings_changed = dataset is not None and not str(
         dataset.fingerprint
     ).startswith(settings_fingerprint)
-    if dataset_changed:
+    if base_settings_changed:
         clear_dataset()
 
     try:
@@ -347,8 +347,9 @@ def render_data_overview(
         if is_dataclass(dataset) and hasattr(dataset, "time_column"):
             dataset = replace(dataset, time_column=time_column)
         state.set("dataset", dataset)
-        if not dataset_changed:
-            notify_dataset_replaced()
+        # 这里同时覆盖时间列变化和首次建立数据集；基础读取设置变化
+        # 已经在上方清理过，通知函数负责避免重复清理。
+        notify_dataset_replaced()
 
     if not config.show_preview:
         return

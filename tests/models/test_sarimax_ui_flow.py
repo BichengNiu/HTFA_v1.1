@@ -1583,3 +1583,51 @@ def test_handoff_parse_failure_clears_restored_model_results(monkeypatch):
     assert not any(
         item.key == "sarimax_target_select" for item in app.selectbox
     )
+
+
+def test_time_column_change_clears_model_input_until_reprocessed(monkeypatch):
+    """时间列变化后，目标、外生变量和训练范围必须等待重新处理。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    dates = pd.date_range("2020-01-01", periods=60, freq="D")
+    frame = pd.DataFrame(
+        {
+            "date_a": dates,
+            "date_b": dates + pd.Timedelta(days=1),
+            "value": [10.0 + step * 0.1 for step in range(60)],
+            "policy": [1.0 + step * 0.05 for step in range(60)],
+        }
+    )
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=90).run()
+    _prepare_model_app(
+        app,
+        ("two-time-columns.csv", frame.to_csv(index=False).encode("utf-8"), "text/csv"),
+    )
+    assert _by_key(app.selectbox, "sarimax_target_select").options == [
+        "value",
+        "policy",
+    ]
+    assert _by_key(app.multiselect, "sarimax_exog_select").options == [
+        "policy"
+    ]
+    assert _by_key(app.slider, "sarimax_train_forecast_window")
+
+    _by_key(app.selectbox, "sarimax_model_preview_time_column").select("date_b")
+    app.run()
+
+    assert not app.exception
+    assert not any(
+        item.key == "sarimax_target_select" for item in app.selectbox
+    )
+    assert not any(item.key == "sarimax_exog_select" for item in app.multiselect)
+    assert not any(
+        item.key == "sarimax_train_forecast_window" for item in app.slider
+    )
+
+    _by_key(app.button, "sarimax_start_processing_button").click()
+    app.run()
+    assert _by_key(app.selectbox, "sarimax_target_select").options == [
+        "value",
+        "policy",
+    ]
