@@ -232,7 +232,8 @@ def mark_sarimax_handoff_restore(
         if raw_data is not None:
             state.set(
                 "time_options_signature",
-                (snapshot.asset.fingerprint, variable_name_row, data_start_row,
+                (snapshot.asset.fingerprint, snapshot.sheet or "none",
+                 variable_name_row, data_start_row,
                  ("无", *[str(column) for column in raw_data.columns])),
             )
     except Exception:

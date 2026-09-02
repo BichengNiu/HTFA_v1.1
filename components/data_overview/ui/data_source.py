@@ -226,6 +226,7 @@ class BuiltinDataSource:
             st.error(f"工作表读取失败：{exc}")
             st.session_state.pop(self._key("data"), None)
             st.session_state[self._key("raw_rows")] = []
+            st.session_state[self._key("sheet")] = sheet
             return
         try:
             data = build_dataframe_from_rows(raw_rows)

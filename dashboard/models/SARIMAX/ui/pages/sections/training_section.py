@@ -72,8 +72,9 @@ def render_training_section(
         state.set("model_selection", selection)
         scope.clear_fit_results()
 
+    dataset_fingerprint = str(getattr(dataset, "fingerprint", "") or "")
     inputs = _model_inputs(scope).render(
-        st_obj, dataset, dataset_fingerprint=str(state.get("file_fingerprint") or ""),
+        st_obj, dataset, dataset_fingerprint=dataset_fingerprint,
     )
     if inputs is None:
         return
@@ -102,7 +103,7 @@ def render_training_section(
         for warning in fit_input_warnings(inputs.exog):
             st_obj.warning(warning)
     signature = artifact_signature(
-        data_fingerprint=str(state.get("file_fingerprint") or ""),
+        data_fingerprint=dataset_fingerprint,
         parameters={
             "family": scope.family, "mode": mode, "target": inputs.target,
             "exog_variables": inputs.exog_names,

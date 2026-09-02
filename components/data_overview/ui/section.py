@@ -159,18 +159,11 @@ def render_data_overview(
             config.on_dataset_replaced(st_obj)
 
     source_fingerprint = data_source.current_fingerprint()
-    sheet_identity = data_source.current_sheet() or "none"
     if not source_fingerprint:
         clear_dataset()
         state.set("source_fingerprint", None)
         state.set("time_options_signature", None)
         st_obj.info("请在上方上传数据文件（CSV / XLSX / XLS）。")
-        return
-
-    row_count = data_source.row_count()
-    if row_count < 2:
-        clear_dataset()
-        st_obj.error("文件中至少需要一行变量名和一行数据。")
         return
 
     # 工作表、变量名行、时间列和数据开始行在同一排。
@@ -187,7 +180,7 @@ def render_data_overview(
             ):
                 st.session_state[sheet_key] = sheets[0]
             current_sheet = data_source.current_sheet()
-            selection_columns[column_index].selectbox(
+            selected_sheet = selection_columns[column_index].selectbox(
                 "选择工作表",
                 options=sheets,
                 index=sheets.index(current_sheet)
@@ -197,7 +190,20 @@ def render_data_overview(
                 on_change=_make_sheet_callback(data_source, sheet_key),
                 help="Excel 文件包含多个工作表时，切换后重新加载该表数据。",
             )
+            if selected_sheet != data_source.current_sheet():
+                data_source.select_sheet(selected_sheet)
+            if data_source.current_sheet() != selected_sheet:
+                clear_dataset()
+                st_obj.error("工作表状态同步失败，请重新选择工作表。")
+                return
         column_index += 1
+
+    sheet_identity = data_source.current_sheet() or "none"
+    row_count = data_source.row_count()
+    if row_count < 2:
+        clear_dataset()
+        st_obj.error("文件中至少需要一行变量名和一行数据。")
+        return
 
     time_key = preview_key(key_prefix, "time_column")
     variable_name_key = preview_key(key_prefix, "variable_name_row")
@@ -264,6 +270,7 @@ def render_data_overview(
     time_options = ["无", *[str(column) for column in raw_data.columns]]
     time_options_signature = (
         source_fingerprint,
+        sheet_identity,
         int(variable_name_row),
         int(data_start_row),
         tuple(time_options),

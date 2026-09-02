@@ -15,7 +15,10 @@ from data_overview.ui.widget_keys import (
 )
 from Ts.TsUtils import hurst_exponent
 
-from dashboard.core.ui.utils.shared_dataset import get_shared_dataset_fingerprint
+from dashboard.core.ui.utils.shared_dataset import (
+    get_shared_dataset_fingerprint,
+    get_shared_dataset_sheet,
+)
 from dashboard.core.ui.utils.state_helpers import NamespacedStateManager
 from dashboard.explore.analysis.stationarity import (
     numeric_variable_names,
@@ -360,6 +363,7 @@ def mark_data_overview_handoff_restore(st_obj) -> None:
                     "time_options_signature",
                     (
                         fingerprint,
+                        get_shared_dataset_sheet() or "none",
                         variable_name_row,
                         data_start_row,
                         ("无", *[str(column) for column in raw_data.columns]),

@@ -1427,3 +1427,64 @@ def test_excel_sheet_selection_via_ui(monkeypatch):
         assert preview.iloc[0]["date"] == "2022-01-01"
     finally:
         path.unlink(missing_ok=True)
+
+
+def test_model_target_variables_follow_restored_visible_sheet(monkeypatch, tmp_path):
+    """页面恢复工作表控件时，目标变量必须来自可见工作表。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
+    _navigate_to_sarimax(app)
+
+    path = tmp_path / "sheet-targets.xlsx"
+    with pd.ExcelWriter(path, engine="openpyxl") as writer:
+        pd.DataFrame(
+            {
+                "monthly_date": pd.date_range("2020-01-01", periods=3, freq="D"),
+                "monthly_target": [1, 2, 3],
+            }
+        ).to_excel(writer, sheet_name="月表", index=False)
+        pd.DataFrame(
+            {
+                "daily_date": pd.date_range("2020-01-01", periods=3, freq="D"),
+                "daily_target": [4, 5, 6],
+            }
+        ).to_excel(writer, sheet_name="日表", index=False)
+
+    payload = (
+        path.name,
+        path.read_bytes(),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    _by_key(
+        app.file_uploader, "model_analysis.sarimax.upload.uploader"
+    ).upload(*payload)
+    app.run()
+    assert not app.exception
+    _by_key(app.button, "sarimax_start_processing_button").click()
+    app.run()
+    assert not app.exception
+    assert "monthly_target" in _by_key(
+        app.selectbox, "sarimax_target_select"
+    ).options
+
+    # 模拟页面交接快照只恢复了可见工作表控件，底层数据源仍停留在月表。
+    app.session_state["sarimax_model_preview_sheet"] = "日表"
+    app.run()
+    assert not app.exception
+    sheet_box = _by_key(app.selectbox, "sarimax_model_preview_sheet")
+    assert sheet_box.value == "日表"
+    assert not any(
+        element.key == "sarimax_target_select" for element in app.selectbox
+    )
+    time_box = _by_key(app.selectbox, "sarimax_model_preview_time_column")
+    assert "daily_date" in time_box.options
+    assert "monthly_date" not in time_box.options
+
+    _by_key(app.button, "sarimax_start_processing_button").click()
+    app.run()
+    assert not app.exception
+    target_box = _by_key(app.selectbox, "sarimax_target_select")
+    assert target_box.options == ["daily_target"]
+    assert target_box.value == "daily_target"

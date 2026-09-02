@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import pandas as pd
 from Ts.TsSims import simulate_sarima
 
 
@@ -40,14 +41,16 @@ def _navigate_to_univariate_overview(app) -> None:
     app.run()
 
 
-def _upload_model_file(app, name: str, content: bytes) -> None:
+def _upload_model_file(
+    app, name: str, content: bytes, mime: str = "text/csv"
+) -> None:
     _navigate_to_sarimax(app)
     uploader = next(
         element
         for element in app.file_uploader
         if element.key == "model_analysis.sarimax.upload.uploader"
     )
-    uploader.upload(name, content, "text/csv")
+    uploader.upload(name, content, mime)
     app.run()
     _by_key(app.button, "sarimax_start_processing_button").click()
     app.run()
@@ -138,6 +141,67 @@ def test_sarimax_handoff_token_is_reused_and_payload_is_opaque(monkeypatch):
     assert second_url == first_url
     assert "stable.csv" not in first_url
     assert "2020-01-01" not in first_url
+
+
+def test_sarimax_handoff_keeps_selected_sheet_and_target_variables(
+    monkeypatch, tmp_path
+):
+    """独立页交接后，工作表、时间列和目标变量保持同一数据集身份。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    workbook = tmp_path / "handoff-sheets.xlsx"
+    with pd.ExcelWriter(workbook, engine="openpyxl") as writer:
+        pd.DataFrame(
+            {
+                "monthly_date": pd.date_range("2020-01-01", periods=3, freq="D"),
+                "monthly_target": [1, 2, 3],
+            }
+        ).to_excel(writer, sheet_name="月表", index=False)
+        pd.DataFrame(
+            {
+                "daily_date": pd.date_range("2020-01-01", periods=3, freq="D"),
+                "daily_target": [4, 5, 6],
+            }
+        ).to_excel(writer, sheet_name="日表", index=False)
+
+    source = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
+    _upload_model_file(
+        source,
+        workbook.name,
+        workbook.read_bytes(),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    _by_key(source.button, "sarimax_start_processing_button").click()
+    source.run()
+    _by_key(source.selectbox, "sarimax_model_preview_sheet").select("日表")
+    source.run()
+    assert not any(
+        item.key == "sarimax_target_select" for item in source.selectbox
+    )
+    _by_key(source.button, "sarimax_start_processing_button").click()
+    source.run()
+    assert _by_key(source.selectbox, "sarimax_target_select").options == [
+        "daily_target"
+    ]
+
+    url = source.get("link_button")[0].proto.url
+    standalone = AppTest.from_file(
+        PROJECT_ROOT / "app.py", default_timeout=60
+    )
+    standalone.query_params = parse_qs(urlparse(url).query)
+    standalone.run()
+
+    assert not standalone.exception
+    assert _by_key(
+        standalone.selectbox, "sarimax_model_preview_sheet"
+    ).value == "日表"
+    assert _by_key(
+        standalone.selectbox, "sarimax_model_preview_time_column"
+    ).options == ["无", "daily_date", "daily_target"]
+    target_box = _by_key(standalone.selectbox, "sarimax_target_select")
+    assert target_box.options == ["daily_target"]
+    assert target_box.value == "daily_target"
 
 
 def test_sarimax_handoff_copies_fitted_diagnostics_and_forecast_results(monkeypatch):
