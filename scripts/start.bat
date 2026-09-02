@@ -77,7 +77,7 @@ if not defined HTFA_DEBUG_MODE set "HTFA_DEBUG_MODE=true"
 echo [INFO] Debug mode: %HTFA_DEBUG_MODE%
 echo [INFO] Checking Ts main before launch; offline mode uses the local version.
 echo.
-"runtime\python.exe" -B scripts\htfa.py start --server.port=8501 %*
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "scripts\run_htfa.ps1" -ProjectRoot "%CD%" -RuntimePython "%CD%\runtime\python.exe" -Port 8501 %*
 set "HTFA_START_CODE=%ERRORLEVEL%"
 
 echo.
@@ -98,7 +98,6 @@ if not "%HTFA_STOP_CODE%"=="0" (
 
 echo.
 echo [OK] HTFA has stopped.
-pause
 exit /b 0
 
 :failed

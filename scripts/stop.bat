@@ -26,7 +26,6 @@ if errorlevel 1 (
 
 echo.
 echo [OK] HTFA backend process tree has been terminated and verified.
-pause
 exit /b 0
 
 :failed
