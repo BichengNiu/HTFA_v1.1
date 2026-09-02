@@ -148,15 +148,22 @@ def render_data_overview(
     data_source.render_uploader(st_obj, compact=True)
 
     dataset = state.get("dataset")
+    dataset_replacement_notified = False
+
+    def notify_dataset_replaced() -> None:
+        nonlocal dataset_replacement_notified
+        if (
+            config.on_dataset_replaced is not None
+            and not dataset_replacement_notified
+        ):
+            dataset_replacement_notified = True
+            config.on_dataset_replaced(st_obj)
 
     def clear_dataset() -> None:
         nonlocal dataset
-        if dataset is None:
-            return
         state.set("dataset", None)
         dataset = None
-        if config.on_dataset_replaced is not None:
-            config.on_dataset_replaced(st_obj)
+        notify_dataset_replaced()
 
     source_fingerprint = data_source.current_fingerprint()
     if not source_fingerprint:
@@ -334,13 +341,14 @@ def render_data_overview(
                 fingerprint,
             )
         except Exception as exc:  # noqa: BLE001 - 用户可读的数据解析边界
+            clear_dataset()
             st_obj.error(f"数据集校验失败：{exc}")
             return
         if is_dataclass(dataset) and hasattr(dataset, "time_column"):
             dataset = replace(dataset, time_column=time_column)
         state.set("dataset", dataset)
-        if not dataset_changed and config.on_dataset_replaced is not None:
-            config.on_dataset_replaced(st_obj)
+        if not dataset_changed:
+            notify_dataset_replaced()
 
     if not config.show_preview:
         return

@@ -1488,3 +1488,54 @@ def test_model_target_variables_follow_restored_visible_sheet(monkeypatch, tmp_p
     target_box = _by_key(app.selectbox, "sarimax_target_select")
     assert target_box.options == ["daily_target"]
     assert target_box.value == "daily_target"
+
+
+@pytest.mark.parametrize("model_prefix", ["rdl", "ardl"])
+def test_model_target_variables_follow_selected_sheet_across_model_tabs(
+    monkeypatch, tmp_path, model_prefix
+):
+    """RDL 和 ARDL 也必须按各自页面的工作表生成目标变量。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    path = tmp_path / f"{model_prefix}-sheet-targets.xlsx"
+    with pd.ExcelWriter(path, engine="openpyxl") as writer:
+        pd.DataFrame(
+            {
+                "first_date": pd.date_range("2020-01-01", periods=3, freq="D"),
+                "first_target": [1, 2, 3],
+            }
+        ).to_excel(writer, sheet_name="第一表", index=False)
+        pd.DataFrame(
+            {
+                "second_date": pd.date_range("2021-01-01", periods=3, freq="D"),
+                "second_target": [4, 5, 6],
+            }
+        ).to_excel(writer, sheet_name="第二表", index=False)
+
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
+    _prepare_model_app(
+        app,
+        (
+            path.name,
+            path.read_bytes(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ),
+        model_prefix=model_prefix,
+    )
+    target_key = f"{model_prefix}_target_select"
+    sheet_key = f"{model_prefix}_model_preview_sheet"
+    assert _by_key(app.selectbox, target_key).options == ["first_target"]
+
+    _by_key(app.selectbox, sheet_key).select("第二表")
+    app.run()
+    assert not app.exception
+    assert not any(item.key == target_key for item in app.selectbox)
+    time_box = _by_key(app.selectbox, f"{model_prefix}_model_preview_time_column")
+    assert "second_date" in time_box.options
+    assert "first_date" not in time_box.options
+
+    _by_key(app.button, f"{model_prefix}_start_processing_button").click()
+    app.run()
+    assert not app.exception
+    assert _by_key(app.selectbox, target_key).options == ["second_target"]
