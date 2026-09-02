@@ -69,11 +69,12 @@ def render_model_library_save_control(
     if label_key not in st_obj.session_state:
         st_obj.session_state[label_key] = existing.label if existing else ""
 
-    if existing is not None:
-        st_obj.caption(
-            "该模型已在模型库中；再次保存会更新模型对象和保存时间，"
-            "并保留记录编号与名称。"
-        )
+    clicked = st_obj.button(
+        "加入模型库",
+        key=_save_key(family, signature),
+        type="secondary",
+        width="stretch",
+    )
     label = st_obj.text_input(
         "模型库名称（可选）",
         key=label_key,
@@ -82,12 +83,11 @@ def render_model_library_save_control(
             "仅新记录使用此名称；同一模型签名再次保存时保留原名称。"
         ),
     )
-    if st_obj.button(
-        "加入模型库",
-        key=_save_key(family, signature),
-        type="secondary",
-        width="stretch",
-    ):
+    if existing is not None:
+        st_obj.caption(
+            "再次保存会更新模型对象和保存时间，并保留记录编号与名称。"
+        )
+    if clicked:
         try:
             record = library.save(
                 model_object,

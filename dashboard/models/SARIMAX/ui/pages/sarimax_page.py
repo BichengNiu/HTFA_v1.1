@@ -80,38 +80,40 @@ def _render_save_results_section(
     st_obj.markdown("**保存结果**")
     columns = st_obj.columns(2 if show_standalone_launcher else 1)
     with columns[0]:
-        st_obj.markdown("**保存到模型库**")
-        result = scope.state.get("fitted_result")
-        signature = scope.state.get("fit_signature")
-        if model_context is None or result is None or not signature:
-            st_obj.info("完成模型训练后可将当前模型加入模型库。")
-        else:
-            render_model_library_save_control(
-                st_obj,
-                result,
-                family=scope.family,
-                signature=signature,
-                context=model_context,
-            )
+        with st_obj.container(border=True):
+            st_obj.markdown("#### 保存到模型库")
+            st_obj.caption("保存当前拟合模型的副本，供后续模型性能比较使用。")
+            result = scope.state.get("fitted_result")
+            signature = scope.state.get("fit_signature")
+            if model_context is None or result is None or not signature:
+                st_obj.info("完成模型训练后即可加入模型库。")
+            else:
+                render_model_library_save_control(
+                    st_obj,
+                    result,
+                    family=scope.family,
+                    signature=signature,
+                    context=model_context,
+                )
 
     if not show_standalone_launcher:
         return
     with columns[1]:
-        st_obj.markdown("**暂存到独立标签页**")
-        st_obj.caption(
-            "新页面会复制当前文件、读取设置以及当前的拟合、诊断和预测结果；"
-            "两边之后可分别继续操作。"
-        )
-        url = create_standalone_sarimax_model_url(st_obj)
-        if url is None:
-            st_obj.info("请先上传并读取 SARIMAX 数据文件。")
-            return
-        st_obj.link_button(
-            "在新标签页打开动态回归模型",
-            url,
-            icon=":material/open_in_new:",
-            width="stretch",
-        )
+        with st_obj.container(border=True):
+            st_obj.markdown("#### 暂存到独立标签页")
+            st_obj.caption(
+                "复制当前文件、输入和结果到临时页面；之后的修改不会回写本页。"
+            )
+            url = create_standalone_sarimax_model_url(st_obj)
+            if url is None:
+                st_obj.info("请先上传并读取 SARIMAX 数据文件。")
+                return
+            st_obj.link_button(
+                "在新标签页打开动态回归模型",
+                url,
+                icon=":material/open_in_new:",
+                width="stretch",
+            )
 
 
 __all__ = [
