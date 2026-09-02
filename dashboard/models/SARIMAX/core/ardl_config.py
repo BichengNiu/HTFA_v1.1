@@ -1,16 +1,15 @@
-"""标准 ARDL 手动与自动选阶配置。"""
+"""标准 ARDL 手动配置。"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 from dashboard.models.SARIMAX.core.config_shared import (
-    ARDL_CRITERIA,
-    ARDL_SEARCH_METHODS,
     _validate_int_in_range,
     _validate_lag_tuple,
     _validate_trend,
 )
+from dashboard.models.SARIMAX.core.sarimax_config import SARIMAXConfig
 
 
 def _validate_ardl_lags(
@@ -61,7 +60,7 @@ def _validate_ardl_orders(
 
 @dataclass(frozen=True)
 class ARDLConfig:
-    """手动标准 ARDL 配置（目标滞后与逐输入有限滞后）。"""
+    """手动标准 ARDL 配置（目标/输入滞后与可选 SARIMA 误差项）。"""
 
     lags: int | tuple[int, ...] | None = 1
     input_orders: tuple[tuple[str, object], ...] = ()
@@ -72,6 +71,7 @@ class ARDLConfig:
     hold_back: int | None = None
     log: bool = False
     cov_type: str = "nonrobust"
+    error: SARIMAXConfig | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -84,6 +84,8 @@ class ARDLConfig:
             "input_orders",
             _validate_ardl_orders(self.input_orders),
         )
+        if self.error is not None and not isinstance(self.error, SARIMAXConfig):
+            raise TypeError("error 必须是 SARIMAXConfig 或 None")
         object.__setattr__(self, "trend", _validate_trend(self.trend))
         for name in ("causal", "seasonal", "log"):
             if not isinstance(getattr(self, name), bool):
@@ -124,88 +126,8 @@ class ARDLConfig:
             self.hold_back,
             self.log,
             self.cov_type,
+            None if self.error is None else self.error.signature(),
         )
 
 
-@dataclass(frozen=True)
-class AutoARDLConfig:
-    """自动标准 ARDL 选阶配置。"""
-
-    maxlag: int = 3
-    max_input_orders: tuple[tuple[str, int], ...] = ()
-    trend: str = "c"
-    criterion: str = "bic"
-    search_method: str = "hierarchical"
-    causal: bool = False
-    seasonal: bool = False
-    period: int | None = None
-    hold_back: int | None = None
-    log: bool = False
-    cov_type: str = "nonrobust"
-
-    def __post_init__(self) -> None:
-        object.__setattr__(
-            self,
-            "maxlag",
-            _validate_int_in_range("最大目标滞后", self.maxlag, (0, 12)),
-        )
-        pairs = _validate_ardl_orders(self.max_input_orders)
-        if any(not isinstance(order, int) for _, order in pairs):
-            raise TypeError("自动 ARDL 的最大输入滞后必须是整数")
-        object.__setattr__(
-            self,
-            "max_input_orders",
-            tuple((name, int(order)) for name, order in pairs),
-        )
-        object.__setattr__(self, "trend", _validate_trend(self.trend))
-        if self.criterion not in ARDL_CRITERIA:
-            raise ValueError(f"criterion 必须是 {ARDL_CRITERIA} 之一")
-        if self.search_method not in ARDL_SEARCH_METHODS:
-            raise ValueError(
-                f"search_method 必须是 {ARDL_SEARCH_METHODS} 之一"
-            )
-        for name in ("causal", "seasonal", "log"):
-            if not isinstance(getattr(self, name), bool):
-                raise TypeError(f"{name} 必须是布尔值")
-        if self.period is not None:
-            object.__setattr__(
-                self,
-                "period",
-                _validate_int_in_range("period", self.period, (2, 365)),
-            )
-        if self.seasonal and self.period is None:
-            raise ValueError("启用季节虚拟项时必须设置 period")
-        if self.hold_back is not None:
-            object.__setattr__(
-                self,
-                "hold_back",
-                _validate_int_in_range(
-                    "hold_back",
-                    self.hold_back,
-                    (0, 100000),
-                ),
-            )
-
-    def maxorder_mapping(self) -> dict[str, int]:
-        """返回自动 ARDL 的逐输入最大滞后映射。"""
-        return dict(self.max_input_orders)
-
-    def signature(self) -> tuple:
-        """返回完整自动 ARDL 缓存签名。"""
-        return (
-            "ardl-auto",
-            self.maxlag,
-            self.max_input_orders,
-            self.trend,
-            self.criterion,
-            self.search_method,
-            self.causal,
-            self.seasonal,
-            self.period,
-            self.hold_back,
-            self.log,
-            self.cov_type,
-        )
-
-
-__all__ = ["ARDLConfig", "AutoARDLConfig"]
+__all__ = ["ARDLConfig"]

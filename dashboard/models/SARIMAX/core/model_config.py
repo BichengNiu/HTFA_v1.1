@@ -4,7 +4,7 @@
 名称，保持页面与外部调用的稳定导入路径。
 """
 
-from dashboard.models.SARIMAX.core.ardl_config import ARDLConfig, AutoARDLConfig
+from dashboard.models.SARIMAX.core.ardl_config import ARDLConfig
 from dashboard.models.SARIMAX.core.config_shared import (
     ARDL_CRITERIA,
     ARDL_SEARCH_METHODS,
@@ -16,11 +16,7 @@ from dashboard.models.SARIMAX.core.config_shared import (
     TREND_LABELS,
     TREND_OPTIONS,
 )
-from dashboard.models.SARIMAX.core.rdl_config import (
-    AutoRDLConfig,
-    RDLConfig,
-    RDLInputConfig,
-)
+from dashboard.models.SARIMAX.core.rdl_config import RDLConfig, RDLInputConfig
 from dashboard.models.SARIMAX.core.sarimax_config import (
     AutoSARIMAXConfig,
     SARIMAXConfig,
@@ -37,8 +33,6 @@ __all__ = [
     "TREND_LABELS",
     "TREND_OPTIONS",
     "ARDLConfig",
-    "AutoARDLConfig",
-    "AutoRDLConfig",
     "AutoSARIMAXConfig",
     "RDLConfig",
     "RDLInputConfig",

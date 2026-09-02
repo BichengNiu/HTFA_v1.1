@@ -139,43 +139,6 @@ def _build_auto_sarimax_view(
     )
 
 
-def _build_auto_ardl_view(result: Any) -> EstimationResultView:
-    """构建标准 ARDL 自动选阶结果视图。"""
-    best = _best_result(result)
-    criterion = getattr(result, "selection_criterion", "bic")
-    table = result.criterion_table.copy()
-    return EstimationResultView(
-        model_name=str(getattr(best, "model_type", "ARDL")),
-        result=result,
-        converged=bool(getattr(best, "converged", False)),
-        effective_nobs=int(
-            getattr(best, "effective_nobs", getattr(best, "nobs", 0))
-        ),
-        optimizer=getattr(best, "optimizer", None),
-        aic=_float_attribute(result, best, "aic"),
-        bic=_float_attribute(result, best, "bic"),
-        log_likelihood=_float_attribute(result, best, "log_likelihood"),
-        summary=str(best.summary()),
-        metadata={
-            "selection_criterion": criterion,
-            "search_method": getattr(result, "search_method", None),
-        },
-        selection_title="自动选阶结果",
-        selection_message=f"候选评估完成：共评估 {len(table)} 个 ARDL 候选模型。",
-        selection_table=table.rename(
-            columns={
-                "criterion": str(criterion).upper(),
-                "target_lags": "目标滞后",
-                "input_lags": "输入滞后",
-            }
-        ),
-        selected_label=(
-            f"最优 ARDL：目标滞后 {result.ar_lags}；"
-            f"输入滞后 {result.distributed_lags}"
-        ),
-    )
-
-
 def build_sarimax_result_view(result: Any) -> EstimationResultView:
     """转换 SARIMAX 结果，包含其自动选阶展示信息。"""
     if getattr(result, "candidate_orders", None) is not None:
@@ -184,16 +147,12 @@ def build_sarimax_result_view(result: Any) -> EstimationResultView:
 
 
 def build_rdl_result_view(result: Any) -> EstimationResultView:
-    """转换 RDL 结果，保留其 SARIMAX 误差阶数搜索展示信息。"""
-    if getattr(result, "candidate_orders", None) is not None:
-        return _build_auto_sarimax_view(result, default_model_name="RDL")
+    """转换固定传递函数与手动 SARIMAX 误差结果。"""
     return _build_base_result_view(result, default_model_name="RDL")
 
 
 def build_ardl_result_view(result: Any) -> EstimationResultView:
-    """转换标准 ARDL 结果，包含其自动滞后搜索展示信息。"""
-    if hasattr(result, "criterion_table") and hasattr(result, "ar_lags"):
-        return _build_auto_ardl_view(result)
+    """转换标准 ARDL 与手动 SARIMA 误差结果。"""
     return _build_base_result_view(result, default_model_name="ARDL")
 
 

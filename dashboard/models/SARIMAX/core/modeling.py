@@ -11,11 +11,8 @@ from typing import Any
 
 import pandas as pd
 
-from dashboard.models.SARIMAX.core.ardl_config import (
-    ARDLConfig,
-    AutoARDLConfig,
-)
-from dashboard.models.SARIMAX.core.ardl_modeling import fit_ardl, fit_auto_ardl
+from dashboard.models.SARIMAX.core.ardl_config import ARDLConfig
+from dashboard.models.SARIMAX.core.ardl_modeling import fit_ardl
 from dashboard.models.SARIMAX.core.diagnostics import (
     recommended_residual_diagnostic_lags,
     run_residual_diagnostics,
@@ -25,8 +22,8 @@ from dashboard.models.SARIMAX.core.forecasting import (
     produce_forecast,
 )
 from dashboard.models.SARIMAX.core.forecast_planning import future_dates
-from dashboard.models.SARIMAX.core.rdl_config import AutoRDLConfig, RDLConfig
-from dashboard.models.SARIMAX.core.rdl_modeling import fit_auto_rdl, fit_rdl
+from dashboard.models.SARIMAX.core.rdl_config import RDLConfig
+from dashboard.models.SARIMAX.core.rdl_modeling import fit_rdl
 from dashboard.models.SARIMAX.core.sarimax_config import (
     AutoSARIMAXConfig,
     SARIMAXConfig,
@@ -110,16 +107,14 @@ DynamicConfig = (
     SARIMAXConfig
     | AutoSARIMAXConfig
     | RDLConfig
-    | AutoRDLConfig
     | ARDLConfig
-    | AutoARDLConfig
 )
 
 
 def _is_dynamic_regression(config: DynamicConfig) -> bool:
     return isinstance(
         config,
-        (RDLConfig, AutoRDLConfig, ARDLConfig, AutoARDLConfig),
+        (RDLConfig, ARDLConfig),
     )
 
 
@@ -192,14 +187,14 @@ def validate_fit_inputs(
             if isinstance(config, SARIMAXConfig)
             else config.error.seasonal_order[3]
         )
-    elif isinstance(config, (AutoSARIMAXConfig, AutoRDLConfig)):
-        seasonal_period = (
-            config.s
-            if isinstance(config, AutoSARIMAXConfig)
-            else config.error.s
-        )
-    elif config.seasonal:
+    elif isinstance(config, AutoSARIMAXConfig):
+        seasonal_period = config.s
+    elif isinstance(config, ARDLConfig):
         seasonal_period = config.period or 0
+        error_period = (
+            0 if config.error is None else config.error.seasonal_order[3]
+        )
+        seasonal_period = max(seasonal_period, error_period)
     if seasonal_period > 0 and len(valid) < 2 * seasonal_period:
         problems.append(
             f"季节周期 s={seasonal_period} 过大：至少需要 {2 * seasonal_period} "
@@ -247,22 +242,8 @@ def fit_dynamic_model(
         raise ValueError("RDL/ARDL 需要解释变量")
     if isinstance(config, RDLConfig):
         return fit_rdl(series, exog, config)
-    if isinstance(config, AutoRDLConfig):
-        return fit_auto_rdl(
-            series,
-            exog,
-            config,
-            progress_callback=progress_callback,
-        )
     if isinstance(config, ARDLConfig):
         return fit_ardl(series, exog, config)
-    if isinstance(config, AutoARDLConfig):
-        return fit_auto_ardl(
-            series,
-            exog,
-            config,
-            progress_callback=progress_callback,
-        )
     raise TypeError(f"不支持的动态回归配置：{type(config)!r}")
 
 
@@ -272,8 +253,6 @@ __all__ = [
     "build_auto_sarimax_criterion_table",
     "build_prediction_table",
     "fit_ardl",
-    "fit_auto_ardl",
-    "fit_auto_rdl",
     "fit_auto_sarimax",
     "fit_dynamic_model",
     "fit_rdl",

@@ -59,10 +59,13 @@ def render_training_section(
         st_obj.info(f"请先在上方上传并读取 {scope.family} 的数据文件，再配置并拟合模型。")
         return
 
-    mode = st_obj.segmented_control(
-        "配置方式", options=("手动配置", "自动选阶"), default="手动配置",
-        key=scope.key("config_mode"),
-    ) or "手动配置"
+    if scope.family == "SARIMAX":
+        mode = st_obj.segmented_control(
+            "配置方式", options=("手动配置", "自动选阶"), default="手动配置",
+            key=scope.key("config_mode"),
+        ) or "手动配置"
+    else:
+        mode = "手动配置"
     selection = (scope.family, mode)
     if selection != state.get("model_selection"):
         state.set("model_selection", selection)
@@ -115,7 +118,8 @@ def render_training_section(
         exog_log_names=inputs.exog_log_names,
     )
     if st_obj.button("拟合模型", type="primary", disabled=bool(problems), key=scope.key("fit_button")):
-        st_obj.session_state.pop(scope.key("auto_selection_model"), None)
+        if scope.family == "SARIMAX":
+            st_obj.session_state.pop(scope.key("auto_selection_model"), None)
         automatic = is_automatic_config(config)
         progress_bar = st_obj.progress(0.0, text="正在准备候选模型评估...") if automatic else None
         progress_state = {"completed": 0, "total": 0}

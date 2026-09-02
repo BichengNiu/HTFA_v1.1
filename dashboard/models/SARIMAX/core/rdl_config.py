@@ -9,10 +9,7 @@ from dashboard.models.SARIMAX.core.config_shared import (
     _validate_int_in_range,
     _validate_lag_tuple,
 )
-from dashboard.models.SARIMAX.core.sarimax_config import (
-    AutoSARIMAXConfig,
-    SARIMAXConfig,
-)
+from dashboard.models.SARIMAX.core.sarimax_config import SARIMAXConfig
 
 
 @dataclass(frozen=True)
@@ -145,34 +142,4 @@ class RDLConfig:
         )
 
 
-@dataclass(frozen=True)
-class AutoRDLConfig:
-    """自动选择 SARIMAX 误差阶数的 RDL 配置。"""
-
-    inputs: tuple[RDLInputConfig, ...]
-    error: AutoSARIMAXConfig = AutoSARIMAXConfig()
-    enforce_distributed_lag_stability: bool = True
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "inputs", _validate_rdl_inputs(self.inputs))
-        if not isinstance(self.error, AutoSARIMAXConfig):
-            raise TypeError("error 必须是 AutoSARIMAXConfig")
-        if not isinstance(self.enforce_distributed_lag_stability, bool):
-            raise TypeError("enforce_distributed_lag_stability 必须是布尔值")
-
-    @property
-    def log(self) -> bool:
-        """沿用自动 SARIMAX 误差模型的响应变换设置。"""
-        return self.error.log
-
-    def signature(self) -> tuple:
-        """返回自动 RDL 配置的完整缓存签名。"""
-        return (
-            "rdl-auto",
-            self.error.signature(),
-            tuple(item.signature() for item in self.inputs),
-            self.enforce_distributed_lag_stability,
-        )
-
-
-__all__ = ["AutoRDLConfig", "RDLConfig", "RDLInputConfig"]
+__all__ = ["RDLConfig", "RDLInputConfig"]

@@ -5,7 +5,6 @@ from __future__ import annotations
 import pandas as pd
 
 from dashboard.models.SARIMAX.core.rdl_config import (
-    AutoRDLConfig,
     RDLConfig,
     RDLInputConfig,
 )
@@ -24,11 +23,10 @@ def render_rdl_options(
     st_obj,
     exog: pd.DataFrame | None,
     *,
-    automatic: bool,
     response_log: bool,
     prefix: str = "sarimax_rdl",
     state_manager: StateStore = state,
-) -> RDLConfig | AutoRDLConfig | None:
+) -> RDLConfig | None:
     """渲染 RDL 的误差结构、输入动态与估计设置。
 
     Parameters
@@ -37,14 +35,12 @@ def render_rdl_options(
         具有 Streamlit 控件方法的对象。
     exog : pandas.DataFrame or None
         当前选择的外生变量表。
-    automatic : bool
-        是否自动搜索 SARIMAX 误差阶数。
     response_log : bool
         目标变量对数变换状态。
 
     Returns
     -------
-    RDLConfig or AutoRDLConfig or None
+    RDLConfig or None
         构建好的 RDL 配置；控件参数无效时返回 ``None``。
     """
     if exog is None or exog.empty:
@@ -54,8 +50,7 @@ def render_rdl_options(
         st_obj.markdown("**响应 / 误差结构**")
         error = render_sarimax_error_options(
             st_obj,
-            f"{prefix}_auto_error" if automatic else f"{prefix}_error",
-            automatic=automatic,
+            f"{prefix}_error",
             response_log=response_log,
             state_manager=state_manager,
         )
@@ -73,17 +68,12 @@ def render_rdl_options(
             value=True,
             key=f"{prefix}_enforce_stability",
         )
-        st_obj.caption(
-            "自动 RDL 只搜索 SARIMAX 误差阶数，以上传递函数结构保持固定。"
-        )
     try:
-        config_type = AutoRDLConfig if automatic else RDLConfig
-        kwargs = {
-            "inputs": inputs,
-            "error": error,
-            "enforce_distributed_lag_stability": stable,
-        }
-        return config_type(**kwargs)
+        return RDLConfig(
+            inputs=inputs,
+            error=error,
+            enforce_distributed_lag_stability=stable,
+        )
     except (TypeError, ValueError) as exc:
         st_obj.error(f"RDL 设置有误：{exc}")
         return None

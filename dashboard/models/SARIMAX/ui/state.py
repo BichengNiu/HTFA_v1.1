@@ -12,7 +12,7 @@ from dashboard.models.common.state import ModelStateLifecycle
 _COMMON_WIDGET_SUFFIXES = (
     "target_select", "exog_select", "train_forecast_window",
     "data_preprocessing", "missing_value_method", "response_log",
-    "config_mode", "start_processing_button", "fit_button", "diag_download",
+    "start_processing_button", "fit_button", "diag_download",
     "innovation_irf_steps", "forecast_window", "forecast_alpha",
     "forecast_dynamic", "forecast_ci", "future_exog_editor", "forecast_button",
     "forecast_download",
@@ -27,6 +27,7 @@ _SARIMAX_WIDGET_SUFFIXES = (
     "auto_trend_components", "auto_selection_criterion", "auto_selection_model",
     "auto_method", "auto_maxiter", "auto_cov_type",
     "auto_enforce_stationarity", "auto_enforce_invertibility",
+    "config_mode",
 )
 _RDL_WIDGET_SUFFIXES = (
     "error_p", "error_d", "error_q", "error_P", "error_D", "error_Q",
@@ -34,20 +35,15 @@ _RDL_WIDGET_SUFFIXES = (
     "error_cov_type", "error_enforce_stationarity", "error_enforce_invertibility",
     "error_ar_lags", "error_ma_lags", "error_seasonal_ar_lags",
     "error_seasonal_ma_lags",
-    "auto_error_p_range", "auto_error_d_range", "auto_error_q_range",
-    "auto_error_P_range", "auto_error_D_range", "auto_error_Q_range",
-    "auto_error_s", "auto_error_trend_components", "auto_error_method",
-    "auto_error_maxiter", "auto_error_cov_type",
-    "auto_error_enforce_stationarity", "auto_error_enforce_invertibility",
-    "input_table", "advanced_table", "enforce_stability", "auto_selection_criterion",
-    "auto_selection_model",
+    "input_table", "advanced_table", "enforce_stability",
 )
 _ARDL_WIDGET_SUFFIXES = (
-    "target_lag", "trend_components", "causal", "seasonal", "period",
-    "input_table", "hold_back", "cov_type", "auto_target_lag",
-    "auto_trend_components", "auto_causal", "auto_seasonal", "auto_period",
-    "auto_input_table", "auto_hold_back", "auto_cov_type", "auto_criterion",
-    "auto_search_method",
+    "error_p", "error_d", "error_q", "error_P", "error_D", "error_Q",
+    "error_s", "error_method", "error_maxiter", "error_cov_type",
+    "error_enforce_stationarity", "error_enforce_invertibility",
+    "error_ar_lags", "error_ma_lags", "error_seasonal_ar_lags",
+    "error_seasonal_ma_lags", "target_lag", "trend_components", "causal",
+    "seasonal", "period", "input_table", "hold_back",
 )
 _TABLE_SUFFIXES = (
     "input_table", "advanced_table", "exog_operators", "future_exog_editor",

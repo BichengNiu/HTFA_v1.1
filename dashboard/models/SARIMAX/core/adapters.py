@@ -23,8 +23,6 @@ from dashboard.models.common.contracts import (
 )
 from dashboard.models.SARIMAX.core.model_config import (
     ARDLConfig,
-    AutoARDLConfig,
-    AutoRDLConfig,
     AutoSARIMAXConfig,
     RDLConfig,
     SARIMAXConfig,
@@ -52,7 +50,7 @@ from dashboard.models.SARIMAX.core.result_views import (
 
 def is_automatic_config(options: Any) -> bool:
     """判断配置是否会执行候选模型搜索。"""
-    return isinstance(options, (AutoSARIMAXConfig, AutoRDLConfig, AutoARDLConfig))
+    return isinstance(options, AutoSARIMAXConfig)
 
 
 def _select_auto_sarimax_result(
@@ -186,11 +184,12 @@ class SARIMAXAdapter(_TsResultAdapter):
         """按信息准则或候选模型重新选择 SARIMAX 结果。"""
         return _select_auto_sarimax_result(result, selection)
 
+
 class RDLAdapter(_TsResultAdapter):
     """承载固定传递函数加 SARIMAX 误差的 RDL 配置和结果视图。"""
 
     model_name = "RDL"
-    config_types = (RDLConfig, AutoRDLConfig)
+    config_types = (RDLConfig,)
 
     def result_view(self, result: Any) -> EstimationResultView:
         """将 RDL 结果转换为通用估计视图。"""
@@ -201,15 +200,16 @@ class RDLAdapter(_TsResultAdapter):
         result: Any,
         selection: str | tuple[str, Any],
     ) -> Any:
-        """按信息准则或候选模型重新选择 RDL 误差结果。"""
-        return _select_auto_sarimax_result(result, selection)
+        """拒绝 RDL 不支持的候选模型覆盖操作。"""
+        del result, selection
+        raise ValueError("当前 RDL 结果不支持重新选择候选模型")
 
 
 class ARDLAdapter(_TsResultAdapter):
     """承载标准 ARDL 的模型特有配置和结果视图。"""
 
     model_name = "ARDL"
-    config_types = (ARDLConfig, AutoARDLConfig)
+    config_types = (ARDLConfig,)
 
     def result_view(self, result: Any) -> EstimationResultView:
         """将标准 ARDL 结果转换为通用估计视图。"""

@@ -24,8 +24,6 @@ from dashboard.models.SARIMAX.core.data_loader import (
 )
 from dashboard.models.SARIMAX.core.model_config import (
     ARDLConfig,
-    AutoARDLConfig,
-    AutoRDLConfig,
     AutoSARIMAXConfig,
     RDLConfig,
     RDLInputConfig,
@@ -35,8 +33,6 @@ from dashboard.models.SARIMAX.core.modeling import (
     build_auto_sarimax_criterion_table,
     build_prediction_table,
     fit_ardl,
-    fit_auto_ardl,
-    fit_auto_rdl,
     fit_auto_sarimax,
     fit_dynamic_model,
     fit_input_warnings,
@@ -685,10 +681,13 @@ def test_dynamic_regression_configs_capture_all_lag_structure():
     assert rdl_input.specification() == ((0, 2), (1,), 1, "zero")
     assert rdl.signature()[0] == "rdl-manual"
 
-    ardl = ARDLConfig(lags=(1, 3), input_orders=(("price", 2),))
-    auto = AutoARDLConfig(maxlag=2, max_input_orders=(("price", 3),))
+    ardl = ARDLConfig(
+        lags=(1, 3),
+        input_orders=(("price", 2),),
+        error=SARIMAXConfig(order=(1, 0, 1), trend="n"),
+    )
     assert ardl.order_mapping() == {"price": 2}
-    assert auto.maxorder_mapping() == {"price": 3}
+    assert ardl.error.order == (1, 0, 1)
     with pytest.raises(ValueError, match="至少需要"):
         RDLConfig(inputs=())
     with pytest.raises(ValueError, match="至少需要"):
@@ -969,7 +968,7 @@ def test_fit_auto_sarimax_passes_stationarity_constraints():
     assert fitted_model.enforce_invertibility is False
 
 
-def test_fit_rdl_and_auto_rdl_keep_transfer_function_fixed():
+def test_fit_rdl_keeps_transfer_function_fixed():
     series = make_series()
     exog = pd.DataFrame({"policy": np.linspace(1.0, 3.0, len(series))})
     inputs = (RDLInputConfig("policy", numerator_order=0),)
@@ -982,22 +981,10 @@ def test_fit_rdl_and_auto_rdl_keep_transfer_function_fixed():
         ),
     )
     assert tuple(manual.distributed_lags) == ("policy",)
-    automatic = fit_auto_rdl(
-        series,
-        exog,
-        AutoRDLConfig(
-            inputs=inputs,
-            error=AutoSARIMAXConfig(
-                p=(0, 1), d=(0, 0), q=(0, 0),
-                P=(0, 0), D=(0, 0), Q=(0, 0), trend="n",
-            ),
-        ),
-    )
-    assert tuple(automatic.best_result.distributed_lags) == ("policy",)
-    assert automatic.search_metadata["mode"] == "serial"
+    assert manual.order == (0, 0, 0)
 
 
-def test_fit_standard_ardl_manual_auto_and_future_input_path():
+def test_fit_standard_ardl_manual_sarima_error_and_future_input_path():
     series = make_series(dates=True) + 10.0
     exog = pd.DataFrame(
         {"policy": np.linspace(1.0, 3.0, len(series))}, index=series.index
@@ -1005,7 +992,12 @@ def test_fit_standard_ardl_manual_auto_and_future_input_path():
     manual = fit_ardl(
         series,
         exog,
-        ARDLConfig(lags=1, input_orders=(("policy", 1),), trend="n"),
+        ARDLConfig(
+            lags=1,
+            input_orders=(("policy", 1),),
+            trend="n",
+            error=SARIMAXConfig(order=(1, 0, 0), trend="n"),
+        ),
     )
     assert manual.ardl_order == (1, 1)
     forecast = produce_forecast(
@@ -1016,17 +1008,16 @@ def test_fit_standard_ardl_manual_auto_and_future_input_path():
     )
     assert len(forecast["mean"]) == 3
 
-    automatic = fit_auto_ardl(
+    assert manual.error_order == (1, 0, 0)
+    assert fit_dynamic_model(
         series,
         exog,
-        AutoARDLConfig(
-            maxlag=1, max_input_orders=(("policy", 1),), trend="n"
+        ARDLConfig(
+            lags=1,
+            input_orders=(("policy", 0),),
+            trend="n",
+            error=SARIMAXConfig(order=(0, 0, 0), trend="n"),
         ),
-    )
-    assert automatic.best_result is not None
-    assert not automatic.criterion_table.empty
-    assert fit_dynamic_model(
-        series, exog, ARDLConfig(lags=1, input_orders=(("policy", 0),), trend="n")
     ).model_type == "ARDL"
 
 
@@ -1237,6 +1228,17 @@ def test_validate_fit_inputs_reports_user_problems():
 
     seasonal = SARIMAXConfig(seasonal_order=(0, 0, 0, 12))
     problems = validate_fit_inputs(short, None, seasonal)
+    assert any("季节周期" in problem for problem in problems)
+
+    ardl_error = ARDLConfig(
+        lags=1,
+        input_orders=(("x", 0),),
+        error=SARIMAXConfig(
+            order=(0, 0, 0),
+            seasonal_order=(0, 0, 0, 12),
+        ),
+    )
+    problems = validate_fit_inputs(short, pd.DataFrame({"x": short}), ardl_error)
     assert any("季节周期" in problem for problem in problems)
 
     series = make_series()

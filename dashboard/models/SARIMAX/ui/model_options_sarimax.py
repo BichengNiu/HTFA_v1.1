@@ -1,4 +1,4 @@
-"""SARIMAX 及 RDL 误差项的参数控件。"""
+"""SARIMAX 及动态回归误差项的参数控件。"""
 
 from __future__ import annotations
 
@@ -89,11 +89,11 @@ def render_sarimax_error_options(
     st_obj,
     prefix: str,
     *,
-    automatic: bool,
+    include_trend: bool = True,
     response_log: bool = False,
     state_manager: StateStore = state,
-) -> SARIMAXConfig | AutoSARIMAXConfig | None:
-    """渲染 RDL 使用的 SARIMAX 误差结构配置。
+) -> SARIMAXConfig | None:
+    """渲染 RDL/ARDL 使用的手动 SARIMAX 误差结构配置。
 
     Parameters
     ----------
@@ -101,20 +101,23 @@ def render_sarimax_error_options(
         具有 Streamlit 控件方法的对象。
     prefix : str
         控件键前缀。
-    automatic : bool
-        是否使用自动 SARIMAX 误差阶数搜索。
+    include_trend : bool, default=True
+        是否显示误差模型趋势项控件。ARDL 已在目标方程中提供趋势项，
+        因此其误差模型应传入 ``False``。
     response_log : bool, default=False
         目标变量对数变换状态。
 
     Returns
     -------
-    SARIMAXConfig or AutoSARIMAXConfig or None
-        RDL 误差项配置。
+    SARIMAXConfig or None
+        动态回归误差项配置。
     """
-    return (
-        _render_auto_config(st_obj, prefix, log=response_log, state_manager=state_manager)
-        if automatic
-        else _render_manual_config(st_obj, prefix, log=response_log, state_manager=state_manager)
+    return _render_manual_config(
+        st_obj,
+        prefix,
+        log=response_log,
+        include_trend=include_trend,
+        state_manager=state_manager,
     )
 
 
@@ -125,14 +128,15 @@ def _render_manual_config(
     log: bool | None = False,
     exog: pd.DataFrame | None = None,
     exog_log_names: tuple[str, ...] = (),
+    include_trend: bool = True,
     state_manager: StateStore = state,
 ) -> SARIMAXConfig | None:
     """渲染手动 SARIMAX 阶数与高级设置。"""
-    order_columns = st_obj.columns(4)
+    order_columns = st_obj.columns(4 if include_trend else 3)
     p = order_columns[0].number_input("p（AR 阶数）", 0, 6, 1, key=f"{prefix}_p")
     d = order_columns[1].number_input("d（差分阶数）", 0, 2, 0, key=f"{prefix}_d")
     q = order_columns[2].number_input("q（MA 阶数）", 0, 6, 1, key=f"{prefix}_q")
-    trend = render_trend_selector(order_columns[3], prefix)
+    trend = render_trend_selector(order_columns[3], prefix) if include_trend else "n"
     seasonal_columns = st_obj.columns(4)
     P = seasonal_columns[0].number_input("P（季节 AR）", 0, 3, 0, key=f"{prefix}_P")
     D = seasonal_columns[1].number_input("D（季节差分）", 0, 2, 0, key=f"{prefix}_D")

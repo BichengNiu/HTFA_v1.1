@@ -1,18 +1,14 @@
-"""RDL 传递函数与 SARIMAX 误差的拟合实现。"""
+"""RDL 传递函数与手动 SARIMAX 误差的拟合实现。"""
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
 import pandas as pd
-from Ts.TsModels import AutoModelResult, AutoSARIMAX, RationalLagSpec, SARIMAX, SARIMAXResult
+from Ts.TsModels import RationalLagSpec, SARIMAX, SARIMAXResult
 
-from dashboard.models.SARIMAX.core.rdl_config import AutoRDLConfig, RDLConfig
-
-ProgressCallback = Callable[[int, int], None]
+from dashboard.models.SARIMAX.core.rdl_config import RDLConfig
 
 
-def _rdl_specs(config: RDLConfig | AutoRDLConfig) -> dict[str, RationalLagSpec]:
+def _rdl_specs(config: RDLConfig) -> dict[str, RationalLagSpec]:
     """将 UI 层传递函数配置转换为 Ts 的不可变规格。"""
     specs = {}
     for item in config.inputs:
@@ -67,55 +63,4 @@ def fit_rdl(
     )
 
 
-def fit_auto_rdl(
-    series: pd.Series,
-    exog: pd.DataFrame,
-    config: AutoRDLConfig,
-    *,
-    progress_callback: ProgressCallback | None = None,
-) -> AutoModelResult:
-    """仅自动搜索 RDL 的 SARIMAX 误差阶数，传递函数保持固定。
-
-    Parameters
-    ----------
-    series : pandas.Series
-        目标时间序列。
-    exog : pandas.DataFrame
-        外生变量表。
-    config : AutoRDLConfig
-        自动 RDL 配置。
-    progress_callback : callable, optional
-        每完成一个候选模型后，在主进程中调用
-        ``callback(completed, total)``。
-
-    Returns
-    -------
-    AutoModelResult
-        自动 RDL 误差模型候选搜索结果。
-    """
-    error = config.error
-    model = AutoSARIMAX(
-        series,
-        p=error.p,
-        d=error.d,
-        q=error.q,
-        P=error.P,
-        D=error.D,
-        Q=error.Q,
-        s=error.s,
-        trend=error.trend,
-        criterion=error.criterion,
-        exog=exog,
-        log=error.log,
-        fit_method=error.fit_method,
-        maxiter=error.maxiter,
-        cov_type=error.cov_type,
-        enforce_stationarity=error.enforce_stationarity,
-        enforce_invertibility=error.enforce_invertibility,
-        distributed_lags=_rdl_specs(config),
-        enforce_distributed_lag_stability=config.enforce_distributed_lag_stability,
-    )
-    return model.fit(progress_callback=progress_callback)
-
-
-__all__ = ["fit_auto_rdl", "fit_rdl"]
+__all__ = ["fit_rdl"]

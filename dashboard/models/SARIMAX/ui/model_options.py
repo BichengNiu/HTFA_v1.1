@@ -41,7 +41,7 @@ def render_model_options(
     family : str
         模型族名称，支持 ``SARIMAX``、``RDL`` 和 ``ARDL``。
     mode : str
-        配置方式，支持 ``手动配置`` 和 ``自动选阶``。
+        SARIMAX 配置方式；RDL/ARDL 始终使用手动配置。
     exog : pandas.DataFrame or None
         当前选择的外生变量表；RDL/ARDL 需要至少一列。
     response_log : bool, default=False
@@ -68,7 +68,6 @@ def render_model_options(
         return render_rdl_options(
             st_obj,
             exog,
-            automatic=mode == "自动选阶",
             response_log=response_log,
             prefix=key_prefix,
             state_manager=state_manager,
@@ -77,7 +76,6 @@ def render_model_options(
         return render_ardl_options(
             st_obj,
             exog,
-            automatic=mode == "自动选阶",
             response_log=response_log,
             key_prefix=key_prefix,
             state_manager=state_manager,

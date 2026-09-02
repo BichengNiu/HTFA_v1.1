@@ -774,17 +774,18 @@ def test_sarimax_ar2_roots_show_cycle_diagnostic(monkeypatch):
 
 
 def _open_model_tab(app, model_prefix: str, mode: str) -> None:
-    """初始化一个独立模型 Tab，并设置解释变量和配置方式。"""
+    """初始化一个独立模型 Tab；只有 SARIMAX 显示配置方式控件。"""
     _prepare_model_app(app, _dynamic_sample_csv(), model_prefix=model_prefix)
     _by_key(app.multiselect, f"{model_prefix}_exog_select").set_value(["policy"])
     app.run()
-    _by_key(app.segmented_control, f"{model_prefix}_config_mode").set_value(mode)
-    app.run()
+    if model_prefix == "sarimax":
+        _by_key(app.segmented_control, f"{model_prefix}_config_mode").set_value(mode)
+        app.run()
     assert not app.exception
 
 
-def test_rdl_manual_and_auto_workflows_via_ui(monkeypatch):
-    """RDL 两种配置方式均保留输入传递函数并可完成拟合。"""
+def test_rdl_manual_workflow_via_ui(monkeypatch):
+    """RDL 只显示手动误差阶数并可完成拟合。"""
     from streamlit.testing.v1 import AppTest
 
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
@@ -792,29 +793,18 @@ def test_rdl_manual_and_auto_workflows_via_ui(monkeypatch):
     _navigate_to_sarimax(app)
     _open_model_tab(app, "rdl", "手动配置")
     assert _by_key(app.dataframe, "rdl_input_table")
+    assert _by_key(app.number_input, "rdl_error_p").value == 1
+    assert not any(item.key == "rdl_config_mode" for item in app.segmented_control)
     _by_key(app.button, "rdl_fit_button").click()
     app.run()
     assert not app.exception
     assert not app.metric
     assert not app.success
-    _by_key(app.segmented_control, "rdl_config_mode").set_value("自动选阶")
-    app.run()
-    assert any("候选模型按规模自动调度" in item.value for item in app.caption)
-    _by_key(app.slider, "rdl_auto_error_p_range").set_value((0, 1))
-    _by_key(app.slider, "rdl_auto_error_d_range").set_value((0, 0))
-    _by_key(app.slider, "rdl_auto_error_q_range").set_value((0, 0))
-    _by_key(app.slider, "rdl_auto_error_P_range").set_value((0, 0))
-    _by_key(app.slider, "rdl_auto_error_D_range").set_value((0, 0))
-    _by_key(app.slider, "rdl_auto_error_Q_range").set_value((0, 0))
-    app.run()
-    _by_key(app.button, "rdl_fit_button").click()
-    app.run()
-    assert not app.exception
-    _assert_completed_progress(app)
-    assert not app.metric
-    assert not app.success
-def test_ardl_manual_and_auto_workflows_via_ui(monkeypatch):
-    """ARDL 两种配置方式显示逐变量滞后，不遗留 RDL 控件或旧结果。"""
+    assert not any("自动选阶" in item.value for item in app.markdown)
+
+
+def test_ardl_manual_sarima_error_workflow_via_ui(monkeypatch):
+    """ARDL 只显示手动滞后，并可配置 SARIMA 误差后完成拟合。"""
     from streamlit.testing.v1 import AppTest
 
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
@@ -822,26 +812,23 @@ def test_ardl_manual_and_auto_workflows_via_ui(monkeypatch):
     _navigate_to_sarimax(app)
     _open_model_tab(app, "ardl", "手动配置")
     assert _by_key(app.dataframe, "ardl_input_table")
+    assert _by_key(app.number_input, "ardl_error_p").value == 1
+    assert _by_key(app.number_input, "ardl_error_q").value == 1
+    assert not any(item.key == "ardl_config_mode" for item in app.segmented_control)
     assert not any(
         item.key == "sarimax_rdl_input_table" for item in app.dataframe
     )
+    _by_key(app.number_input, "ardl_error_p").set_value(0)
+    _by_key(app.number_input, "ardl_error_q").set_value(0)
+    app.run()
     _by_key(app.button, "ardl_fit_button").click()
     app.run()
     assert not app.exception
     assert any(item.value == "**残差诊断图**" for item in app.markdown)
-
-    _by_key(app.segmented_control, "ardl_config_mode").set_value("自动选阶")
-    app.run()
-    assert any("候选模型按规模自动调度" in item.value for item in app.caption)
-    assert _by_key(app.dataframe, "ardl_auto_input_table")
-    _by_key(app.number_input, "ardl_auto_target_lag").set_value(1)
-    app.run()
-    _by_key(app.button, "ardl_fit_button").click()
-    app.run()
-    assert not app.exception
-    _assert_completed_progress(app)
-    assert not app.metric
-    assert not app.success
+    result = app.session_state["model_analysis.ardl.fitted_result"]
+    assert result.error_order == (0, 0, 0)
+    assert result.error_seasonal_order == (0, 0, 0, 0)
+    assert result.ardl_order == (1, 0)
 def test_data_table_options_via_ui(monkeypatch):
     """数据表高级选项：行数、筛选直接作用于预览表、统计量。"""
     from streamlit.testing.v1 import AppTest
