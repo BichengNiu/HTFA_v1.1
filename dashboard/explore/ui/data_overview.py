@@ -13,6 +13,7 @@ from data_overview.ui.widget_keys import (
     read_widget_keys,
     selector_widget_keys,
 )
+from Ts.TsUtils import hurst_exponent
 
 from dashboard.core.ui.utils.shared_dataset import get_shared_dataset_fingerprint
 from dashboard.core.ui.utils.state_helpers import NamespacedStateManager
@@ -67,6 +68,12 @@ DATA_OVERVIEW_HANDOFF_WIDGET_KEYS = (
     overview_widget_keys(_DATA_OVERVIEW_KEY_PREFIX)
     + ("univariate_overview_preview_sheet",)
     + CORRELOGRAM_WIDGET_KEYS
+)
+HURST_RESULT_COLUMNS = (
+    "变量",
+    "赫斯特指数",
+    "有效观测数",
+    "参考解释",
 )
 
 
@@ -212,6 +219,52 @@ def _shared_correlogram_maximum(
     return min(maxima) if maxima else None
 
 
+def _hurst_interpretation(value: float) -> str:
+    """将赫斯特指数转换为不带检验含义的描述性提示。"""
+    if value < 0.5:
+        return "反持续（H < 0.5）"
+    if value > 0.5:
+        return "持续性（H > 0.5）"
+    return "弱依赖/随机性（H ≈ 0.5）"
+
+
+def _calculate_hurst_result(series: pd.Series, variable: str) -> dict[str, object]:
+    """调用 TsUtils 赫斯特接口并构建单变量概览表的一行。"""
+    n_valid = int(series.notna().sum())
+    try:
+        value = hurst_exponent(series, missing="drop")
+    except Exception as exc:  # noqa: BLE001 - user-facing diagnostic boundary
+        return {
+            "变量": variable,
+            "赫斯特指数": None,
+            "有效观测数": n_valid,
+            "参考解释": f"无法计算：{exc}",
+        }
+    return {
+        "变量": variable,
+        "赫斯特指数": round(float(value), 4),
+        "有效观测数": n_valid,
+        "参考解释": _hurst_interpretation(float(value)),
+    }
+
+
+def _render_hurst_results(st_obj, results: list[dict[str, object]]) -> None:
+    """在 ACF/PACF 图组下方渲染赫斯特指数结果表。"""
+    if not results:
+        return
+    st_obj.markdown("---")
+    st_obj.markdown("**赫斯特指数**")
+    st_obj.caption(
+        "基于原始序列的经典 R/S 方法；计算时删除缺失值，至少需要 20 个有效观测。"
+        " H<0.5、H≈0.5、H>0.5 仅作描述性参考。"
+    )
+    st_obj.dataframe(
+        pd.DataFrame(results, columns=HURST_RESULT_COLUMNS),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
 def _correlogram_chart_config_prefixes(session) -> tuple[str, ...]:
     """返回当前单变量概览 ACF/PACF 配置的会话键前缀。"""
 
@@ -351,6 +404,7 @@ def render_data_overview(st_obj) -> None:
         st_obj.info("请至少选择一个变量。")
         return
 
+    hurst_results = []
     for variable in variables:
         try:
             series, _ = prepare_selected_series(overview_dataset.frame, variable)
@@ -371,6 +425,7 @@ def render_data_overview(st_obj) -> None:
             chart_type="PACF",
         )
         if acf_result is None and pacf_result is None:
+            hurst_results.append(_calculate_hurst_result(series, variable))
             continue
 
         scope = chart_scope("data_overview", variable, "correlogram")
@@ -408,6 +463,9 @@ def render_data_overview(st_obj) -> None:
                 maximum_lags=maximum_lags,
                 config_container=st_obj,
             )
+        hurst_results.append(_calculate_hurst_result(series, variable))
+
+    _render_hurst_results(st_obj, hurst_results)
 
 
 __all__ = [
@@ -417,6 +475,7 @@ __all__ = [
     "CORRELOGRAM_VARIABLES_KEY",
     "CORRELOGRAM_WIDGET_KEYS",
     "DATA_OVERVIEW_HANDOFF_WIDGET_KEYS",
+    "HURST_RESULT_COLUMNS",
     "SERIES_STYLE_WIDGET_PREFIX",
     "export_data_overview_widget_state",
     "mark_data_overview_handoff_restore",

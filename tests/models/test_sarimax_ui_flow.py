@@ -976,6 +976,11 @@ def test_page_level_facet_renders_independent_plots(monkeypatch):
     app.run()
     assert not app.exception
     assert len(app.image) == 5  # 时间序列图 + 两个变量各自的 ACF/PACF 图
+    assert any(
+        list(element.value.columns)
+        == ["变量", "赫斯特指数", "有效观测数", "参考解释"]
+        for element in app.dataframe
+    )
 
     _by_key(app.checkbox, "univariate_overview_preview_facet").check()
     app.run()
@@ -1071,6 +1076,26 @@ def test_page_level_facet_renders_independent_plots(monkeypatch):
     assert not any(
         element.key in hidden_legend_inputs for element in app.number_input
     )
+
+
+def test_data_overview_renders_hurst_value_for_sufficient_series(monkeypatch):
+    """数据概览在有效样本足够时展示实际赫斯特指数。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
+    app = _open_standalone_univariate_overview(app, _sample_csv())
+
+    hurst_table = next(
+        element.value
+        for element in app.dataframe
+        if list(element.value.columns)
+        == ["变量", "赫斯特指数", "有效观测数", "参考解释"]
+    )
+
+    assert hurst_table["变量"].tolist() == ["value"]
+    assert hurst_table["赫斯特指数"].notna().all()
+    assert hurst_table["有效观测数"].tolist() == [60]
 
 
 def test_select_rows_uses_variable_names_and_data_start(monkeypatch):
