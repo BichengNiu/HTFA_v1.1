@@ -23,7 +23,7 @@ def render_model_library_sidebar(st_obj) -> None:
     st_obj.markdown("### 模型库")
     notice = st_obj.session_state.pop(_NOTICE_KEY, None)
     if notice:
-        st_obj.success(notice)
+        st_obj.toast(notice)
 
     records = library.records
     if not records:
