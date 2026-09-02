@@ -70,10 +70,15 @@ class ModelDataInput:
 
     def _on_dataset_replaced(self, st_obj) -> None:
         """文件或读取设置改变时只清空本模型 Tab 的状态。"""
-        handoff_guard = f"{self.scope.namespace}.handoff_restore"
-        if st_obj.session_state.pop(handoff_guard, False):
-            return
         state = self.scope.state
+        handoff_guard = f"{self.scope.namespace}.handoff_restore"
+        if (
+            st_obj.session_state.pop(handoff_guard, False)
+            and state.get("dataset") is not None
+        ):
+            # 交接成功建立新数据集时保留恢复的模型输入和结果；
+            # 交接解析失败时 dataset 仍为 None，必须继续清空旧状态。
+            return
         state.set("target_variable", None)
         state.set("exog_variables", ())
         state.set("exog_log_names", ())

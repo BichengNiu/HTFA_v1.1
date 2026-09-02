@@ -1556,3 +1556,30 @@ def test_model_target_variables_follow_selected_sheet_across_model_tabs(
     ]
     assert _by_key(app.multiselect, exog_key).options == ["second_exog"]
     assert _by_key(app.slider, f"{model_prefix}_train_forecast_window")
+
+
+def test_handoff_parse_failure_clears_restored_model_results(monkeypatch):
+    """交接后的数据解析失败时，不得继续展示恢复的模型结果。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=90).run()
+    _prepare_model_app(app, _sample_csv())
+    _by_key(app.button, "sarimax_fit_button").click()
+    app.run()
+    assert not app.exception
+    assert app.session_state["model_analysis.sarimax.fitted_result"] is not None
+
+    # 模拟独立页交接后原始行读取失败：数据集为空但旧结果仍在状态中。
+    app.session_state["model_analysis.sarimax.dataset"] = None
+    app.session_state["model_analysis.sarimax.upload.raw_rows"] = []
+    app.session_state["model_analysis.sarimax.handoff_restore"] = True
+    app.run()
+
+    assert not app.exception
+    assert app.session_state["model_analysis.sarimax.fitted_result"] is None
+    assert app.session_state["model_analysis.sarimax.fit_signature"] is None
+    assert app.session_state["model_analysis.sarimax.forecast"] is None
+    assert not any(
+        item.key == "sarimax_target_select" for item in app.selectbox
+    )
