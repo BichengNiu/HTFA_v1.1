@@ -1631,3 +1631,77 @@ def test_time_column_change_clears_model_input_until_reprocessed(monkeypatch):
         "value",
         "policy",
     ]
+
+
+def test_preprocessing_change_clears_model_input_until_reprocessed(monkeypatch):
+    """预处理规则变化后，旧目标变量必须等待重新处理。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=90).run()
+    _prepare_model_app(app, _sample_csv())
+    assert _by_key(app.selectbox, "sarimax_target_select").options == ["value"]
+
+    _by_key(app.multiselect, "sarimax_data_preprocessing").set_value([])
+    app.run()
+
+    assert not app.exception
+    assert not any(
+        item.key == "sarimax_target_select" for item in app.selectbox
+    )
+    _by_key(app.button, "sarimax_start_processing_button").click()
+    app.run()
+    assert _by_key(app.selectbox, "sarimax_target_select").options == ["value"]
+
+
+def test_uae_workbook_target_variables_follow_selected_sheet(monkeypatch):
+    """真实 UAE 工作簿中，日度页不能出现月度目标变量。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    workbook = PROJECT_ROOT / "data" / "UAE" / "阿联酋.xlsx"
+    assert workbook.exists()
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=90).run()
+    _navigate_to_sarimax(app)
+    _by_key(
+        app.file_uploader, "model_analysis.sarimax.upload.uploader"
+    ).upload(
+        workbook.name,
+        workbook.read_bytes(),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    app.run()
+    assert not app.exception
+
+    sheet_key = "sarimax_model_preview_sheet"
+    _by_key(app.selectbox, sheet_key).select("月度_Wind")
+    app.run()
+    _by_key(
+        app.number_input, "sarimax_model_preview_variable_name_row"
+    ).set_value(2)
+    app.run()
+    _by_key(app.number_input, "sarimax_model_preview_data_start_row").set_value(7)
+    app.run()
+    _by_key(app.selectbox, "sarimax_model_preview_time_column").select("指标名称")
+    app.run()
+    _by_key(app.button, "sarimax_start_processing_button").click()
+    app.run()
+    assert not app.exception
+    monthly_target = "中国:出口金额:阿联酋:当月值"
+    assert any(
+        str(option).startswith(monthly_target)
+        for option in _by_key(app.selectbox, "sarimax_target_select").options
+    )
+
+    _by_key(app.selectbox, sheet_key).select("日度_Wind")
+    app.run()
+    assert not any(
+        item.key == "sarimax_target_select" for item in app.selectbox
+    )
+    _by_key(app.button, "sarimax_start_processing_button").click()
+    app.run()
+    assert not app.exception
+    assert all(
+        not str(option).startswith(monthly_target)
+        for option in _by_key(app.selectbox, "sarimax_target_select").options
+    )
