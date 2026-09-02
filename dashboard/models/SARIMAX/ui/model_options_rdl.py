@@ -7,6 +7,8 @@ import pandas as pd
 from dashboard.models.SARIMAX.core.rdl_config import (
     RDLConfig,
     RDLInputConfig,
+    RDLInterventionConfig,
+    RDL_INTERVENTION_NAME,
 )
 from dashboard.models.SARIMAX.ui.model_options_shared import (
     parse_sparse_lags,
@@ -24,6 +26,8 @@ def render_rdl_options(
     exog: pd.DataFrame | None,
     *,
     response_log: bool,
+    intervention_analysis: bool = False,
+    model_dates: pd.Index | None = None,
     prefix: str = "sarimax_rdl",
     state_manager: StateStore = state,
 ) -> RDLConfig | None:
@@ -37,15 +41,34 @@ def render_rdl_options(
         当前选择的外生变量表。
     response_log : bool
         目标变量对数变换状态。
+    intervention_analysis : bool, default=False
+        是否启用历史干预变量 I。
+    model_dates : pandas.Index or None, optional
+        当前训练样本的实际模型观测日期。
 
     Returns
     -------
     RDLConfig or None
         构建好的 RDL 配置；控件参数无效时返回 ``None``。
     """
-    if exog is None or exog.empty:
+    if not intervention_analysis and (exog is None or exog.empty):
         st_obj.warning("RDL 需要至少一个解释变量；请在上方变量选择中添加。")
         return None
+    intervention = None
+    if intervention_analysis:
+        dates = _normalise_model_dates(model_dates)
+        if dates is None:
+            st_obj.error("干预分析需要至少一个有效的历史模型观测日期。")
+            return None
+        with st_obj.container(border=True):
+            st_obj.markdown("**干预冲击定义**")
+            intervention = _render_intervention_controls(
+                st_obj,
+                dates,
+                prefix=prefix,
+            )
+        if intervention is None:
+            return None
     with st_obj.container(border=True):
         st_obj.markdown("**响应 / 误差结构**")
         error = render_sarimax_error_options(
@@ -58,7 +81,13 @@ def render_rdl_options(
         return None
     with st_obj.container(border=True):
         st_obj.markdown("**输入动态**")
-        inputs = _render_rdl_inputs(st_obj, exog, prefix=prefix, state_manager=state_manager)
+        inputs = _render_rdl_inputs(
+            st_obj,
+            exog,
+            intervention=intervention,
+            prefix=prefix,
+            state_manager=state_manager,
+        )
     if inputs is None:
         return None
     with st_obj.container(border=True):
@@ -73,6 +102,7 @@ def render_rdl_options(
             inputs=inputs,
             error=error,
             enforce_distributed_lag_stability=stable,
+            intervention=intervention,
         )
     except (TypeError, ValueError) as exc:
         st_obj.error(f"RDL 设置有误：{exc}")
@@ -81,19 +111,31 @@ def render_rdl_options(
 
 def _render_rdl_inputs(
     st_obj,
-    exog: pd.DataFrame,
+    exog: pd.DataFrame | None,
     *,
+    intervention: RDLInterventionConfig | None,
     prefix: str,
     state_manager: StateStore,
 ) -> tuple[RDLInputConfig, ...] | None:
     """渲染固定行的 RDL 传递函数参数表与可选稀疏滞后设置。"""
-    names = list(exog.columns)
+    ordinary_names = [] if exog is None else [str(name) for name in exog.columns]
+    names = ordinary_names + (
+        [RDL_INTERVENTION_NAME] if intervention is not None else []
+    )
+    display_names = ordinary_names + (
+        ["I（干预变量）"] if intervention is not None else []
+    )
     basic = restore_table_state(
         f"{prefix}_input_table",
         pd.DataFrame(
-            {"变量": names, "分子阶数": 0, "分母阶数": 0, "延迟": 0}
+            {
+                "变量": display_names,
+                "分子阶数": 0,
+                "分母阶数": 0,
+                "延迟": 0,
+            }
         ),
-        names,
+        display_names,
         state_manager=state_manager,
     )
     edited = st_obj.data_editor(
@@ -111,13 +153,13 @@ def _render_rdl_inputs(
                 f"{prefix}_advanced_table",
                 pd.DataFrame(
                     {
-                        "变量": names,
+                        "变量": display_names,
                         "分子稀疏滞后": "",
                         "分母稀疏滞后": "",
                         "初始化": "auto",
                     }
                 ),
-                names,
+                display_names,
                 state_manager=state_manager,
             ),
             key=f"{prefix}_advanced_table",
@@ -145,6 +187,80 @@ def _render_rdl_inputs(
         )
     except (TypeError, ValueError) as exc:
         st_obj.error(f"RDL 输入动态设置有误：{exc}")
+    return None
+
+
+_INTERVENTION_KIND_LABELS = {
+    "单期冲击（pulse）": "pulse",
+    "持续冲击（step）": "step",
+    "临时区间冲击（temporary）": "temporary",
+}
+
+
+def _normalise_model_dates(model_dates: pd.Index | None) -> pd.DatetimeIndex | None:
+    """规范化 RDL 干预控件使用的实际模型观测日期。"""
+    if model_dates is None:
+        return None
+    try:
+        dates = pd.DatetimeIndex(pd.to_datetime(model_dates))
+    except (TypeError, ValueError):
+        return None
+    if len(dates) == 0 or dates.hasnans or dates.has_duplicates:
+        return None
+    if not dates.is_monotonic_increasing:
+        return None
+    return dates
+
+
+def _render_intervention_controls(
+    st_obj,
+    model_dates: pd.DatetimeIndex,
+    *,
+    prefix: str,
+) -> RDLInterventionConfig | None:
+    """渲染冲击类型和历史观测日期控件。"""
+    labels = tuple(_INTERVENTION_KIND_LABELS)
+    selected_label = st_obj.selectbox(
+        "冲击类型",
+        options=labels,
+        key=f"{prefix}_intervention_kind",
+        help="I 为 0/1 虚拟变量；冲击幅度由 I 的 RDL 参数估计，不单独设置。",
+    )
+    kind = _INTERVENTION_KIND_LABELS[str(selected_label)]
+    dates = tuple(pd.Timestamp(value) for value in model_dates)
+    middle = len(dates) // 2
+    default_start = dates[middle]
+    if kind == "temporary":
+        default_end = dates[min(middle + 1, len(dates) - 1)]
+        selected_window = st_obj.select_slider(
+            "冲击起止日期（包含端点）",
+            options=list(dates),
+            value=(default_start, default_end),
+            key=f"{prefix}_intervention_window",
+        )
+        if (
+            not isinstance(selected_window, (tuple, list))
+            or len(selected_window) != 2
+        ):
+            st_obj.warning("请选择完整的干预起止日期。")
+            return None
+        start_date, end_date = selected_window
+    else:
+        start_date = st_obj.select_slider(
+            "冲击发生日期",
+            options=list(dates),
+            value=default_start,
+            key=f"{prefix}_intervention_start",
+        )
+        end_date = None
+    try:
+        return RDLInterventionConfig(
+            start_date=pd.Timestamp(start_date),
+            kind=kind,
+            end_date=None if end_date is None else pd.Timestamp(end_date),
+        )
+    except (TypeError, ValueError) as exc:
+        st_obj.error(f"干预冲击设置有误：{exc}")
         return None
 
 

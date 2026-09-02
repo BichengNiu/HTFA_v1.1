@@ -40,6 +40,12 @@ def render_forecast_section(st_obj, scope: ModelPageScope = SARIMAX_SCOPE) -> No
     if result is None:
         st_obj.info("完成模型训练后可生成样本外预测。")
         return
+    if scope.family == "RDL" and state.get("intervention_config") is not None:
+        st_obj.info(
+            "当前 RDL 干预分析仅支持历史训练样本；"
+            "包含干预变量 I 的样本外预测场景暂未开放。"
+        )
+        return
     st_obj.markdown("**预测结果**")
     try:
         forecast_context = _MODEL_WORKFLOW.forecast_context(result)

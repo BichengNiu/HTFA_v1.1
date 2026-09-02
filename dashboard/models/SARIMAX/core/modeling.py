@@ -23,7 +23,11 @@ from dashboard.models.SARIMAX.core.forecasting import (
 )
 from dashboard.models.SARIMAX.core.forecast_planning import future_dates
 from dashboard.models.SARIMAX.core.rdl_config import RDLConfig
-from dashboard.models.SARIMAX.core.rdl_modeling import fit_rdl
+from dashboard.models.SARIMAX.core.rdl_modeling import (
+    build_rdl_intervention_analysis,
+    fit_rdl,
+    validate_rdl_intervention,
+)
 from dashboard.models.SARIMAX.core.sarimax_config import (
     AutoSARIMAXConfig,
     SARIMAXConfig,
@@ -171,8 +175,13 @@ def validate_fit_inputs(
             problems.append("外生变量与目标序列索引不一致，请重新选择外生变量")
 
     if _is_dynamic_regression(config):
-        if exog is None or exog.shape[1] == 0:
-            problems.append("RDL/ARDL 至少需要选择一个解释变量")
+        if isinstance(config, RDLConfig):
+            if exog is None or exog.shape[1] == 0:
+                if config.intervention is None:
+                    problems.append("RDL 至少需要一个普通外生变量或干预变量 I")
+            problems.extend(validate_rdl_intervention(series.index, config))
+        elif exog is None or exog.shape[1] == 0:
+            problems.append("ARDL 至少需要选择一个解释变量")
         if series.isna().any() or (
             exog is not None and exog.isna().any().any()
         ):
@@ -217,7 +226,8 @@ def fit_dynamic_model(
     series : pandas.Series
         目标时间序列。
     exog : pandas.DataFrame or None
-        可选的外生变量表；RDL/ARDL 必须提供。
+        可选的外生变量表；RDL 在启用干预变量 I 时可以没有普通 X，
+        ARDL 必须提供普通解释变量。
     config : DynamicConfig
         SARIMAX、RDL 或 ARDL 配置对象。
     progress_callback : callable, optional
@@ -238,11 +248,11 @@ def fit_dynamic_model(
             config,
             progress_callback=progress_callback,
         )
-    if exog is None:
-        raise ValueError("RDL/ARDL 需要解释变量")
     if isinstance(config, RDLConfig):
         return fit_rdl(series, exog, config)
     if isinstance(config, ARDLConfig):
+        if exog is None:
+            raise ValueError("ARDL 需要解释变量")
         return fit_ardl(series, exog, config)
     raise TypeError(f"不支持的动态回归配置：{type(config)!r}")
 
@@ -252,6 +262,7 @@ __all__ = [
     "DynamicConfig",
     "build_auto_sarimax_criterion_table",
     "build_prediction_table",
+    "build_rdl_intervention_analysis",
     "fit_ardl",
     "fit_auto_sarimax",
     "fit_dynamic_model",
@@ -266,5 +277,6 @@ __all__ = [
     "select_auto_sarimax_candidate",
     "select_auto_sarimax_result",
     "translate_ts_error",
+    "validate_rdl_intervention",
     "validate_fit_inputs",
 ]

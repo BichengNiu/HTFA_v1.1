@@ -36,6 +36,8 @@ _RDL_WIDGET_SUFFIXES = (
     "error_ar_lags", "error_ma_lags", "error_seasonal_ar_lags",
     "error_seasonal_ma_lags",
     "input_table", "advanced_table", "enforce_stability",
+    "intervention_analysis", "intervention_kind", "intervention_start",
+    "intervention_window",
 )
 _ARDL_WIDGET_SUFFIXES = (
     "error_p", "error_d", "error_q", "error_P", "error_D", "error_Q",

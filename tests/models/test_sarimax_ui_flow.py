@@ -803,6 +803,193 @@ def test_rdl_manual_workflow_via_ui(monkeypatch):
     assert not any("自动选阶" in item.value for item in app.markdown)
 
 
+def test_rdl_intervention_controls_are_scoped_and_add_i_row(monkeypatch):
+    """RDL 开启干预后显示冲击控件与独立 I 输入行。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=90).run()
+    _open_model_tab(app, "rdl", "手动配置")
+
+    intervention = _by_key(app.checkbox, "rdl_intervention_analysis")
+    assert intervention.label == "干预分析"
+    assert not intervention.value
+    assert not any(
+        item.key == "rdl_intervention_kind" for item in app.selectbox
+    )
+
+    intervention.set_value(True)
+    app.run()
+    assert not app.exception
+    assert _by_key(app.selectbox, "rdl_intervention_kind").value == "单期冲击（pulse）"
+    table = _by_key(app.dataframe, "rdl_input_table").value
+    assert "I（干预变量）" in table["变量"].tolist()
+
+
+def test_rdl_intervention_pulse_fits_and_renders_effect_analysis(monkeypatch):
+    """RDL pulse I 可拟合，并在分析页展示独立的干预结果。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=90).run()
+    _open_model_tab(app, "rdl", "手动配置")
+    _by_key(app.checkbox, "rdl_intervention_analysis").set_value(True)
+    app.run()
+    _by_key(app.button, "rdl_fit_button").click()
+    app.run()
+
+    assert not app.exception
+    result = app.session_state["model_analysis.rdl.fitted_result"]
+    assert tuple(result.distributed_lags) == ("policy", "intervention")
+    assert any("RDL 干预分析" in item.value for item in app.markdown)
+    assert any("样本外预测场景暂未开放" in item.value for item in app.info)
+    table = next(
+        frame.value
+        for frame in app.dataframe
+        if {"I 干预路径", "有干预 Y", "无干预 Y", "干预差异"}.issubset(
+            frame.value.columns
+        )
+    )
+    assert {"I 干预路径", "有干预 Y", "无干预 Y", "干预差异"}.issubset(
+        table.columns
+    )
+    assert any(
+        "I 动态权重" in frame.value.columns for frame in app.dataframe
+    )
+    assert any(
+        "分子主动滞后" in frame.value.columns for frame in app.dataframe
+    )
+
+
+def test_rdl_intervention_switches_from_step_to_inclusive_temporary_window(
+    monkeypatch,
+):
+    """冲击类型切换时，单日期和闭区间 slider 与模型类型同步。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=90).run()
+    _open_model_tab(app, "rdl", "手动配置")
+    _by_key(app.checkbox, "rdl_intervention_analysis").set_value(True)
+    app.run()
+
+    kind = _by_key(app.selectbox, "rdl_intervention_kind")
+    kind.set_value("持续冲击（step）")
+    app.run()
+    assert not app.exception
+    assert _by_key(app.get("select_slider"), "rdl_intervention_start")
+    assert not any(
+        item.key == "rdl_intervention_window" for item in app.get("select_slider")
+    )
+
+    kind = _by_key(app.selectbox, "rdl_intervention_kind")
+    kind.set_value("临时区间冲击（temporary）")
+    app.run()
+    assert not app.exception
+    assert _by_key(app.get("select_slider"), "rdl_intervention_window")
+    assert not any(
+        item.key == "rdl_intervention_start" for item in app.get("select_slider")
+    )
+
+
+def test_rdl_intervention_can_fit_without_ordinary_exog(monkeypatch):
+    """启用干预分析后允许 I-only RDL。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=90).run()
+    _open_model_tab(app, "rdl", "手动配置")
+    _by_key(app.checkbox, "rdl_intervention_analysis").set_value(True)
+    app.run()
+    _by_key(app.multiselect, "rdl_exog_select").set_value([])
+    app.run()
+    _by_key(app.number_input, "rdl_error_p").set_value(0)
+    _by_key(app.number_input, "rdl_error_q").set_value(0)
+    app.run()
+    _by_key(app.button, "rdl_fit_button").click()
+    app.run()
+
+    assert not app.exception
+    assert tuple(app.session_state["model_analysis.rdl.fitted_result"].distributed_lags) == (
+        "intervention",
+    )
+
+
+def test_rdl_intervention_log_target_exposes_relative_effect(monkeypatch):
+    """RDL 干预分析在 log(Y) 下展示原始尺度相对变化。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=90).run()
+    _open_model_tab(app, "rdl", "手动配置")
+    _by_key(app.checkbox, "rdl_response_log").set_value(True)
+    _by_key(app.checkbox, "rdl_intervention_analysis").set_value(True)
+    app.run()
+    _by_key(app.number_input, "rdl_error_p").set_value(0)
+    _by_key(app.number_input, "rdl_error_q").set_value(0)
+    app.run()
+    _by_key(app.button, "rdl_fit_button").click()
+    app.run()
+
+    assert not app.exception
+    result = app.session_state["model_analysis.rdl.fitted_result"]
+    assert result.log
+    table = next(
+        frame.value
+        for frame in app.dataframe
+        if "相对变化（%）" in frame.value.columns
+    )
+    assert table["相对变化（%）"].notna().any()
+    assert any("log(Y)" in item.value for item in app.caption)
+
+
+def test_rdl_intervention_change_clears_previous_fit(monkeypatch):
+    """改变冲击日期后旧拟合结果立即失效。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=90).run()
+    _open_model_tab(app, "rdl", "手动配置")
+    _by_key(app.checkbox, "rdl_intervention_analysis").set_value(True)
+    app.run()
+    _by_key(app.button, "rdl_fit_button").click()
+    app.run()
+    assert app.session_state["model_analysis.rdl.fitted_result"] is not None
+
+    slider = _by_key(app.get("select_slider"), "rdl_intervention_start")
+    options = list(slider.options)
+    slider.set_value(options[0])
+    app.run()
+
+    assert app.session_state["model_analysis.rdl.fitted_result"] is None
+
+
+def test_sarimax_does_not_render_rdl_intervention_checkbox(monkeypatch):
+    """干预分析控件只属于 RDL 页面。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=90).run()
+    _open_model_tab(app, "sarimax", "手动配置")
+
+    assert not any(
+        item.key == "sarimax_intervention_analysis" for item in app.checkbox
+    )
+
+
+def test_ardl_does_not_render_rdl_intervention_checkbox(monkeypatch):
+    """干预分析控件不属于 ARDL 页面。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=90).run()
+    _open_model_tab(app, "ardl", "手动配置")
+
+    assert not any(
+        item.key == "ardl_intervention_analysis" for item in app.checkbox
+    )
+
+
 def test_ardl_manual_sarima_error_workflow_via_ui(monkeypatch):
     """ARDL 只显示手动滞后，并可配置 SARIMA 误差后完成拟合。"""
     from streamlit.testing.v1 import AppTest

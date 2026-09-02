@@ -79,6 +79,8 @@ class ModelDataInput:
         state.set("exog_log_names", ())
         state.set("training_time_range", None)
         state.set("response_log", False)
+        state.set("intervention_analysis", False)
+        state.set("intervention_config", None)
         state.set("future_exog_editor_signature", None)
         self.scope.clear_fit_results()
         self.scope.clear_widget_state(

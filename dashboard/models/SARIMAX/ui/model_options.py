@@ -29,6 +29,8 @@ def render_model_options(
     *,
     response_log: bool = False,
     exog_log_names: tuple[str, ...] = (),
+    intervention_analysis: bool = False,
+    model_dates: pd.Index | None = None,
     key_prefix: str = "sarimax",
     state_manager: StateStore = state,
 ):
@@ -43,11 +45,16 @@ def render_model_options(
     mode : str
         SARIMAX 配置方式；RDL/ARDL 始终使用手动配置。
     exog : pandas.DataFrame or None
-        当前选择的外生变量表；RDL/ARDL 需要至少一列。
+        当前选择的外生变量表；RDL 需要普通 X 或已启用的干预变量 I，
+        ARDL 需要至少一列普通解释变量。
     response_log : bool, default=False
         通用输入模块提供的目标变量对数变换状态。
     exog_log_names : tuple[str, ...], default=()
         需要对数变换的 SARIMAX 外生变量名称。
+    intervention_analysis : bool, default=False
+        是否为 RDL 启用历史干预变量 I。
+    model_dates : pandas.Index or None, optional
+        当前训练样本的实际模型观测日期，供 RDL 干预日期选择。
 
     Returns
     -------
@@ -69,6 +76,8 @@ def render_model_options(
             st_obj,
             exog,
             response_log=response_log,
+            intervention_analysis=intervention_analysis,
+            model_dates=model_dates,
             prefix=key_prefix,
             state_manager=state_manager,
         )

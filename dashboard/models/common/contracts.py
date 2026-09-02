@@ -66,6 +66,8 @@ class ModelingInput:
         是否对目标变量应用对数变换。
     exog_log_names : tuple[str, ...]
         需要对数变换的外生变量名称；必须是 ``exog_names`` 的子集。
+    intervention_analysis : bool, default=False
+        是否在 RDL 中启用历史干预变量 I。
     """
 
     series: pd.Series
@@ -79,6 +81,7 @@ class ModelingInput:
     missing_value_method: str = "无"
     response_log: bool = False
     exog_log_names: tuple[str, ...] = ()
+    intervention_analysis: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.series, pd.Series):
@@ -112,6 +115,8 @@ class ModelingInput:
                 )
         if not isinstance(self.response_log, bool):
             raise TypeError("response_log 必须是布尔值")
+        if not isinstance(self.intervention_analysis, bool):
+            raise TypeError("intervention_analysis 必须是布尔值")
         if not isinstance(self.missing_value_method, str):
             raise TypeError("missing_value_method 必须是字符串")
         object.__setattr__(self, "series", self.series.copy(deep=True))

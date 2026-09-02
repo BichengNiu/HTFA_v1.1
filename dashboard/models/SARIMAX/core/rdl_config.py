@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
+
+import pandas as pd
 
 from dashboard.models.SARIMAX.core.config_shared import (
     RDL_INITIALIZATIONS,
@@ -10,6 +13,62 @@ from dashboard.models.SARIMAX.core.config_shared import (
     _validate_lag_tuple,
 )
 from dashboard.models.SARIMAX.core.sarimax_config import SARIMAXConfig
+
+
+RDL_INTERVENTION_NAME = "intervention"
+RDLInterventionKind = Literal["pulse", "step", "temporary"]
+
+
+@dataclass(frozen=True)
+class RDLInterventionConfig:
+    """历史 RDL 干预变量 I 的二元冲击路径定义。"""
+
+    start_date: object
+    kind: RDLInterventionKind = "pulse"
+    end_date: object | None = None
+
+    def __post_init__(self) -> None:
+        if self.kind not in {"pulse", "step", "temporary"}:
+            raise ValueError("干预类型必须是 pulse、step 或 temporary")
+        try:
+            start_date = pd.Timestamp(self.start_date)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("干预起始日期无效") from exc
+        if pd.isna(start_date):
+            raise ValueError("干预起始日期无效")
+
+        if self.end_date is None:
+            end_date = None
+        else:
+            try:
+                end_date = pd.Timestamp(self.end_date)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("干预结束日期无效") from exc
+            if pd.isna(end_date):
+                raise ValueError("干预结束日期无效")
+
+        if self.kind == "temporary":
+            if end_date is None:
+                raise ValueError("temporary 干预必须指定 end_date")
+            try:
+                reversed_window = start_date > end_date
+            except TypeError as exc:
+                raise ValueError("干预起止日期的时区必须一致") from exc
+            if reversed_window:
+                raise ValueError("干预结束日期不能早于起始日期")
+        elif end_date is not None:
+            raise ValueError("end_date only valid for temporary intervention")
+
+        object.__setattr__(self, "start_date", start_date)
+        object.__setattr__(self, "end_date", end_date)
+
+    def signature(self) -> tuple:
+        """返回可哈希的干预路径签名。"""
+        return (
+            self.kind,
+            self.start_date.isoformat(),
+            None if self.end_date is None else self.end_date.isoformat(),
+        )
 
 
 @dataclass(frozen=True)
@@ -119,9 +178,26 @@ class RDLConfig:
     inputs: tuple[RDLInputConfig, ...]
     error: SARIMAXConfig = SARIMAXConfig()
     enforce_distributed_lag_stability: bool = True
+    intervention: RDLInterventionConfig | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "inputs", _validate_rdl_inputs(self.inputs))
+        inputs = _validate_rdl_inputs(self.inputs)
+        object.__setattr__(self, "inputs", inputs)
+        if self.intervention is not None and not isinstance(
+            self.intervention, RDLInterventionConfig
+        ):
+            raise TypeError("intervention 必须是 RDLInterventionConfig 或 None")
+        intervention_names = [
+            item.name for item in inputs if item.name == RDL_INTERVENTION_NAME
+        ]
+        if self.intervention is None and intervention_names:
+            raise ValueError(
+                f"{RDL_INTERVENTION_NAME} 只能用于启用干预分析的 RDL 配置"
+            )
+        if self.intervention is not None and len(intervention_names) != 1:
+            raise ValueError(
+                "启用干预分析时，RDL inputs 必须包含且只能包含一个干预变量 I"
+            )
         if not isinstance(self.error, SARIMAXConfig):
             raise TypeError("error 必须是 SARIMAXConfig")
         if not isinstance(self.enforce_distributed_lag_stability, bool):
@@ -139,7 +215,13 @@ class RDLConfig:
             self.error.signature(),
             tuple(item.signature() for item in self.inputs),
             self.enforce_distributed_lag_stability,
+            None if self.intervention is None else self.intervention.signature(),
         )
 
 
-__all__ = ["RDLConfig", "RDLInputConfig"]
+__all__ = [
+    "RDLConfig",
+    "RDLInputConfig",
+    "RDLInterventionConfig",
+    "RDL_INTERVENTION_NAME",
+]

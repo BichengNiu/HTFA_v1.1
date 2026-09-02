@@ -26,6 +26,7 @@ from dashboard.models.SARIMAX.core.model_config import (
     ARDLConfig,
     AutoSARIMAXConfig,
     RDLConfig,
+    RDLInterventionConfig,
     RDLInputConfig,
     SARIMAXConfig,
 )
@@ -46,6 +47,10 @@ from dashboard.models.SARIMAX.core.modeling import (
     select_auto_sarimax_result,
     translate_ts_error,
     validate_fit_inputs,
+)
+from dashboard.models.SARIMAX.core.rdl_modeling import (
+    build_rdl_intervention_analysis,
+    build_rdl_intervention_path,
 )
 from dashboard.models.SARIMAX.core.forecast_planning import (
     build_forecast_calendar,
@@ -698,6 +703,41 @@ def test_dynamic_regression_configs_capture_all_lag_structure():
         SARIMAXConfig(maxiter=1.5)
 
 
+def test_rdl_intervention_config_has_explicit_binary_path_semantics():
+    dates = pd.date_range("2020-01-01", periods=6, freq="MS")
+    intervention = RDLInterventionConfig(
+        kind="temporary",
+        start_date=dates[1],
+        end_date=dates[3],
+    )
+    config = RDLConfig(
+        inputs=(RDLInputConfig("intervention"),),
+        intervention=intervention,
+    )
+
+    assert config.intervention == intervention
+    assert config.inputs[0].name == "intervention"
+    assert build_rdl_intervention_path(dates, intervention).tolist() == [
+        0.0, 1.0, 1.0, 1.0, 0.0, 0.0
+    ]
+    assert config.signature()[-1] == intervention.signature()
+
+    with pytest.raises(ValueError, match="end_date"):
+        RDLInterventionConfig(kind="temporary", start_date=dates[1])
+    with pytest.raises(ValueError, match="不能早于"):
+        RDLInterventionConfig(
+            kind="temporary",
+            start_date=dates[3],
+            end_date=dates[1],
+        )
+    with pytest.raises(ValueError, match="only valid"):
+        RDLInterventionConfig(
+            kind="pulse",
+            start_date=dates[1],
+            end_date=dates[2],
+        )
+
+
 # ---------- modeling ----------
 
 
@@ -982,6 +1022,138 @@ def test_fit_rdl_keeps_transfer_function_fixed():
     )
     assert tuple(manual.distributed_lags) == ("policy",)
     assert manual.order == (0, 0, 0)
+
+
+def test_fit_rdl_supports_intervention_with_no_ordinary_exog():
+    dates = pd.date_range("2020-01-01", periods=60, freq="MS")
+    rng = np.random.default_rng(20260902)
+    intervention_date = dates[30]
+    y = rng.normal(scale=0.05, size=len(dates))
+    y[30:] += 1.5
+    series = pd.Series(y, index=dates)
+    config = RDLConfig(
+        inputs=(RDLInputConfig("intervention"),),
+        intervention=RDLInterventionConfig(
+            kind="step",
+            start_date=intervention_date,
+        ),
+        error=SARIMAXConfig(order=(0, 0, 0), trend="n"),
+    )
+
+    fitted = fit_rdl(series, None, config)
+    assert tuple(fitted.distributed_lags) == ("intervention",)
+    analysis = build_rdl_intervention_analysis(fitted, config.intervention)
+    assert analysis.intervention_path.loc[intervention_date] == 1.0
+    assert analysis.intervention_path.iloc[:30].sum() == 0.0
+    assert analysis.intervention_path.iloc[31:].eq(1.0).all()
+    assert analysis.table().index.equals(dates)
+    with pytest.raises(ValueError, match="暂不支持样本内外预测"):
+        produce_forecast(fitted, start=fitted.nobs, end=fitted.nobs)
+
+
+@pytest.mark.parametrize(
+    ("kind", "end_date", "expected_positions"),
+    [
+        ("pulse", None, (3,)),
+        ("step", None, (3, 4, 5, 6, 7)),
+        ("temporary", "2020-05-01", (3, 4)),
+    ],
+)
+def test_rdl_intervention_path_kinds_are_binary_and_date_aligned(
+    kind, end_date, expected_positions
+):
+    dates = pd.date_range("2020-01-01", periods=8, freq="MS")
+    path = build_rdl_intervention_path(
+        dates,
+        RDLInterventionConfig(
+            kind=kind,
+            start_date=dates[3],
+            end_date=end_date,
+        ),
+    )
+
+    assert path.index.equals(dates)
+    assert set(path.unique()) == {0.0, 1.0}
+    assert tuple(np.flatnonzero(path.to_numpy())) == expected_positions
+
+
+def test_validate_fit_inputs_accepts_rdl_intervention_without_ordinary_exog():
+    dates = pd.date_range("2020-01-01", periods=30, freq="MS")
+    series = pd.Series(np.arange(30.0) + 10.0, index=dates)
+    config = RDLConfig(
+        inputs=(RDLInputConfig("intervention"),),
+        intervention=RDLInterventionConfig(
+            kind="pulse",
+            start_date=dates[10],
+        ),
+        error=SARIMAXConfig(order=(0, 0, 0), trend="c"),
+    )
+
+    assert validate_fit_inputs(series, None, config) == []
+
+
+def test_validate_fit_inputs_rejects_constant_intervention_path():
+    dates = pd.date_range("2020-01-01", periods=30, freq="MS")
+    series = pd.Series(np.arange(30.0) + 10.0, index=dates)
+    config = RDLConfig(
+        inputs=(RDLInputConfig("intervention"),),
+        intervention=RDLInterventionConfig(
+            kind="step",
+            start_date=dates[0],
+        ),
+        error=SARIMAXConfig(order=(0, 0, 0), trend="c"),
+    )
+
+    problems = validate_fit_inputs(series, None, config)
+    assert any("恒定" in problem or "共线" in problem for problem in problems)
+
+
+def test_rdl_intervention_rejects_dates_outside_model_index():
+    dates = pd.date_range("2020-01-01", periods=30, freq="MS")
+    series = pd.Series(np.arange(30.0) + 10.0, index=dates)
+    config = RDLConfig(
+        inputs=(RDLInputConfig("intervention"),),
+        intervention=RDLInterventionConfig(
+            kind="pulse",
+            start_date=dates[-1] + pd.offsets.MonthBegin(1),
+        ),
+        error=SARIMAXConfig(order=(0, 0, 0), trend="n"),
+    )
+
+    problems = validate_fit_inputs(series, None, config)
+    assert any("必须存在于模型观测日期" in problem for problem in problems)
+
+
+def test_rdl_intervention_analysis_returns_original_scale_log_contrast():
+    dates = pd.date_range("2020-01-01", periods=60, freq="MS")
+    rng = np.random.default_rng(20260902)
+    log_y = np.full(len(dates), 2.0) + rng.normal(scale=0.01, size=len(dates))
+    log_y[30:] += 0.2
+    series = pd.Series(np.exp(log_y), index=dates)
+    config = RDLConfig(
+        inputs=(RDLInputConfig("intervention"),),
+        intervention=RDLInterventionConfig(
+            kind="step",
+            start_date=dates[30],
+        ),
+        error=SARIMAXConfig(order=(0, 0, 0), trend="n", log=True),
+    )
+
+    fitted = fit_rdl(series, None, config)
+    analysis = build_rdl_intervention_analysis(fitted, config.intervention)
+    valid = analysis.dynamic_response.notna()
+    expected_relative = 100.0 * (
+        np.exp(analysis.dynamic_response[valid].to_numpy()) - 1.0
+    )
+    np.testing.assert_allclose(
+        analysis.relative_effect[valid].to_numpy(), expected_relative
+    )
+    np.testing.assert_allclose(
+        analysis.counterfactual_mean[valid].to_numpy(),
+        analysis.factual_mean[valid].to_numpy()
+        / np.exp(analysis.dynamic_response[valid].to_numpy()),
+    )
+    assert analysis.log_scale
 
 
 def test_fit_standard_ardl_manual_sarima_error_and_future_input_path():

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
 from dashboard.models.SARIMAX.core.forecast_planning import future_dates
+from dashboard.models.SARIMAX.core.rdl_config import RDL_INTERVENTION_NAME
 
 
 def produce_forecast(
@@ -45,6 +47,16 @@ def produce_forecast(
     """
     if not 0.0 < alpha < 1.0:
         raise ValueError("alpha 必须在 (0, 1) 区间内")
+    distributed_lags = getattr(result, "distributed_lags", None)
+    if (
+        getattr(result, "model_type", None) == "SARIMAX"
+        and isinstance(distributed_lags, Mapping)
+        and RDL_INTERVENTION_NAME in distributed_lags
+    ):
+        raise ValueError(
+            "包含干预变量 I 的 RDL 目前仅支持历史干预分析，"
+            "暂不支持样本内外预测"
+        )
 
     predict_kwargs = {
         "start": start,

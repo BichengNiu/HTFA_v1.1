@@ -16,7 +16,12 @@ from dashboard.models.SARIMAX.core.config_shared import (
     TREND_LABELS,
     TREND_OPTIONS,
 )
-from dashboard.models.SARIMAX.core.rdl_config import RDLConfig, RDLInputConfig
+from dashboard.models.SARIMAX.core.rdl_config import (
+    RDLConfig,
+    RDLInputConfig,
+    RDLInterventionConfig,
+    RDL_INTERVENTION_NAME,
+)
 from dashboard.models.SARIMAX.core.sarimax_config import (
     AutoSARIMAXConfig,
     SARIMAXConfig,
@@ -36,5 +41,7 @@ __all__ = [
     "AutoSARIMAXConfig",
     "RDLConfig",
     "RDLInputConfig",
+    "RDLInterventionConfig",
+    "RDL_INTERVENTION_NAME",
     "SARIMAXConfig",
 ]

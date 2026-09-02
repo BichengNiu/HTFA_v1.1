@@ -11,6 +11,8 @@ from dashboard.core.ui.utils.matplotlib_compat import matplotlib_date_compatibil
 from dashboard.core.workspace import stable_signature
 from dashboard.models.common.workflow import ModelWorkflow
 from dashboard.models.SARIMAX.core.adapters import DynamicRegressionAdapter
+from dashboard.models.SARIMAX.core.modeling import build_rdl_intervention_analysis
+from dashboard.models.SARIMAX.core.rdl_config import RDL_INTERVENTION_NAME
 from dashboard.models.SARIMAX.ui.state import ModelPageScope, SARIMAX_SCOPE
 
 logger = logging.getLogger(__name__)
@@ -56,6 +58,8 @@ def _render_model_diagnostics(st_obj, result, scope: ModelPageScope) -> None:
         except Exception as exc:
             st_obj.warning(f"RDL 输入冲击响应无法绘制：{exc}")
             logger.warning("RDL 输入冲击响应绘制失败", exc_info=True)
+        if scope.family == "RDL":
+            _render_rdl_intervention_analysis(st_obj, model_result, scope)
     if not (ar_roots or ma_roots):
         return
 
@@ -140,6 +144,75 @@ def _render_roots_plot(st_obj, model_result) -> None:
     except Exception as exc:
         st_obj.warning(f"Roots 稳定性图无法绘制：{exc}")
         logger.warning("SARIMAX Roots 稳定性图绘制失败", exc_info=True)
+
+
+def _render_rdl_intervention_analysis(st_obj, model_result, scope) -> None:
+    """展示日期干预路径与 RDL 事实/反事实结果。"""
+    intervention = scope.state.get("intervention_config")
+    if intervention is None:
+        return
+    st_obj.markdown("**RDL 干预分析**")
+    try:
+        analysis = build_rdl_intervention_analysis(model_result, intervention)
+        input_result = model_result.distributed_lags[RDL_INTERVENTION_NAME]
+        st_obj.caption(
+            "I 是 0/1 干预路径；动态响应由 I 的 RDL 传递函数估计，"
+            "不代表自动因果效应。"
+        )
+        st_obj.dataframe(
+            analysis.table(),
+            width="stretch",
+            key=scope.key("intervention_result"),
+        )
+        spec = input_result.spec
+        transfer_frame = pd.DataFrame(
+            [
+                {
+                    "输入": "I（干预变量）",
+                    "分子主动滞后": ", ".join(
+                        str(lag) for lag in spec.numerator_lags
+                    ),
+                    "分母主动滞后": ", ".join(
+                        str(lag) for lag in spec.denominator_lags
+                    ) or "无",
+                    "延迟": spec.delay,
+                    "初始化": spec.initialization,
+                }
+            ]
+        )
+        st_obj.caption("I 的 RDL 传递函数设置")
+        st_obj.dataframe(transfer_frame, width="stretch")
+        gain = input_result.gain()
+        gain_frame = pd.DataFrame([gain]).rename(
+            columns={
+                "input": "输入",
+                "estimate": "稳态增益",
+                "standard_error": "标准误",
+                "lower": "下界",
+                "upper": "上界",
+                "stable": "稳定",
+            }
+        )
+        st_obj.dataframe(gain_frame, width="stretch")
+        weights = input_result.weights(20).rename("I 动态权重").to_frame()
+        st_obj.caption("I 的 RDL 动态权重（前 20 期）")
+        st_obj.dataframe(weights, width="stretch")
+        if analysis.log_scale:
+            st_obj.caption(
+                "当前为 log(Y) 模型：相对变化（%）= 100 × "
+                "(exp(模型尺度响应) − 1)。"
+            )
+        st_obj.line_chart(
+            analysis.table()[["有干预 Y", "无干预 Y"]],
+            width="stretch",
+        )
+        st_obj.line_chart(
+            analysis.table()[["干预差异"]],
+            width="stretch",
+        )
+    except Exception as exc:  # noqa: BLE001 - 用户可读的分析边界
+        st_obj.warning(f"RDL 干预分析无法生成：{exc}")
+        logger.warning("RDL 干预分析失败", exc_info=True)
 
 
 def _cycle_diagnostics(model_result) -> tuple:

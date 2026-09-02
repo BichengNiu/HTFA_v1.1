@@ -42,6 +42,7 @@ def _model_inputs(scope: ModelPageScope) -> ModelInputModule:
             preprocessing_options=PREPROCESSING_OPTIONS,
             key_prefix=scope.key_prefix,
             show_exog_log=scope.family == "SARIMAX",
+            show_intervention=scope.family == "RDL",
             show_preprocessing=False,
         )
         _MODEL_INPUTS[scope.namespace] = module
@@ -83,10 +84,16 @@ def render_training_section(
         inputs.exog,
         response_log=inputs.response_log,
         exog_log_names=inputs.exog_log_names,
+        intervention_analysis=inputs.intervention_analysis,
+        model_dates=inputs.index,
         key_prefix=scope.key_prefix, state_manager=state,
     )
     if config is None:
+        if scope.family == "RDL":
+            state.set("intervention_config", None)
         return
+    if scope.family == "RDL":
+        state.set("intervention_config", config.intervention)
 
     problems = validate_fit_inputs(inputs.series, inputs.exog, config)
     for problem in problems:
@@ -102,6 +109,7 @@ def render_training_section(
             "time_range": tuple(value.isoformat() for value in inputs.training_range),
             "preprocessing": inputs.preprocessing, "response_log": inputs.response_log,
             "exog_log_names": inputs.exog_log_names,
+            "intervention_analysis": inputs.intervention_analysis,
             "config": config.signature(),
         },
         version="dynamic-regression-fit-v2",

@@ -54,6 +54,8 @@ class ModelInputModule:
         是否显示通用目标变量对数变换控件。
     show_exog_log : bool, default=False
         是否为每个已选外生变量显示独立的对数变换控件。
+    show_intervention : bool, default=False
+        是否在目标变量对数控件旁显示 RDL 历史干预分析开关。
     """
 
     state: StateStore
@@ -67,6 +69,7 @@ class ModelInputModule:
     default_forecast_sample_size: int = 12
     show_response_log: bool = True
     show_exog_log: bool = False
+    show_intervention: bool = False
     missing_value_options: tuple[str, ...] = ("无",)
     show_preprocessing: bool = True
 
@@ -92,6 +95,7 @@ class ModelInputModule:
         missing_value_key = f"{self.key_prefix}_missing_value_method"
         training_range_key = f"{self.key_prefix}_train_forecast_window"
         response_log_key = f"{self.key_prefix}_response_log"
+        intervention_key = f"{self.key_prefix}_intervention_analysis"
 
         select_columns = st_obj.columns(2 if not self.show_preprocessing else 4)
         with select_columns[0]:
@@ -105,9 +109,17 @@ class ModelInputModule:
                 ),
                 key=target_key,
             )
+            if self.show_response_log and self.show_intervention:
+                response_column, intervention_column = st_obj.columns(2)
+            elif self.show_intervention:
+                response_column = st_obj
+                intervention_column = st_obj
+            else:
+                response_column = st_obj
+                intervention_column = None
             if self.show_response_log:
                 response_log = bool(
-                    st_obj.checkbox(
+                    response_column.checkbox(
                         "目标变量取对数",
                         key=response_log_key,
                         help="勾选时要求目标变量严格为正，预测结果将回到原始刻度。",
@@ -115,6 +127,19 @@ class ModelInputModule:
                 )
             else:
                 response_log = False
+            if self.show_intervention:
+                intervention_analysis = bool(
+                    intervention_column.checkbox(
+                        "干预分析",
+                        key=intervention_key,
+                        help=(
+                            "将按历史观测日期生成 0/1 干预变量 I，"
+                            "并通过 RDL 估计其对目标变量的动态影响。"
+                        ),
+                    )
+                )
+            else:
+                intervention_analysis = False
         if target != self.state.get("target_variable"):
             self.state.set("target_variable", target)
             self.state.set("exog_variables", ())
@@ -150,6 +175,9 @@ class ModelInputModule:
             self.clear_fit_results()
         if response_log != self.state.get("response_log"):
             self.state.set("response_log", response_log)
+            self.clear_fit_results()
+        if intervention_analysis != self.state.get("intervention_analysis", False):
+            self.state.set("intervention_analysis", intervention_analysis)
             self.clear_fit_results()
 
         if self.show_preprocessing:
@@ -317,6 +345,7 @@ class ModelInputModule:
             missing_value_method=missing_value_method,
             response_log=response_log,
             exog_log_names=exog_log_names,
+            intervention_analysis=intervention_analysis,
         )
 
     def _exog_log_key(self, name: str) -> str:
