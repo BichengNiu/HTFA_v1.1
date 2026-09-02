@@ -12,6 +12,42 @@ if errorlevel 1 (
     goto :failed
 )
 
+echo [INFO] Checking the HTFA repository before launch...
+where git >nul 2>nul
+if errorlevel 1 (
+    echo [WARN] Git was not found; keeping the current HTFA source.
+    goto :after_htfa_update
+)
+
+git rev-parse --is-inside-work-tree >nul 2>nul
+if errorlevel 1 (
+    echo [WARN] This folder is not a Git repository; keeping the current HTFA source.
+    goto :after_htfa_update
+)
+
+set "HTFA_BRANCH="
+for /f "delims=" %%B in ('git branch --show-current 2^>nul') do set "HTFA_BRANCH=%%B"
+if /i not "%HTFA_BRANCH%"=="main" (
+    echo [WARN] Current branch is "%HTFA_BRANCH%"; skipping the HTFA update.
+    goto :after_htfa_update
+)
+
+set "HTFA_STATUS="
+for /f "delims=" %%S in ('git status --porcelain 2^>nul') do set "HTFA_STATUS=%%S"
+if defined HTFA_STATUS (
+    echo [WARN] Local HTFA changes were detected; skipping the HTFA update.
+    goto :after_htfa_update
+)
+
+echo [INFO] Updating HTFA from origin/main...
+git pull --ff-only origin main
+if errorlevel 1 (
+    echo [WARN] HTFA update failed; continuing with the current source.
+) else (
+    echo [OK] HTFA source is up to date.
+)
+
+:after_htfa_update
 if not exist "runtime\python.exe" (
     echo [INFO] Bundled runtime was not found. Building it now...
     where python >nul 2>nul

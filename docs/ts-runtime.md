@@ -16,6 +16,8 @@ python scripts\htfa.py setup-runtime
 
 启动时会检查 `BichengNiu/Ts` 的 `main`。发现新提交时更新本地 Ts；断网、下载失败或替换失败时继续使用现有版本。该过程不依赖系统 Git。
 
+如果项目目录本身是 Git 仓库，`scripts\start.bat` 会在上述 Ts 检查前尝试执行 `git pull --ff-only origin main` 更新 HTFA 源码。仅当当前分支是 `main` 且工作区干净时才会更新；Git 不可用、目录不是 Git 仓库、存在本地改动、无法快进或网络失败时会显示警告并继续使用当前 HTFA 源码，不会覆盖本地改动。
+
 需要测试某项改动时，使用项目运行时只执行相关测试：
 
 ```powershell
