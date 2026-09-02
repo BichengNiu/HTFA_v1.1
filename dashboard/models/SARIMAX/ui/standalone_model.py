@@ -12,6 +12,11 @@ import pandas as pd
 import streamlit as st
 
 from dashboard.core.workspace import HandoffStore
+from dashboard.models.common.model_library import (
+    MODEL_LIBRARY_TOKEN_KEY,
+    model_library_store,
+)
+from dashboard.models.common.ui.model_library import render_model_library_sidebar
 from dashboard.models.SARIMAX.ui.data_input import (
     SARIMAXDataSnapshot,
     SARIMAX_DATA_OVERVIEW_WIDGET_KEYS,
@@ -56,6 +61,7 @@ class SARIMAXHandoff:
     dataset: SARIMAXDataSnapshot
     widget_state: dict[str, object]
     result_state: dict[str, object]
+    model_library_token: str
 
 
 sarimax_handoff_store: HandoffStore[SARIMAXHandoff] = HandoffStore()
@@ -115,10 +121,18 @@ def create_standalone_sarimax_model_url(st_obj) -> str | None:
     dataset = export_sarimax_data_snapshot()
     if dataset is None:
         return None
+    model_library_token = st_obj.session_state.get(MODEL_LIBRARY_TOKEN_KEY)
+    if (
+        not isinstance(model_library_token, str)
+        or model_library_store.get(model_library_token) is None
+    ):
+        model_library_token = model_library_store.create()
+        st_obj.session_state[MODEL_LIBRARY_TOKEN_KEY] = model_library_token
     handoff = SARIMAXHandoff(
         dataset=dataset,
         widget_state=export_sarimax_widget_state(st_obj),
         result_state=export_sarimax_result_state(),
+        model_library_token=model_library_token,
     )
     signature = _handoff_signature(handoff)
     previous_token = st_obj.session_state.get(_HANDOFF_TOKEN_STATE_KEY)
@@ -179,6 +193,9 @@ def render_standalone_sarimax_model() -> None:
                 data_start_row=data_start_row,
             )
             restore_sarimax_result_state(handoff.result_state)
+            if model_library_store.get(handoff.model_library_token) is None:
+                raise ValueError("模型库交接标识已失效")
+            st.session_state[MODEL_LIBRARY_TOKEN_KEY] = handoff.model_library_token
         except Exception as exc:  # noqa: BLE001 - 页面交接用户提示边界
             st.error(f"动态回归模型交接失败：{exc}")
             return
@@ -197,6 +214,8 @@ def render_standalone_sarimax_model() -> None:
 
     st.title("动态回归模型")
     st.caption("此页面是独立查看窗口，设置修改不会回写原动态回归模型页。")
+    with st.sidebar:
+        render_model_library_sidebar(st)
     render_sarimax_model_page(st)
 
 

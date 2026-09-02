@@ -5,7 +5,9 @@ from __future__ import annotations
 import logging
 
 from dashboard.core.workspace import artifact_signature
+from dashboard.models.common.model_library import ModelContext
 from dashboard.models.common.ui.model_inputs import ModelInputModule
+from dashboard.models.common.ui.model_library import render_model_library_save_control
 from dashboard.models.common.ui.result_view import render_estimation_result
 from dashboard.models.common.workflow import ModelWorkflow
 from dashboard.models.SARIMAX.core.adapters import DynamicRegressionAdapter, is_automatic_config
@@ -99,6 +101,17 @@ def render_training_section(st_obj, scope: ModelPageScope = SARIMAX_SCOPE) -> No
         },
         version="dynamic-regression-fit-v2",
     )
+    context = ModelContext(
+        dataset_fingerprint=inputs.dataset_fingerprint,
+        mode=mode,
+        target=inputs.target,
+        exog_names=inputs.exog_names,
+        training_range=inputs.training_range,
+        preprocessing=inputs.preprocessing,
+        missing_value_method=inputs.missing_value_method,
+        response_log=inputs.response_log,
+        exog_log_names=inputs.exog_log_names,
+    )
     if st_obj.button("拟合模型", type="primary", disabled=bool(problems), key=scope.key("fit_button")):
         st_obj.session_state.pop(scope.key("auto_selection_model"), None)
         automatic = is_automatic_config(config)
@@ -134,10 +147,23 @@ def render_training_section(st_obj, scope: ModelPageScope = SARIMAX_SCOPE) -> No
     if state.get("fit_signature") != signature:
         scope.clear_fit_results()
         return
-    _render_fit_summary(st_obj, result, scope)
+    _render_fit_summary(
+        st_obj,
+        result,
+        scope,
+        signature=signature,
+        context=context,
+    )
 
 
-def _render_fit_summary(st_obj, result, scope: ModelPageScope) -> None:
+def _render_fit_summary(
+    st_obj,
+    result,
+    scope: ModelPageScope,
+    *,
+    signature: str,
+    context: ModelContext,
+) -> None:
     """通过通用结果视图展示拟合摘要与关键指标。"""
     selected = render_estimation_result(
         st_obj, _MODEL_WORKFLOW.result_view(result),
@@ -145,6 +171,13 @@ def _render_fit_summary(st_obj, result, scope: ModelPageScope) -> None:
         candidate_selection_key=scope.key("auto_selection_model"),
     )
     if selected is None:
+        render_model_library_save_control(
+            st_obj,
+            result,
+            family=scope.family,
+            signature=signature,
+            context=context,
+        )
         return
     try:
         result = _MODEL_WORKFLOW.select_result(result, selected)
@@ -156,6 +189,13 @@ def _render_fit_summary(st_obj, result, scope: ModelPageScope) -> None:
         st_obj, _MODEL_WORKFLOW.result_view(result),
         selection_key=scope.key("auto_selection_criterion"),
         candidate_selection_key=scope.key("auto_selection_model"), show_selection=False,
+    )
+    render_model_library_save_control(
+        st_obj,
+        result,
+        family=scope.family,
+        signature=signature,
+        context=context,
     )
 
 

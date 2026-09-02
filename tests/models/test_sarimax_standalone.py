@@ -24,6 +24,22 @@ def _navigate_to_sarimax(app) -> None:
     app.run()
 
 
+def _navigate_to_univariate_overview(app) -> None:
+    """通过侧边栏进入“数据探索 → 单变量分析”。"""
+    next(
+        button
+        for button in app.sidebar.button
+        if button.label == "数据探索"
+    ).click()
+    app.run()
+    next(
+        button
+        for button in app.sidebar.button
+        if button.label == "单变量分析"
+    ).click()
+    app.run()
+
+
 def _upload_model_file(app, name: str, content: bytes) -> None:
     _navigate_to_sarimax(app)
     uploader = next(
@@ -167,6 +183,82 @@ def test_sarimax_handoff_copies_fitted_diagnostics_and_forecast_results(monkeypa
     assert standalone.session_state["model_analysis.sarimax.fitted_result"] is not source.session_state[
         "model_analysis.sarimax.fitted_result"
     ]
+
+
+def test_model_library_is_shared_with_standalone_and_keeps_current_result(
+    monkeypatch,
+):
+    """独立页保存的模型可回到原页使用，删除不清除当前拟合结果。"""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
+    source = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
+    _upload_model_file(source, "library.csv", _sample_csv())
+    _by_key(source.button, "sarimax_fit_button").click()
+    source.run()
+    assert not source.exception
+
+    url = source.get("link_button")[0].proto.url
+    standalone = AppTest.from_file(
+        PROJECT_ROOT / "app.py", default_timeout=60
+    )
+    standalone.query_params = parse_qs(urlparse(url).query)
+    standalone.run()
+    assert not standalone.exception
+    _by_key(
+        standalone.button,
+        next(
+            item.key
+            for item in standalone.button
+            if item.key.startswith("model_library_save_")
+        ),
+    ).click()
+    standalone.run()
+    assert not standalone.exception
+    assert any("模型库" in item.value for item in standalone.sidebar.markdown)
+    assert any("SARIMAX" in item.label for item in standalone.sidebar.expander)
+
+    source.run()
+    assert any("SARIMAX" in item.label for item in source.sidebar.expander)
+    _navigate_to_univariate_overview(source)
+    assert any("SARIMAX" in item.label for item in source.sidebar.expander)
+
+    delete_button = _by_key(
+        standalone.button,
+        next(
+            item.key
+            for item in standalone.button
+            if item.key.startswith("model_library_delete_")
+        ),
+    )
+    delete_button.click()
+    standalone.run()
+    assert not standalone.exception
+    assert not any("SARIMAX" in item.label for item in standalone.sidebar.expander)
+    assert (
+        standalone.session_state["model_analysis.sarimax.fitted_result"]
+        is not None
+    )
+
+    save_key = next(
+        item.key
+        for item in standalone.button
+        if item.key.startswith("model_library_save_")
+    )
+    _by_key(standalone.button, save_key).click()
+    standalone.run()
+    clear_button = _by_key(standalone.button, "model_library_clear_button")
+    assert clear_button.disabled
+    _by_key(standalone.checkbox, "model_library.clear_confirm").set_value(True)
+    standalone.run()
+    _by_key(standalone.button, "model_library_clear_button").click()
+    standalone.run()
+    assert not standalone.exception
+    assert not standalone.sidebar.expander
+    assert (
+        standalone.session_state["model_analysis.sarimax.fitted_result"]
+        is not None
+    )
 
 
 def test_invalid_sarimax_handoff_has_no_main_navigation(monkeypatch):

@@ -18,6 +18,7 @@ from dashboard.core.ui.components.module_selector import (
     render_sub_module_selector,
 )
 from dashboard.core.ui.utils.shared_dataset import render_shared_dataset_uploader
+from dashboard.models.common.ui.model_library import render_model_library_sidebar
 
 
 def render_complete_sidebar(
@@ -76,6 +77,8 @@ def render_complete_sidebar(
         if selected_main in {"数据探索", "监测分析"}:
             render_shared_dataset_uploader(st)
         # 模型页直接读取数据探索中的共享数据集，不在模型页重复渲染上传器。
+
+        render_model_library_sidebar(st)
 
         st.markdown(
             """
