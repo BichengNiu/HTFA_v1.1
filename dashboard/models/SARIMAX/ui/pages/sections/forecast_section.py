@@ -38,6 +38,7 @@ from dashboard.models.SARIMAX.core.adapters import DynamicRegressionAdapter
 from dashboard.models.common.workflow import ModelWorkflow
 from dashboard.models.SARIMAX.ui.pages.sections.forecast_chart import (
     render_forecast_chart,
+    render_forecast_error_chart,
 )
 from dashboard.models.SARIMAX.ui.state import ModelPageScope, SARIMAX_SCOPE
 
@@ -507,8 +508,8 @@ def _render_accuracy_report(
 ) -> None:
     """以统一表格、误差图和 Excel 下载结果展示评估结果。"""
     st_obj.markdown("**误差指标**")
-    st_obj.caption("MPE 为带符号百分比误差；MAPE、sMAPE 以百分比点显示。")
     st_obj.dataframe(report.error_table, width="stretch")
+    _render_error_metric_explanation(st_obj)
     st_obj.markdown("**方向性指标**")
     direction_columns = [
         column
@@ -526,12 +527,12 @@ def _render_accuracy_report(
         report.direction_table.loc[:, direction_columns],
         width="stretch",
     )
+    _render_direction_metric_explanation(st_obj)
     for note in report.notes:
         st_obj.caption(note)
     detail = report.point_table.drop(columns=["方向参考"], errors="ignore")
-    if detail["误差"].notna().any():
-        chart_data = detail.set_index("日期")[["误差"]]
-        st_obj.line_chart(chart_data)
+    if np.isfinite(detail["误差"].to_numpy(dtype=float)).any():
+        render_forecast_error_chart(st_obj, detail)
     st_obj.download_button(
         "下载结果",
         data=build_accuracy_workbook(report),
@@ -540,6 +541,43 @@ def _render_accuracy_report(
         key=download_key,
         type="primary",
     )
+
+
+def _render_error_metric_explanation(st_obj) -> None:
+    """展示误差指标及样本覆盖字段的计算口径。"""
+    with st_obj.expander("指标说明"):
+        st_obj.caption("MPE 为带符号百分比误差；MAPE、sMAPE 以百分比点显示。")
+        st_obj.markdown(
+            """
+- **MAE**：平均绝对误差 = mean(|预测值 − 实际值|)，越小越好。
+- **RMSE**：均方根误差 = sqrt(mean((预测值 − 实际值)²))；对较大的误差更敏感，越小越好。
+- **MPE**：平均百分比误差 = mean((预测值 − 实际值) / 实际值) × 100%；正值表示整体高估，负值表示整体低估。
+- **MAPE**：平均绝对百分比误差 = mean(|(预测值 − 实际值) / 实际值|) × 100%，越小越好。
+- **sMAPE**：对称平均绝对百分比误差 = mean(2 × |预测值 − 实际值| / (|实际值| + |预测值|)) × 100%；两者同时为 0 时该期计为 0，越小越好。
+- **有效样本数**：实际值和预测值均为有限数值、实际参与误差计算的配对数量。
+- **百分比指标样本数**：实际值非 0 且实际值和预测值均为有限数值、参与 MPE/MAPE 计算的数量。
+- **覆盖率**：有效样本数 ÷ 当前表格对应阶段的总期数。
+
+MPE、MAPE 和 sMAPE 的结果以百分比点记录；实际值为 0 的观测不参与 MPE 和 MAPE，缺失或非有限观测不参与误差指标计算。
+"""
+        )
+
+
+def _render_direction_metric_explanation(st_obj) -> None:
+    """展示方向性指标及样本覆盖字段的计算口径。"""
+    with st_obj.expander("指标说明"):
+        st_obj.markdown(
+            """
+- **方向命中率**：比较实际变化与预测变化的符号，计算为 mean(sign(实际值 − 方向参考) = sign(预测值 − 方向参考))；越高越好。
+- **相对基准胜率**：模型绝对误差严格小于朴素基准绝对误差的期数 ÷ 有效比较期数；平局计入分母但不计为胜利，越高越好。
+- **趋势相关系数**：实际值路径与预测值路径的 Pearson 相关系数，衡量共同变动方向，不代表绝对误差大小；越接近 1 表示同向变化越强。
+- **方向有效样本数**：实际值、预测值和方向参考均为有限数值、实际参与方向判断的数量。
+- **覆盖率**：方向有效样本数 ÷ 当前表格对应阶段的总期数。
+- **对象**：当前预测窗口显示“拟合表现/样本外表现”；历史滚动回测显示“模型/朴素基准”。
+
+方向参考在拟合期使用前一期实际值，在样本外预测和滚动回测中使用预测起点的最后一个实际值。变化为 0 与变化为 0 视为方向一致。
+"""
+        )
 
 
 def _render_future_exog_editor(

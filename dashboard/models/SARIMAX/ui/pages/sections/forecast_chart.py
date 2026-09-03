@@ -10,6 +10,7 @@ import logging
 
 import numpy as np
 import pandas as pd
+from Ts.TsPlots import plot_series
 
 from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
 from dashboard.core.ui.utils.matplotlib_compat import matplotlib_date_compatibility
@@ -91,6 +92,46 @@ def render_forecast_chart(
         logger.warning("SARIMAX 预测图绘制失败", exc_info=True)
 
 
+def render_forecast_error_chart(st_obj, detail: pd.DataFrame) -> None:
+    """通过 Ts 的统一序列绘图接口展示预测误差。
+
+    Parameters
+    ----------
+    st_obj : object
+        提供 ``warning`` 方法的 Streamlit 页面对象。
+    detail : pandas.DataFrame
+        至少包含“日期”和“误差”列的逐点评估明细。
+    """
+    try:
+        dates = pd.DatetimeIndex(pd.to_datetime(detail["日期"]))
+        errors = pd.to_numeric(detail["误差"], errors="coerce")
+        error_series = pd.Series(
+            errors.to_numpy(dtype=float),
+            index=dates,
+            name="预测误差",
+        )
+        if not np.isfinite(error_series.to_numpy()).any():
+            return
+        with matplotlib_date_compatibility():
+            figure, _axis = plot_series(
+                error_series,
+                facet=False,
+                auto_dual_y=False,
+                title="预测误差",
+                xtitle="",
+                ytitle="预测误差",
+                show_legend=False,
+            )
+            render_pyplot_figure(
+                st_obj,
+                figure,
+                place_legend_bottom=False,
+            )
+    except Exception as exc:
+        st_obj.warning(f"预测误差图无法绘制：{exc}")
+        logger.warning("SARIMAX 预测误差图绘制失败", exc_info=True)
+
+
 def _date_numbers(values) -> np.ndarray:
     """把日期转换成 Matplotlib 日期数值，避免字符串转换兼容性问题。"""
     import matplotlib.dates as mdates
@@ -129,4 +170,4 @@ def _apply_forecast_axis_labels(axis, target: str | None) -> None:
     axis.set_ylabel(str(target) if target else "Value")
 
 
-__all__ = ["render_forecast_chart"]
+__all__ = ["render_forecast_chart", "render_forecast_error_chart"]

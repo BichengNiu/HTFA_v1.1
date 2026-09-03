@@ -236,6 +236,48 @@ def test_forecast_chart_uses_target_ylabel_without_titles(monkeypatch):
     plt.close(axis.figure)
 
 
+def test_forecast_error_chart_uses_ts_plot_series(monkeypatch):
+    """预测误差图应通过 Ts 的统一序列绘图接口生成。"""
+    import matplotlib.pyplot as plt
+
+    import dashboard.models.SARIMAX.ui.pages.sections.forecast_chart as chart
+
+    captured = {}
+
+    def fake_plot_series(data, **kwargs):
+        captured["data"] = data
+        captured["kwargs"] = kwargs
+        return plt.subplots()
+
+    monkeypatch.setattr(chart, "plot_series", fake_plot_series)
+    monkeypatch.setattr(
+        chart,
+        "render_pyplot_figure",
+        lambda _st_obj, figure, **_kwargs: captured.setdefault("figure", figure),
+    )
+
+    chart.render_forecast_error_chart(
+        SimpleNamespace(warning=lambda _message: None),
+        pd.DataFrame(
+            {
+                "日期": pd.date_range("2024-01-01", periods=2, freq="MS"),
+                "误差": [1.0, -0.5],
+            }
+        ),
+    )
+
+    assert captured["data"].name == "预测误差"
+    assert captured["kwargs"] == {
+        "facet": False,
+        "auto_dual_y": False,
+        "title": "预测误差",
+        "xtitle": "",
+        "ytitle": "预测误差",
+        "show_legend": False,
+    }
+    plt.close(captured["figure"])
+
+
 def test_forecast_chart_autoscales_y_to_selected_date_window(monkeypatch):
     """Date-window adaptation keeps the forecast y-axis local to the window."""
     import matplotlib.pyplot as plt
