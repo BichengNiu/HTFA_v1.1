@@ -433,6 +433,12 @@ def test_full_workflow_via_ui(monkeypatch):
     assert not any("预测图无法绘制" in element.value for element in app.warning)
     download = _by_key(app.download_button, "sarimax_forecast_download")
     assert download.label == "下载结果"
+    evaluation_tabs = {tab.label for tab in app.tabs}
+    assert {"训练期评估", "样本外评估"}.issubset(evaluation_tabs)
+    assert _by_key(app.number_input, "sarimax_forecast_training_horizon")
+    assert _by_key(app.number_input, "sarimax_forecast_oos_horizon")
+    assert _by_key(app.button, "sarimax_forecast_training_button")
+    assert _by_key(app.button, "sarimax_forecast_oos_button")
 
 
 def test_forecast_window_can_extend_out_of_sample(monkeypatch):
@@ -822,6 +828,10 @@ def test_rdl_intervention_controls_are_scoped_and_add_i_row(monkeypatch):
     app.run()
     assert not app.exception
     assert _by_key(app.selectbox, "rdl_intervention_kind").value == "单期冲击（pulse）"
+    assert _by_key(app.selectbox, "rdl_intervention_pulse_date")
+    assert not any(
+        item.key == "rdl_intervention_start" for item in app.get("select_slider")
+    )
     table = _by_key(app.dataframe, "rdl_input_table").value
     assert "I（干预变量）" in table["变量"].tolist()
 
@@ -877,19 +887,54 @@ def test_rdl_intervention_switches_from_step_to_inclusive_temporary_window(
     kind.set_value("持续冲击（step）")
     app.run()
     assert not app.exception
-    assert _by_key(app.get("select_slider"), "rdl_intervention_start")
+    step_slider = _by_key(app.get("select_slider"), "rdl_intervention_start")
+    assert isinstance(step_slider.value, tuple)
+    assert len(step_slider.value) == 2
+    assert pd.Timestamp(step_slider.value[1]) == pd.Timestamp(
+        step_slider.options[-1]
+    )
+    step_slider.set_range(
+        step_slider.value[0],
+        pd.Timestamp(step_slider.options[0]),
+    )
+    app.run()
+    step_slider = _by_key(app.get("select_slider"), "rdl_intervention_start")
+    assert pd.Timestamp(step_slider.value[1]) == pd.Timestamp(
+        step_slider.options[-1]
+    )
     assert not any(
         item.key == "rdl_intervention_window" for item in app.get("select_slider")
     )
 
     kind = _by_key(app.selectbox, "rdl_intervention_kind")
-    kind.set_value("临时区间冲击（temporary）")
+    assert "区间冲击（interval）" in kind.options
+    kind.set_value("区间冲击（interval）")
     app.run()
     assert not app.exception
     assert _by_key(app.get("select_slider"), "rdl_intervention_window")
     assert not any(
         item.key == "rdl_intervention_start" for item in app.get("select_slider")
     )
+
+
+def test_rdl_intervention_timestamp_display_uses_meaningful_precision():
+    """冲击日期标签按实际时间戳精度显示，不给日度追加零时分秒。"""
+    from dashboard.models.SARIMAX.ui.model_options_rdl import (
+        _build_intervention_timestamp_formatter,
+    )
+
+    daily = pd.date_range("2025-01-01", periods=2, freq="D")
+    daily_formatter = _build_intervention_timestamp_formatter(daily)
+    assert daily_formatter(daily[0]) == "2025-01-01"
+    assert "00:00:00" not in daily_formatter(daily[0])
+
+    minute_dates = pd.date_range("2025-01-01 09:30", periods=2, freq="min")
+    minute_formatter = _build_intervention_timestamp_formatter(minute_dates)
+    assert minute_formatter(minute_dates[0]) == "2025-01-01 09:30"
+
+    second_dates = pd.date_range("2025-01-01 09:30:15", periods=2, freq="s")
+    second_formatter = _build_intervention_timestamp_formatter(second_dates)
+    assert second_formatter(second_dates[0]) == "2025-01-01 09:30:15"
 
 
 def test_rdl_intervention_can_fit_without_ordinary_exog(monkeypatch):
@@ -956,9 +1001,9 @@ def test_rdl_intervention_change_clears_previous_fit(monkeypatch):
     app.run()
     assert app.session_state["model_analysis.rdl.fitted_result"] is not None
 
-    slider = _by_key(app.get("select_slider"), "rdl_intervention_start")
-    options = list(slider.options)
-    slider.set_value(options[0])
+    date_selector = _by_key(app.selectbox, "rdl_intervention_pulse_date")
+    options = list(date_selector.options)
+    date_selector.set_value(options[0])
     app.run()
 
     assert app.session_state["model_analysis.rdl.fitted_result"] is None

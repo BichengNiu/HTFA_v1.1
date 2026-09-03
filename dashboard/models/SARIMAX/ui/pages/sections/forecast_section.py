@@ -14,7 +14,10 @@ from dashboard.models.common.forecast_evaluation import (
     ForecastAccuracyReport,
     build_accuracy_workbook,
     evaluate_current_forecast,
+    evaluate_fixed_holdout,
+    evaluate_in_sample_fit,
     evaluate_rolling_forecast,
+    evaluate_training_rolling,
 )
 from dashboard.models.common.ui.forecast_view import render_forecast_result
 from dashboard.models.SARIMAX.core.forecast_planning import (
@@ -31,7 +34,9 @@ from dashboard.models.SARIMAX.core.data_loader import (
 )
 from dashboard.models.SARIMAX.core.modeling import (
     evaluation_seasonal_period,
+    run_fixed_holdout_evaluation,
     run_historical_rolling_evaluation,
+    run_training_rolling_evaluation,
     translate_ts_error,
 )
 from dashboard.models.SARIMAX.core.adapters import DynamicRegressionAdapter
@@ -64,7 +69,15 @@ def render_forecast_section(st_obj, scope: ModelPageScope = SARIMAX_SCOPE) -> No
             "当前 RDL 干预分析仅支持历史训练样本；"
             "包含干预变量 I 的样本外预测场景暂未开放。"
         )
-        _render_rolling_backtest(st_obj, scope, result, state.get("dataset"))
+        training_range = state.get("training_time_range")
+        if isinstance(training_range, (tuple, list)) and len(training_range) == 2:
+            _render_forecast_evaluation(
+                st_obj,
+                scope,
+                result,
+                state.get("dataset"),
+                pd.Timestamp(training_range[1]),
+            )
         return
     st_obj.markdown("**预测结果**")
     try:
@@ -304,10 +317,7 @@ def render_forecast_section(st_obj, scope: ModelPageScope = SARIMAX_SCOPE) -> No
         st_obj,
         scope,
         result,
-        forecast,
         dataset,
-        calendar,
-        actual_values,
         training_end,
     )
 
@@ -316,75 +326,98 @@ def _render_forecast_evaluation(
     st_obj,
     scope: ModelPageScope,
     result,
-    forecast,
     dataset,
-    calendar: pd.DatetimeIndex,
-    actual_values: np.ndarray,
     training_end: pd.Timestamp,
 ) -> None:
-    """展示当前预测窗口评估，并提供手动触发的历史滚动回测。"""
+    """展示训练期评估和样本外评估两个独立 Tab。"""
     st_obj.markdown("**预测精度评估**")
-    current_tab, backtest_tab = st_obj.tabs(["当前预测窗口", "历史滚动回测"])
-    with current_tab:
-        try:
-            calendar_actual = actual_values_for_dates(
-                dataset,
-                scope.state.get("target_variable"),
-                calendar,
-            )
-            accuracy = evaluate_current_forecast(
-                actual_values,
-                forecast.mean,
-                forecast.dates,
-                calendar_actual,
-                calendar,
-                training_end,
-                seasonal_period=evaluation_seasonal_period(
-                    scope.state.get("fit_config"),
-                    result,
-                ),
-            )
-        except Exception as exc:  # noqa: BLE001 - 评估不应阻断预测结果
-            st_obj.warning(f"当前预测精度评估暂不可用：{translate_ts_error(exc)}")
-        else:
-            _render_accuracy_report(
-                st_obj,
-                accuracy,
-                download_key=scope.key("forecast_evaluation_download"),
-                download_name=f"{scope.family}_当前预测评估.xlsx",
-            )
-    with backtest_tab:
-        _render_rolling_backtest(st_obj, scope, result, dataset)
+    training_tab, oos_tab = st_obj.tabs(["训练期评估", "样本外评估"])
+    with training_tab:
+        _render_training_evaluation(
+            st_obj,
+            scope,
+            result,
+            dataset,
+            training_end,
+        )
+    with oos_tab:
+        _render_oos_evaluation(
+            st_obj,
+            scope,
+            result,
+            dataset,
+            training_end,
+        )
 
 
-def _render_rolling_backtest(
+def _render_training_evaluation(
     st_obj,
     scope: ModelPageScope,
     result,
     dataset,
+    training_end: pd.Timestamp,
 ) -> None:
-    """按确认的扩展窗口口径运行并展示历史滚动回测。"""
+    """展示完整训练期拟合和训练期 H 期滚动评估。"""
     state = scope.state
     config = state.get("fit_config")
     if config is None:
-        st_obj.info("当前拟合结果缺少配置快照，请重新拟合模型后运行历史滚动回测。")
+        st_obj.info("当前拟合结果缺少配置快照，请重新拟合模型后进行评估。")
         return
+    try:
+        full_series, full_exog, full_dates, training_position = (
+            _evaluation_inputs(state, dataset)
+        )
+        training_series = full_series.iloc[:training_position]
+        training_exog = (
+            None
+            if full_exog is None
+            else full_exog.iloc[:training_position]
+        )
+        context = _MODEL_WORKFLOW.forecast_context(result)
+        fitted = _MODEL_WORKFLOW.fitted_values(result)
+        if len(training_series) != context.model_nobs:
+            raise ValueError(
+                "训练期处理后样本数与模型有效样本数不一致，"
+                f"{len(training_series)} != {context.model_nobs}"
+            )
+        accuracy = evaluate_in_sample_fit(
+            training_series.to_numpy(dtype=float),
+            fitted,
+            full_dates[:training_position],
+            seasonal_period=evaluation_seasonal_period(config, result),
+        )
+    except Exception as exc:  # noqa: BLE001 - 评估不应阻断预测结果
+        st_obj.warning(f"训练期评估暂不可用：{translate_ts_error(exc)}")
+        return
+
+    st_obj.markdown("**完整训练期窗口**")
+    st_obj.caption(
+        f"训练窗口：{full_dates[0].date().isoformat()} 至 "
+        f"{training_end.date().isoformat()}；使用一次拟合结果的拟合值。"
+    )
+    _render_accuracy_report(
+        st_obj,
+        accuracy,
+        download_key=scope.key("forecast_training_download"),
+        download_name=f"{scope.family}_训练期完整窗口.xlsx",
+    )
+
     horizon = st_obj.number_input(
-        "回测预测期数",
+        "训练期滚动预测期数 H",
         min_value=1,
         max_value=12,
         value=1,
         step=1,
-        key=scope.key("forecast_backtest_horizon"),
-        help="默认按逐期一步预测评估；增加期数后会评估每个滚动起点的多步路径。",
+        key=scope.key("forecast_training_horizon"),
+        help="训练集内部伪样本外验证；窗口采用扩展方式，step 固定为 1。",
     )
     st_obj.caption(
-        "默认使用扩展窗口、step=1；自动 SARIMAX 固定当前选中的阶数，"
-        "不在每个回测窗口重新选阶。含外生变量时，这是使用观测未来路径的条件评估。"
+        "训练期滚动的初始训练样本数为 max(10, 2H)；"
+        "自动 SARIMAX 固定当前选中的阶数，不在每个窗口重新选阶。"
     )
     if st_obj.button(
-        "运行历史滚动回测",
-        key=scope.key("forecast_backtest_button"),
+        "运行训练期 H 期滚动验证",
+        key=scope.key("forecast_training_button"),
         type="primary",
     ):
         signature = stable_signature(
@@ -395,42 +428,40 @@ def _render_rolling_backtest(
             }
         )
         try:
-            with st_obj.spinner("正在执行历史滚动回测，请稍候..."):
-                full_series, full_exog, full_dates, initial_window = (
-                    _backtest_inputs(state, dataset)
-                )
-                comparison = run_historical_rolling_evaluation(
-                    full_series,
-                    full_exog,
+            with st_obj.spinner("正在执行训练期 H 期滚动验证，请稍候..."):
+                comparison = run_training_rolling_evaluation(
+                    training_series,
+                    training_exog,
                     config,
                     result,
-                    initial_window=initial_window,
                     horizon=int(horizon),
                 )
                 result_name = next(iter(comparison.results))
                 evaluation_result = comparison.results[result_name]
-                accuracy = evaluate_rolling_forecast(
+                rolling_accuracy = evaluate_training_rolling(
                     evaluation_result.actual,
                     evaluation_result.mean,
                     evaluation_result.splits,
-                    full_series.to_numpy(dtype=float),
-                    full_dates,
+                    training_series.to_numpy(dtype=float),
+                    full_dates[:training_position],
+                    horizon=int(horizon),
                     seasonal_period=evaluation_seasonal_period(config, result),
                 )
             payload = {
-                "accuracy": accuracy,
+                "complete": accuracy,
+                "rolling": rolling_accuracy,
                 "failures": tuple(evaluation_result.failures),
                 "n_splits": len(evaluation_result.splits),
             }
             scope.store_downstream_result(
-                "backtest",
+                "training_evaluation",
                 payload,
-                "backtest_signature",
+                "training_evaluation_signature",
                 signature,
             )
         except Exception as exc:  # noqa: BLE001 - 用户可读的回测边界
-            st_obj.error(f"历史滚动回测失败：{translate_ts_error(exc)}")
-            logger.exception("%s 历史滚动回测失败", scope.family)
+            st_obj.error(f"训练期滚动验证失败：{translate_ts_error(exc)}")
+            logger.exception("%s 训练期滚动验证失败", scope.family)
             return
 
     signature = stable_signature(
@@ -440,10 +471,13 @@ def _render_rolling_backtest(
             "horizon": int(horizon),
         }
     )
-    payload = state.get("backtest")
-    if not isinstance(payload, dict) or state.get("backtest_signature") != signature:
+    payload = state.get("training_evaluation")
+    if (
+        not isinstance(payload, dict)
+        or state.get("training_evaluation_signature") != signature
+    ):
         return
-    accuracy = payload.get("accuracy")
+    accuracy = payload.get("rolling")
     if not isinstance(accuracy, ForecastAccuracyReport):
         return
     if payload.get("failures"):
@@ -451,25 +485,192 @@ def _render_rolling_backtest(
             f"有 {len(payload['failures'])} 个滚动窗口拟合失败，"
             "这些窗口已从指标覆盖范围中保留为无效值。"
         )
+    st_obj.markdown("**训练期 H 期滚动窗口**")
+    st_obj.caption(
+        f"初始训练样本数 max(10, 2H)；共完成 {payload.get('n_splits', 0)} 个滚动窗口。"
+    )
+    _render_accuracy_report(
+        st_obj,
+        accuracy,
+        download_key=scope.key("forecast_training_rolling_download"),
+        download_name=f"{scope.family}_训练期H期滚动.xlsx",
+    )
+
+
+def _render_oos_evaluation(
+    st_obj,
+    scope: ModelPageScope,
+    result,
+    dataset,
+    training_end: pd.Timestamp,
+) -> None:
+    """展示完整样本外验证和样本外 H 期滚动回测。"""
+    state = scope.state
+    config = state.get("fit_config")
+    if config is None:
+        st_obj.info("当前拟合结果缺少配置快照，请重新拟合模型后进行评估。")
+        return
+    if (
+        scope.family == "RDL"
+        and state.get("intervention_config") is not None
+    ):
+        st_obj.info("当前干预分析不支持样本外评估。")
+        return
+    try:
+        full_series, full_exog, full_dates, training_position = (
+            _evaluation_inputs(state, dataset)
+        )
+        oos_dates = full_dates[training_position:]
+        if not len(oos_dates):
+            st_obj.info("训练结束日之后没有可评分的真实观测。")
+            return
+        context = _MODEL_WORKFLOW.forecast_context(result)
+        if context.model_nobs != training_position:
+            raise ValueError(
+                "训练期处理后样本数与模型有效样本数不一致，"
+                f"{training_position} != {context.model_nobs}"
+            )
+        future_exog = (
+            None
+            if full_exog is None
+            else full_exog.iloc[training_position:]
+        )
+        fixed = run_fixed_holdout_evaluation(
+            result,
+            start=training_position,
+            end=training_position + len(oos_dates) - 1,
+            future_exog=future_exog,
+            future_dates=oos_dates,
+        )
+        accuracy = evaluate_fixed_holdout(
+            full_series.iloc[training_position:].to_numpy(dtype=float),
+            fixed["mean"],
+            oos_dates,
+            full_series.to_numpy(dtype=float),
+            full_dates,
+            training_end,
+            seasonal_period=evaluation_seasonal_period(config, result),
+        )
+    except Exception as exc:  # noqa: BLE001 - 评估不应阻断预测结果
+        st_obj.warning(f"样本外评估暂不可用：{translate_ts_error(exc)}")
+        return
+
+    st_obj.markdown("**完整样本外窗口**")
+    st_obj.caption(
+        f"验证窗口：{oos_dates[0].date().isoformat()} 至 "
+        f"{oos_dates[-1].date().isoformat()}；固定训练结束日一次拟合，"
+        "不在验证窗口内重新拟合。"
+    )
+    _render_accuracy_report(
+        st_obj,
+        accuracy,
+        download_key=scope.key("forecast_oos_download"),
+        download_name=f"{scope.family}_样本外完整窗口.xlsx",
+    )
+
+    horizon = st_obj.number_input(
+        "样本外滚动预测期数 H",
+        min_value=1,
+        max_value=12,
+        value=1,
+        step=1,
+        key=scope.key("forecast_oos_horizon"),
+        help="训练结束日后按扩展窗口逐期前推，并在每个起点重新拟合。",
+    )
+    st_obj.caption(
+        "样本外滚动采用扩展窗口、step=1；仅使用数据中已有真实值的日期，"
+        "含外生变量时使用观测到的未来路径。"
+    )
+    if st_obj.button(
+        "运行样本外 H 期滚动回测",
+        key=scope.key("forecast_oos_button"),
+        type="primary",
+    ):
+        signature = stable_signature(
+            {
+                "fit_signature": state.get("fit_signature"),
+                "target": state.get("target_variable"),
+                "horizon": int(horizon),
+            }
+        )
+        try:
+            with st_obj.spinner("正在执行样本外 H 期滚动回测，请稍候..."):
+                comparison = run_historical_rolling_evaluation(
+                    full_series,
+                    full_exog,
+                    config,
+                    result,
+                    initial_window=training_position,
+                    horizon=int(horizon),
+                )
+                result_name = next(iter(comparison.results))
+                evaluation_result = comparison.results[result_name]
+                rolling_accuracy = evaluate_rolling_forecast(
+                    evaluation_result.actual,
+                    evaluation_result.mean,
+                    evaluation_result.splits,
+                    full_series.to_numpy(dtype=float),
+                    full_dates,
+                    seasonal_period=evaluation_seasonal_period(config, result),
+                )
+            payload = {
+                "complete": accuracy,
+                "rolling": rolling_accuracy,
+                "failures": tuple(evaluation_result.failures),
+                "n_splits": len(evaluation_result.splits),
+            }
+            scope.store_downstream_result(
+                "oos_evaluation",
+                payload,
+                "oos_evaluation_signature",
+                signature,
+            )
+        except Exception as exc:  # noqa: BLE001 - 用户可读的回测边界
+            st_obj.error(f"样本外滚动回测失败：{translate_ts_error(exc)}")
+            logger.exception("%s 样本外滚动回测失败", scope.family)
+            return
+
+    signature = stable_signature(
+        {
+            "fit_signature": state.get("fit_signature"),
+            "target": state.get("target_variable"),
+            "horizon": int(horizon),
+        }
+    )
+    payload = state.get("oos_evaluation")
+    if (
+        not isinstance(payload, dict)
+        or state.get("oos_evaluation_signature") != signature
+    ):
+        return
+    accuracy = payload.get("rolling")
+    if not isinstance(accuracy, ForecastAccuracyReport):
+        return
+    if payload.get("failures"):
+        st_obj.warning(
+            f"有 {len(payload['failures'])} 个滚动窗口拟合失败，"
+            "这些窗口已从指标覆盖范围中保留为无效值。"
+        )
+    st_obj.markdown("**样本外 H 期滚动窗口**")
     st_obj.caption(f"共完成 {payload.get('n_splits', 0)} 个滚动窗口。")
     _render_accuracy_report(
         st_obj,
         accuracy,
-        download_key=scope.key("forecast_backtest_download"),
-        download_name=f"{scope.family}_历史滚动回测.xlsx",
+        download_key=scope.key("forecast_oos_rolling_download"),
+        download_name=f"{scope.family}_样本外H期滚动.xlsx",
     )
 
 
-def _backtest_inputs(state, dataset):
-    """重建训练结束后完整的、无缺失的历史回测输入。"""
+def _evaluation_inputs(state, dataset):
+    """重建训练期和样本外评估共用的、无缺失处理后输入。"""
     training_range = state.get("training_time_range")
     target = state.get("target_variable")
     exog_names = tuple(state.get("exog_variables") or ())
     if dataset is None or not target:
-        raise ValueError("缺少历史回测数据或目标变量")
+        raise ValueError("缺少评估数据或目标变量")
     full_dates = dataset_time_index(dataset)
     if full_dates is None or len(full_dates) == 0:
-        raise ValueError("历史滚动回测需要日期索引")
+        raise ValueError("预测评估需要日期索引")
     if not isinstance(training_range, (tuple, list)) or len(training_range) != 2:
         raise ValueError("缺少有效的训练样本范围")
     series, exog, index = prepare_modeling_inputs(
@@ -489,14 +690,12 @@ def _backtest_inputs(state, dataset):
             exog = exog.iloc[valid]
         index = index[valid]
     training_end = pd.Timestamp(training_range[1])
-    initial_window = int((pd.DatetimeIndex(index) <= training_end).sum())
-    if initial_window < 10:
+    training_position = int((pd.DatetimeIndex(index) <= training_end).sum())
+    if training_position < 10:
         raise ValueError(
-            f"历史回测初始训练窗口只有 {initial_window} 个有效观测，至少需要 10 个"
+            f"训练期有效样本只有 {training_position} 个，至少需要 10 个"
         )
-    if len(series) <= initial_window:
-        raise ValueError("训练结束日之后没有足够的历史观测用于滚动回测")
-    return series, exog, pd.DatetimeIndex(index), initial_window
+    return series, exog, pd.DatetimeIndex(index), training_position
 
 
 def _render_accuracy_report(
@@ -510,6 +709,10 @@ def _render_accuracy_report(
     st_obj.markdown("**误差指标**")
     st_obj.dataframe(report.error_table, width="stretch")
     _render_error_metric_explanation(st_obj)
+    if report.horizon_error_table is not None:
+        st_obj.markdown("**误差指标（按预测步长）**")
+        st_obj.dataframe(report.horizon_error_table, width="stretch")
+        _render_error_metric_explanation(st_obj)
     st_obj.markdown("**方向性指标**")
     direction_columns = [
         column
@@ -528,6 +731,17 @@ def _render_accuracy_report(
         width="stretch",
     )
     _render_direction_metric_explanation(st_obj)
+    if report.horizon_direction_table is not None:
+        st_obj.markdown("**方向性指标（按预测步长）**")
+        horizon_direction_columns = [
+            "步长",
+            *direction_columns,
+        ]
+        st_obj.dataframe(
+            report.horizon_direction_table.loc[:, horizon_direction_columns],
+            width="stretch",
+        )
+        _render_direction_metric_explanation(st_obj)
     for note in report.notes:
         st_obj.caption(note)
     detail = report.point_table.drop(columns=["方向参考"], errors="ignore")

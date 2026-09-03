@@ -18,6 +18,10 @@ _COMMON_WIDGET_SUFFIXES = (
     "forecast_download", "forecast_evaluation_download",
     "forecast_backtest_horizon", "forecast_backtest_button",
     "forecast_backtest_download",
+    "forecast_training_horizon", "forecast_training_button",
+    "forecast_training_download", "forecast_training_rolling_download",
+    "forecast_oos_horizon", "forecast_oos_button",
+    "forecast_oos_download", "forecast_oos_rolling_download",
 )
 _SARIMAX_WIDGET_SUFFIXES = (
     "p", "d", "q", "P", "D", "Q", "s", "ar_lags", "ma_lags",
@@ -38,7 +42,8 @@ _RDL_WIDGET_SUFFIXES = (
     "error_ar_lags", "error_ma_lags", "error_seasonal_ar_lags",
     "error_seasonal_ma_lags",
     "input_table", "advanced_table", "enforce_stability",
-    "intervention_analysis", "intervention_kind", "intervention_start",
+    "intervention_analysis", "intervention_kind", "intervention_pulse_date",
+    "intervention_start",
     "intervention_window",
 )
 _ARDL_WIDGET_SUFFIXES = (
@@ -56,6 +61,8 @@ _RESULT_KEYS = (
     "fitted_result", "fit_signature", "diagnostics_table", "diagnostics_signature",
     "forecast", "forecast_signature",
     "backtest", "backtest_signature",
+    "training_evaluation", "training_evaluation_signature",
+    "oos_evaluation", "oos_evaluation_signature",
 )
 
 
@@ -91,6 +98,8 @@ class ModelPageScope:
                 "diagnostics_table", "diagnostics_signature", "forecast",
                 "forecast_signature", "forecast_widget_fit_signature",
                 "backtest", "backtest_signature",
+                "training_evaluation", "training_evaluation_signature",
+                "oos_evaluation", "oos_evaluation_signature",
             ),
             widget_keys=widget_keys,
         )
