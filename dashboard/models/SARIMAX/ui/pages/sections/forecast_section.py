@@ -33,6 +33,7 @@ from dashboard.models.SARIMAX.core.data_loader import (
     prepare_modeling_inputs,
 )
 from dashboard.models.SARIMAX.core.modeling import (
+    MAX_ROLLING_ORIGINS,
     evaluation_seasonal_period,
     run_fixed_holdout_evaluation,
     run_historical_rolling_evaluation,
@@ -412,11 +413,12 @@ def _render_training_evaluation(
         help="训练集内部伪样本外验证；窗口采用扩展方式，step 固定为 1。",
     )
     st_obj.caption(
-        "训练期滚动的初始训练样本数为 max(10, 2H)；"
+        "训练期滚动采用扩展窗口、step=1；初始训练样本数为 max(10, 2H)，"
+        f"最多评估最近 {MAX_ROLLING_ORIGINS} 个连续滚动窗口；"
         "自动 SARIMAX 固定当前选中的阶数，不在每个窗口重新选阶。"
     )
     if st_obj.button(
-        "运行训练期 H 期滚动验证",
+        "滚动验证",
         key=scope.key("forecast_training_button"),
         type="primary",
     ):
@@ -428,7 +430,7 @@ def _render_training_evaluation(
             }
         )
         try:
-            with st_obj.spinner("正在执行训练期 H 期滚动验证，请稍候..."):
+            with st_obj.spinner("正在执行滚动验证，请稍候..."):
                 comparison = run_training_rolling_evaluation(
                     training_series,
                     training_exog,
@@ -487,7 +489,8 @@ def _render_training_evaluation(
         )
     st_obj.markdown("**训练期 H 期滚动窗口**")
     st_obj.caption(
-        f"初始训练样本数 max(10, 2H)；共完成 {payload.get('n_splits', 0)} 个滚动窗口。"
+        f"初始训练样本数至少为 max(10, 2H)；最多保留最近 "
+        f"{MAX_ROLLING_ORIGINS} 个窗口，共完成 {payload.get('n_splits', 0)} 个滚动窗口。"
     )
     _render_accuracy_report(
         st_obj,
@@ -578,11 +581,12 @@ def _render_oos_evaluation(
         help="训练结束日后按扩展窗口逐期前推，并在每个起点重新拟合。",
     )
     st_obj.caption(
-        "样本外滚动采用扩展窗口、step=1；仅使用数据中已有真实值的日期，"
-        "含外生变量时使用观测到的未来路径。"
+        "样本外滚动采用扩展窗口、step=1；初始训练窗口固定到训练结束日，"
+        f"最多评估最近 {MAX_ROLLING_ORIGINS} 个连续滚动窗口；"
+        "仅使用数据中已有真实值的日期，含外生变量时使用观测到的未来路径。"
     )
     if st_obj.button(
-        "运行样本外 H 期滚动回测",
+        "滚动验证",
         key=scope.key("forecast_oos_button"),
         type="primary",
     ):
@@ -594,7 +598,7 @@ def _render_oos_evaluation(
             }
         )
         try:
-            with st_obj.spinner("正在执行样本外 H 期滚动回测，请稍候..."):
+            with st_obj.spinner("正在执行滚动验证，请稍候..."):
                 comparison = run_historical_rolling_evaluation(
                     full_series,
                     full_exog,
@@ -652,7 +656,10 @@ def _render_oos_evaluation(
             "这些窗口已从指标覆盖范围中保留为无效值。"
         )
     st_obj.markdown("**样本外 H 期滚动窗口**")
-    st_obj.caption(f"共完成 {payload.get('n_splits', 0)} 个滚动窗口。")
+    st_obj.caption(
+        f"初始训练窗口固定到训练结束日；最多保留最近 {MAX_ROLLING_ORIGINS} 个窗口，"
+        f"共完成 {payload.get('n_splits', 0)} 个滚动窗口。"
+    )
     _render_accuracy_report(
         st_obj,
         accuracy,

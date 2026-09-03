@@ -448,12 +448,12 @@ def evaluate_training_rolling(
         return _empty_comparison_report(
             f"训练期没有形成完整的 {horizon} 期滚动验证窗口。"
         )
-    expected_initial = max(10, 2 * horizon)
+    minimum_initial = max(10, 2 * horizon)
     initial_window = len(split_values[0].train_indices)
-    if initial_window != expected_initial:
+    if initial_window < minimum_initial:
         raise ValueError(
-            "训练期滚动初始窗口必须为 max(10, 2H)，"
-            f"当前为 {initial_window}，H={horizon} 时应为 {expected_initial}"
+            "训练期滚动初始窗口不得小于 max(10, 2H)，"
+            f"当前为 {initial_window}，H={horizon} 时至少应为 {minimum_initial}"
         )
     if any(len(split.target_indices) != horizon for split in split_values):
         raise ValueError("训练期滚动每个窗口必须包含完整 H 期目标")

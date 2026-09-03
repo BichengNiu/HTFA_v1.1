@@ -48,6 +48,8 @@ from dashboard.models.SARIMAX.core.sarimax_modeling import (
 )
 
 MIN_OBSERVATIONS = 10
+# Rolling refits are expensive; retain only the most recent complete origins.
+MAX_ROLLING_ORIGINS = 100
 ProgressCallback = Callable[[int, int], None]
 
 
@@ -448,6 +450,7 @@ def run_historical_rolling_evaluation(
         initial_window=initial_window,
         horizon=horizon,
         step=1,
+        max_origins=MAX_ROLLING_ORIGINS,
         window="expanding",
     )
     return evaluate_forecasts(
@@ -545,6 +548,7 @@ def run_fixed_holdout_evaluation(
 
 __all__ = [
     "MIN_OBSERVATIONS",
+    "MAX_ROLLING_ORIGINS",
     "DynamicConfig",
     "build_auto_sarimax_criterion_table",
     "build_prediction_table",

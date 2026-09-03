@@ -184,6 +184,30 @@ def test_training_rolling_rejects_an_incomplete_horizon_window():
     assert any("完整" in note for note in report.notes)
 
 
+def test_training_rolling_accepts_a_larger_initial_window():
+    full_actual = np.arange(1.0, 31.0)
+    dates = pd.date_range("2020-01-01", periods=len(full_actual), freq="D")
+    horizon = 1
+    splits = RollingOrigin(initial_window=20, horizon=horizon).split(
+        len(full_actual)
+    )
+    actual = np.array(
+        [[full_actual[index] for index in split.target_indices] for split in splits]
+    )
+    predicted = actual.copy()
+
+    report = evaluate_training_rolling(
+        actual,
+        predicted,
+        splits,
+        full_actual,
+        dates,
+        horizon=horizon,
+    )
+
+    assert len(report.point_table) == len(splits) * horizon
+
+
 def test_in_sample_and_fixed_holdout_reports_share_baseline_metrics():
     full_actual = np.arange(1.0, 16.0)
     dates = pd.date_range("2020-01-01", periods=len(full_actual), freq="D")
@@ -299,3 +323,42 @@ def test_training_rolling_model_entry_uses_two_horizon_initial_window(monkeypatc
 
     assert result == "comparison"
     assert calls == {"initial_window": 12, "horizon": 6}
+
+
+def test_historical_rolling_model_entry_caps_large_sample_to_recent_origins(
+    monkeypatch,
+):
+    from dashboard.models.SARIMAX.core import modeling
+
+    calls = {}
+
+    def fake_evaluate(*args, **kwargs):
+        calls.update(kwargs)
+        return "comparison"
+
+    monkeypatch.setattr(
+        modeling,
+        "build_evaluation_model",
+        lambda *args, **kwargs: object(),
+    )
+    monkeypatch.setattr(
+        modeling,
+        "evaluate_forecasts",
+        fake_evaluate,
+    )
+    result = run_historical_rolling_evaluation(
+        pd.Series([1.0] * 5000),
+        None,
+        SARIMAXConfig(order=(0, 0, 0)),
+        object(),
+        initial_window=10,
+        horizon=1,
+    )
+
+    assert result == "comparison"
+    scheme = calls["scheme"]
+    assert scheme.max_origins == modeling.MAX_ROLLING_ORIGINS
+    assert len(scheme.split(5000)) == modeling.MAX_ROLLING_ORIGINS
+    assert scheme.split(5000)[0].target_indices[0] == (
+        5000 - modeling.MAX_ROLLING_ORIGINS
+    )

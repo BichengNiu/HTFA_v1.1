@@ -437,8 +437,14 @@ def test_full_workflow_via_ui(monkeypatch):
     assert {"训练期评估", "样本外评估"}.issubset(evaluation_tabs)
     assert _by_key(app.number_input, "sarimax_forecast_training_horizon")
     assert _by_key(app.number_input, "sarimax_forecast_oos_horizon")
-    assert _by_key(app.button, "sarimax_forecast_training_button")
-    assert _by_key(app.button, "sarimax_forecast_oos_button")
+    assert (
+        _by_key(app.button, "sarimax_forecast_training_button").label
+        == "滚动验证"
+    )
+    assert (
+        _by_key(app.button, "sarimax_forecast_oos_button").label
+        == "滚动验证"
+    )
     _by_key(app.button, "sarimax_forecast_oos_button").click()
     app.run()
     assert not app.exception
