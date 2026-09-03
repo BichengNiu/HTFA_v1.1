@@ -10,9 +10,13 @@ from collections.abc import Callable
 from typing import Any
 
 import pandas as pd
+from Ts.TsMetrics import RollingOrigin, evaluate_forecasts
 
 from dashboard.models.SARIMAX.core.ardl_config import ARDLConfig
-from dashboard.models.SARIMAX.core.ardl_modeling import fit_ardl
+from dashboard.models.SARIMAX.core.ardl_modeling import (
+    build_ardl_model,
+    fit_ardl,
+)
 from dashboard.models.SARIMAX.core.diagnostics import (
     recommended_residual_diagnostic_lags,
     run_residual_diagnostics,
@@ -25,6 +29,7 @@ from dashboard.models.SARIMAX.core.forecast_planning import future_dates
 from dashboard.models.SARIMAX.core.rdl_config import RDLConfig
 from dashboard.models.SARIMAX.core.rdl_modeling import (
     build_rdl_intervention_analysis,
+    build_rdl_model,
     fit_rdl,
     validate_rdl_intervention,
 )
@@ -34,6 +39,7 @@ from dashboard.models.SARIMAX.core.sarimax_config import (
 )
 from dashboard.models.SARIMAX.core.sarimax_modeling import (
     build_auto_sarimax_criterion_table,
+    build_sarimax_model,
     fit_auto_sarimax,
     fit_sarimax,
     format_sarimax_order,
@@ -257,11 +263,210 @@ def fit_dynamic_model(
     raise TypeError(f"不支持的动态回归配置：{type(config)!r}")
 
 
+def evaluation_config(config: DynamicConfig, result: object | None = None):
+    """返回历史评估要固定使用的模型结构。
+
+    自动 SARIMAX 只在训练阶段选阶；历史滚动回测固定当前选中的最优阶数，
+    不在每个滚动窗口重新搜索候选网格。
+
+    Parameters
+    ----------
+    config : DynamicConfig
+        当前页面使用的模型配置。
+    result : object, optional
+        当前已拟合结果；自动 SARIMAX 需要从其中读取选中的最优模型。
+
+    Returns
+    -------
+    DynamicConfig
+        手动配置原样返回；自动 SARIMAX 返回固定最优阶数的 SARIMAXConfig。
+    """
+    if not isinstance(config, AutoSARIMAXConfig):
+        return config
+    best = getattr(result, "best_result", None)
+    if best is None:
+        raise ValueError("自动 SARIMAX 尚未产生可用于回测的最优模型")
+    return SARIMAXConfig(
+        order=best.order,
+        seasonal_order=best.seasonal_order,
+        exog_operators=best.exog_operators,
+        trend=best.trend,
+        log=best.log,
+        enforce_stationarity=best.stationarity_enforced,
+        enforce_invertibility=best.invertibility_enforced,
+        fit_method=config.fit_method,
+        maxiter=config.maxiter,
+        cov_type=config.cov_type,
+    )
+
+
+def build_evaluation_model(
+    series: pd.Series,
+    exog: pd.DataFrame | None,
+    config: DynamicConfig,
+    result: object | None = None,
+):
+    """构造供 Ts 历史滚动回测使用的未拟合模型。
+
+    Parameters
+    ----------
+    series : pandas.Series
+        参与历史回测的完整目标序列。
+    exog : pandas.DataFrame or None
+        与目标序列对齐的完整外生变量路径。
+    config : DynamicConfig
+        当前页面模型配置。
+    result : object, optional
+        当前已拟合结果；自动 SARIMAX 用于固定当前最优阶数。
+
+    Returns
+    -------
+    object
+        满足 Ts 历史评估协议的未拟合模型对象。
+    """
+    selected = evaluation_config(config, result)
+    if isinstance(selected, SARIMAXConfig):
+        return build_sarimax_model(series, exog, selected)
+    if isinstance(selected, RDLConfig):
+        return build_rdl_model(series, exog, selected)
+    if isinstance(selected, ARDLConfig):
+        if exog is None:
+            raise ValueError("ARDL 需要解释变量")
+        return build_ardl_model(series, exog, selected)
+    raise TypeError(f"不支持的历史评估配置：{type(selected)!r}")
+
+
+def evaluation_fit_kwargs(config: DynamicConfig, result: object | None = None) -> dict:
+    """返回历史滚动回测每个窗口拟合时使用的参数。
+
+    Parameters
+    ----------
+    config : DynamicConfig
+        当前页面模型配置。
+    result : object, optional
+        当前已拟合结果；自动 SARIMAX 用于固定当前最优阶数。
+
+    Returns
+    -------
+    dict
+        传给 Ts ``evaluate_forecasts`` 的 ``fit_kwargs``。
+    """
+    selected = evaluation_config(config, result)
+    if isinstance(selected, SARIMAXConfig):
+        return {
+            "method": selected.fit_method,
+            "maxiter": selected.maxiter,
+            "cov_type": selected.cov_type,
+        }
+    if isinstance(selected, RDLConfig):
+        return {
+            "method": selected.error.fit_method,
+            "maxiter": selected.error.maxiter,
+            "cov_type": selected.error.cov_type,
+        }
+    if isinstance(selected, ARDLConfig):
+        values = {"cov_type": selected.cov_type}
+        if selected.error is not None:
+            values.update(
+                error_method=selected.error.fit_method,
+                error_maxiter=selected.error.maxiter,
+                error_cov_type=selected.error.cov_type,
+            )
+        return values
+    raise TypeError(f"不支持的历史评估配置：{type(selected)!r}")
+
+
+def evaluation_seasonal_period(
+    config: DynamicConfig,
+    result: object | None = None,
+) -> int:
+    """返回朴素基准采用的季节滞后；无季节项时返回 1。
+
+    Parameters
+    ----------
+    config : DynamicConfig
+        当前页面模型配置。
+    result : object, optional
+        当前已拟合结果；自动 SARIMAX 用于读取实际选中的季节阶数。
+
+    Returns
+    -------
+    int
+        朴素基准使用的正整数滞后期数。
+    """
+    selected = evaluation_config(config, result)
+    if isinstance(selected, (SARIMAXConfig, RDLConfig)):
+        order = (
+            selected.seasonal_order
+            if isinstance(selected, SARIMAXConfig)
+            else selected.error.seasonal_order
+        )
+        return max(1, int(order[3]))
+    if isinstance(selected, ARDLConfig):
+        error_period = (
+            0
+            if selected.error is None
+            else selected.error.seasonal_order[3]
+        )
+        return max(1, int(selected.period or 0), int(error_period))
+    return 1
+
+
+def run_historical_rolling_evaluation(
+    series: pd.Series,
+    exog: pd.DataFrame | None,
+    config: DynamicConfig,
+    result: object,
+    *,
+    initial_window: int,
+    horizon: int,
+):
+    """执行固定模型结构的历史滚动回测。
+
+    Parameters
+    ----------
+    series : pandas.Series
+        参与历史回测的完整目标序列。
+    exog : pandas.DataFrame or None
+        与目标序列对齐的完整外生变量路径。
+    config : DynamicConfig
+        当前页面模型配置。
+    result : object
+        当前已拟合结果。
+    initial_window : int
+        第一个滚动起点可用的训练观测数。
+    horizon : int
+        每个滚动起点评估的预测期数。
+
+    Returns
+    -------
+    ForecastComparisonResult
+        Ts 返回的历史滚动评估结果。
+    """
+    estimator = build_evaluation_model(series, exog, config, result)
+    scheme = RollingOrigin(
+        initial_window=initial_window,
+        horizon=horizon,
+        step=1,
+        window="expanding",
+    )
+    return evaluate_forecasts(
+        {getattr(result, "model_type", "模型"): estimator},
+        scheme=scheme,
+        fit_kwargs=evaluation_fit_kwargs(config, result),
+        on_error="record",
+        future_exog=(
+            "observed" if getattr(estimator, "exog", None) is not None else None
+        ),
+    )
+
+
 __all__ = [
     "MIN_OBSERVATIONS",
     "DynamicConfig",
     "build_auto_sarimax_criterion_table",
     "build_prediction_table",
+    "build_evaluation_model",
     "build_rdl_intervention_analysis",
     "fit_ardl",
     "fit_auto_sarimax",
@@ -270,6 +475,10 @@ __all__ = [
     "fit_sarimax",
     "format_sarimax_order",
     "fit_input_warnings",
+    "evaluation_config",
+    "evaluation_fit_kwargs",
+    "evaluation_seasonal_period",
+    "run_historical_rolling_evaluation",
     "future_dates",
     "produce_forecast",
     "recommended_residual_diagnostic_lags",

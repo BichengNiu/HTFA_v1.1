@@ -4,11 +4,17 @@ from __future__ import annotations
 
 import logging
 
+import numpy as np
 import pandas as pd
 
 from dashboard.core.workspace import stable_signature
 from data_overview.core.dataset import numeric_variable_names
 from dashboard.models.common.contracts import ForecastRequest
+from dashboard.models.common.forecast_evaluation import (
+    ForecastAccuracyReport,
+    evaluate_current_forecast,
+    evaluate_rolling_forecast,
+)
 from dashboard.models.common.ui.forecast_view import render_forecast_result
 from dashboard.models.SARIMAX.core.forecast_planning import (
     actual_values_for_dates,
@@ -18,7 +24,15 @@ from dashboard.models.SARIMAX.core.forecast_planning import (
     resolve_prediction_positions,
     serialise_frame,
 )
-from dashboard.models.SARIMAX.core.modeling import translate_ts_error
+from dashboard.models.SARIMAX.core.data_loader import (
+    dataset_time_index,
+    prepare_modeling_inputs,
+)
+from dashboard.models.SARIMAX.core.modeling import (
+    evaluation_seasonal_period,
+    run_historical_rolling_evaluation,
+    translate_ts_error,
+)
 from dashboard.models.SARIMAX.core.adapters import DynamicRegressionAdapter
 from dashboard.models.common.workflow import ModelWorkflow
 from dashboard.models.SARIMAX.ui.pages.sections.forecast_chart import (
@@ -40,11 +54,15 @@ def render_forecast_section(st_obj, scope: ModelPageScope = SARIMAX_SCOPE) -> No
     if result is None:
         st_obj.info("完成模型训练后可生成样本外预测。")
         return
-    if scope.family == "RDL" and state.get("intervention_config") is not None:
+    intervention_only = (
+        scope.family == "RDL" and state.get("intervention_config") is not None
+    )
+    if intervention_only:
         st_obj.info(
             "当前 RDL 干预分析仅支持历史训练样本；"
             "包含干预变量 I 的样本外预测场景暂未开放。"
         )
+        _render_rolling_backtest(st_obj, scope, result, state.get("dataset"))
         return
     st_obj.markdown("**预测结果**")
     try:
@@ -279,6 +297,246 @@ def render_forecast_section(st_obj, scope: ModelPageScope = SARIMAX_SCOPE) -> No
         chart_renderer=render_chart,
         show_confidence_interval=show_confidence_interval,
         download_key=scope.key("forecast_download"),
+    )
+    _render_forecast_evaluation(
+        st_obj,
+        scope,
+        result,
+        forecast,
+        dataset,
+        calendar,
+        actual_values,
+        training_end,
+    )
+
+
+def _render_forecast_evaluation(
+    st_obj,
+    scope: ModelPageScope,
+    result,
+    forecast,
+    dataset,
+    calendar: pd.DatetimeIndex,
+    actual_values: np.ndarray,
+    training_end: pd.Timestamp,
+) -> None:
+    """展示当前预测窗口评估，并提供手动触发的历史滚动回测。"""
+    st_obj.markdown("**预测精度评估**")
+    current_tab, backtest_tab = st_obj.tabs(["当前预测窗口", "历史滚动回测"])
+    with current_tab:
+        try:
+            calendar_actual = actual_values_for_dates(
+                dataset,
+                scope.state.get("target_variable"),
+                calendar,
+            )
+            accuracy = evaluate_current_forecast(
+                actual_values,
+                forecast.mean,
+                forecast.dates,
+                calendar_actual,
+                calendar,
+                training_end,
+                seasonal_period=evaluation_seasonal_period(
+                    scope.state.get("fit_config"),
+                    result,
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001 - 评估不应阻断预测结果
+            st_obj.warning(f"当前预测精度评估暂不可用：{translate_ts_error(exc)}")
+        else:
+            _render_accuracy_report(
+                st_obj,
+                accuracy,
+                download_key=scope.key("forecast_evaluation_download"),
+                download_name=f"{scope.family}_当前预测评估.csv",
+            )
+    with backtest_tab:
+        _render_rolling_backtest(st_obj, scope, result, dataset)
+
+
+def _render_rolling_backtest(
+    st_obj,
+    scope: ModelPageScope,
+    result,
+    dataset,
+) -> None:
+    """按确认的扩展窗口口径运行并展示历史滚动回测。"""
+    state = scope.state
+    config = state.get("fit_config")
+    if config is None:
+        st_obj.info("当前拟合结果缺少配置快照，请重新拟合模型后运行历史滚动回测。")
+        return
+    horizon = st_obj.number_input(
+        "回测预测期数",
+        min_value=1,
+        max_value=12,
+        value=1,
+        step=1,
+        key=scope.key("forecast_backtest_horizon"),
+        help="默认按逐期一步预测评估；增加期数后会评估每个滚动起点的多步路径。",
+    )
+    st_obj.caption(
+        "默认使用扩展窗口、step=1；自动 SARIMAX 固定当前选中的阶数，"
+        "不在每个回测窗口重新选阶。含外生变量时，这是使用观测未来路径的条件评估。"
+    )
+    if st_obj.button(
+        "运行历史滚动回测",
+        key=scope.key("forecast_backtest_button"),
+        type="primary",
+    ):
+        signature = stable_signature(
+            {
+                "fit_signature": state.get("fit_signature"),
+                "target": state.get("target_variable"),
+                "horizon": int(horizon),
+            }
+        )
+        try:
+            with st_obj.spinner("正在执行历史滚动回测，请稍候..."):
+                full_series, full_exog, full_dates, initial_window = (
+                    _backtest_inputs(state, dataset)
+                )
+                comparison = run_historical_rolling_evaluation(
+                    full_series,
+                    full_exog,
+                    config,
+                    result,
+                    initial_window=initial_window,
+                    horizon=int(horizon),
+                )
+                result_name = next(iter(comparison.results))
+                evaluation_result = comparison.results[result_name]
+                accuracy = evaluate_rolling_forecast(
+                    evaluation_result.actual,
+                    evaluation_result.mean,
+                    evaluation_result.splits,
+                    full_series.to_numpy(dtype=float),
+                    full_dates,
+                    seasonal_period=evaluation_seasonal_period(config, result),
+                )
+            payload = {
+                "accuracy": accuracy,
+                "failures": tuple(evaluation_result.failures),
+                "n_splits": len(evaluation_result.splits),
+            }
+            scope.store_downstream_result(
+                "backtest",
+                payload,
+                "backtest_signature",
+                signature,
+            )
+        except Exception as exc:  # noqa: BLE001 - 用户可读的回测边界
+            st_obj.error(f"历史滚动回测失败：{translate_ts_error(exc)}")
+            logger.exception("%s 历史滚动回测失败", scope.family)
+            return
+
+    signature = stable_signature(
+        {
+            "fit_signature": state.get("fit_signature"),
+            "target": state.get("target_variable"),
+            "horizon": int(horizon),
+        }
+    )
+    payload = state.get("backtest")
+    if not isinstance(payload, dict) or state.get("backtest_signature") != signature:
+        return
+    accuracy = payload.get("accuracy")
+    if not isinstance(accuracy, ForecastAccuracyReport):
+        return
+    if payload.get("failures"):
+        st_obj.warning(
+            f"有 {len(payload['failures'])} 个滚动窗口拟合失败，"
+            "这些窗口已从指标覆盖范围中保留为无效值。"
+        )
+    st_obj.caption(f"共完成 {payload.get('n_splits', 0)} 个滚动窗口。")
+    _render_accuracy_report(
+        st_obj,
+        accuracy,
+        download_key=scope.key("forecast_backtest_download"),
+        download_name=f"{scope.family}_历史滚动回测.csv",
+    )
+
+
+def _backtest_inputs(state, dataset):
+    """重建训练结束后完整的、无缺失的历史回测输入。"""
+    training_range = state.get("training_time_range")
+    target = state.get("target_variable")
+    exog_names = tuple(state.get("exog_variables") or ())
+    if dataset is None or not target:
+        raise ValueError("缺少历史回测数据或目标变量")
+    full_dates = dataset_time_index(dataset)
+    if full_dates is None or len(full_dates) == 0:
+        raise ValueError("历史滚动回测需要日期索引")
+    if not isinstance(training_range, (tuple, list)) or len(training_range) != 2:
+        raise ValueError("缺少有效的训练样本范围")
+    series, exog, index = prepare_modeling_inputs(
+        dataset,
+        target,
+        exog_names,
+        time_range=(pd.Timestamp(training_range[0]), full_dates[-1]),
+        preprocessing=tuple(state.get("data_preprocessing") or ()),
+        missing_value_method=state.get("missing_value_method", "无"),
+    )
+    valid = series.notna().to_numpy()
+    if exog is not None:
+        valid &= exog.notna().all(axis=1).to_numpy()
+    if not valid.all():
+        series = series.iloc[valid]
+        if exog is not None:
+            exog = exog.iloc[valid]
+        index = index[valid]
+    training_end = pd.Timestamp(training_range[1])
+    initial_window = int((pd.DatetimeIndex(index) <= training_end).sum())
+    if initial_window < 10:
+        raise ValueError(
+            f"历史回测初始训练窗口只有 {initial_window} 个有效观测，至少需要 10 个"
+        )
+    if len(series) <= initial_window:
+        raise ValueError("训练结束日之后没有足够的历史观测用于滚动回测")
+    return series, exog, pd.DatetimeIndex(index), initial_window
+
+
+def _render_accuracy_report(
+    st_obj,
+    report: ForecastAccuracyReport,
+    *,
+    download_key: str,
+    download_name: str,
+) -> None:
+    """以统一表格、误差图和下载明细展示评估结果。"""
+    st_obj.markdown("**误差指标**")
+    st_obj.caption("MPE 为带符号百分比误差；MAPE、sMAPE 以百分比点显示。")
+    st_obj.dataframe(report.error_table, width="stretch")
+    st_obj.markdown("**方向性指标**")
+    direction_columns = [
+        column
+        for column in (
+            "对象",
+            "方向命中率",
+            "相对基准胜率",
+            "趋势相关系数",
+            "方向有效样本数",
+            "覆盖率",
+        )
+        if column in report.direction_table.columns
+    ]
+    st_obj.dataframe(
+        report.direction_table.loc[:, direction_columns],
+        width="stretch",
+    )
+    for note in report.notes:
+        st_obj.caption(note)
+    detail = report.point_table.drop(columns=["方向参考"], errors="ignore")
+    if detail["误差"].notna().any():
+        chart_data = detail.set_index("日期")[["误差"]]
+        st_obj.line_chart(chart_data)
+    st_obj.download_button(
+        "下载评估明细",
+        data=detail.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig"),
+        file_name=download_name,
+        mime="text/csv",
+        key=download_key,
     )
 
 

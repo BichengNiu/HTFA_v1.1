@@ -15,7 +15,9 @@ _COMMON_WIDGET_SUFFIXES = (
     "start_processing_button", "fit_button", "diag_download",
     "innovation_irf_steps", "forecast_window", "forecast_alpha",
     "forecast_dynamic", "forecast_ci", "future_exog_editor", "forecast_button",
-    "forecast_download",
+    "forecast_download", "forecast_evaluation_download",
+    "forecast_backtest_horizon", "forecast_backtest_button",
+    "forecast_backtest_download",
 )
 _SARIMAX_WIDGET_SUFFIXES = (
     "p", "d", "q", "P", "D", "Q", "s", "ar_lags", "ma_lags",
@@ -53,6 +55,7 @@ _TABLE_SUFFIXES = (
 _RESULT_KEYS = (
     "fitted_result", "fit_signature", "diagnostics_table", "diagnostics_signature",
     "forecast", "forecast_signature",
+    "backtest", "backtest_signature",
 )
 
 
@@ -87,6 +90,7 @@ class ModelPageScope:
             downstream_result_keys=(
                 "diagnostics_table", "diagnostics_signature", "forecast",
                 "forecast_signature", "forecast_widget_fit_signature",
+                "backtest", "backtest_signature",
             ),
             widget_keys=widget_keys,
         )
@@ -101,6 +105,7 @@ class ModelPageScope:
 
     def clear_fit_results(self) -> None:
         self.lifecycle.clear_fit_results()
+        self.state.set("fit_config", None)
 
     def store_fit_result(self, result, signature) -> None:
         self.lifecycle.store_fit_result(result, signature)

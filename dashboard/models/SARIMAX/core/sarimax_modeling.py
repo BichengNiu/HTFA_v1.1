@@ -17,6 +17,40 @@ from dashboard.models.SARIMAX.core.sarimax_config import (
 ProgressCallback = Callable[[int, int], None]
 
 
+def build_sarimax_model(
+    series: pd.Series,
+    exog: pd.DataFrame | None,
+    config: SARIMAXConfig,
+) -> SARIMAX:
+    """按配置构造尚未拟合的 SARIMAX 模型。
+
+    Parameters
+    ----------
+    series : pandas.Series
+        目标时间序列。
+    exog : pandas.DataFrame or None
+        可选的外生变量表。
+    config : SARIMAXConfig
+        手动 SARIMAX 配置。
+
+    Returns
+    -------
+    SARIMAX
+        尚未拟合的 Ts 模型对象。
+    """
+    return SARIMAX(
+        series,
+        order=config.order,
+        seasonal_order=config.seasonal_order,
+        trend=config.trend,
+        exog=exog,
+        exog_operators=config.operator_mapping(),
+        log=config.log,
+        enforce_stationarity=config.enforce_stationarity,
+        enforce_invertibility=config.enforce_invertibility,
+    )
+
+
 def fit_sarimax(
     series: pd.Series,
     exog: pd.DataFrame | None,
@@ -38,17 +72,7 @@ def fit_sarimax(
     SARIMAXResult
         已拟合的 SARIMAX 结果对象。
     """
-    model = SARIMAX(
-        series,
-        order=config.order,
-        seasonal_order=config.seasonal_order,
-        trend=config.trend,
-        exog=exog,
-        exog_operators=config.operator_mapping(),
-        log=config.log,
-        enforce_stationarity=config.enforce_stationarity,
-        enforce_invertibility=config.enforce_invertibility,
-    )
+    model = build_sarimax_model(series, exog, config)
     return model.fit(
         method=config.fit_method,
         maxiter=config.maxiter,
@@ -280,6 +304,7 @@ def _select_auto_sarimax_candidate(
 
 __all__ = [
     "build_auto_sarimax_criterion_table",
+    "build_sarimax_model",
     "fit_auto_sarimax",
     "fit_sarimax",
     "format_sarimax_order",

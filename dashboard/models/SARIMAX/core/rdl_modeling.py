@@ -132,12 +132,12 @@ def _rdl_specs(config: RDLConfig) -> dict[str, RationalLagSpec]:
     return specs
 
 
-def fit_rdl(
+def build_rdl_model(
     series: pd.Series,
     exog: pd.DataFrame | None,
     config: RDLConfig,
-) -> SARIMAXResult:
-    """拟合固定传递函数加 SARIMAX 误差的 RDL 模型。
+) -> SARIMAX:
+    """构造尚未拟合的固定传递函数加 SARIMAX 误差 RDL 模型。
 
     Parameters
     ----------
@@ -150,8 +150,8 @@ def fit_rdl(
 
     Returns
     -------
-    SARIMAXResult
-        已拟合的 RDL 结果对象。
+    SARIMAX
+        尚未拟合的 Ts 模型对象。
     """
     if config.intervention is not None:
         intervention_problems = validate_rdl_intervention(series.index, config)
@@ -187,6 +187,17 @@ def fit_rdl(
         distributed_lags=_rdl_specs(config),
         enforce_distributed_lag_stability=config.enforce_distributed_lag_stability,
     )
+    return model
+
+
+def fit_rdl(
+    series: pd.Series,
+    exog: pd.DataFrame | None,
+    config: RDLConfig,
+) -> SARIMAXResult:
+    """拟合固定传递函数加 SARIMAX 误差的 RDL 模型。"""
+    model = build_rdl_model(series, exog, config)
+    error = config.error
     return model.fit(
         method=error.fit_method,
         maxiter=error.maxiter,
@@ -262,6 +273,7 @@ __all__ = [
     "RDLInterventionAnalysis",
     "build_rdl_intervention_analysis",
     "build_rdl_intervention_path",
+    "build_rdl_model",
     "fit_rdl",
     "validate_rdl_intervention",
 ]

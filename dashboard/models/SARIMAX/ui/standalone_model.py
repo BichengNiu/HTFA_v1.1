@@ -93,11 +93,12 @@ def export_sarimax_widget_state(st_obj) -> dict[str, object]:
 
 def export_sarimax_result_state() -> dict[str, object]:
     """导出拟合、诊断和预测缓存，并为每个交接页创建独立副本。"""
-
-    return {
+    result_state = {
         key: deepcopy(state.get(key))
         for key in _HANDOFF_RESULT_KEYS
     }
+    result_state["fit_config"] = deepcopy(state.get("fit_config"))
+    return result_state
 
 
 def restore_sarimax_widget_state(st_obj, widget_state: dict[str, object]) -> None:
@@ -113,6 +114,7 @@ def restore_sarimax_result_state(result_state: dict[str, object]) -> None:
     """恢复交接的模型结果缓存，避免与来源页面共享可变对象。"""
 
     restore_result_state(result_state, keys=_HANDOFF_RESULT_KEYS)
+    state.set("fit_config", deepcopy(result_state.get("fit_config")))
 
 
 def create_standalone_sarimax_model_url(st_obj) -> str | None:

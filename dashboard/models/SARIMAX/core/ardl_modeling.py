@@ -8,12 +8,12 @@ from Ts.TsModels import ARDL
 from dashboard.models.SARIMAX.core.ardl_config import ARDLConfig
 
 
-def fit_ardl(
+def build_ardl_model(
     series: pd.Series,
     exog: pd.DataFrame,
     config: ARDLConfig,
 ):
-    """拟合标准 ARDL，而非把 SARIMAX AR 误称为 ARDL。
+    """构造尚未拟合的标准 ARDL，而非把 SARIMAX AR 误称为 ARDL。
 
     Parameters
     ----------
@@ -27,22 +27,16 @@ def fit_ardl(
     Returns
     -------
     object
-        Ts 标准 ARDL 拟合结果。
+        尚未拟合的 Ts 标准 ARDL 模型。
     """
     error = config.error
     model_kwargs = {}
-    fit_kwargs = {"cov_type": config.cov_type}
     if error is not None:
         model_kwargs.update(
             error_order=error.order,
             error_seasonal_order=error.seasonal_order,
             error_enforce_stationarity=error.enforce_stationarity,
             error_enforce_invertibility=error.enforce_invertibility,
-        )
-        fit_kwargs.update(
-            error_method=error.fit_method,
-            error_maxiter=error.maxiter,
-            error_cov_type=error.cov_type,
         )
     model = ARDL(
         series,
@@ -57,7 +51,24 @@ def fit_ardl(
         log=config.log,
         **model_kwargs,
     )
+    return model
+
+
+def fit_ardl(
+    series: pd.Series,
+    exog: pd.DataFrame,
+    config: ARDLConfig,
+):
+    """拟合标准 ARDL，而非把 SARIMAX AR 误称为 ARDL。"""
+    model = build_ardl_model(series, exog, config)
+    fit_kwargs = {"cov_type": config.cov_type}
+    if config.error is not None:
+        fit_kwargs.update(
+            error_method=config.error.fit_method,
+            error_maxiter=config.error.maxiter,
+            error_cov_type=config.error.cov_type,
+        )
     return model.fit(**fit_kwargs)
 
 
-__all__ = ["fit_ardl"]
+__all__ = ["build_ardl_model", "fit_ardl"]

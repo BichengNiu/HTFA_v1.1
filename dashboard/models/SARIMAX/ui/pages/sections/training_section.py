@@ -155,6 +155,7 @@ def render_training_section(
                 scope.clear_fit_results()
                 return
         scope.store_fit_result(result, signature)
+        state.set("fit_config", config)
 
     result = state.get("fitted_result")
     if result is None:
