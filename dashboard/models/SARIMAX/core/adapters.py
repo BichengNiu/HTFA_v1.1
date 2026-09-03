@@ -118,6 +118,21 @@ class _TsResultAdapter:
             minimum_prediction_start=min(likelihood_burn, model_nobs),
         )
 
+    def fitted_values(self, result: Any) -> np.ndarray:
+        """提取与模型日期一一对应的一维拟合值。"""
+        best = _best_result(result)
+        values = getattr(best, "fitted_values", None)
+        if values is None:
+            raise ValueError("当前模型结果没有拟合值")
+        fitted = np.asarray(values, dtype=float).reshape(-1)
+        model_nobs = int(getattr(best, "nobs", fitted.size))
+        if fitted.size != model_nobs:
+            raise ValueError(
+                "模型拟合值长度与有效样本数不一致："
+                f"{fitted.size} != {model_nobs}"
+            )
+        return fitted.copy()
+
     def forecast(self, result: Any, request: ForecastRequest) -> ForecastResult:
         """使用 Ts 预测并转换为稳定预测结果。"""
         best = _best_result(result)

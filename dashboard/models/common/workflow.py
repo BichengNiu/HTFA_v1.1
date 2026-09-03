@@ -44,6 +44,9 @@ class ModelAdapter(Protocol):
     def forecast_context(self, result: Any) -> ForecastContext:
         """提取预测规划所需的稳定模型上下文。"""
 
+    def fitted_values(self, result: Any) -> pd.Series:
+        """提取与模型有效样本逐点对齐的拟合值。"""
+
     def forecast(self, result: Any, request: ForecastRequest) -> ForecastResult:
         """按通用预测请求生成稳定的预测结果。"""
 
@@ -95,6 +98,10 @@ class ModelWorkflow:
     def forecast_context(self, result: Any) -> ForecastContext:
         """通过适配器提取预测规划上下文。"""
         return self.adapter.forecast_context(result)
+
+    def fitted_values(self, result: Any) -> pd.Series:
+        """通过适配器提取与模型有效样本对齐的拟合值。"""
+        return self.adapter.fitted_values(result)
 
     def forecast(self, result: Any, request: ForecastRequest) -> ForecastResult:
         """通过适配器生成通用预测结果。"""

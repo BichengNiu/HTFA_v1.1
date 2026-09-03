@@ -461,6 +461,88 @@ def run_historical_rolling_evaluation(
     )
 
 
+def run_training_rolling_evaluation(
+    series: pd.Series,
+    exog: pd.DataFrame | None,
+    config: DynamicConfig,
+    result: object,
+    *,
+    horizon: int,
+):
+    """执行训练集内部的 H 期扩展窗口伪样本外评估。
+
+    Parameters
+    ----------
+    series : pandas.Series
+        仅包含训练期的完整、已对齐目标序列。
+    exog : pandas.DataFrame or None
+        与训练期目标序列对齐的外生变量表。
+    config : DynamicConfig
+        当前页面模型配置。
+    result : object
+        当前已拟合结果；自动 SARIMAX 用于固定当前最优阶数。
+    horizon : int
+        每个训练期滚动起点评估的预测期数。
+
+    Returns
+    -------
+    ForecastComparisonResult
+        Ts 返回的训练期滚动评估结果。
+    """
+    if isinstance(horizon, bool) or not isinstance(horizon, int):
+        raise TypeError("horizon 必须是正整数")
+    if horizon < 1:
+        raise ValueError("horizon 必须是正整数")
+    initial_window = max(MIN_OBSERVATIONS, 2 * int(horizon))
+    return run_historical_rolling_evaluation(
+        series,
+        exog,
+        config,
+        result,
+        initial_window=initial_window,
+        horizon=int(horizon),
+    )
+
+
+def run_fixed_holdout_evaluation(
+    result: object,
+    *,
+    start: int | str | pd.Timestamp,
+    end: int | str | pd.Timestamp,
+    future_exog: pd.DataFrame | None = None,
+    future_dates: pd.DatetimeIndex | None = None,
+):
+    """复用一次已拟合结果，生成固定起点样本外预测。
+
+    Parameters
+    ----------
+    result : object
+        当前已拟合结果；自动 SARIMAX 会使用其中的最佳拟合结果。
+    start : int or datetime-like
+        固定起点预测位置或日期。
+    end : int or datetime-like
+        固定终点预测位置或日期，包含该位置。
+    future_exog : pandas.DataFrame or None, optional
+        从拟合样本末期到预测终点的已观测外生变量路径。
+    future_dates : pandas.DatetimeIndex or None, optional
+        预测日期路径；无法从拟合日期推断频率时使用。
+
+    Returns
+    -------
+    dict[str, Any]
+        ``produce_forecast`` 返回的固定起点预测结构。
+    """
+    selected = getattr(result, "best_result", result)
+    return produce_forecast(
+        selected,
+        start=start,
+        end=end,
+        dynamic=False,
+        future_exog=future_exog,
+        future_dates=future_dates,
+    )
+
+
 __all__ = [
     "MIN_OBSERVATIONS",
     "DynamicConfig",
@@ -479,6 +561,8 @@ __all__ = [
     "evaluation_fit_kwargs",
     "evaluation_seasonal_period",
     "run_historical_rolling_evaluation",
+    "run_training_rolling_evaluation",
+    "run_fixed_holdout_evaluation",
     "future_dates",
     "produce_forecast",
     "recommended_residual_diagnostic_lags",

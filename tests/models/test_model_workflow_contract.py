@@ -184,6 +184,14 @@ def test_model_workflow_exposes_selection_and_forecast_seams():
     assert workflow.forecast_context("result") is context
 
 
+def test_model_workflow_exposes_fitted_values_seam():
+    fitted = np.array([1.0, 2.0, 3.0])
+    adapter = SimpleNamespace(fitted_values=lambda result: fitted)
+    workflow = ModelWorkflow(adapter)
+
+    assert workflow.fitted_values("result") is fitted
+
+
 def test_sarimax_adapter_surfaces_fit_and_result_conversion_failures(monkeypatch):
     def failing_fit(*_args, **_kwargs):
         raise RuntimeError("fit failed")
@@ -263,6 +271,20 @@ def test_sarimax_adapter_converts_raw_model_metadata_to_forecast_context():
     assert context.model_dates.equals(dates)
     assert context.exog_names == ("x",)
     assert context.minimum_prediction_start == 1
+
+
+def test_sarimax_adapter_converts_fitted_values_to_one_dimensional_array():
+    best = SimpleNamespace(
+        nobs=3,
+        fitted_values=np.array([[1.0], [2.0], [3.0]]),
+    )
+
+    fitted = SARIMAXAdapter().fitted_values(
+        SimpleNamespace(best_result=best)
+    )
+
+    assert fitted.shape == (3,)
+    np.testing.assert_array_equal(fitted, [1.0, 2.0, 3.0])
 
 
 def test_sarimax_adapter_owns_residual_diagnostic_result_access(monkeypatch):
