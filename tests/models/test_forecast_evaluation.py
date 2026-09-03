@@ -9,7 +9,10 @@ import pytest
 from dashboard.models.common.forecast_evaluation import (
     build_accuracy_workbook,
     evaluate_current_forecast,
+    evaluate_fixed_holdout,
+    evaluate_in_sample_fit,
     evaluate_rolling_forecast,
+    evaluate_training_rolling,
 )
 from dashboard.models.SARIMAX.core.model_config import (
     ARDLConfig,
@@ -19,7 +22,9 @@ from dashboard.models.SARIMAX.core.model_config import (
 )
 from dashboard.models.SARIMAX.core.modeling import (
     fit_dynamic_model,
+    run_fixed_holdout_evaluation,
     run_historical_rolling_evaluation,
+    run_training_rolling_evaluation,
 )
 from Ts.TsMetrics import RollingOrigin
 
@@ -111,6 +116,98 @@ def test_rolling_forecast_includes_naive_baseline_and_direction_metrics():
     assert len(report.point_table) == 4
 
 
+def test_rolling_report_contains_overall_and_by_horizon_tables():
+    full_actual = np.arange(1.0, 21.0)
+    dates = pd.date_range("2020-01-01", periods=len(full_actual), freq="D")
+    splits = RollingOrigin(initial_window=10, horizon=3).split(len(full_actual))
+    actual = np.array(
+        [[full_actual[index] for index in split.target_indices] for split in splits]
+    )
+    predicted = actual + 0.25
+
+    report = evaluate_rolling_forecast(
+        actual,
+        predicted,
+        splits,
+        full_actual,
+        dates,
+    )
+
+    assert report.horizon_error_table is not None
+    assert report.horizon_direction_table is not None
+    assert report.horizon_error_table["步长"].unique().tolist() == [1, 2, 3]
+    assert report.horizon_direction_table["步长"].unique().tolist() == [1, 2, 3]
+    assert report.horizon_error_table.groupby("步长").size().tolist() == [2, 2, 2]
+
+
+def test_training_rolling_uses_two_horizon_initial_window():
+    full_actual = np.arange(1.0, 31.0)
+    dates = pd.date_range("2020-01-01", periods=len(full_actual), freq="D")
+    horizon = 3
+    splits = RollingOrigin(initial_window=10, horizon=horizon).split(
+        len(full_actual)
+    )
+    actual = np.array(
+        [[full_actual[index] for index in split.target_indices] for split in splits]
+    )
+    predicted = actual.copy()
+
+    report = evaluate_training_rolling(
+        actual,
+        predicted,
+        splits,
+        full_actual,
+        dates,
+        horizon=horizon,
+    )
+
+    assert len(report.point_table) == len(splits) * horizon
+    assert report.horizon_error_table.groupby("步长").size().tolist() == [2, 2, 2]
+    assert any("训练期" in note for note in report.notes)
+
+
+def test_training_rolling_rejects_an_incomplete_horizon_window():
+    full_actual = np.arange(1.0, 12.0)
+    dates = pd.date_range("2020-01-01", periods=len(full_actual), freq="D")
+
+    report = evaluate_training_rolling(
+        np.empty((0, 3)),
+        np.empty((0, 3)),
+        (),
+        full_actual,
+        dates,
+        horizon=3,
+    )
+
+    assert report.point_table.empty
+    assert report.error_table.loc[0, "有效样本数"] == 0
+    assert any("完整" in note for note in report.notes)
+
+
+def test_in_sample_and_fixed_holdout_reports_share_baseline_metrics():
+    full_actual = np.arange(1.0, 16.0)
+    dates = pd.date_range("2020-01-01", periods=len(full_actual), freq="D")
+    fit = full_actual[:10] + 0.5
+    in_sample = evaluate_in_sample_fit(
+        full_actual[:10],
+        fit,
+        dates[:10],
+    )
+    holdout = evaluate_fixed_holdout(
+        full_actual[10:],
+        full_actual[10:] + 0.5,
+        dates[10:],
+        full_actual,
+        dates,
+        dates[9],
+    )
+
+    assert in_sample.error_table["对象"].tolist() == ["模型", "朴素基准"]
+    assert holdout.error_table["对象"].tolist() == ["模型", "朴素基准"]
+    assert in_sample.direction_table.loc[1, "相对基准胜率"] != in_sample.direction_table.loc[1, "相对基准胜率"]
+    assert holdout.point_table["阶段"].unique().tolist() == ["完整样本外验证"]
+
+
 def test_all_univariate_model_families_can_run_historical_backtest():
     dates = pd.date_range("2020-01-01", periods=32, freq="MS")
     exog = pd.DataFrame({"x": np.arange(32, dtype=float)}, index=dates)
@@ -147,3 +244,58 @@ def test_all_univariate_model_families_can_run_historical_backtest():
         result = next(iter(comparison.results.values()))
         assert result.splits
         assert not result.failures
+
+
+def test_fixed_holdout_evaluation_reuses_fitted_result(monkeypatch):
+    from dashboard.models.SARIMAX.core import modeling
+
+    calls = {}
+
+    def fake_produce_forecast(result, **kwargs):
+        calls["result"] = result
+        calls.update(kwargs)
+        return {"mean": np.array([1.0, 2.0])}
+
+    monkeypatch.setattr(modeling, "produce_forecast", fake_produce_forecast)
+    fitted = object()
+    future_dates = pd.date_range("2024-01-01", periods=2, freq="MS")
+
+    output = run_fixed_holdout_evaluation(
+        fitted,
+        start=10,
+        end=11,
+        future_dates=future_dates,
+    )
+
+    assert output["mean"].tolist() == [1.0, 2.0]
+    assert calls["result"] is fitted
+    assert calls["start"] == 10
+    assert calls["end"] == 11
+    assert calls["dynamic"] is False
+    assert calls["future_dates"].equals(future_dates)
+
+
+def test_training_rolling_model_entry_uses_two_horizon_initial_window(monkeypatch):
+    from dashboard.models.SARIMAX.core import modeling
+
+    calls = {}
+
+    def fake_historical(*args, **kwargs):
+        calls.update(kwargs)
+        return "comparison"
+
+    monkeypatch.setattr(
+        modeling,
+        "run_historical_rolling_evaluation",
+        fake_historical,
+    )
+    result = run_training_rolling_evaluation(
+        pd.Series([1.0] * 30),
+        None,
+        SARIMAXConfig(order=(0, 0, 0)),
+        object(),
+        horizon=6,
+    )
+
+    assert result == "comparison"
+    assert calls == {"initial_window": 12, "horizon": 6}
