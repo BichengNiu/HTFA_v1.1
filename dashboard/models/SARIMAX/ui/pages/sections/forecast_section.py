@@ -12,6 +12,7 @@ from data_overview.core.dataset import numeric_variable_names
 from dashboard.models.common.contracts import ForecastRequest
 from dashboard.models.common.forecast_evaluation import (
     ForecastAccuracyReport,
+    build_accuracy_workbook,
     evaluate_current_forecast,
     evaluate_rolling_forecast,
 )
@@ -349,7 +350,7 @@ def _render_forecast_evaluation(
                 st_obj,
                 accuracy,
                 download_key=scope.key("forecast_evaluation_download"),
-                download_name=f"{scope.family}_当前预测评估.csv",
+                download_name=f"{scope.family}_当前预测评估.xlsx",
             )
     with backtest_tab:
         _render_rolling_backtest(st_obj, scope, result, dataset)
@@ -454,7 +455,7 @@ def _render_rolling_backtest(
         st_obj,
         accuracy,
         download_key=scope.key("forecast_backtest_download"),
-        download_name=f"{scope.family}_历史滚动回测.csv",
+        download_name=f"{scope.family}_历史滚动回测.xlsx",
     )
 
 
@@ -504,7 +505,7 @@ def _render_accuracy_report(
     download_key: str,
     download_name: str,
 ) -> None:
-    """以统一表格、误差图和下载明细展示评估结果。"""
+    """以统一表格、误差图和 Excel 下载结果展示评估结果。"""
     st_obj.markdown("**误差指标**")
     st_obj.caption("MPE 为带符号百分比误差；MAPE、sMAPE 以百分比点显示。")
     st_obj.dataframe(report.error_table, width="stretch")
@@ -532,11 +533,12 @@ def _render_accuracy_report(
         chart_data = detail.set_index("日期")[["误差"]]
         st_obj.line_chart(chart_data)
     st_obj.download_button(
-        "下载评估明细",
-        data=detail.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig"),
+        "下载结果",
+        data=build_accuracy_workbook(report),
         file_name=download_name,
-        mime="text/csv",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         key=download_key,
+        type="primary",
     )
 
 

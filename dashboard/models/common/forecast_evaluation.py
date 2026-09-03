@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from io import BytesIO
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -38,6 +39,32 @@ class ForecastAccuracyReport:
     direction_table: pd.DataFrame
     point_table: pd.DataFrame
     notes: tuple[str, ...] = ()
+
+
+def build_accuracy_workbook(report: ForecastAccuracyReport) -> bytes:
+    """将评估报告导出为包含三个工作表的 Excel 工作簿。
+
+    Parameters
+    ----------
+    report : ForecastAccuracyReport
+        当前预测窗口或历史滚动回测的评估报告。
+
+    Returns
+    -------
+    bytes
+        可直接传给 Streamlit 下载控件的 XLSX 二进制内容。
+    """
+    detail = report.point_table.drop(columns=["方向参考"], errors="ignore")
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        report.error_table.to_excel(writer, sheet_name="误差指标", index=False)
+        report.direction_table.to_excel(
+            writer,
+            sheet_name="方向性指标",
+            index=False,
+        )
+        detail.to_excel(writer, sheet_name="评估明细", index=False)
+    return output.getvalue()
 
 
 def evaluate_current_forecast(
@@ -436,6 +463,7 @@ __all__ = [
     "ForecastAccuracyReport",
     "MAIN_METRICS",
     "METRIC_LABELS",
+    "build_accuracy_workbook",
     "evaluate_current_forecast",
     "evaluate_rolling_forecast",
 ]

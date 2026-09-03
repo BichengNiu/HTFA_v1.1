@@ -1,10 +1,13 @@
 """单变量预测精度评估的纯逻辑回归测试。"""
 
+from io import BytesIO
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from dashboard.models.common.forecast_evaluation import (
+    build_accuracy_workbook,
     evaluate_current_forecast,
     evaluate_rolling_forecast,
 )
@@ -57,6 +60,34 @@ def test_current_forecast_reports_zero_oos_coverage_without_scoring():
     assert report.error_table.loc[1, "覆盖率"] == 0.0
     assert report.error_table.loc[1, "有效样本数"] == 0
     assert any("尚无真实值" in note for note in report.notes)
+
+
+def test_accuracy_workbook_contains_metric_tables_and_detail_sheet():
+    calendar = pd.date_range("2020-01-01", periods=7, freq="D")
+    report = evaluate_current_forecast(
+        actual=[3.0, 4.0, np.nan],
+        predicted=[3.2, 3.5, 4.8],
+        dates=calendar[2:5],
+        calendar_actual=[1, 2, 3, 4, 5, 6, 7],
+        calendar=calendar,
+        training_end=calendar[3],
+    )
+
+    workbook = build_accuracy_workbook(report)
+    with pd.ExcelFile(BytesIO(workbook)) as excel:
+        assert excel.sheet_names == ["误差指标", "方向性指标", "评估明细"]
+        error_table = pd.read_excel(excel, sheet_name="误差指标")
+        direction_table = pd.read_excel(excel, sheet_name="方向性指标")
+        detail = pd.read_excel(excel, sheet_name="评估明细")
+
+    assert {"MAE", "RMSE", "MPE", "MAPE", "sMAPE"}.issubset(
+        error_table.columns
+    )
+    assert {"方向命中率", "相对基准胜率", "趋势相关系数"}.issubset(
+        direction_table.columns
+    )
+    assert {"日期", "实际值", "预测值", "误差"}.issubset(detail.columns)
+    assert "方向参考" not in detail.columns
 
 
 def test_rolling_forecast_includes_naive_baseline_and_direction_metrics():
