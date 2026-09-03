@@ -113,6 +113,15 @@ def translate_ts_error(error: Exception) -> str:
     )
 
 
+def _is_config_type(value: object, expected_type: type) -> bool:
+    """识别配置类型，并兼容 Streamlit 热重载后的同名类。"""
+    actual_type = type(value)
+    return isinstance(value, expected_type) or (
+        actual_type.__module__ == expected_type.__module__
+        and actual_type.__qualname__ == expected_type.__qualname__
+    )
+
+
 DynamicConfig = (
     SARIMAXConfig
     | AutoSARIMAXConfig
@@ -122,9 +131,9 @@ DynamicConfig = (
 
 
 def _is_dynamic_regression(config: DynamicConfig) -> bool:
-    return isinstance(
+    return _is_config_type(config, RDLConfig) or _is_config_type(
         config,
-        (RDLConfig, ARDLConfig),
+        ARDLConfig,
     )
 
 
@@ -181,7 +190,7 @@ def validate_fit_inputs(
             problems.append("外生变量与目标序列索引不一致，请重新选择外生变量")
 
     if _is_dynamic_regression(config):
-        if isinstance(config, RDLConfig):
+        if _is_config_type(config, RDLConfig):
             if exog is None or exog.shape[1] == 0:
                 if config.intervention is None:
                     problems.append("RDL 至少需要一个普通外生变量或干预变量 I")
@@ -196,15 +205,18 @@ def validate_fit_inputs(
             )
 
     seasonal_period = 0
-    if isinstance(config, (SARIMAXConfig, RDLConfig)):
+    if _is_config_type(config, SARIMAXConfig) or _is_config_type(
+        config,
+        RDLConfig,
+    ):
         seasonal_period = (
             config.seasonal_order[3]
-            if isinstance(config, SARIMAXConfig)
+            if _is_config_type(config, SARIMAXConfig)
             else config.error.seasonal_order[3]
         )
-    elif isinstance(config, AutoSARIMAXConfig):
+    elif _is_config_type(config, AutoSARIMAXConfig):
         seasonal_period = config.s
-    elif isinstance(config, ARDLConfig):
+    elif _is_config_type(config, ARDLConfig):
         seasonal_period = config.period or 0
         error_period = (
             0 if config.error is None else config.error.seasonal_order[3]
@@ -245,18 +257,18 @@ def fit_dynamic_model(
     object
         对应模型族的 Ts 拟合结果。
     """
-    if isinstance(config, SARIMAXConfig):
+    if _is_config_type(config, SARIMAXConfig):
         return fit_sarimax(series, exog, config)
-    if isinstance(config, AutoSARIMAXConfig):
+    if _is_config_type(config, AutoSARIMAXConfig):
         return fit_auto_sarimax(
             series,
             exog,
             config,
             progress_callback=progress_callback,
         )
-    if isinstance(config, RDLConfig):
+    if _is_config_type(config, RDLConfig):
         return fit_rdl(series, exog, config)
-    if isinstance(config, ARDLConfig):
+    if _is_config_type(config, ARDLConfig):
         if exog is None:
             raise ValueError("ARDL 需要解释变量")
         return fit_ardl(series, exog, config)
@@ -281,7 +293,7 @@ def evaluation_config(config: DynamicConfig, result: object | None = None):
     DynamicConfig
         手动配置原样返回；自动 SARIMAX 返回固定最优阶数的 SARIMAXConfig。
     """
-    if not isinstance(config, AutoSARIMAXConfig):
+    if not _is_config_type(config, AutoSARIMAXConfig):
         return config
     best = getattr(result, "best_result", None)
     if best is None:
@@ -325,11 +337,11 @@ def build_evaluation_model(
         满足 Ts 历史评估协议的未拟合模型对象。
     """
     selected = evaluation_config(config, result)
-    if isinstance(selected, SARIMAXConfig):
+    if _is_config_type(selected, SARIMAXConfig):
         return build_sarimax_model(series, exog, selected)
-    if isinstance(selected, RDLConfig):
+    if _is_config_type(selected, RDLConfig):
         return build_rdl_model(series, exog, selected)
-    if isinstance(selected, ARDLConfig):
+    if _is_config_type(selected, ARDLConfig):
         if exog is None:
             raise ValueError("ARDL 需要解释变量")
         return build_ardl_model(series, exog, selected)
@@ -352,19 +364,19 @@ def evaluation_fit_kwargs(config: DynamicConfig, result: object | None = None) -
         传给 Ts ``evaluate_forecasts`` 的 ``fit_kwargs``。
     """
     selected = evaluation_config(config, result)
-    if isinstance(selected, SARIMAXConfig):
+    if _is_config_type(selected, SARIMAXConfig):
         return {
             "method": selected.fit_method,
             "maxiter": selected.maxiter,
             "cov_type": selected.cov_type,
         }
-    if isinstance(selected, RDLConfig):
+    if _is_config_type(selected, RDLConfig):
         return {
             "method": selected.error.fit_method,
             "maxiter": selected.error.maxiter,
             "cov_type": selected.error.cov_type,
         }
-    if isinstance(selected, ARDLConfig):
+    if _is_config_type(selected, ARDLConfig):
         values = {"cov_type": selected.cov_type}
         if selected.error is not None:
             values.update(
@@ -395,14 +407,17 @@ def evaluation_seasonal_period(
         朴素基准使用的正整数滞后期数。
     """
     selected = evaluation_config(config, result)
-    if isinstance(selected, (SARIMAXConfig, RDLConfig)):
+    if _is_config_type(selected, SARIMAXConfig) or _is_config_type(
+        selected,
+        RDLConfig,
+    ):
         order = (
             selected.seasonal_order
-            if isinstance(selected, SARIMAXConfig)
+            if _is_config_type(selected, SARIMAXConfig)
             else selected.error.seasonal_order
         )
         return max(1, int(order[3]))
-    if isinstance(selected, ARDLConfig):
+    if _is_config_type(selected, ARDLConfig):
         error_period = (
             0
             if selected.error is None

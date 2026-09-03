@@ -34,6 +34,7 @@ from dashboard.models.SARIMAX.core.diagnostics import (
 from dashboard.models.SARIMAX.core.forecasting import produce_forecast
 from dashboard.models.SARIMAX.core.forecast_planning import normalise_model_dates
 from dashboard.models.SARIMAX.core.modeling import (
+    _is_config_type,
     fit_dynamic_model,
     select_auto_sarimax_candidate,
     select_auto_sarimax_result,
@@ -50,7 +51,7 @@ from dashboard.models.SARIMAX.core.result_views import (
 
 def is_automatic_config(options: Any) -> bool:
     """判断配置是否会执行候选模型搜索。"""
-    return isinstance(options, AutoSARIMAXConfig)
+    return _is_config_type(options, AutoSARIMAXConfig)
 
 
 def _select_auto_sarimax_result(
@@ -248,7 +249,10 @@ class DynamicRegressionAdapter(_TsResultAdapter):
     @classmethod
     def _adapter_for(cls, options: Any) -> _TsResultAdapter:
         for adapter in cls._adapters:
-            if isinstance(options, adapter.config_types):
+            if any(
+                _is_config_type(options, config_type)
+                for config_type in adapter.config_types
+            ):
                 return adapter
         raise TypeError(f"不支持的动态回归配置：{type(options).__name__}")
 

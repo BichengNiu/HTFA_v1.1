@@ -439,6 +439,12 @@ def test_full_workflow_via_ui(monkeypatch):
     assert _by_key(app.number_input, "sarimax_forecast_oos_horizon")
     assert _by_key(app.button, "sarimax_forecast_training_button")
     assert _by_key(app.button, "sarimax_forecast_oos_button")
+    _by_key(app.button, "sarimax_forecast_oos_button").click()
+    app.run()
+    assert not app.exception
+    assert not any(
+        "样本外滚动回测失败" in element.value for element in app.error
+    )
 
 
 def test_forecast_window_can_extend_out_of_sample(monkeypatch):
