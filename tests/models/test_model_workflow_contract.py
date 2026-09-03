@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
-import sys
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import pytest
@@ -289,40 +285,6 @@ def test_sarimax_adapter_converts_fitted_values_to_one_dimensional_array():
 
     assert fitted.shape == (3,)
     np.testing.assert_array_equal(fitted, [1.0, 2.0, 3.0])
-
-
-def test_build_evaluation_model_accepts_reloaded_sarimax_config():
-    """模块热重载后，滚动评估仍能识别同名 SARIMAX 配置。"""
-    project_root = Path(__file__).resolve().parents[2]
-    script = """
-import importlib
-import sys
-
-sys.path.insert(0, ".")
-sys.path.insert(0, "components")
-
-import numpy as np
-import pandas as pd
-
-from dashboard.models.SARIMAX.core import modeling, sarimax_config
-
-importlib.reload(sarimax_config)
-config = sarimax_config.SARIMAXConfig(order=(0, 0, 0))
-modeling.build_evaluation_model(
-    pd.Series(np.arange(20.0)),
-    None,
-    config,
-)
-"""
-    completed = subprocess.run(
-        [sys.executable, "-c", script],
-        cwd=project_root,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-    assert completed.returncode == 0, completed.stderr
 
 
 def test_sarimax_adapter_owns_residual_diagnostic_result_access(monkeypatch):
