@@ -16,8 +16,8 @@ from .config import (
 from .calculators import calculate_summary
 from .plotting import plot_indicator
 from .components import create_filter_ui, display_summary_table
-from dashboard.core.ui.utils.state_helpers import get_preview_state
-from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
+from htfa.app.state.session_state import get_economic_workbook_state
+from htfa.ui_shared.chart_legend import place_chart_legend_at_bottom
 
 
 def calculate_indicator_statistics_cached(all_data_dict, indicator_maps):
@@ -320,24 +320,24 @@ def display_time_series_tab(
     config = FREQUENCY_CONFIGS[frequency]
 
     # 2. 获取数据（直接从session_state获取）
-    df = get_preview_state(config.df_key, namespace=state_namespace)
+    df = get_economic_workbook_state(config.df_key, namespace=state_namespace)
 
     if df is None or df.empty:
         st_module.info(config.empty_message)
         return
 
     # 3. 获取行业和映射数据（直接从session_state获取）
-    industries = get_preview_state(
+    industries = get_economic_workbook_state(
         config.industries_key,
         [],
         namespace=state_namespace,
     )
-    indicator_type_map = get_preview_state(
+    indicator_type_map = get_economic_workbook_state(
         'indicator_type_map',
         {},
         namespace=state_namespace,
     )
-    indicator_industry_map = get_preview_state(
+    indicator_industry_map = get_economic_workbook_state(
         'indicator_industry_map',
         {},
         namespace=state_namespace,
@@ -366,7 +366,7 @@ def display_time_series_tab(
         filtered_df = df[filtered_indicators]
         try:
             # 获取单位、类型和行业映射
-            indicator_unit_map = get_preview_state(
+            indicator_unit_map = get_economic_workbook_state(
                 'indicator_unit_map',
                 {},
                 namespace=state_namespace,
@@ -395,17 +395,17 @@ def display_time_series_tab(
         )
 
     # 6. 绑制图表（按行业和类型分组）
-    indicator_unit_map = get_preview_state(
+    indicator_unit_map = get_economic_workbook_state(
         'indicator_unit_map',
         {},
         namespace=state_namespace,
     )
-    indicator_type_map = get_preview_state(
+    indicator_type_map = get_economic_workbook_state(
         'indicator_type_map',
         {},
         namespace=state_namespace,
     )
-    indicator_industry_map = get_preview_state(
+    indicator_industry_map = get_economic_workbook_state(
         'indicator_industry_map',
         {},
         namespace=state_namespace,
@@ -536,7 +536,7 @@ def display_overview_tab(st_module, *, state_namespace: str = "preview"):
     # 1. 获取数据并创建统一结构（直接从session_state获取）
     # 使用工具函数创建频率到DataFrame的字典
     all_data_dict = {
-        config.display_name: get_preview_state(
+        config.display_name: get_economic_workbook_state(
             config.df_key,
             pd.DataFrame(),
             namespace=state_namespace,
@@ -545,17 +545,17 @@ def display_overview_tab(st_module, *, state_namespace: str = "preview"):
     }
 
     indicator_maps = {
-        'industry': get_preview_state(
+        'industry': get_economic_workbook_state(
             'indicator_industry_map',
             {},
             namespace=state_namespace,
         ),
-        'type': get_preview_state(
+        'type': get_economic_workbook_state(
             'indicator_type_map',
             {},
             namespace=state_namespace,
         ),
-        'clean_industry': get_preview_state(
+        'clean_industry': get_economic_workbook_state(
             'clean_industry_map',
             {},
             namespace=state_namespace,

@@ -7,7 +7,7 @@ import logging
 import numpy as np
 import pandas as pd
 
-from dashboard.core.workspace import stable_signature
+from htfa.workspace import stable_signature
 from data_overview.core.dataset import numeric_variable_names
 from dashboard.models.common.contracts import ForecastRequest
 from dashboard.models.common.forecast_evaluation import (

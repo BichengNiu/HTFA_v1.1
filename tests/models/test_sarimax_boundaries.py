@@ -25,7 +25,7 @@ def test_navigation_config_registers_univariate_ts_submodule():
 def test_content_router_dispatches_univariate_ts_submodule():
     source = (
         PROJECT_ROOT
-        / "dashboard/core/ui/components/content_router.py"
+        / "htfa/app/ui/components/content_router.py"
     ).read_text(encoding="utf-8")
 
     assert '"单变量模型"' in source

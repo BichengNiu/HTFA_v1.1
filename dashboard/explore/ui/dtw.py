@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
-from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
+from htfa.ui_shared.chart_legend import place_chart_legend_at_bottom
 from dashboard.explore.analysis.dtw_batch import perform_batch_dtw_calculation
 from dashboard.explore.core.series_utils import fingerprint_dataframe
 from dashboard.explore.ui.base import TimeSeriesAnalysisComponent

@@ -6,7 +6,7 @@ import logging
 import pandas as pd
 import streamlit as st
 
-from dashboard.core.ui.utils.error_handler import handle_ui_error
+from htfa.ui_shared.error_handler import handle_ui_error
 
 logger = logging.getLogger(__name__)
 

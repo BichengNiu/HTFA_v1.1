@@ -34,7 +34,7 @@ from dashboard.explore.core.series_utils import (
 from dashboard.explore.core.validation import (
     validate_real_series as _validate_numeric_series,
 )
-from dashboard.core.ui.utils.matplotlib_compat import matplotlib_date_compatibility
+from htfa.ui_shared.matplotlib_compat import matplotlib_date_compatibility
 
 logger = logging.getLogger(__name__)
 

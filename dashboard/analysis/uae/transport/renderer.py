@@ -44,7 +44,7 @@ from dashboard.analysis.uae.metrics import (
     month_and_year_delta_text,
     render_metric_cards,
 )
-from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
+from htfa.ui_shared.chart_legend import render_pyplot_figure
 
 PORT_VOLUME_DISPLAY_SCALE = 1_000_000
 

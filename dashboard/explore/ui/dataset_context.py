@@ -9,7 +9,7 @@ from dashboard.explore.core.data_source import (
     fingerprint_uploaded_file,
     load_explore_dataset,
 )
-from dashboard.core.ui.utils.shared_dataset import get_shared_dataset_file
+from htfa.app.state.shared_dataset import get_shared_dataset_file
 
 DATASET_STATE_KEY = "exploration.dataset.parsed"
 DATASET_DEPENDENT_WIDGET_KEYS = (

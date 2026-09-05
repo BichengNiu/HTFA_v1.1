@@ -6,8 +6,8 @@ import logging
 
 import streamlit as st
 
-from dashboard.core.ui.utils.shared_dataset import get_shared_dataset_file
-from dashboard.core.workspace import SessionWorkspace
+from htfa.app.state.shared_dataset import get_shared_dataset_file
+from htfa.workspace import SessionWorkspace
 from dashboard.explore.ui.data_overview import (
     CORRELOGRAM_TRANSFORMATION_PREFIX,
     DATA_OVERVIEW_HANDOFF_WIDGET_KEYS,

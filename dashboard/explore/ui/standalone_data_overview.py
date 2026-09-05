@@ -8,11 +8,11 @@ from urllib.parse import urlencode
 
 import streamlit as st
 
-from dashboard.core.ui.utils.shared_dataset import (
+from htfa.app.state.shared_dataset import (
     export_shared_dataset_snapshot,
     restore_shared_dataset_snapshot,
 )
-from dashboard.core.workspace import SessionWorkspace
+from htfa.workspace import SessionWorkspace
 from dashboard.explore.core.overview_handoff import (
     OverviewHandoff,
     overview_handoff_store,

@@ -96,7 +96,7 @@ from dashboard.analysis.uae.metrics import (
     source_text_from_metadata,
 )
 from dashboard.analysis.uae.periods import within_month_window
-from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
+from htfa.ui_shared.chart_legend import render_pyplot_figure
 
 FINANCE_EXPLANATION = """
 - **利率**：由阿联酋央行发布，美国利率依据“根据新闻整理”；原始数据为日度/周度阿联酋 EIBOR、美国 EFFR 和 SOFR 12 个月利率，按自然月取算术平均形成月度利率序列，

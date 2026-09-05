@@ -16,7 +16,7 @@ from hashlib import sha256
 
 from dashboard.models.DFM.prep.ui.state import PrepStateKeys, prep_state
 from dashboard.models.DFM.prep.utils.html_helpers import render_tag_group
-from dashboard.core.workspace import SessionWorkspace
+from htfa.workspace import SessionWorkspace
 
 logger = logging.getLogger(__name__)
 

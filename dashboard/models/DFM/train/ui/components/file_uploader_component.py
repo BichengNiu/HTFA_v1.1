@@ -10,7 +10,7 @@ from typing import Tuple, Optional, Dict
 from hashlib import sha256
 
 from dashboard.models.DFM.utils.text_utils import normalize_variable_name
-from dashboard.core.workspace import SessionWorkspace
+from htfa.workspace import SessionWorkspace
 
 
 class FileUploaderComponent:

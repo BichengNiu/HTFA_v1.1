@@ -8,7 +8,7 @@
 from typing import Dict, List, Tuple, Optional
 import pandas as pd
 
-from dashboard.core.ui.utils.debug_helpers import debug_log
+from htfa.ui_shared.debug_helpers import debug_log
 from dashboard.analysis.industrial.constants import TOTAL_INDUSTRIAL_GROWTH_COLUMN
 from dashboard.analysis.industrial.utils.data_converter import convert_cumulative_to_yoy
 from .weight_calculator import build_weight_series

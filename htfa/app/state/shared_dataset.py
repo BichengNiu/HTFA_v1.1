@@ -15,7 +15,7 @@ from data_overview.core.file_parsing import (
     list_excel_sheets,
     read_raw_rows,
 )
-from dashboard.core.workspace import FileAsset, NamedBytesIO, SessionWorkspace
+from htfa.workspace import FileAsset, NamedBytesIO, SessionWorkspace
 
 
 STATE_PREFIX = "dashboard.shared_dataset"

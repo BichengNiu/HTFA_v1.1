@@ -21,9 +21,9 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-from dashboard.core.ui.components.content_router import render_main_content
-from dashboard.core.ui.components.sidebar import render_complete_sidebar
-from dashboard.core.ui.utils.style_loader import inject_cached_styles
+from htfa.app.ui.components.content_router import render_main_content
+from htfa.app.ui.components.sidebar import render_complete_sidebar
+from htfa.app.ui.style_loader import inject_cached_styles
 from dashboard.explore.ui.standalone_data_overview import (
     is_standalone_data_overview_request,
     render_standalone_data_overview,

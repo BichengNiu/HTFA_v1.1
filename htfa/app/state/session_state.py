@@ -50,7 +50,7 @@ def clear_state_by_prefix(prefix: str) -> bool:
         return False
 
 
-# 预览模块状态接口：复用命名空间管理器的键拼装逻辑
+# 经济工作簿状态接口：复用命名空间管理器的键拼装逻辑
 _managers: dict[str, NamespacedStateManager] = {}
 
 
@@ -62,23 +62,23 @@ def _manager(namespace: str) -> NamespacedStateManager:
     return manager
 
 
-def get_preview_state(
+def get_economic_workbook_state(
     key: str,
     default: Any = None,
     *,
     namespace: str = "preview",
 ) -> Any:
-    """获取预览模块状态，支持按子模块隔离命名空间。"""
+    """获取经济工作簿状态，支持按子模块隔离命名空间。"""
     return _manager(namespace).get(key, default)
 
 
-def set_preview_state(
+def set_economic_workbook_state(
     key: str,
     value: Any,
     *,
     namespace: str = "preview",
 ) -> bool:
-    """设置预览模块状态，支持按子模块隔离命名空间。"""
+    """设置经济工作簿状态，支持按子模块隔离命名空间。"""
     try:
         _manager(namespace).set(key, value)
         return True
@@ -87,9 +87,9 @@ def set_preview_state(
         return False
 
 
-def clear_preview_data(*, namespace: str = "preview") -> bool:
+def clear_economic_workbook_state(*, namespace: str = "preview") -> bool:
     """
-    清理所有预览模块的数据
+    清理指定经济工作簿模块的数据
 
     Returns:
         bool: 是否成功清理
@@ -100,7 +100,7 @@ def clear_preview_data(*, namespace: str = "preview") -> bool:
 __all__ = [
     "NamespacedStateManager",
     "clear_state_by_prefix",
-    "get_preview_state",
-    "set_preview_state",
-    "clear_preview_data",
+    "get_economic_workbook_state",
+    "set_economic_workbook_state",
+    "clear_economic_workbook_state",
 ]

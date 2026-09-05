@@ -5,7 +5,7 @@ from pathlib import Path
 import streamlit as st
 
 
-STATIC_DIR = Path(__file__).parent.parent / "static"
+STATIC_DIR = Path(__file__).parent / "static"
 
 
 def load_cached_styles(css_file: str = "styles.css") -> str:

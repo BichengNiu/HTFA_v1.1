@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from io import BytesIO
 
-from dashboard.core.workspace import SessionWorkspace
+from htfa.workspace import SessionWorkspace
 from htfa.data.economic_workbook.modules import create_economic_workbook_renderer
 
 

@@ -7,17 +7,17 @@ from typing import Any
 
 import streamlit as st
 
-from dashboard.core import (
+from htfa.app import (
     get_current_main_module,
     get_current_sub_module,
     set_current_main_module,
     set_current_sub_module,
 )
-from dashboard.core.ui.components.module_selector import (
+from ..module_selector import (
     render_main_module_selector,
     render_sub_module_selector,
 )
-from dashboard.core.ui.utils.shared_dataset import render_shared_dataset_uploader
+from htfa.app.state.shared_dataset import render_shared_dataset_uploader
 
 
 def render_complete_sidebar(

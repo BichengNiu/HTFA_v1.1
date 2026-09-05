@@ -5,7 +5,7 @@ import warnings
 import pandas as pd
 
 from data_overview.core.file_parsing import file_fingerprint, load_dataframe
-from dashboard.core.ui.utils.shared_dataset import (
+from htfa.app.state.shared_dataset import (
     clear_shared_dataset,
     export_shared_dataset_snapshot,
     get_shared_dataset_data,
@@ -14,7 +14,7 @@ from dashboard.core.ui.utils.shared_dataset import (
     render_shared_dataset_uploader,
     restore_shared_dataset_snapshot,
 )
-from dashboard.core.ui.utils import shared_dataset
+from htfa.app.state import shared_dataset
 
 
 class UploadedBytes(io.BytesIO):

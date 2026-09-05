@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # 导入统一的数据加载函数
 from dashboard.analysis.industrial.utils.data_loader import load_macro_data, load_weights_data
 
-from dashboard.core.ui.utils.shared_dataset import get_shared_dataset_file, get_shared_dataset_name
+from htfa.app.state.shared_dataset import get_shared_dataset_file, get_shared_dataset_name
 
 
 def load_default_monitoring_data() -> Optional[str]:

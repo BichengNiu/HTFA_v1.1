@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-from dashboard.core.ui.utils.state_helpers import NamespacedStateManager
+from htfa.app.state.session_state import NamespacedStateManager
 from dashboard.models.common.state import ModelStateLifecycle
 
 

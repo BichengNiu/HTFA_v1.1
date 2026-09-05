@@ -94,15 +94,15 @@ def test_shared_source_passes_cached_rows_to_shared_reader(monkeypatch):
     captured = {}
 
     monkeypatch.setattr(
-        "dashboard.core.ui.utils.shared_dataset.get_shared_dataset_file",
+        "htfa.app.state.shared_dataset.get_shared_dataset_file",
         lambda: uploaded,
     )
     monkeypatch.setattr(
-        "dashboard.core.ui.utils.shared_dataset.get_shared_dataset_raw_rows",
+        "htfa.app.state.shared_dataset.get_shared_dataset_raw_rows",
         lambda: raw_rows,
     )
     monkeypatch.setattr(
-        "dashboard.core.ui.utils.shared_dataset.get_shared_dataset_sheet",
+        "htfa.app.state.shared_dataset.get_shared_dataset_sheet",
         lambda: "数据",
     )
 

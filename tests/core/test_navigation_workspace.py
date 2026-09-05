@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from dashboard.core.backend.navigation import manager
-from dashboard.core.workspace import SessionWorkspace
+from htfa.app.navigation import manager
+from htfa.workspace import SessionWorkspace
 
 
 def _install_state(monkeypatch, state: dict[str, object]) -> None:

@@ -11,7 +11,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import logging
 
-from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
+from htfa.ui_shared.chart_legend import place_chart_legend_at_bottom
 # 设置日志
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ from dashboard.analysis.industrial.utils.weighted_calculation import (
 )
 # 导入统一状态管理
 from dashboard.analysis.industrial.utils.state_manager import industrial_state
-from dashboard.core.ui.utils.debug_helpers import debug_log
+from htfa.ui_shared.debug_helpers import debug_log
 from dashboard.analysis.industrial.constants import (
     TOTAL_INDUSTRIAL_GROWTH_COLUMN,
     STATE_KEY_MACRO_DATA,

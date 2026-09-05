@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from dashboard.core.workspace import artifact_signature
+from htfa.workspace import artifact_signature
 from dashboard.models.common.model_library import ModelContext
 from dashboard.models.common.ui.model_inputs import ModelInputModule
 from dashboard.models.common.ui.result_view import render_estimation_result

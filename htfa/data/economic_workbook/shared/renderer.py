@@ -13,13 +13,13 @@ from .loader import (
     extract_industry_name,
 )
 from .tabs import display_time_series_tab, display_overview_tab
-from dashboard.core.ui.utils.state_helpers import (
-    clear_preview_data,
-    get_preview_state,
-    set_preview_state,
+from htfa.app.state.session_state import (
+    clear_economic_workbook_state,
+    get_economic_workbook_state,
+    set_economic_workbook_state,
 )
 from data_overview.core.file_parsing import file_fingerprint
-from dashboard.core.workspace import SessionWorkspace
+from htfa.workspace import SessionWorkspace
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +77,7 @@ class EconomicWorkbookRenderer:
             if uploaded_file is not None:
                 update = workspace.put_asset(self._asset_slot(), uploaded_file)
                 if update.changed:
-                    clear_preview_data(namespace=self.state_namespace)
+                    clear_economic_workbook_state(namespace=self.state_namespace)
                     workspace.reset_page(self.state_namespace)
             asset = workspace.open_asset(self._asset_slot())
             if asset is not None:
@@ -87,7 +87,7 @@ class EconomicWorkbookRenderer:
                     key=f"{self.state_namespace}.clear_file",
                 ):
                     workspace.clear_asset(self._asset_slot())
-                    clear_preview_data(namespace=self.state_namespace)
+                    clear_economic_workbook_state(namespace=self.state_namespace)
                     workspace.reset_page(self.state_namespace)
                     return None
                 uploaded_file = asset
@@ -95,7 +95,7 @@ class EconomicWorkbookRenderer:
                 uploaded_file = self._load_default_data_file()
             if uploaded_file is None:
                 st.error("请先上传符合正式模板格式的数据文件")
-                clear_preview_data(namespace=self.state_namespace)
+                clear_economic_workbook_state(namespace=self.state_namespace)
                 return None
 
             if self._should_reprocess_file(uploaded_file):
@@ -170,7 +170,7 @@ class EconomicWorkbookRenderer:
             return False
 
         current_fingerprint = file_fingerprint(uploaded_file.getvalue())
-        cached_fingerprint = get_preview_state(
+        cached_fingerprint = get_economic_workbook_state(
             'data_loaded_file_fingerprint',
             namespace=self.state_namespace,
         )
@@ -180,7 +180,7 @@ class EconomicWorkbookRenderer:
             return True
 
         for frequency in self.frequency_tabs.values():
-            data = get_preview_state(
+            data = get_economic_workbook_state(
                 f"{frequency}_df",
                 namespace=self.state_namespace,
             )
@@ -205,12 +205,12 @@ class EconomicWorkbookRenderer:
             self._save_to_state(preview_data)
 
             # 记录文件名
-            set_preview_state(
+            set_economic_workbook_state(
                 'data_loaded_files',
                 uploaded_file.name,
                 namespace=self.state_namespace,
             )
-            set_preview_state(
+            set_economic_workbook_state(
                 'data_loaded_file_fingerprint',
                 file_fingerprint(uploaded_file.getvalue()),
                 namespace=self.state_namespace,
@@ -220,7 +220,7 @@ class EconomicWorkbookRenderer:
 
         except Exception as e:
             logger.error(f"数据处理失败: {e}", exc_info=True)
-            clear_preview_data(namespace=self.state_namespace)
+            clear_economic_workbook_state(namespace=self.state_namespace)
             st.error(f"数据处理失败: {e}")
 
     def _save_to_state(self, preview_data: EconomicWorkbookSnapshot):
@@ -231,7 +231,7 @@ class EconomicWorkbookRenderer:
         """
         # 保存DataFrame
         for freq, df in preview_data.dataframes.items():
-            set_preview_state(
+            set_economic_workbook_state(
                 f'{freq}_df',
                 df,
                 namespace=self.state_namespace,
@@ -240,39 +240,39 @@ class EconomicWorkbookRenderer:
             # 提取行业列表
             if not df.empty:
                 industries = self._extract_industries_from_df(df, preview_data)
-                set_preview_state(
+                set_economic_workbook_state(
                     f'{freq}_industries',
                     industries,
                     namespace=self.state_namespace,
                 )
 
         # 保存映射关系
-        set_preview_state(
+        set_economic_workbook_state(
             'source_map',
             preview_data.source_map,
             namespace=self.state_namespace,
         )
-        set_preview_state(
+        set_economic_workbook_state(
             'indicator_industry_map',
             preview_data.indicator_industry_map,
             namespace=self.state_namespace,
         )
-        set_preview_state(
+        set_economic_workbook_state(
             'indicator_unit_map',
             preview_data.indicator_unit_map,
             namespace=self.state_namespace,
         )
-        set_preview_state(
+        set_economic_workbook_state(
             'indicator_type_map',
             preview_data.indicator_type_map,
             namespace=self.state_namespace,
         )
-        set_preview_state(
+        set_economic_workbook_state(
             'indicator_freq_map',
             preview_data.indicator_freq_map,
             namespace=self.state_namespace,
         )
-        set_preview_state(
+        set_economic_workbook_state(
             'indicator_metadata_map',
             preview_data.indicator_metadata_map,
             namespace=self.state_namespace,
@@ -280,7 +280,7 @@ class EconomicWorkbookRenderer:
 
         # 保存clean_industry_map
         clean_industry_map = self._build_clean_industry_map(preview_data)
-        set_preview_state(
+        set_economic_workbook_state(
             'clean_industry_map',
             clean_industry_map,
             namespace=self.state_namespace,
@@ -336,7 +336,9 @@ class EconomicWorkbookRenderer:
         """
         for key in self.frequency_tabs.values():
             state_key = f'{key}_df'
-            data = get_preview_state(state_key, namespace=self.state_namespace)
+            data = get_economic_workbook_state(
+                state_key, namespace=self.state_namespace
+            )
             if data is not None and not data.empty:
                 return True
 

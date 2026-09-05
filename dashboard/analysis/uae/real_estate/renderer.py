@@ -33,7 +33,7 @@ from dashboard.analysis.uae.metrics import (
     render_metric_cards,
     source_text_from_metadata,
 )
-from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
+from htfa.ui_shared.chart_legend import render_pyplot_figure
 
 REAL_ESTATE_EXPLANATION = """
 - **交易类型**：由迪拜土地局发布；原始数据为房地产交易明细，按登记月份、交易类型（Off-Plan 期房/Existing 现房）及市场（住宅/商业）聚合为月度指标；现房含一手和二手，官方字段无法进一步拆分。

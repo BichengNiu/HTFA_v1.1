@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 
 from data_overview.core.file_parsing import load_dataframe
-from dashboard.core.ui.utils import shared_dataset
+from htfa.app.state import shared_dataset
 
 
 class SharedDatasetSource:

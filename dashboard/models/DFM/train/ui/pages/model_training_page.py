@@ -20,8 +20,8 @@ import logging
 from dashboard.models.DFM.utils.text_utils import normalize_text
 
 # 导入新增工具和组件
-from dashboard.core.ui.utils.state_helpers import NamespacedStateManager
-from dashboard.core.workspace import SessionWorkspace
+from htfa.app.state.session_state import NamespacedStateManager
+from htfa.workspace import SessionWorkspace
 from dashboard.models.DFM.train.ui.components.file_uploader_component import FileUploaderComponent
 from dashboard.models.DFM.train.config.ui_config import UIConfig
 from dashboard.models.DFM.train.ui.utils.config_builder import TrainingConfigBuilder
@@ -34,7 +34,7 @@ from dashboard.models.DFM.train.ui.utils.date_helpers import (
 logger = logging.getLogger(__name__)
 
 # 导入调试日志工具
-from dashboard.core.ui.utils.debug_helpers import debug_log
+from htfa.ui_shared.debug_helpers import debug_log
 
 # 创建全局状态管理器实例
 _state = NamespacedStateManager('train_model')

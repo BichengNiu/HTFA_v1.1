@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dashboard.core.workspace import SessionWorkspace
+from htfa.workspace import SessionWorkspace
 from dashboard.models.common.model_library import ModelContext
 from dashboard.models.common.ui.model_library import render_model_library_save_control
 from dashboard.models.SARIMAX.ui.data_input import (

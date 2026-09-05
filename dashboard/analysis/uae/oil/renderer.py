@@ -47,8 +47,8 @@ from dashboard.analysis.uae.metrics import (
     format_count_value,
     format_scaled_value,
 )
-from dashboard.core.ui.utils.shared_dataset import get_shared_dataset_file
-from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
+from htfa.app.state.shared_dataset import get_shared_dataset_file
+from htfa.ui_shared.chart_legend import render_pyplot_figure
 
 OIL_FISCAL_EXPLANATION = """
 - **油价**：布伦特期货由洲际交易所发布、布伦特现货由金联创发布；原始数据为日度/周度价格（美元/桶），油价卡片按原始频率显示最新观测，反映国际原油价格。

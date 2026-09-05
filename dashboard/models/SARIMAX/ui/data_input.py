@@ -10,7 +10,7 @@ from data_overview.core.file_parsing import file_fingerprint
 from data_overview.ui.data_source import BuiltinDataSource
 from data_overview.ui.widget_keys import overview_widget_keys
 
-from dashboard.core.workspace import FileAsset
+from htfa.workspace import FileAsset
 from dashboard.models.common.ui.data_input import create_data_input_module
 from dashboard.models.SARIMAX.core.data_loader import (
     DATA_REPLACEMENT_OPTIONS,

@@ -5,7 +5,7 @@ from io import BytesIO
 import pandas as pd
 import pytest
 
-from dashboard.core.workspace import (
+from htfa.workspace import (
     SessionWorkspace,
     artifact_is_current,
     artifact_signature,

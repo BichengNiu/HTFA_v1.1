@@ -16,10 +16,10 @@ def test_retired_feature_package_and_core_wrappers_are_absent() -> None:
     feature_root = Path("dashboard") / "auth"
     assert not list(feature_root.rglob("*.py"))
     assert not list(feature_root.rglob("*.pyc"))
-    assert not Path("dashboard/core/ui/constants.py").exists()
+    assert not Path("htfa/app/ui/constants.py").exists()
 
     sidebar = Path(
-        "dashboard/core/ui/components/sidebar/renderer.py"
+        "htfa/app/ui/components/sidebar/renderer.py"
     ).read_text(encoding="utf-8")
 
     assert "def filter_modules_by_permission(" not in sidebar

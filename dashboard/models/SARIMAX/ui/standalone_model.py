@@ -11,7 +11,7 @@ from urllib.parse import urlencode
 import pandas as pd
 import streamlit as st
 
-from dashboard.core.workspace import HandoffStore
+from htfa.workspace import HandoffStore
 from dashboard.models.common.model_library import (
     MODEL_LIBRARY_TOKEN_KEY,
     model_library_store,

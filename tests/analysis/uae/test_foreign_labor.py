@@ -14,7 +14,7 @@ from dashboard.analysis.uae.foreign_labor import (
     latest_common_month,
     load_foreign_labor_data,
 )
-from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
+from htfa.ui_shared.chart_legend import place_chart_legend_at_bottom
 
 
 def _workbook_bytes(*, standard_protocol: bool = False) -> bytes:

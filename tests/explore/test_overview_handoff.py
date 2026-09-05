@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dashboard.core.ui.utils.shared_dataset import SharedDatasetSnapshot
-from dashboard.core.workspace import FileAsset
+from htfa.app.state.shared_dataset import SharedDatasetSnapshot
+from htfa.workspace import FileAsset
 from dashboard.explore.core.overview_handoff import (
     OverviewHandoff,
     OverviewHandoffStore,

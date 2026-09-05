@@ -15,8 +15,8 @@ from typing import Dict, Any
 from dashboard.models.DFM.decomp import execute_news_analysis
 
 
-from dashboard.core.ui.utils.state_helpers import NamespacedStateManager
-from dashboard.core.workspace import SessionWorkspace
+from htfa.app.state.session_state import NamespacedStateManager
+from htfa.workspace import SessionWorkspace
 
 news_analysis_state = NamespacedStateManager("news_analysis")
 

@@ -15,7 +15,7 @@ import joblib
 import pickle
 from typing import Optional, Dict, Any
 
-from dashboard.core.workspace import SessionWorkspace
+from htfa.workspace import SessionWorkspace
 
 
 def is_valid_file_object(file_obj) -> bool:
@@ -36,8 +36,8 @@ def is_valid_file_object(file_obj) -> bool:
             getattr(file_obj, 'name', '未知文件') != '未知文件')
 
 
-from dashboard.core.ui.utils.state_helpers import NamespacedStateManager
-from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
+from htfa.app.state.session_state import NamespacedStateManager
+from htfa.ui_shared.chart_legend import place_chart_legend_at_bottom
 
 model_analysis_state = NamespacedStateManager("model_analysis")
 

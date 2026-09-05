@@ -6,9 +6,9 @@ import logging
 
 import pandas as pd
 
-from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
-from dashboard.core.ui.utils.matplotlib_compat import matplotlib_date_compatibility
-from dashboard.core.workspace import stable_signature
+from htfa.ui_shared.chart_legend import render_pyplot_figure
+from htfa.ui_shared.matplotlib_compat import matplotlib_date_compatibility
+from htfa.workspace import stable_signature
 from dashboard.models.common.workflow import ModelWorkflow
 from dashboard.models.SARIMAX.core.adapters import DynamicRegressionAdapter
 from dashboard.models.SARIMAX.core.modeling import build_rdl_intervention_analysis

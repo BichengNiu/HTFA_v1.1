@@ -9,10 +9,10 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from dashboard.core.ui.utils.shared_dataset import (
+from htfa.app.state.shared_dataset import (
     get_shared_dataset_file,
 )
-from dashboard.core.workspace import SessionWorkspace
+from htfa.workspace import SessionWorkspace
 from dashboard.explore.core.data_source import ExploreDataset, format_table_option
 from dashboard.explore.core.series_utils import clean_dataframe_columns
 from dashboard.explore.ui.dataset_context import get_explore_dataset

@@ -24,8 +24,8 @@ from dashboard.analysis.uae.contracts import ProvenanceKind
 from dashboard.analysis.uae.downloads import render_chart_download
 from dashboard.analysis.uae.results import MacroPanelResult
 from dashboard.analysis.uae.services import build_monitoring_dashboard
-from dashboard.core.ui.utils.shared_dataset import get_shared_dataset_file
-from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
+from htfa.app.state.shared_dataset import get_shared_dataset_file
+from htfa.ui_shared.chart_legend import place_chart_legend_at_bottom
 
 TAB_CONFIG = (
     ("宏观概览", "growth_overview"),

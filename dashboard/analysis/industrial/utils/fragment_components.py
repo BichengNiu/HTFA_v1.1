@@ -10,7 +10,7 @@ import pandas as pd
 from typing import Tuple, Optional, List, Callable, Dict, Any
 
 from dashboard.analysis.industrial.utils.chart_config import TIME_RANGE_OPTIONS, get_time_range_index
-from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
+from htfa.ui_shared.chart_legend import place_chart_legend_at_bottom
 
 
 def render_time_range_selector(

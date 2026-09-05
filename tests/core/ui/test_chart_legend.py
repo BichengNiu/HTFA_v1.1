@@ -1,7 +1,7 @@
 from matplotlib.figure import Figure
 import plotly.graph_objects as go
 
-from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
+from htfa.ui_shared.chart_legend import place_chart_legend_at_bottom
 
 
 def test_plotly_legend_is_forced_to_bottom() -> None:

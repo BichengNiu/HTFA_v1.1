@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from dashboard.core.workspace import SessionWorkspace
+from htfa.workspace import SessionWorkspace
 
 
 MAIN_MODULE_KEY = "navigation.main_module"

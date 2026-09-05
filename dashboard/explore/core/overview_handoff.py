@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from dashboard.core.workspace.handoff import (
+from htfa.workspace.handoff import (
     DEFAULT_HANDOFF_TTL_SECONDS,
     HandoffStore,
 )
-from dashboard.core.ui.utils.shared_dataset import SharedDatasetSnapshot
+from htfa.app.state.shared_dataset import SharedDatasetSnapshot
 
 
 @dataclass(frozen=True)

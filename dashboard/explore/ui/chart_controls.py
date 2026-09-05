@@ -9,7 +9,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
+from htfa.ui_shared.chart_legend import render_pyplot_figure
 from dashboard.explore.analysis.stationarity import (
     create_correlogram_figure,
     resolve_correlation_lags,

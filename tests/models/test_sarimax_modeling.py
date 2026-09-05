@@ -13,7 +13,7 @@ from statsmodels.tsa.statespace.sarimax import SARIMAX as StatsmodelsSARIMAX
 from Ts.TsModels import TimeSeriesOperator
 from Ts.TsSims import simulate_sarima
 
-from dashboard.core.workspace import stable_signature
+from htfa.workspace import stable_signature
 from dashboard.models.SARIMAX.core.data_loader import (
     MISSING_VALUE_OPTIONS,
     dataset_time_index,

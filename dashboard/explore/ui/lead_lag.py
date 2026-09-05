@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from dashboard.core.ui.utils.chart_legend import render_pyplot_figure
+from htfa.ui_shared.chart_legend import render_pyplot_figure
 # 配置matplotlib中文字体
 matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans', 'Arial Unicode MS', 'sans-serif']
 matplotlib.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
