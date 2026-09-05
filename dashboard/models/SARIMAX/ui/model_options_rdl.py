@@ -193,7 +193,7 @@ def _render_rdl_inputs(
 _INTERVENTION_KIND_LABELS = {
     "单期冲击（pulse）": "pulse",
     "持续冲击（step）": "step",
-    "临时区间冲击（temporary）": "temporary",
+    "区间冲击（interval）": "temporary",
 }
 
 
@@ -228,14 +228,25 @@ def _render_intervention_controls(
     )
     kind = _INTERVENTION_KIND_LABELS[str(selected_label)]
     dates = tuple(pd.Timestamp(value) for value in model_dates)
+    timestamp_formatter = _build_intervention_timestamp_formatter(dates)
     middle = len(dates) // 2
     default_start = dates[middle]
-    if kind == "temporary":
+    if kind == "pulse":
+        start_date = st_obj.selectbox(
+            "冲击发生日期",
+            options=list(dates),
+            index=middle,
+            format_func=timestamp_formatter,
+            key=f"{prefix}_intervention_pulse_date",
+        )
+        end_date = None
+    elif kind == "temporary":
         default_end = dates[min(middle + 1, len(dates) - 1)]
         selected_window = st_obj.select_slider(
             "冲击起止日期（包含端点）",
             options=list(dates),
             value=(default_start, default_end),
+            format_func=timestamp_formatter,
             key=f"{prefix}_intervention_window",
         )
         if (
@@ -246,12 +257,31 @@ def _render_intervention_controls(
             return None
         start_date, end_date = selected_window
     else:
-        start_date = st_obj.select_slider(
-            "冲击发生日期",
-            options=list(dates),
-            value=default_start,
-            key=f"{prefix}_intervention_start",
+        step_key = f"{prefix}_intervention_start"
+        has_step_state = _pin_step_intervention_window(
+            st_obj,
+            step_key,
+            dates,
+            default_start,
         )
+        step_slider_kwargs = {
+            "options": list(dates),
+            "format_func": timestamp_formatter,
+            "key": step_key,
+        }
+        if not has_step_state:
+            step_slider_kwargs["value"] = (default_start, dates[-1])
+        selected_window = st_obj.select_slider(
+            "冲击起始日期（之后持续）",
+            **step_slider_kwargs,
+        )
+        if (
+            not isinstance(selected_window, (tuple, list))
+            or len(selected_window) != 2
+        ):
+            st_obj.warning("请选择完整的持续干预起始范围。")
+            return None
+        start_date = selected_window[0]
         end_date = None
     try:
         return RDLInterventionConfig(
@@ -261,7 +291,67 @@ def _render_intervention_controls(
         )
     except (TypeError, ValueError) as exc:
         st_obj.error(f"干预冲击设置有误：{exc}")
-        return None
+    return None
+
+
+def _pin_step_intervention_window(
+    st_obj,
+    key: str,
+    dates: tuple[pd.Timestamp, ...],
+    default_start: pd.Timestamp,
+) -> bool:
+    """固定持续冲击范围的上端点为最后一个模型日期。"""
+    session = getattr(st_obj, "session_state", None)
+    if session is None or key not in session:
+        return False
+
+    start_date = default_start
+    current = session[key]
+    if isinstance(current, (tuple, list)) and len(current) == 2:
+        try:
+            candidate = pd.Timestamp(current[0])
+        except (TypeError, ValueError):
+            candidate = default_start
+        if candidate in dates:
+            start_date = candidate
+    session[key] = (start_date, dates[-1])
+    return True
+
+
+def _build_intervention_timestamp_formatter(model_dates: pd.Index):
+    """按模型日期中实际存在的最小时间粒度构造显示格式化器。"""
+    dates = tuple(pd.Timestamp(value) for value in model_dates)
+    if all(
+        value.hour == 0
+        and value.minute == 0
+        and value.second == 0
+        and value.microsecond == 0
+        and value.nanosecond == 0
+        for value in dates
+    ):
+        date_format = "%Y-%m-%d"
+    elif all(
+        value.minute == 0
+        and value.second == 0
+        and value.microsecond == 0
+        and value.nanosecond == 0
+        for value in dates
+    ):
+        date_format = "%Y-%m-%d %H"
+    elif all(
+        value.second == 0
+        and value.microsecond == 0
+        and value.nanosecond == 0
+        for value in dates
+    ):
+        date_format = "%Y-%m-%d %H:%M"
+    else:
+        date_format = "%Y-%m-%d %H:%M:%S"
+
+    def format_timestamp(value) -> str:
+        return pd.Timestamp(value).strftime(date_format)
+
+    return format_timestamp
 
 
 __all__ = ["render_rdl_options"]
