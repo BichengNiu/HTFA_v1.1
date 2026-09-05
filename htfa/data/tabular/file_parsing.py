@@ -8,7 +8,7 @@ from typing import Any
 
 import pandas as pd
 
-from .time import infer_time_values
+from .time import infer_time_values, parse_time_values
 
 
 class FileParseError(ValueError):
@@ -225,9 +225,12 @@ def _parse_time_column(frame: pd.DataFrame, column: str) -> pd.DataFrame:
     values = frame[column]
     if pd.api.types.is_datetime64_any_dtype(values):
         return frame
-    nonblank = values.notna() & values.astype(str).str.strip().ne("")
-    parsed = pd.to_datetime(values, errors="coerce", format="mixed")
-    if not parsed.loc[nonblank].notna().all():
+    parsed = parse_time_values(
+        values,
+        reject_numeric=False,
+        require_nonblank=False,
+    )
+    if parsed is None:
         raise FileParseError(f"时间列“{column}”存在无法解析的值")
     result = frame.copy()
     result[column] = parsed

@@ -15,7 +15,7 @@
 
 ### 1. 明确无调用方的公共/内部代码
 
-- `components/data_overview/core/parsing.py`
+- `htfa/ui_shared/data_overview/core/parsing.py`
   - 删除无调用方的 `parse_color_sequence` 及其 `__all__`、组件包重导出。
   - 同步删除仅由该函数使用的 `is_color_like` 和对应导入；保留 `COLOR_HEX_MAP`，因为 `options.py` 仍在使用。
 - `dashboard/models/DFM/prep/utils/date_utils.py`
@@ -40,7 +40,7 @@
 - `dashboard/models/SARIMAX/ui/pages/sections/training_section.py`、`dashboard/models/SARIMAX/ui/state.py`
   - 删除自动选阶范围从旧的 `*_min`/`*_max` 键恢复的逻辑。
   - 从 widget 状态注册表删除旧的自动选阶 `*_min`/`*_max` 键及无调用方的 `sarimax_auto_criterion`；保留当前 `*_range` 和 `sarimax_auto_selection_criterion`。
-- `components/data_overview/ui/chart_options_tabs.py`
+- `htfa/ui_shared/data_overview/ui/chart_options_tabs.py`
   - 删除旧图例外置锚点默认值、旧复选框状态的清理分支；当前输入控件只使用现行图例设置。
 
 ### 3. 明确冗余实现/参数和无效导入
@@ -52,9 +52,9 @@
 - `dashboard/models/DFM/train/utils/environment.py`
   - NumPy 是项目必需依赖，删除静默吞掉 `ImportError` 的可选依赖回退，改为直接导入并设置随机种子。
 - 删除已核对的无效导入：
-  - `components/data_overview/core/dataset.py` 的 `Any`；
-  - `components/data_overview/ui/chart_options_tabs.py` 的 `DEFAULT_LINESTYLES`；
-  - `components/data_overview/ui/section.py` 的未使用 `OverviewDataset`；
+  - `htfa/data/tabular/dataset.py` 的 `Any`；
+  - `htfa/ui_shared/data_overview/ui/chart_options_tabs.py` 的 `DEFAULT_LINESTYLES`；
+  - `htfa/ui_shared/data_overview/ui/section.py` 的未使用 `OverviewDataset`；
   - UAE 多个 renderer/calculator/tabs 文件中未使用的 `streamlit as st`；
   - 已核对的测试文件中的未使用 `pytest`、`date` 和未使用展示常量导入。
 - `dashboard/explore/metrics/dtw.py` 删除当前调用链未使用的 `window_size`、`use_window` 旧参数和参数适配分支，仅保留 UI 实际使用的 `radius`。
@@ -99,11 +99,11 @@
 ## 验证命令
 
 ```powershell
-runtime\python.exe -m pytest -c tooling\pytest.ini tests\explore tests\models tests\analysis\uae components\data_overview\tests -q
+runtime\python.exe -B -m pytest -c tooling\pytest.ini tests\exploration tests\models tests\analysis\uae tests\ui_shared\data_overview -q
 runtime\python.exe -m pytest -c tooling\pytest.ini -q
-runtime\python.exe -m compileall -q app.py dashboard components scripts tests
+runtime\python.exe -B -m compileall -q app.py htfa scripts tests
 git diff --check
-rg -n -i "legacy|fallback|回退|兼容旧|旧键|旧字段|旧模型|parse_color_sequence|parse_date_range|filter_by_date_range|get_friday_with_lag|load_stationarity_tables|clear_dataset_state|get_fitted_result|schema_version" dashboard components scripts tests
+rg -n -i "legacy|fallback|回退|兼容旧|旧键|旧字段|旧模型|parse_color_sequence|parse_date_range|filter_by_date_range|get_friday_with_lag|load_stationarity_tables|clear_dataset_state|get_fitted_result|schema_version" htfa scripts tests
 ```
 
 预期结果：目标符号不再有生产调用方；保留项的命中均有明确现行契约解释；完整测试不低于当前基线，且不产生新的异常。

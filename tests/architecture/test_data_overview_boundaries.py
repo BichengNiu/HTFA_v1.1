@@ -68,12 +68,19 @@ def test_removed_data_overview_import_paths_are_not_resolvable() -> None:
     result = _run_fresh_process(
         """
 import importlib
+import importlib.util
 
 for name in ("components.data_overview", "data_overview"):
     try:
+        spec = importlib.util.find_spec(name)
+    except ModuleNotFoundError as exc:
+        assert exc.name in {name, name.split(".", 1)[0]}, exc
+        spec = None
+    assert spec is None, f"旧入口仍可解析：{name} -> {spec}"
+    try:
         importlib.import_module(name)
-    except ModuleNotFoundError:
-        pass
+    except ModuleNotFoundError as exc:
+        assert exc.name in {name, name.split(".", 1)[0]}, exc
     else:
         raise AssertionError(f"旧入口仍可导入：{name}")
 """

@@ -93,7 +93,7 @@ Run the same command. Expected: PASS with the new control, correct invalidation,
 
 ```powershell
 runtime\python.exe -m pytest -c tooling\pytest.ini tests\models\test_sarimax_modeling.py tests\models\test_sarimax_ui_flow.py tests\models\test_sarimax_boundaries.py -q
-runtime\python.exe -m pytest -c tooling\pytest.ini components\data_overview\tests -p no:cacheprovider -q
+runtime\python.exe -B -m pytest -c tooling\pytest.ini tests\ui_shared\data_overview -p no:cacheprovider -q
 ```
 
 Expected: all model/core/UI and reusable data-overview tests pass.

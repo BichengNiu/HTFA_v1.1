@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Hashable
 from copy import deepcopy
 
 import pandas as pd
@@ -137,9 +138,9 @@ _render_shared_data_overview = create_data_overview(
 
 def _render_correlogram_controls(
     st_obj,
-    available_variables: list[str],
-    default_variables: list[str],
-) -> list[str]:
+    available_variables: list[Hashable],
+    default_variables: list[Hashable],
+) -> list[Hashable]:
     """渲染占整行的 ACF/PACF 变量多选。"""
     st_obj.markdown("---")
     st_obj.markdown("**自相关与偏自相关**")
@@ -174,7 +175,7 @@ def _render_correlogram_controls(
 def _prepare_correlogram(
     st_obj,
     series: pd.Series,
-    variable: str,
+    variable: Hashable,
     *,
     chart_type: str,
 ) -> tuple[pd.Series, str] | None:
@@ -230,7 +231,9 @@ def _hurst_interpretation(value: float) -> str:
     return "弱依赖/随机性（H ≈ 0.5）"
 
 
-def _calculate_hurst_result(series: pd.Series, variable: str) -> dict[str, object]:
+def _calculate_hurst_result(
+    series: pd.Series, variable: Hashable
+) -> dict[str, object]:
     """调用 TsUtils 赫斯特接口并构建单变量概览表的一行。"""
     n_valid = int(series.notna().sum())
     try:
@@ -384,19 +387,16 @@ def render_data_overview(st_obj) -> None:
     if overview_dataset is None:
         return
 
-    available_variables = [
-        str(variable)
-        for variable in numeric_variable_names(overview_dataset.frame)
-    ]
+    available_variables = numeric_variable_names(overview_dataset.frame)
     if not available_variables:
         return
 
     selected_above = [
-        str(variable)
+        variable
         for variable in st_obj.session_state.get(
             f"{_DATA_OVERVIEW_KEY_PREFIX}_preview_vars", []
         )
-        if str(variable) in available_variables
+        if variable in available_variables
     ]
     variables = _render_correlogram_controls(
         st_obj,

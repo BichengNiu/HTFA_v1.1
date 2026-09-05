@@ -63,6 +63,6 @@
 ## Validation commands
 
 ```powershell
-D:\HTFA_v1.1\runtime\python.exe -c "import sys, pytest; sys.path.insert(0, r'D:\HTFA_v1.1\components'); raise SystemExit(pytest.main(['-q', r'D:\HTFA_v1.1\components\data_overview\tests']))"
+D:\HTFA_v1.1\runtime\python.exe -B -m pytest -c D:\HTFA_v1.1\tooling\pytest.ini D:\HTFA_v1.1\tests\ui_shared\data_overview -q
 D:\HTFA_v1.1\runtime\python.exe -m pytest -c tooling\pytest.ini tests\models\test_sarimax_ui_flow.py tests\models\test_sarimax_boundaries.py -q
 ```

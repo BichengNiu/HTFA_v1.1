@@ -32,7 +32,7 @@ Expected: 全部现有交接测试通过。
 ### Task 2: 支持恢复 SARIMAX 自有文件、输入和结果状态
 
 **Files:**
-- Modify: `components/data_overview/ui/data_source.py`
+- Modify: `htfa/ui_shared/data_overview/ui/data_source.py`
 - Modify: `dashboard/models/SARIMAX/ui/data_input.py`
 - Create: `dashboard/models/SARIMAX/ui/standalone_model.py`
 

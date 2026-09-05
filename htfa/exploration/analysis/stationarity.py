@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
+from collections.abc import Hashable, Iterable
 from dataclasses import dataclass
 from typing import Any
 
@@ -183,8 +183,8 @@ SUMMARY_LABELS = {
 
 def prepare_selected_series(
     data: pd.DataFrame,
-    variable: str,
-) -> tuple[pd.Series, str | None]:
+    variable: Hashable,
+) -> tuple[pd.Series, Hashable | None]:
     """提取变量并尽可能建立经过校验的升序时间索引。"""
     if variable not in data.columns:
         raise KeyError(f"数据表中不存在变量: {variable}")

@@ -103,6 +103,20 @@ def test_prepare_selected_series_uses_and_sorts_detected_time_column():
     assert series.tolist() == [1.0, 2.0, 3.0]
 
 
+def test_prepare_selected_series_preserves_non_string_column_labels():
+    data = pd.DataFrame(
+        {
+            2020: ["2025-01-31", "2025-02-28"],
+            7: [1.0, 2.0],
+        }
+    )
+
+    series, time_label = prepare_selected_series(data, 7)
+
+    assert time_label == 2020
+    assert series.tolist() == [1.0, 2.0]
+
+
 def test_prepare_selected_series_rejects_duplicate_timestamps():
     data = pd.DataFrame(
         {

@@ -188,11 +188,11 @@ Expected outcome: temporary 路径按闭区间生成，pulse/step 不回归，`f
    runtime\python.exe -m pytest -c tooling\pytest.ini tests\models\test_sarimax_modeling.py tests\models\test_sarimax_ui_flow.py tests\models\test_sarimax_boundaries.py -q
    ```
 
-2. 运行 component tests，因为 common model input/state 可能影响共享 UI：
+2. 运行共享数据概览测试，因为 common model input/state 可能影响共享 UI：
 
    ```powershell
-   Set-Location D:\HTFA_v1.1\components\data_overview
-   ..\..\runtime\python.exe -c "import sys, pytest; sys.path.insert(0, r'D:\HTFA_v1.1\components'); raise SystemExit(pytest.main(['-q', 'tests']))"
+   Set-Location D:\HTFA_v1.1
+   runtime\python.exe -B -m pytest -c tooling\pytest.ini tests\ui_shared\data_overview -q
    ```
 
 3. 运行 `python -m compileall` 覆盖本次改动目录，运行 `git diff --check`。

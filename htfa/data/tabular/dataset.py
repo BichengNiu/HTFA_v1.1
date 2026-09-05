@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Hashable
 from dataclasses import dataclass
 
 import pandas as pd
@@ -20,7 +21,7 @@ class OverviewDataset:
     Attributes
     ----------
     fingerprint:
-        文件内容指纹，用于缓存失效。
+        数据集身份指纹，通常由文件内容指纹与读取设置共同构成，用于缓存失效。
     file_name:
         上传文件名。
     frame:
@@ -32,20 +33,20 @@ class OverviewDataset:
     fingerprint: str
     file_name: str
     frame: pd.DataFrame
-    time_column: str | None
+    time_column: Hashable | None
 
 
-def _detect_time_column(frame: pd.DataFrame) -> str | None:
+def _detect_time_column(frame: pd.DataFrame) -> Hashable | None:
     """返回首列中被解析为日期类型的列名，否则 None。"""
     if frame.shape[1] == 0:
         return None
     first = frame.columns[0]
     if pd.api.types.is_datetime64_any_dtype(frame[first]):
-        return str(first)
+        return first
     return None
 
 
-def numeric_variable_names(frame: pd.DataFrame) -> list[object]:
+def numeric_variable_names(frame: pd.DataFrame) -> list[Hashable]:
     """返回可用于建模的数值型列名（排除日期与布尔列）。"""
     names = []
     for column in frame.columns:
@@ -61,13 +62,13 @@ def numeric_variable_names(frame: pd.DataFrame) -> list[object]:
     return names
 
 
-def suggest_time_column(frame: pd.DataFrame) -> str | None:
+def suggest_time_column(frame: pd.DataFrame) -> Hashable | None:
     """返回首个可完整解析为日期的列名，否则返回 None。"""
     if frame.shape[1] == 0:
         return None
     first = frame.iloc[:, 0]
     if infer_time_values(first) is not None:
-        return str(frame.columns[0])
+        return frame.columns[0]
     return None
 
 

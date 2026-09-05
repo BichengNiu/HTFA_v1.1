@@ -4,7 +4,7 @@
 
 **Goal:** 将“动态回归模型”标签页的数据区收窄为文件上传、工作表选择、变量名行、时间列和数据开始行，然后直接进入模型训练。
 
-**Architecture:** 在可移植的 `data_overview` 组件上增加一个默认开启的预览开关。完整数据概览实例保持现状；SARIMAX 实例关闭变量选择、表格、图表和图表高级选项，但继续复用现有 `DataSource`、文件指纹、读取设置、数据集构建和状态失效逻辑。模型训练区域继续使用当前的目标变量和外生变量选择控件。
+**Architecture:** 在共享的 `htfa.ui_shared.data_overview` UI 上增加一个默认开启的预览开关。完整数据概览实例保持现状；SARIMAX 实例关闭变量选择、表格、图表和图表高级选项，但继续复用现有 `DataSource`、文件指纹、读取设置、数据集构建和状态失效逻辑。模型训练区域继续使用当前的目标变量和外生变量选择控件。
 
 **Tech Stack:** Python, Streamlit, Streamlit `AppTest`, pytest, pandas。
 
@@ -13,8 +13,8 @@
 ### Task 1: Add an optional preview-rendering switch to the reusable component
 
 **Files:**
-- Modify: `components/data_overview/ui/section.py`
-- Test: `components/data_overview/tests/test_factory.py`
+- Modify: `htfa/ui_shared/data_overview/ui/section.py`
+- Test: `tests/ui_shared/data_overview/test_factory.py`
 
 **Step 1: Write the failing test**
 
@@ -25,7 +25,7 @@ Add a component-construction test that creates `DataOverview(..., show_preview=F
 Run:
 
 ```powershell
-runtime\python.exe -m pytest -c tooling\pytest.ini components\data_overview\tests\test_factory.py -p no:cacheprovider -q
+runtime\python.exe -B -m pytest -c tooling\pytest.ini tests\ui_shared\data_overview\test_factory.py -p no:cacheprovider -q
 ```
 
 Expected: FAIL because `DataOverview`/`DataOverviewConfig` do not yet accept `show_preview`.
@@ -85,7 +85,7 @@ Run the same command. Expected: PASS with no Streamlit exception and no preview-
 **Step 1: Run the component and SARIMAX suites**
 
 ```powershell
-runtime\python.exe -m pytest -c tooling\pytest.ini components\data_overview\tests -p no:cacheprovider -q
+runtime\python.exe -B -m pytest -c tooling\pytest.ini tests\ui_shared\data_overview -p no:cacheprovider -q
 runtime\python.exe -m pytest -c tooling\pytest.ini tests\models\test_sarimax_ui_flow.py tests\models\test_sarimax_boundaries.py -q
 ```
 
@@ -94,7 +94,7 @@ Expected: all existing component and SARIMAX tests pass; Explore and Preview cal
 **Step 2: Run static hygiene checks**
 
 ```powershell
-runtime\python.exe -B -m compileall -q components\data_overview dashboard\models\SARIMAX tests\models
+runtime\python.exe -B -m compileall -q htfa\ui_shared\data_overview htfa\models\univariate\sarimax tests\models
 git diff --check
 ```
 
@@ -103,8 +103,7 @@ Expected: both commands complete without errors.
 **Step 3: Review only the intended diff**
 
 ```powershell
-git diff -- components/data_overview/ui/section.py components/data_overview/tests/test_factory.py dashboard/models/SARIMAX/ui/data_input.py tests/models/test_sarimax_ui_flow.py tests/models/test_sarimax_boundaries.py
+git diff -- htfa/ui_shared/data_overview/ui/section.py tests/ui_shared/data_overview/test_factory.py htfa/models/univariate/sarimax/ui/data_input.py tests/models/test_sarimax_ui_flow.py tests/models/test_sarimax_boundaries.py
 ```
 
 Confirm no code under `dashboard/explore` or `dashboard/preview` was changed by this feature, and do not stage or overwrite the unrelated pre-existing worktree changes.
-
