@@ -365,7 +365,7 @@ runtime\python.exe -m pytest -c tooling\pytest.ini tests\core\test_navigation_wo
 8. 运行：
 
 ```powershell
-runtime\python.exe -m pytest -c tooling\pytest.ini tests\explore\test_shared_dataset.py tests\models\test_sarimax_ui_flow.py -q
+runtime\python.exe -B -m pytest -c tooling\pytest.ini tests\exploration\test_shared_dataset.py tests\models\test_sarimax_ui_flow.py -q
 ```
 
 **Expected:** 共享数据和动态回归 UI 测试通过。
@@ -421,7 +421,7 @@ runtime\python.exe -m pytest -c tooling\pytest.ini tests\models\test_sarimax_ui_
 7. 运行：
 
 ```powershell
-runtime\python.exe -m pytest -c tooling\pytest.ini tests\explore tests\analysis\uae -q
+runtime\python.exe -B -m pytest -c tooling\pytest.ini tests\exploration tests\analysis\uae -q
 ```
 
 **Expected:** 探索和阿联酋监测测试通过，旧结果不会在新数据下展示。
@@ -532,7 +532,7 @@ runtime\python.exe -m pytest -c tooling\pytest.ini tests\ui_shared\data_overview
 4. 运行语法和边界检查：
 
 ```powershell
-runtime\python.exe -m compileall -q app.py dashboard components tests
+runtime\python.exe -B -m compileall -q app.py htfa tests
 git diff --check
 git status --short
 ```

@@ -74,7 +74,7 @@ Run:
 ```powershell
 runtime\\python.exe -m pytest -c tooling\\pytest.ini tests\\models\\test_sarimax_standalone.py tests\\models\\test_sarimax_ui_flow.py tests\\models\\test_sarimax_boundaries.py -q
 runtime\\python.exe -m pytest -c tooling\\pytest.ini tests\\explore\\test_standalone_data_overview.py tests\\explore\\test_overview_handoff.py -q
-runtime\\python.exe -m compileall -q app.py dashboard components
+runtime\\python.exe -B -m compileall -q app.py htfa
 git diff --check
 ```
 

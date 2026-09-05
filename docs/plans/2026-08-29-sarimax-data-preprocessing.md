@@ -101,7 +101,7 @@ Expected: all model/core/UI and reusable data-overview tests pass.
 **Step 2: Run static checks**
 
 ```powershell
-runtime\python.exe -B -m compileall -q dashboard\models\SARIMAX tests\models
+runtime\python.exe -B -m compileall -q htfa\models\univariate\sarimax tests\models
 git diff --check
 ```
 

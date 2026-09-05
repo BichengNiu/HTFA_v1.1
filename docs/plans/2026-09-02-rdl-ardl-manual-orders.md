@@ -207,7 +207,7 @@ Run:
 
 ```powershell
 runtime\python.exe -m pytest -c tooling\pytest.ini tests\models\test_sarimax_modeling.py tests\models\test_sarimax_ui_flow.py tests\models\test_model_workflow_contract.py -q
-runtime\python.exe -m compileall -q dashboard\models\SARIMAX
+runtime\python.exe -B -m compileall -q htfa\models\univariate\sarimax
 rg -n -S "AutoRDLConfig|AutoARDLConfig|fit_auto_rdl|fit_auto_ardl|rdl_auto_|ardl_auto_|rdl_config_mode|ardl_config_mode" dashboard tests components
 git diff --check
 ```

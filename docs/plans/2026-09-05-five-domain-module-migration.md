@@ -184,7 +184,7 @@ class TopicResult(Protocol):
 **执行与验收：**
 
 1. 运行 workspace、navigation、component import boundary、AppTest 基线。
-2. 运行 `runtime\\python.exe -m compileall -q app.py htfa components`。
+2. 运行 `runtime\\python.exe -B -m compileall -q app.py htfa`。
 3. 用 `inspect` 检查 workspace 和 shared UI 的公共入口只存在于新路径。
 4. 从干净 Python 进程导入 `htfa.app`、`htfa.workspace`、`htfa.data.tabular`；纯数据导入不得加载 Streamlit。
 5. 提交：`refactor(app): move session infrastructure and composition shell`。

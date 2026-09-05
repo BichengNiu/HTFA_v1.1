@@ -32,7 +32,7 @@
 
 ### 2. 已确认的旧会话/控件兼容残留
 
-- `dashboard/explore/ui/data_overview.py`、`dashboard/explore/ui/univariate_page.py`、`tests/explore/test_data_overview.py`
+  - `htfa/exploration/ui/data_overview.py`、`htfa/exploration/ui/univariate_page.py`、`tests/exploration/test_data_overview.py`
   - 删除把旧 `sarimax_*` 概览状态迁移到 `univariate_overview_*` 的函数、常量、调用和专门测试。
   - 保留当前页面自己的 handoff 保存/恢复逻辑。
 - `dashboard/explore/ui/stationarity.py`

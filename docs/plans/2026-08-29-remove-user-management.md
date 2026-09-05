@@ -131,7 +131,7 @@ Show detailed UI errors only when the caller passes `show_details=True`. Retain 
 Run:
 
 ```powershell
-runtime\python.exe -m pytest -c tooling\pytest.ini tests\analysis tests\explore tests\core tests\models tests\test_app_smoke.py tests\test_core_boundaries.py -q
+runtime\python.exe -B -m pytest -c tooling\pytest.ini tests\analysis tests\exploration tests\core tests\models tests\test_app_smoke.py tests\test_core_boundaries.py -q
 ```
 
 Expected: PASS with no import error or permission-dependent rendering path.
@@ -156,7 +156,7 @@ Expected: exit code 1 (no matches). The scan intentionally excludes historical d
 Run:
 
 ```powershell
-runtime\python.exe -m compileall -q app.py dashboard components
+runtime\python.exe -B -m compileall -q app.py htfa
 ```
 
 Expected: exit code 0.
