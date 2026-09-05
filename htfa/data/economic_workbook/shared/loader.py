@@ -3,8 +3,8 @@
 import re
 from typing import Any, List
 
-from dashboard.preview.core.workbook_parser import parse_preview_workbook
-from dashboard.preview.domain.models import LoadedPreviewData
+from ..core.workbook_parser import parse_economic_workbook
+from ..domain.models import EconomicWorkbookSnapshot
 
 
 _SOURCE_TOKENS = {
@@ -40,19 +40,19 @@ def extract_industry_name(source: str) -> str:
     )
 
 
-class PreviewWorkbookLoader:
+class EconomicWorkbookLoader:
     """调用唯一工作簿协议的共享加载器。"""
 
     def __init__(self, module_name: str, state_namespace: str):
         self.module_name = module_name
         self.state_namespace = state_namespace
 
-    def load_and_process_data(self, files: List[Any]) -> LoadedPreviewData:
+    def load_and_process_data(self, files: List[Any]) -> EconomicWorkbookSnapshot:
         """解析一个正式模板工作簿。"""
         if len(files) != 1:
             raise ValueError("每个预览模块必须提供且只能提供一个经济数据库文件")
 
-        return parse_preview_workbook(
+        return parse_economic_workbook(
             files[0],
             module_name=self.module_name,
         )
@@ -62,4 +62,4 @@ class PreviewWorkbookLoader:
         return self.state_namespace
 
 
-__all__ = ["PreviewWorkbookLoader", "extract_industry_name"]
+__all__ = ["EconomicWorkbookLoader", "extract_industry_name"]

@@ -25,10 +25,10 @@ def test_retired_feature_package_and_core_wrappers_are_absent() -> None:
     assert "def filter_modules_by_permission(" not in sidebar
 
 
-def test_explore_core_depends_on_workbook_contract_not_preview_ui_adapter():
+def test_explore_core_depends_on_tabular_input_contract():
     source = Path("dashboard/explore/core/data_source.py").read_text(
         encoding="utf-8"
     )
 
-    assert "dashboard.preview.modules.uae.loader" not in source
-    assert "dashboard.preview.core.workbook_parser" in source
+    assert "htfa.data.tabular_input" in source
+    assert "parse_economic_workbook" not in source

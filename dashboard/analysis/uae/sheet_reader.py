@@ -15,7 +15,7 @@ from typing import Any
 
 import pandas as pd
 
-from dashboard.preview.core.workbook_parser import normalize_indicator_name
+from htfa.data.economic_workbook.core.workbook_parser import normalize_indicator_name
 
 METADATA_LABELS = {
     1: "指标名称",

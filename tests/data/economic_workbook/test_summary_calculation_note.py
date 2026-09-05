@@ -1,6 +1,6 @@
 import pandas as pd
 
-from dashboard.preview.core.calculation_rules import (
+from htfa.data.economic_workbook.core.calculation_rules import (
     group_indicators_by_calculation,
     uses_difference_calculation,
 )

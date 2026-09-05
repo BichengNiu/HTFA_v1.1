@@ -15,7 +15,9 @@ from dashboard.analysis.uae.indicator_catalog import (
     INDICATOR_SPECS,
     UAE_SIGNATURE_IDS,
 )
-from dashboard.preview.core.workbook_parser import parse_preview_workbook
+from htfa.data.economic_workbook.core.workbook_parser import (
+    parse_economic_workbook,
+)
 
 UAE_ANALYSIS_INDICATOR_NAMES = frozenset(
     alias
@@ -28,7 +30,7 @@ def load_real_uae_bundle(file_input: Any) -> UAEDataBundle:
     """读取真实工作簿；不生成模拟数据。"""
 
     try:
-        parsed = parse_preview_workbook(
+        parsed = parse_economic_workbook(
             file_input,
             module_name="uae_monitoring",
             indicator_allowlist=UAE_ANALYSIS_INDICATOR_NAMES,

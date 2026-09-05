@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from hashlib import sha256
-from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
-from dashboard.preview.core.workbook_parser import parse_preview_workbook
+from htfa.data.tabular_input import read_tabular_file
 
 FREQUENCY_LABELS = {
     "daily": "日度数据",
@@ -55,27 +54,7 @@ def load_stationarity_data(
     file_input: Any,
 ) -> tuple[dict[str, pd.DataFrame], dict[str, Any]]:
     """解析上传文件，返回可分析数据表及每个指标的工作簿元数据。"""
-    file_name = Path(str(getattr(file_input, "name", file_input))).name
-    suffix = Path(file_name).suffix.lower()
-
-    if suffix == ".csv":
-        data = pd.read_csv(BytesIO(read_uploaded_bytes(file_input)))
-        if data.empty:
-            raise ValueError("CSV 文件中没有可分析数据")
-        return {"table": data}, {}
-
-    if suffix not in {".xlsx", ".xls"}:
-        raise ValueError("仅支持 CSV、XLSX 和 XLS 文件")
-
-    loaded = parse_preview_workbook(file_input, module_name="uae")
-    tables = {
-        frequency: frame
-        for frequency, frame in loaded.get_all_dataframes().items()
-        if frame is not None and not frame.empty
-    }
-    if not tables:
-        raise ValueError("工作簿解析成功，但没有发现非空的频率数据表")
-    return tables, dict(loaded.indicator_metadata_map)
+    return read_tabular_file(file_input)
 
 
 def load_explore_dataset(file_input: Any) -> ExploreDataset:

@@ -8,12 +8,12 @@ import pandas as pd
 import numpy as np
 from typing import List, Dict, Tuple
 
-from dashboard.preview.core.calculation_rules import (
+from ..core.calculation_rules import (
     group_indicators_by_calculation,
     uses_difference_calculation,
 )
-from dashboard.preview.core.summary_export import build_summary_workbook
-from dashboard.preview.shared.config import COLORS, UI_TEXT
+from ..core.summary_export import build_summary_workbook
+from .config import COLORS, UI_TEXT
 
 
 def _get_industry_indicators(selected_industry, df, indicator_industry_map):

@@ -5,7 +5,7 @@ import io
 import pandas as pd
 from openpyxl.styles import Alignment, Font
 
-from dashboard.preview.core.calculation_rules import (
+from .calculation_rules import (
     group_indicators_by_calculation,
 )
 

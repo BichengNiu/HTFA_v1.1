@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 from openpyxl import Workbook, load_workbook
 
-from dashboard.preview.core.workbook_parser import parse_preview_workbook
+from htfa.data.economic_workbook.core.workbook_parser import parse_economic_workbook
 
 
 def _build_workbook(
@@ -64,7 +64,7 @@ def _build_workbook(
 
 
 def test_parse_workbook_merges_dictionary_and_sheet_metadata():
-    result = parse_preview_workbook(_build_workbook(), module_name="test")
+    result = parse_economic_workbook(_build_workbook(), module_name="test")
 
     assert result.get_dataframe("daily").shape == (2, 1)
     assert result.get_dataframe("monthly").shape == (1, 1)
@@ -89,7 +89,7 @@ def test_parse_workbook_merges_dictionary_and_sheet_metadata():
 
 
 def test_parse_workbook_reads_source_and_forecast_after_date_columns():
-    result = parse_preview_workbook(
+    result = parse_economic_workbook(
         _build_workbook(extended_dictionary=True),
         module_name="test",
     )
@@ -101,7 +101,7 @@ def test_parse_workbook_reads_source_and_forecast_after_date_columns():
 
 def test_parse_workbook_requires_named_dictionary_sheet():
     with pytest.raises(ValueError, match="指标字典"):
-        parse_preview_workbook(
+        parse_economic_workbook(
             _build_workbook(dictionary_sheet_name="Sheet1"),
             module_name="test",
         )
@@ -109,7 +109,7 @@ def test_parse_workbook_requires_named_dictionary_sheet():
 
 def test_parse_workbook_validates_fixed_metadata_rows():
     with pytest.raises(ValueError, match="第3行.*频率"):
-        parse_preview_workbook(
+        parse_economic_workbook(
             _build_workbook(frequency_label="周期"),
             module_name="test",
         )
@@ -132,7 +132,7 @@ def test_parse_workbook_accepts_reordered_unit_source_and_update_rows():
     output.seek(0)
     output.name = "元数据换序.xlsx"
 
-    result = parse_preview_workbook(output, module_name="test")
+    result = parse_economic_workbook(output, module_name="test")
     metadata = result.indicator_metadata_map["指标A"]
 
     assert metadata.unit == "点"
@@ -151,7 +151,7 @@ def test_parse_workbook_accepts_blank_unit():
     output.seek(0)
     output.name = "空单位.xlsx"
 
-    result = parse_preview_workbook(output, module_name="test")
+    result = parse_economic_workbook(output, module_name="test")
 
     assert result.indicator_metadata_map["指标A"].unit == ""
     assert result.indicator_unit_map["指标A"] == ""
@@ -169,7 +169,7 @@ def test_parse_workbook_rejects_value_with_blank_date():
     output.name = "空日期.xlsx"
 
     with pytest.raises(ValueError, match="第7行日期"):
-        parse_preview_workbook(output, module_name="test")
+        parse_economic_workbook(output, module_name="test")
 
 
 def test_parse_workbook_discards_indicators_not_registered_in_dictionary():
@@ -183,7 +183,7 @@ def test_parse_workbook_discards_indicators_not_registered_in_dictionary():
     output.seek(0)
     output.name = "白名单数据库.xlsx"
 
-    result = parse_preview_workbook(output, module_name="test")
+    result = parse_economic_workbook(output, module_name="test")
 
     assert result.get_dataframe("monthly").empty
     assert "指标B" not in result.indicator_metadata_map
@@ -202,13 +202,13 @@ def test_parse_workbook_skips_non_protocol_sheet_without_registered_indicators()
     output.seek(0)
     output.name = "含未登记补充数据.xlsx"
 
-    result = parse_preview_workbook(output, module_name="test")
+    result = parse_economic_workbook(output, module_name="test")
 
     assert set(result.indicator_metadata_map) == {"指标A", "指标B"}
 
 
 def test_parse_workbook_can_limit_parsing_to_an_indicator_allowlist():
-    result = parse_preview_workbook(
+    result = parse_economic_workbook(
         _build_workbook(),
         module_name="test",
         indicator_allowlist={"指标A"},
@@ -229,7 +229,7 @@ def test_parse_workbook_converts_zero_values_to_missing():
     output.seek(0)
     output.name = "零值占位数据库.xlsx"
 
-    result = parse_preview_workbook(output, module_name="test")
+    result = parse_economic_workbook(output, module_name="test")
     series = result.get_dataframe("daily")["指标A"]
 
     assert pd.isna(series.iloc[0])

@@ -1,6 +1,6 @@
 """多频率数据预览的共享配置。"""
 
-from dashboard.preview.core.base_config import FrequencyConfig
+from ..core.base_config import FrequencyConfig
 
 
 FREQUENCY_CONFIGS = {

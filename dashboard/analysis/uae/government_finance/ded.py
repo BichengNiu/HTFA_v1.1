@@ -32,7 +32,7 @@ from dashboard.analysis.uae.sheet_reader import (
     open_uae_workbook,
     optional_text,
 )
-from dashboard.preview.core.workbook_parser import normalize_indicator_name
+from htfa.data.economic_workbook.core.workbook_parser import normalize_indicator_name
 from Ts.TsPlots.style import GRAY
 
 

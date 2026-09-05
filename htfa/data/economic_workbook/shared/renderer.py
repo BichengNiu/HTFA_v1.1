@@ -7,12 +7,12 @@ from pathlib import Path
 from typing import Optional, Any
 import logging
 
-from dashboard.preview.domain.models import LoadedPreviewData
-from dashboard.preview.shared.loader import (
-    PreviewWorkbookLoader,
+from ..domain.models import EconomicWorkbookSnapshot
+from .loader import (
+    EconomicWorkbookLoader,
     extract_industry_name,
 )
-from dashboard.preview.shared.tabs import display_time_series_tab, display_overview_tab
+from .tabs import display_time_series_tab, display_overview_tab
 from dashboard.core.ui.utils.state_helpers import (
     clear_preview_data,
     get_preview_state,
@@ -24,7 +24,7 @@ from dashboard.core.workspace import SessionWorkspace
 logger = logging.getLogger(__name__)
 
 
-class PreviewRenderer:
+class EconomicWorkbookRenderer:
     """统一模板预览渲染器。"""
 
     tab_names = ['数据概览', '日度', '周度', '旬度', '月度', '季度', '年度']
@@ -39,7 +39,7 @@ class PreviewRenderer:
 
     def __init__(
         self,
-        loader: PreviewWorkbookLoader,
+        loader: EconomicWorkbookLoader,
         *,
         module_title: str,
         default_relative_path: Optional[Path] = None,
@@ -223,7 +223,7 @@ class PreviewRenderer:
             clear_preview_data(namespace=self.state_namespace)
             st.error(f"数据处理失败: {e}")
 
-    def _save_to_state(self, preview_data: LoadedPreviewData):
+    def _save_to_state(self, preview_data: EconomicWorkbookSnapshot):
         """保存数据到session_state
 
         Args:
@@ -286,7 +286,7 @@ class PreviewRenderer:
             namespace=self.state_namespace,
         )
 
-    def _extract_industries_from_df(self, df: pd.DataFrame, preview_data: LoadedPreviewData) -> list:
+    def _extract_industries_from_df(self, df: pd.DataFrame, preview_data: EconomicWorkbookSnapshot) -> list:
         """从DataFrame提取行业列表
 
         Args:
@@ -306,7 +306,7 @@ class PreviewRenderer:
 
         return sorted(industries)
 
-    def _build_clean_industry_map(self, preview_data: LoadedPreviewData) -> dict:
+    def _build_clean_industry_map(self, preview_data: EconomicWorkbookSnapshot) -> dict:
         """构建clean_industry_map
 
         Args:

@@ -74,7 +74,9 @@ def detect_navigation_level(main_module: str, sub_module: str | None) -> str:
 
 def render_data_preview_content(sub_module: str | None) -> None:
     """渲染选中的数据预览领域。"""
-    from dashboard.preview.modules import create_preview_renderer
+    from htfa.data.economic_workbook.modules import (
+        create_economic_workbook_renderer,
+    )
 
     module_id = PREVIEW_MODULE_MAPPING.get(sub_module or "")
     if module_id is None:
@@ -83,7 +85,7 @@ def render_data_preview_content(sub_module: str | None) -> None:
         else:
             st.info("请在左侧选择一个数据预览子模块")
         return
-    create_preview_renderer(module_id).render()
+    create_economic_workbook_renderer(module_id).render()
 
 
 def render_monitoring_analysis_content(sub_module: str | None) -> None:

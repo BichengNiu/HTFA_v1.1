@@ -9,13 +9,13 @@ import pandas as pd
 from datetime import datetime
 import io
 
-from dashboard.preview.shared.config import (
+from .config import (
     FREQUENCY_CONFIGS,
     UI_TEXT,
 )
-from dashboard.preview.shared.calculators import calculate_summary
-from dashboard.preview.shared.plotting import plot_indicator
-from dashboard.preview.shared.components import create_filter_ui, display_summary_table
+from .calculators import calculate_summary
+from .plotting import plot_indicator
+from .components import create_filter_ui, display_summary_table
 from dashboard.core.ui.utils.state_helpers import get_preview_state
 from dashboard.core.ui.utils.chart_legend import place_chart_legend_at_bottom
 

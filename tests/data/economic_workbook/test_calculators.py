@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from dashboard.preview.shared.calculators import _calculate_reference_values
+from htfa.data.economic_workbook.shared.calculators import _calculate_reference_values
 
 
 def test_yearly_reference_values_do_not_borrow_from_older_years():
@@ -20,4 +20,3 @@ def test_yearly_reference_values_do_not_borrow_from_older_years():
 
     assert np.isnan(references["上年值"])
     assert references["两年前值"] == 100.0
-

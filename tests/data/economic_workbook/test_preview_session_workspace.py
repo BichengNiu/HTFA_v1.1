@@ -3,7 +3,7 @@ from __future__ import annotations
 from io import BytesIO
 
 from dashboard.core.workspace import SessionWorkspace
-from dashboard.preview.modules import create_preview_renderer
+from htfa.data.economic_workbook.modules import create_economic_workbook_renderer
 
 
 def _upload(content: bytes, name: str) -> BytesIO:
@@ -15,8 +15,8 @@ def _upload(content: bytes, name: str) -> BytesIO:
 def test_preview_renderers_use_isolated_workspace_slots() -> None:
     state: dict = {}
     workspace = SessionWorkspace(state)
-    industrial = create_preview_renderer("industrial")
-    uae = create_preview_renderer("uae")
+    industrial = create_economic_workbook_renderer("industrial")
+    uae = create_economic_workbook_renderer("uae")
 
     workspace.put_asset(industrial._asset_slot(), _upload(b"industrial", "cn.xlsx"))
     workspace.put_asset(uae._asset_slot(), _upload(b"uae", "uae.xlsx"))

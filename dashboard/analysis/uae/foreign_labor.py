@@ -25,7 +25,7 @@ from dashboard.analysis.uae.sheet_reader import (
     optional_text,
     parse_target_sheet,
 )
-from dashboard.preview.core.workbook_parser import normalize_indicator_name
+from htfa.data.economic_workbook.core.workbook_parser import normalize_indicator_name
 
 
 FOREIGN_LABOR_SHEET = "月度_外籍劳动力"

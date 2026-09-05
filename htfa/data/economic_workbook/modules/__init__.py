@@ -2,10 +2,10 @@
 
 from pathlib import Path
 
-from dashboard.preview.shared.loader import PreviewWorkbookLoader
-from dashboard.preview.shared.renderer import PreviewRenderer
+from ..shared.loader import EconomicWorkbookLoader
+from ..shared.renderer import EconomicWorkbookRenderer
 
-PREVIEW_MODULES = {
+ECONOMIC_WORKBOOK_MODULES = {
     "industrial": {
         "module_name": "industrial",
         "state_namespace": "preview.industrial",
@@ -21,27 +21,27 @@ PREVIEW_MODULES = {
 }
 
 
-def create_preview_renderer(module_name: str) -> PreviewRenderer:
+def create_economic_workbook_renderer(module_name: str) -> EconomicWorkbookRenderer:
     """按模块配置创建共享渲染器实例。
 
     Args:
         module_name: 子模块ID (如 'industrial', 'uae')
 
     Returns:
-        PreviewRenderer: 渲染器实例
+        EconomicWorkbookRenderer: 渲染器实例
 
     Raises:
         ValueError: 未找到指定的子模块
     """
-    config = PREVIEW_MODULES.get(module_name)
+    config = ECONOMIC_WORKBOOK_MODULES.get(module_name)
     if config is None:
         raise ValueError(f"未找到子模块: {module_name}")
 
-    loader = PreviewWorkbookLoader(
+    loader = EconomicWorkbookLoader(
         config["module_name"],
         config["state_namespace"],
     )
-    return PreviewRenderer(
+    return EconomicWorkbookRenderer(
         loader,
         module_title=config["module_title"],
         default_relative_path=config["default_relative_path"],
@@ -49,6 +49,6 @@ def create_preview_renderer(module_name: str) -> PreviewRenderer:
 
 
 __all__ = [
-    'PREVIEW_MODULES',
-    'create_preview_renderer',
+    "ECONOMIC_WORKBOOK_MODULES",
+    "create_economic_workbook_renderer",
 ]

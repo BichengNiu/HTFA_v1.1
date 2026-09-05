@@ -7,7 +7,7 @@ Preview模块统一绘图组件
 import pandas as pd
 import plotly.graph_objects as go
 
-from dashboard.preview.shared.config import PLOT_CONFIGS, COLORS
+from .config import PLOT_CONFIGS, COLORS
 
 
 def plot_indicator(series, name, frequency, current_year, previous_year=None, unit=None, indicator_type=None):

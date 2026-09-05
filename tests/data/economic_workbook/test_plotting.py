@@ -1,6 +1,6 @@
 import pandas as pd
 
-from dashboard.preview.shared.plotting import plot_indicator
+from htfa.data.economic_workbook.shared.plotting import plot_indicator
 
 
 def _trace(figure, name):
@@ -54,4 +54,3 @@ def test_daily_historical_statistics_do_not_fill_unobserved_days():
 
     assert pd.notna(historical_mean.y[0])
     assert pd.isna(historical_mean.y[1])
-

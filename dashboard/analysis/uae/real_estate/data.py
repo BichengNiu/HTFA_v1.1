@@ -23,7 +23,7 @@ from dashboard.analysis.uae.periods import (
     anchor_last_month as _anchor_last_month,
     latest_complete_month as _latest_complete_month,
 )
-from dashboard.preview.core.workbook_parser import normalize_indicator_name
+from htfa.data.economic_workbook.core.workbook_parser import normalize_indicator_name
 
 
 DLD_SHEET = "月度_DLD"

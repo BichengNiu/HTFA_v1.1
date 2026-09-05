@@ -25,7 +25,7 @@ from dashboard.analysis.uae.sheet_reader import (
     optional_text,
     validate_sheet,
 )
-from dashboard.preview.core.workbook_parser import normalize_indicator_name
+from htfa.data.economic_workbook.core.workbook_parser import normalize_indicator_name
 
 
 PAYMENT_SHEET = "月度_CBUAE"

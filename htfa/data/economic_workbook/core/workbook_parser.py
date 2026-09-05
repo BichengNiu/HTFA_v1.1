@@ -18,7 +18,7 @@ from typing import Any, Callable, Collection, Dict, Optional
 
 import pandas as pd
 
-from dashboard.preview.domain.models import IndicatorMetadata, LoadedPreviewData
+from ..domain.models import EconomicWorkbookSnapshot, IndicatorMetadata
 
 
 DICTIONARY_SHEET_NAME = "指标字典"
@@ -275,13 +275,13 @@ def _parse_data_sheet(
     return frames, metadata_map
 
 
-def parse_preview_workbook(
+def parse_economic_workbook(
     file_input: Any,
     *,
     module_name: str,
     frequency_processor: Optional[FrequencyProcessor] = None,
     indicator_allowlist: Optional[Collection[str]] = None,
-) -> LoadedPreviewData:
+) -> EconomicWorkbookSnapshot:
     """按正式协议解析工作簿，可只校验和加载指定的白名单指标。"""
     file_buffer, file_name = _read_file(file_input)
     excel_file = pd.ExcelFile(file_buffer)
@@ -353,7 +353,7 @@ def parse_preview_workbook(
             name: metadata.frequency for name, metadata in metadata_map.items()
         }
 
-        return LoadedPreviewData(
+        return EconomicWorkbookSnapshot(
             dataframes=dataframes,
             source_map=source_map,
             indicator_industry_map=industry_map,
@@ -371,5 +371,5 @@ __all__ = [
     "DICTIONARY_SHEET_NAME",
     "FREQUENCIES",
     "IndicatorMetadata",
-    "parse_preview_workbook",
+    "parse_economic_workbook",
 ]

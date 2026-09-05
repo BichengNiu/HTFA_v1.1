@@ -27,8 +27,8 @@ class IndicatorMetadata:
 
 
 @dataclass
-class LoadedPreviewData:
-    """预览数据加载结果的通用封装
+class EconomicWorkbookSnapshot:
+    """经济工作簿解析后的快照。
 
     设计原则:
     - 不可变性: 使用dataclass确保数据一致性
