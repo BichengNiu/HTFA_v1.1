@@ -156,7 +156,7 @@ def load_weights_data() -> Optional[pd.DataFrame]:
         from pathlib import Path
 
         # 获取项目根目录（data_loader.py 位于 htfa/monitoring/industrial/utils/）
-        # utils -> industrial -> analysis -> dashboard -> 项目根目录
+        # utils -> industrial -> monitoring -> 项目根目录
         project_root = Path(__file__).parent.parent.parent.parent.parent
         weights_file = project_root / INTERNAL_WEIGHTS_FILE_PATH
 

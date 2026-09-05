@@ -66,7 +66,7 @@ def get_economic_workbook_state(
     key: str,
     default: Any = None,
     *,
-    namespace: str = "preview",
+    namespace: str = "economic_workbook",
 ) -> Any:
     """获取经济工作簿状态，支持按子模块隔离命名空间。"""
     return _manager(namespace).get(key, default)
@@ -76,18 +76,18 @@ def set_economic_workbook_state(
     key: str,
     value: Any,
     *,
-    namespace: str = "preview",
+    namespace: str = "economic_workbook",
 ) -> bool:
     """设置经济工作簿状态，支持按子模块隔离命名空间。"""
     try:
         _manager(namespace).set(key, value)
         return True
     except Exception as e:
-        logger.error(f"设置预览状态失败: {e}")
+        logger.error(f"设置经济工作簿状态失败: {e}")
         return False
 
 
-def clear_economic_workbook_state(*, namespace: str = "preview") -> bool:
+def clear_economic_workbook_state(*, namespace: str = "economic_workbook") -> bool:
     """
     清理指定经济工作簿模块的数据
 

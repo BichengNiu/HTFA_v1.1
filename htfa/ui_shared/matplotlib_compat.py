@@ -1,4 +1,4 @@
-"""Matplotlib compatibility helpers shared by dashboard features."""
+"""Matplotlib helpers shared by HTFA features."""
 
 from __future__ import annotations
 

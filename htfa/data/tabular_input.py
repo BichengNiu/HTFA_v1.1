@@ -12,7 +12,7 @@ from typing import Any
 
 import pandas as pd
 
-from data_overview.core.file_parsing import (
+from components.data_overview.core.file_parsing import (
     FileParseError,
     list_excel_sheets,
     load_dataframe,

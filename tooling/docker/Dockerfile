@@ -32,7 +32,8 @@ RUN python scripts/htfa.py install-ts
 
 # 复制项目文件
 COPY app.py .
-COPY dashboard/ ./dashboard/
+COPY htfa/ ./htfa/
+COPY components/ ./components/
 COPY data/ ./data/
 
 # 创建必要的目录

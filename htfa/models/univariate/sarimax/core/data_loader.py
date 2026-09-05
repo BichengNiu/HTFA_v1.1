@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from data_overview.core.dataset import OverviewDataset, numeric_variable_names
+from components.data_overview.core.dataset import OverviewDataset, numeric_variable_names
 from Ts.TsUtils import interpolate_missing
 
 DATA_REPLACEMENT_OPTIONS = ("去零", "去负")

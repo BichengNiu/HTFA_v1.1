@@ -95,6 +95,21 @@ def test_legacy_dashboard_imports_and_source_paths_are_gone() -> None:
         ), source_file
 
 
+def test_uae_maintenance_jobs_have_one_package_boundary() -> None:
+    jobs_root = PROJECT_ROOT / "htfa/jobs/uae_data"
+    assert (jobs_root / "update_data.py").is_file()
+    assert (jobs_root / "merge_workbook.py").is_file()
+    assert (jobs_root / "paths.py").is_file()
+    assert not list((PROJECT_ROOT / "data/UAE/scripts").rglob("*.py"))
+
+    for source_file in jobs_root.glob("*.py"):
+        modules = _imported_modules(source_file)
+        assert not any(
+            module.startswith("dashboard") for module in modules
+        ), source_file
+        assert "sys.path" not in source_file.read_text(encoding="utf-8")
+
+
 def test_model_domains_have_no_cross_family_or_application_imports() -> None:
     dfm_files = (PROJECT_ROOT / "htfa/models/dfm").rglob("*.py")
     for source_file in dfm_files:

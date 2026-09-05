@@ -9,7 +9,7 @@ from typing import Optional
 import pandas as pd
 import streamlit as st
 
-from data_overview.core.file_parsing import (
+from components.data_overview.core.file_parsing import (
     FileParseError,
     build_dataframe_from_rows,
     list_excel_sheets,
@@ -18,7 +18,7 @@ from data_overview.core.file_parsing import (
 from htfa.workspace import FileAsset, NamedBytesIO, SessionWorkspace
 
 
-STATE_PREFIX = "dashboard.shared_dataset"
+STATE_PREFIX = "htfa.shared_dataset"
 SUPPORTED_FILE_TYPES = ["csv", "xlsx", "xls"]
 
 
@@ -192,7 +192,7 @@ def render_shared_dataset_uploader(
     uploaded_file = st_obj.file_uploader(
         "选择数据文件",
         type=SUPPORTED_FILE_TYPES,
-        key="dashboard_shared_dataset_uploader",
+        key="htfa_shared_dataset_uploader",
         help="数据预览、监测分析、数据探索和模型分析会共同使用此文件。",
     )
 
@@ -200,7 +200,7 @@ def render_shared_dataset_uploader(
         asset = _workspace().get_asset("shared")
         if asset is not None:
             st_obj.caption(f"当前会话文件：{asset.name}")
-            if st_obj.button("清除当前文件", key="dashboard_shared_dataset_clear"):
+            if st_obj.button("清除当前文件", key="htfa_shared_dataset_clear"):
                 clear_shared_dataset()
                 return {"show_upload": True, "has_data": False}
             return {

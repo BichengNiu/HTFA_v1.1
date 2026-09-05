@@ -1,8 +1,8 @@
 """可移植的数据概览组件。
 
-顶层名称保持向后兼容，但通过 ``__getattr__`` 延迟加载实现层。这样，
-``data_overview.core`` 的纯解析入口不会因为执行包初始化而加载 Streamlit
-或 UI 模块；需要渲染时，原有的 ``from data_overview import ...`` 用法仍然可用。
+顶层名称构成可移植组件的公开入口，并通过 ``__getattr__`` 延迟加载实现层。
+这样，``data_overview.core`` 的纯解析入口不会因为执行包初始化而加载
+Streamlit 或 UI 模块；需要渲染时仍可从组件顶层导入公开对象。
 """
 
 from __future__ import annotations

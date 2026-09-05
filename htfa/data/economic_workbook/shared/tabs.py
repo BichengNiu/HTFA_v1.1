@@ -306,7 +306,7 @@ def display_time_series_tab(
     st_module,
     frequency,
     *,
-    state_namespace: str = "preview",
+    state_namespace: str = "economic_workbook",
 ):
     """通用的时间序列数据Tab
 
@@ -521,7 +521,11 @@ def calculate_expected_data_points(start_date, end_date, frequency):
         return 0
 
 
-def display_overview_tab(st_module, *, state_namespace: str = "preview"):
+def display_overview_tab(
+    st_module,
+    *,
+    state_namespace: str = "economic_workbook",
+):
     """数据概览Tab（重构后）
 
     显示所有频率数据的统计概览、指标详情、数据下载功能

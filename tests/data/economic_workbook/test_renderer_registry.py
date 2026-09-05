@@ -17,12 +17,12 @@ def test_preview_modules_are_declared_config_not_class_per_module():
     assert isinstance(industrial, EconomicWorkbookRenderer)
     assert isinstance(industrial.loader, EconomicWorkbookLoader)
     assert industrial.module_title == "工业数据预览"
-    assert industrial.state_namespace == "preview.industrial"
+    assert industrial.state_namespace == "economic_workbook.industrial"
     assert industrial.default_relative_path is None
 
     uae = create_economic_workbook_renderer("uae")
     assert uae.module_title == "阿联酋数据预览"
-    assert uae.state_namespace == "preview.uae"
+    assert uae.state_namespace == "economic_workbook.uae"
     assert uae.default_relative_path == Path("data") / "UAE" / "阿联酋.xlsx"
 
 

@@ -8,13 +8,13 @@ from ..shared.renderer import EconomicWorkbookRenderer
 ECONOMIC_WORKBOOK_MODULES = {
     "industrial": {
         "module_name": "industrial",
-        "state_namespace": "preview.industrial",
+        "state_namespace": "economic_workbook.industrial",
         "module_title": "工业数据预览",
         "default_relative_path": None,
     },
     "uae": {
         "module_name": "uae",
-        "state_namespace": "preview.uae",
+        "state_namespace": "economic_workbook.uae",
         "module_title": "阿联酋数据预览",
         "default_relative_path": Path("data") / "UAE" / "阿联酋.xlsx",
     },

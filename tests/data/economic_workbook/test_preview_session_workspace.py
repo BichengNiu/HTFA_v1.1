@@ -32,9 +32,11 @@ def test_preview_renderers_use_isolated_workspace_slots() -> None:
 def test_clearing_one_preview_slot_does_not_touch_the_other() -> None:
     state: dict = {}
     workspace = SessionWorkspace(state)
-    workspace.put_asset("preview.industrial", _upload(b"industrial", "cn.xlsx"))
-    workspace.put_asset("preview.uae", _upload(b"uae", "uae.xlsx"))
+    workspace.put_asset(
+        "economic_workbook.industrial", _upload(b"industrial", "cn.xlsx")
+    )
+    workspace.put_asset("economic_workbook.uae", _upload(b"uae", "uae.xlsx"))
 
-    assert workspace.clear_asset("preview.industrial") is True
-    assert workspace.get_asset("preview.industrial") is None
-    assert workspace.get_asset("preview.uae") is not None
+    assert workspace.clear_asset("economic_workbook.industrial") is True
+    assert workspace.get_asset("economic_workbook.industrial") is None
+    assert workspace.get_asset("economic_workbook.uae") is not None

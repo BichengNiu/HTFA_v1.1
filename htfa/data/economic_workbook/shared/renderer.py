@@ -18,7 +18,7 @@ from htfa.app.state.session_state import (
     get_economic_workbook_state,
     set_economic_workbook_state,
 )
-from data_overview.core.file_parsing import file_fingerprint
+from components.data_overview.core.file_parsing import file_fingerprint
 from htfa.workspace import SessionWorkspace
 
 logger = logging.getLogger(__name__)
@@ -106,7 +106,10 @@ class EconomicWorkbookRenderer:
 
     def _asset_slot(self) -> str:
         """返回与预览命名空间一一对应的独立文件槽位。"""
-        if self.state_namespace not in {"preview.industrial", "preview.uae"}:
+        if self.state_namespace not in {
+            "economic_workbook.industrial",
+            "economic_workbook.uae",
+        }:
             raise ValueError(f"不支持的数据预览命名空间：{self.state_namespace}")
         return self.state_namespace
 

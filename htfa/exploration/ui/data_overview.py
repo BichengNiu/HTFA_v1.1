@@ -6,9 +6,9 @@ import logging
 from copy import deepcopy
 
 import pandas as pd
-from data_overview import create_data_overview
-from data_overview.core.dataset import OverviewDataset, build_overview_dataset
-from data_overview.ui.widget_keys import (
+from components.data_overview import create_data_overview
+from components.data_overview.core.dataset import OverviewDataset, build_overview_dataset
+from components.data_overview.ui.widget_keys import (
     overview_widget_keys,
     read_widget_keys,
     selector_widget_keys,
