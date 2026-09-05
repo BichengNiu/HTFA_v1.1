@@ -221,7 +221,7 @@ class TopicResult(Protocol):
 
 - 将 `D:/HTFA_v1.1/dashboard/explore/` 迁移至 `D:/HTFA_v1.1/htfa/exploration/`，保持 core、UI adapter、DTW、lead-lag 和频率对齐语义。
 - 更新探索数据源，使其只依赖 `TabularInputSource` 和新的 dataset identity 契约。
-- 迁移 `D:/HTFA_v1.1/tests/explore/` 到新领域测试位置，删除旧路径下的测试和导入。
+- 已将探索测试迁移到 `D:/HTFA_v1.1/tests/exploration/`，并删除旧路径下的测试和导入。
 
 **执行与验收：**
 

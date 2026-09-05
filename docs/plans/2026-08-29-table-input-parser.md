@@ -81,7 +81,7 @@ Expected: all new parser tests pass.
 - Modify: `dashboard/explore/ui/standalone_data_overview.py`
 - Modify: `dashboard/core/ui/components/sidebar/renderer.py`
 - Modify: `dashboard/preview/shared/renderer.py`
-- Modify: `tests/explore/test_shared_dataset.py`
+- Modify: `tests/exploration/test_shared_dataset.py`
 - Modify: `tests/models/test_sarimax_modeling.py`
 
 **Step 1: Use the canonical parser directly**

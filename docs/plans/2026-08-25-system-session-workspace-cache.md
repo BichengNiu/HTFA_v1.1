@@ -350,7 +350,7 @@ runtime\python.exe -m pytest -c tooling\pytest.ini tests\core\test_navigation_wo
 **Files:**
 
 - Modify: `dashboard/core/ui/utils/shared_dataset.py`
-- Modify: `tests/explore/test_shared_dataset.py`
+- Modify: `tests/exploration/test_shared_dataset.py`
 - Modify: `tests/models/test_sarimax_ui_flow.py`
 
 **Steps:**
@@ -406,8 +406,8 @@ runtime\python.exe -m pytest -c tooling\pytest.ini tests\models\test_sarimax_ui_
 - Modify: `dashboard/explore/ui/stationarity.py`
 - Modify: `dashboard/explore/ui/multivariate_state.py`
 - Modify as needed: `dashboard/analysis/uae/renderer.py`
-- Modify: `tests/explore/test_multivariate_streamlit.py`
-- Modify: `tests/explore/test_stationarity_streamlit.py`
+- Modify: `tests/exploration/test_multivariate_contracts.py`
+- Modify: `tests/exploration/test_stationarity_analysis.py`
 - Modify or create: `tests/analysis/uae/test_session_workspace.py`
 
 **Steps:**

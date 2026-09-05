@@ -17,7 +17,7 @@
 - Create: `docs/adr/0002-sarimax-standalone-page-handoff.md`
 - Create: `dashboard/core/workspace/handoff.py`
 - Modify: `dashboard/explore/core/overview_handoff.py`
-- Test: `tests/explore/test_overview_handoff.py`
+- Test: `tests/exploration/test_overview_handoff.py`
 
 **Step 1:** 保留现有数据概览交接 API，并让其使用通用、带 TTL 的不透明令牌存储。
 
@@ -25,7 +25,7 @@
 
 **Step 3:** 运行交接存储回归测试，确认旧数据概览行为不变。
 
-Run: `runtime\\python.exe -m pytest -c tooling\\pytest.ini tests\\explore\\test_overview_handoff.py -q`
+Run: `runtime\\python.exe -B -m pytest -c tooling\\pytest.ini tests\\exploration\\test_overview_handoff.py -q`
 
 Expected: 全部现有交接测试通过。
 
@@ -73,7 +73,7 @@ Run:
 
 ```powershell
 runtime\\python.exe -m pytest -c tooling\\pytest.ini tests\\models\\test_sarimax_standalone.py tests\\models\\test_sarimax_ui_flow.py tests\\models\\test_sarimax_boundaries.py -q
-runtime\\python.exe -m pytest -c tooling\\pytest.ini tests\\explore\\test_standalone_data_overview.py tests\\explore\\test_overview_handoff.py -q
+runtime\\python.exe -B -m pytest -c tooling\\pytest.ini tests\\exploration\\test_standalone_data_overview.py tests\\exploration\\test_overview_handoff.py -q
 runtime\\python.exe -B -m compileall -q app.py htfa
 git diff --check
 ```
