@@ -11,12 +11,9 @@ from datetime import datetime
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS_DIR = PROJECT_ROOT / "data" / "UAE" / "scripts"
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
 
-import source_employment as se
-import db
+from htfa.jobs.uae_data import source_employment as se
+from htfa.jobs.uae_data import db
 
 
 def _write_fixture(path: Path) -> Path:

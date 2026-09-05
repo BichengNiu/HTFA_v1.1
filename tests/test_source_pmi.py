@@ -9,12 +9,8 @@ from pathlib import Path
 import pytest
 from openpyxl import Workbook
 
-SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "data" / "UAE" / "scripts"
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
-
-import db  # noqa: E402
-import source_pmi as source  # noqa: E402
+from htfa.jobs.uae_data import db  # noqa: E402
+from htfa.jobs.uae_data import source_pmi as source  # noqa: E402
 
 
 def _make_payload(periods, values=None) -> list:

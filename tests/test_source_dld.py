@@ -11,11 +11,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "data" / "UAE" / "scripts"
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
-
-import source_dld as dld  # noqa: E402
+from htfa.jobs.uae_data import source_dld as dld  # noqa: E402
 
 
 def _week(offset: int) -> date:

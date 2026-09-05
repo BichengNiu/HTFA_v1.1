@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 setlocal
 
 echo ========================================
@@ -69,7 +69,7 @@ if not exist "runtime\python.exe" (
 echo.
 echo Clearing __pycache__ so the latest code always loads...
 for /d /r ".\runtime" %%D in (__pycache__) do ( if exist "%%D" rmdir /s /q "%%D" )
-for /d /r ".\dashboard" %%D in (__pycache__) do ( if exist "%%D" rmdir /s /q "%%D" )
+for /d /r ".\htfa" %%D in (__pycache__) do ( if exist "%%D" rmdir /s /q "%%D" )
 if exist ".\__pycache__" rmdir /s /q ".\__pycache__"
 echo.
 

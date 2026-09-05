@@ -9,12 +9,9 @@ from pathlib import Path
 from openpyxl import Workbook, load_workbook
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS_DIR = PROJECT_ROOT / "data" / "UAE" / "scripts"
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
 
-from workbook_sheet_writer import write_indicator_sheets  # noqa: E402
-import source_extended  # noqa: E402
+from htfa.jobs.uae_data.workbook_sheet_writer import write_indicator_sheets  # noqa: E402
+from htfa.jobs.uae_data import source_extended  # noqa: E402
 
 
 def test_extended_writer_leaves_foreign_labour_to_dedicated_source() -> None:

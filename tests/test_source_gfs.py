@@ -11,12 +11,9 @@ from decimal import Decimal
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS_DIR = PROJECT_ROOT / "data" / "UAE" / "scripts"
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
 
-import source_gfs as sg
-import db
+from htfa.jobs.uae_data import source_gfs as sg
+from htfa.jobs.uae_data import db
 
 # 每个科目的 PDF/XLSX 行标签（与 source_gfs 内置正则一一对应）
 PDF_LABELS = {

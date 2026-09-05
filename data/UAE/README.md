@@ -3,7 +3,7 @@
 `data/` 下的阿联酋经济监测数据分为两个区管理：
 
 - `data/UAE/`：**数据区** —— 数据库、工作簿、原始件、文档与自动运行配置；
-- `data/UAE/scripts/`：**脚本区** —— 全部管线脚本（update/merge 总控、各源模块、
+- `htfa/jobs/uae_data/`：**作业区** —— 全部管线脚本（update/merge 总控、各源模块、
   Excel 写表助手）统一集中于此。
 
 本目录内容（除脚本与说明文档外）只保存在本机，不推送到 GitHub。
@@ -24,7 +24,7 @@ WAM军事打击与战争压力）
 - `auto_update_all.bat`：定时自动运行入口（更新 + 合并一步完成，供任务计划程序调用）；
 - `.env`：数据源密钥（如 `COMTRADE_API_KEY`，不入 Git）。
 
-## 脚本区（data/UAE/scripts/）
+## 作业区（htfa/jobs/uae_data/）
 
 - `update_data.py` / `update_data.bat`：抓取 → 清洗 → 入库（一键更新全部或指定源）；
 - `merge_workbook.py` / `merge_workbook.bat`：从库查询 → 合并进 `阿联酋.xlsx` 对应 sheet；
@@ -39,11 +39,11 @@ WAM军事打击与战争压力）
 ## 日常操作
 
 ```powershell
-.\data\UAE\scripts\update_data.bat          # 更新数据到 uae.duckdb（离线用 --skip-download）
-.\data\UAE\scripts\merge_workbook.bat       # 合并进 阿联酋.xlsx（务必先关闭 Excel）
+.\htfa\jobs\uae_data\update_data.bat        # 更新数据到 uae.duckdb（离线用 --skip-download）
+.\htfa\jobs\uae_data\merge_workbook.bat     # 合并进 阿联酋.xlsx（务必先关闭 Excel）
 ```
 
-也可用 `runtime\python.exe data\UAE\scripts\update_data.py --source cbuae --skip-download`
+也可用 `runtime\python.exe -m htfa.jobs.uae_data.update_data --source cbuae --skip-download`
 只更新指定源或跳过网络下载；**如何定时自动运行见 `数据说明.md` 第 6 节**。
 
 ## 其他本地数据（data/ 根目录，与 UAE 管线无关）

@@ -7,11 +7,7 @@ from pathlib import Path
 
 from openpyxl import Workbook
 
-SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "data" / "UAE" / "scripts"
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
-
-from source_baker_hughes import (  # noqa: E402
+from htfa.jobs.uae_data.source_baker_hughes import (  # noqa: E402
     INDICATORS,
     RigObservation,
     extract_uae_monthly,

@@ -4,12 +4,8 @@ import sys
 from decimal import Decimal
 from pathlib import Path
 
-SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "data" / "UAE" / "scripts"
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
-
-from _excel_helpers import records_latest_first  # noqa: E402
-from source_cbuae import (  # noqa: E402
+from htfa.jobs.uae_data._excel_helpers import records_latest_first  # noqa: E402
+from htfa.jobs.uae_data.source_cbuae import (  # noqa: E402
     Observation,
     _normalize_label,
     select_latest_vintages,
