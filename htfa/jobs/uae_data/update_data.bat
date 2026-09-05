@@ -8,7 +8,7 @@ if not exist "runtime\python.exe" (
     echo [HINT] Run scripts\start.bat first.
     goto :failed
 )
-"runtime\python.exe" -m htfa.jobs.uae_data.update_data %*
+"runtime\python.exe" -B -c "import sys; sys.path.insert(0, r'%CD%'); from htfa.jobs.uae_data.update_data import main; sys.argv[0] = 'update_data.py'; raise SystemExit(main())" %*
 if errorlevel 1 (
     echo.
     echo [ERROR] At least one source failed. Review the messages above.

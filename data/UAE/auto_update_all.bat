@@ -9,14 +9,14 @@ if not exist "runtime\python.exe" (
 )
 
 echo [1/2] update_data.py --skip-download
-"runtime\python.exe" -m htfa.jobs.uae_data.update_data --skip-download
+"runtime\python.exe" -B -c "import sys; sys.path.insert(0, r'%CD%'); from htfa.jobs.uae_data.update_data import main; sys.argv[0] = 'update_data.py'; raise SystemExit(main())" --skip-download
 if errorlevel 1 goto :failed
 
 echo [prep] close any lingering Excel
 taskkill /IM EXCEL.EXE /F >nul 2>&1
 
 echo [2/2] merge_workbook.py
-"runtime\python.exe" -m htfa.jobs.uae_data.merge_workbook
+"runtime\python.exe" -B -c "import sys; sys.path.insert(0, r'%CD%'); from htfa.jobs.uae_data.merge_workbook import main; sys.argv[0] = 'merge_workbook.py'; raise SystemExit(main())"
 if errorlevel 1 goto :failed
 
 echo [OK] auto update finished.

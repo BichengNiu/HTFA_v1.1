@@ -9,7 +9,7 @@ if not exist "runtime\python.exe" (
     echo [HINT] Run scripts\start.bat first.
     goto :failed
 )
-"runtime\python.exe" -m htfa.jobs.uae_data.merge_workbook %*
+"runtime\python.exe" -B -c "import sys; sys.path.insert(0, r'%CD%'); from htfa.jobs.uae_data.merge_workbook import main; sys.argv[0] = 'merge_workbook.py'; raise SystemExit(main())" %*
 if errorlevel 1 (
     echo.
     echo [ERROR] At least one source failed to merge. Review the messages above.

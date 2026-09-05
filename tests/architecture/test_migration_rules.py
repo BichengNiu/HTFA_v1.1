@@ -109,6 +109,18 @@ def test_uae_maintenance_jobs_have_one_package_boundary() -> None:
         ), source_file
         assert "sys.path" not in source_file.read_text(encoding="utf-8")
 
+    for relative_path in (
+        "htfa/jobs/uae_data/update_data.bat",
+        "htfa/jobs/uae_data/merge_workbook.bat",
+        "data/UAE/auto_update_all.bat",
+    ):
+        launcher = (PROJECT_ROOT / relative_path).read_text(
+            encoding="utf-8-sig"
+        )
+        assert "sys.path.insert(0" in launcher
+        assert "htfa.jobs.uae_data" in launcher
+        assert "-m htfa.jobs.uae_data" not in launcher
+
 
 def test_model_domains_have_no_cross_family_or_application_imports() -> None:
     dfm_files = (PROJECT_ROOT / "htfa/models/dfm").rglob("*.py")

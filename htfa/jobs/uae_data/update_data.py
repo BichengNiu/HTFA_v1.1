@@ -6,10 +6,10 @@ reflects whether every requested source finished successfully.
 
 Examples::
 
-    runtime\\python.exe -m htfa.jobs.uae_data.update_data                 # all sources
-    runtime\\python.exe -m htfa.jobs.uae_data.update_data --source cbuae,gfs
-    runtime\\python.exe -m htfa.jobs.uae_data.update_data --skip-download  # reuse raw files
-    runtime\\python.exe -m htfa.jobs.uae_data.update_data --force
+    htfa\\jobs\\uae_data\\update_data.bat                 # all sources
+    htfa\\jobs\\uae_data\\update_data.bat --source cbuae,gfs
+    htfa\\jobs\\uae_data\\update_data.bat --skip-download  # reuse raw files
+    htfa\\jobs\\uae_data\\update_data.bat --force
 """
 
 from __future__ import annotations

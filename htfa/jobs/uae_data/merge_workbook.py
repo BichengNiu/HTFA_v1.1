@@ -9,8 +9,8 @@ and rollback behaviour.
 
 Examples::
 
-    runtime\\python.exe -m htfa.jobs.uae_data.merge_workbook            # all sources
-    runtime\\python.exe -m htfa.jobs.uae_data.merge_workbook --source cbuae
+    htfa\\jobs\\uae_data\\merge_workbook.bat            # all sources
+    htfa\\jobs\\uae_data\\merge_workbook.bat --source cbuae
 """
 
 from __future__ import annotations
