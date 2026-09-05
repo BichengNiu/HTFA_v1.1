@@ -9,7 +9,7 @@ from typing import Optional
 import pandas as pd
 import streamlit as st
 
-from components.data_overview.core.file_parsing import (
+from htfa.data.tabular.file_parsing import (
     FileParseError,
     build_dataframe_from_rows,
     list_excel_sheets,

@@ -11,7 +11,7 @@ import logging
 from Ts.TsPlots import plot_series
 
 from ..core.constants import PREVIEW_DPI, PREVIEW_FIGSIZE
-from ..core.compat import matplotlib_date_compatibility
+from htfa.ui_shared.matplotlib_compat import matplotlib_date_compatibility
 from ..core.options import trim_to_valid_range
 from .legend import render_pyplot_figure
 

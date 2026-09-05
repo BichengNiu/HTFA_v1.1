@@ -7,8 +7,8 @@ import inspect
 import pandas as pd
 from Ts.TsPlots import plot_series
 
-from data_overview.core.dataset import build_overview_dataset
-from data_overview.core.options import (
+from htfa.data.tabular import build_overview_dataset
+from htfa.ui_shared.data_overview.core.options import (
     build_chart_options,
     build_table_options,
     series_style_widget_key,
@@ -453,7 +453,7 @@ def test_key_prefix_isolation():
 
 def test_widget_key_generation():
     """键生成函数与历史默认一致；不同前缀无交集。"""
-    from data_overview.ui.widget_keys import (
+    from htfa.ui_shared.data_overview.ui.widget_keys import (
         chart_widget_keys,
         overview_widget_keys,
         preview_key,

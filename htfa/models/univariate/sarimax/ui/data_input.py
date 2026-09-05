@@ -6,9 +6,8 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 import streamlit as st
-from components.data_overview.core.file_parsing import file_fingerprint
-from components.data_overview.ui.data_source import BuiltinDataSource
-from components.data_overview.ui.widget_keys import overview_widget_keys
+from htfa.data.file_content import file_fingerprint
+from htfa.ui_shared.data_overview import BuiltinDataSource, overview_widget_keys
 
 from htfa.workspace import FileAsset
 from htfa.models.univariate.common.ui.data_input import create_data_input_module

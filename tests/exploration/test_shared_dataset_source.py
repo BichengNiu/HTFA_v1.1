@@ -2,16 +2,10 @@
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 import pandas as pd
 import pytest
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(PROJECT_ROOT))
-
-from data_overview.core.file_parsing import load_dataframe
+from htfa.data.tabular.file_parsing import load_dataframe
 from htfa.exploration.ui.shared_dataset_source import SharedDatasetSource
 from htfa.exploration.ui import shared_dataset_source
 
@@ -35,7 +29,7 @@ def _preamble_csv() -> bytes:
     ).encode("utf-8")
 
 
-def test_component_reader_uses_selected_row_as_header():
+def test_tabular_reader_uses_selected_row_as_header():
     uploaded = _UploadedFile("sample.csv", _preamble_csv())
 
     frame = load_dataframe(
@@ -73,7 +67,7 @@ def test_shared_reader_reuses_supplied_raw_rows_without_reopening_file(
         raise AssertionError("不应重新读取上传文件")
 
     monkeypatch.setattr(
-        "data_overview.core.file_parsing.read_raw_rows",
+        "htfa.data.tabular.file_parsing.read_raw_rows",
         fail_if_file_is_read,
     )
     frame = load_dataframe(

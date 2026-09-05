@@ -161,6 +161,8 @@ _Avoid_: 将 H 接近 0.5 当作平稳性结论，或将 H 大于 0.5 解释为�
 - 五个领域模块是 `data`、`monitoring`、`exploration`、`models/univariate` 和 `models/dfm`；模块边界不由导航 tab 定义。
 - 逻辑 seam 完成直接切换后，旧入口必须删除；不得用兼容层、双路径或迁移回退保留旧架构。
 - 经济数据发布的失败安全回滚属于数据正确性行为，不属于迁移兼容层，必须保留。
+- 普通表格解析归 `htfa.data.tabular`；共享数据概览 UI 归 `htfa.ui_shared.data_overview`；共享 UI 不拥有解析规则，解析模块不依赖 Streamlit。
+- `components/` 与顶层 `data_overview` 都不是有效架构入口；迁移后不得新增、恢复或通过 alias/wrapper 暴露它们。
 - 原始行可以保留为明确读取设置的输入材料；当前数据框和下游结果在失败时必须清空。
 - 模拟路径分布图只属于纯 SARIMAX；RDL 和 ARDL 不显示该图。
 - 静态外生变量与趋势项先形成确定性响应路径，再叠加 TsSims 生成的多条 SARIMA 随机误差路径；log 模型在 log 尺度模拟后还原到原始尺度。

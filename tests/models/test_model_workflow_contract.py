@@ -23,7 +23,7 @@ from htfa.models.univariate.sarimax.core.adapters import (
     SARIMAXAdapter,
 )
 from htfa.models.univariate.sarimax.core.model_config import ARDLConfig, SARIMAXConfig
-from data_overview.ui.data_source import BuiltinDataSource
+from htfa.ui_shared.data_overview.ui.data_source import BuiltinDataSource
 from htfa.models.univariate.common.ui.forecast_view import build_forecast_table
 
 

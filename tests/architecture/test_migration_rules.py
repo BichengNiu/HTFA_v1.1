@@ -45,22 +45,17 @@ def test_migration_decisions_are_recorded_in_domain_docs() -> None:
         assert f"`htfa/{domain_name}`" in plan
 
 
-def test_portable_data_overview_does_not_depend_on_host_application() -> None:
-    package_root = PROJECT_ROOT / "components/data_overview"
-    source_files = (
-        source_file
-        for source_file in package_root.rglob("*.py")
-        if "tests" not in source_file.parts
-    )
+def test_data_overview_has_one_internal_ownership_boundary() -> None:
+    assert (PROJECT_ROOT / "htfa/data/tabular/__init__.py").is_file()
+    assert (PROJECT_ROOT / "htfa/ui_shared/data_overview/__init__.py").is_file()
+    assert not (PROJECT_ROOT / "components/__init__.py").exists()
+    assert not list((PROJECT_ROOT / "components").rglob("*.py"))
 
-    for source_file in source_files:
+    for source_file in _production_python_files():
         source = source_file.read_text(encoding="utf-8")
-        assert "dashboard" not in source_file.parts
-        assert "dashboard." not in source
-        assert "from dashboard" not in source
-        assert "import dashboard" not in source
-        assert "from htfa" not in source
-        assert "import htfa" not in source
+        assert "components.data_overview" not in source
+        assert "from data_overview" not in source
+        assert "import data_overview" not in source
 
 
 def _imported_modules(source_file: Path) -> set[str]:
@@ -77,11 +72,6 @@ def _imported_modules(source_file: Path) -> set[str]:
 def _production_python_files() -> tuple[Path, ...]:
     files = list((PROJECT_ROOT / "htfa").rglob("*.py"))
     files.extend((PROJECT_ROOT / "scripts").rglob("*.py"))
-    files.extend(
-        path
-        for path in (PROJECT_ROOT / "components").rglob("*.py")
-        if "tests" not in path.parts
-    )
     files.append(PROJECT_ROOT / "app.py")
     return tuple(files)
 
@@ -149,6 +139,8 @@ def test_model_domains_have_no_cross_family_or_application_imports() -> None:
 
 def test_domain_core_imports_do_not_preload_streamlit() -> None:
     core_modules = (
+        "htfa.data.file_content",
+        "htfa.data.tabular",
         "htfa.data.tabular_input",
         "htfa.data.economic_workbook.core.workbook_parser",
         "htfa.monitoring.uae.contracts",

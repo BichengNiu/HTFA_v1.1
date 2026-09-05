@@ -5,7 +5,10 @@ from urllib.parse import parse_qs, urlparse
 
 import pandas as pd
 
-from data_overview.core.options import series_style_widget_key, trim_to_valid_range
+from htfa.ui_shared.data_overview.core.options import (
+    series_style_widget_key,
+    trim_to_valid_range,
+)
 from htfa.exploration.ui.data_overview import _build_univariate_overview_dataset
 
 

@@ -15,7 +15,7 @@ from typing import Any, Callable
 import pandas as pd
 import streamlit as st
 
-from ..core.dataset import build_overview_dataset
+from htfa.data.tabular import build_overview_dataset, numeric_variable_names
 from ..core.options import build_chart_options, build_table_options
 from .chart_options_tabs import render_chart_options_expander
 from .chart_panel import draw_series_plot
@@ -523,8 +523,6 @@ def _make_sheet_callback(data_source: DataSource, sheet_key: str):
 
 def _numeric_variable_names(dataset) -> list[str]:
     """数值变量名（兼容 OverviewDataset 与自定义数据集对象）。"""
-    from ..core.dataset import numeric_variable_names
-
     return numeric_variable_names(dataset.frame)
 
 

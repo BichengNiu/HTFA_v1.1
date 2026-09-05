@@ -7,13 +7,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-COMPONENTS_ROOT = PROJECT_ROOT / "components"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _run_fresh_process(source: str) -> subprocess.CompletedProcess[str]:
     environment = os.environ.copy()
-    bootstrap = f"import sys\nsys.path.insert(0, {str(COMPONENTS_ROOT)!r})\n"
+    bootstrap = f"import sys\nsys.path.insert(0, {str(PROJECT_ROOT)!r})\n"
     return subprocess.run(
         [sys.executable, "-c", bootstrap + source],
         env=environment,
@@ -26,17 +25,13 @@ def _run_fresh_process(source: str) -> subprocess.CompletedProcess[str]:
 def test_pure_file_parsing_import_does_not_load_ui_or_streamlit() -> None:
     result = _run_fresh_process(
         """
-from data_overview import build_overview_dataset
-from data_overview.core.file_parsing import file_fingerprint
+from htfa.data.tabular import build_overview_dataset
+from htfa.data.file_content import file_fingerprint
 
 assert callable(build_overview_dataset)
 assert callable(file_fingerprint)
 assert not any(
     name == "streamlit" or name.startswith("streamlit.")
-    for name in sys.modules
-)
-assert not any(
-    name == "data_overview.ui" or name.startswith("data_overview.ui.")
     for name in sys.modules
 )
 assert not any(
@@ -50,14 +45,14 @@ assert not any(
     assert result.returncode == 0, result.stderr or result.stdout
 
 
-def test_ui_exports_are_loaded_on_demand_without_breaking_public_api() -> None:
+def test_ui_package_loads_streamlit_only_at_the_ui_boundary() -> None:
     result = _run_fresh_process(
         """
-from data_overview import create_data_overview
+from htfa.ui_shared.data_overview import create_data_overview
 
 assert callable(create_data_overview)
 assert "streamlit" in sys.modules
-assert "data_overview.ui" in sys.modules
+assert "htfa.ui_shared.data_overview.ui" in sys.modules
 """
     )
 

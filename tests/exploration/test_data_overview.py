@@ -4,7 +4,7 @@ from inspect import signature
 from pathlib import Path
 from types import SimpleNamespace
 
-from data_overview.core.options import series_style_widget_key
+from htfa.ui_shared.data_overview.core.options import series_style_widget_key
 
 from htfa.exploration.ui.chart_controls import chart_scope
 from htfa.exploration.ui.data_overview import (

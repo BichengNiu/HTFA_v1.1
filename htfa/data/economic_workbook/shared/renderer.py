@@ -18,7 +18,7 @@ from htfa.app.state.session_state import (
     get_economic_workbook_state,
     set_economic_workbook_state,
 )
-from components.data_overview.core.file_parsing import file_fingerprint
+from htfa.data.file_content import file_fingerprint
 from htfa.workspace import SessionWorkspace
 
 logger = logging.getLogger(__name__)

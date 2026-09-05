@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pandas as pd
 
-from data_overview import DataOverview, create_data_overview
-from data_overview.core.dataset import build_overview_dataset
-from data_overview.ui.data_source import BuiltinDataSource
-from data_overview.ui.widget_keys import overview_widget_keys
+from htfa.data.tabular import build_overview_dataset
+from htfa.ui_shared.data_overview import DataOverview, create_data_overview
+from htfa.ui_shared.data_overview.ui.data_source import BuiltinDataSource
+from htfa.ui_shared.data_overview.ui.widget_keys import overview_widget_keys
 
 
 class _FakeSource:

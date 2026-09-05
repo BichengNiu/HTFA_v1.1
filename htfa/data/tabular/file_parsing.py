@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import csv
 import io
-from hashlib import sha256
 from typing import Any
 
 import pandas as pd
+
+from htfa.data.file_content import file_fingerprint
 
 
 class FileParseError(ValueError):
@@ -16,12 +17,6 @@ class FileParseError(ValueError):
 
 _AUTO_TIME_COLUMN = object()
 _EXCEL_EXTENSIONS = {"xlsx", "xls"}
-
-
-def file_fingerprint(content: bytes) -> str:
-    """返回只由文件内容决定的稳定 SHA-256 指纹。"""
-    _validate_content(content)
-    return sha256(content).hexdigest()
 
 
 def list_excel_sheets(content: bytes, file_name: str) -> list[str] | None:

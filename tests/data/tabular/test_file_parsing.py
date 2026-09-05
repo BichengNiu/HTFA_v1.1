@@ -7,7 +7,7 @@ import io
 import pandas as pd
 import pytest
 
-from data_overview.core.file_parsing import (
+from htfa.data.tabular.file_parsing import (
     FileParseError,
     build_dataframe_from_rows,
     file_fingerprint,

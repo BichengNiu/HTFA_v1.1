@@ -7,9 +7,9 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 
-import data_overview.ui.chart_panel as chart_panel
-from data_overview.ui.chart_panel import draw_series_plot
-from data_overview.ui.legend import place_chart_legend_at_bottom
+import htfa.ui_shared.data_overview.ui.chart_panel as chart_panel
+from htfa.ui_shared.data_overview.ui.chart_panel import draw_series_plot
+from htfa.ui_shared.data_overview.ui.legend import place_chart_legend_at_bottom
 from Ts.TsPlots import plot_series
 
 

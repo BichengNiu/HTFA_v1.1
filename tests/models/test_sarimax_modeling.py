@@ -7,8 +7,8 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 import pytest
-from data_overview.core.dataset import OverviewDataset, build_overview_dataset
-from data_overview.core.file_parsing import load_dataframe
+from htfa.data.tabular import OverviewDataset, build_overview_dataset
+from htfa.data.tabular.file_parsing import load_dataframe
 from statsmodels.tsa.statespace.sarimax import SARIMAX as StatsmodelsSARIMAX
 from Ts.TsModels import TimeSeriesOperator
 from Ts.TsSims import simulate_sarima

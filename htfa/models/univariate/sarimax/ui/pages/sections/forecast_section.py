@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from htfa.workspace import stable_signature
-from components.data_overview.core.dataset import numeric_variable_names
+from htfa.data.tabular import numeric_variable_names
 from htfa.models.univariate.common.contracts import ForecastRequest
 from htfa.models.univariate.common.forecast_evaluation import (
     ForecastAccuracyReport,

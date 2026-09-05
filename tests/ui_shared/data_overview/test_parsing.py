@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pandas as pd
 
-from data_overview.core.dataset import build_overview_dataset
-from data_overview.core.parsing import (
+from htfa.data.tabular import build_overview_dataset
+from htfa.ui_shared.data_overview.core.parsing import (
     detect_frequency,
     parse_float,
     parse_shade,

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from data_overview.ui.section import _page_facet_chart_options
+from htfa.ui_shared.data_overview.ui.section import _page_facet_chart_options
 
 
 def test_page_facet_supplies_default_legend_and_removes_inapplicable_axes():

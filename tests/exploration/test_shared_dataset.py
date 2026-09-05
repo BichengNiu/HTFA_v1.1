@@ -4,7 +4,7 @@ import warnings
 
 import pandas as pd
 
-from data_overview.core.file_parsing import file_fingerprint, load_dataframe
+from htfa.data.tabular.file_parsing import file_fingerprint, load_dataframe
 from htfa.app.state.shared_dataset import (
     clear_shared_dataset,
     export_shared_dataset_snapshot,

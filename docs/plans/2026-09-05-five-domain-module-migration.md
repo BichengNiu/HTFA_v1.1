@@ -4,6 +4,8 @@
 
 **Goal:** 将 HTFA 从现有 `dashboard/` 模块化单体迁移为五个内部领域模块，并明确分离经济工作簿协议与普通表格输入协议；通过逻辑 seam、直接切换、删除旧路径和完整回归验证，最终确认功能无退化。
 
+> **Status:** 五领域迁移已完成；本计划中关于独立可移植 `components/data_overview` 的早期设想已由 ADR-0009 修正为 HTFA 内部的 `htfa.data.tabular` 与 `htfa.ui_shared.data_overview` 两个边界。以下旧路径仅保留为迁移历史，不是可用入口。
+
 **Architecture:** 保留一个本地模块化单体和两个执行入口：应用入口负责交互式分析，数据维护入口负责 DuckDB 到 Excel 的发布。五个领域模块为 `data`、`monitoring`、`exploration`、`models/univariate`、`models/dfm`；`app`、`workspace`、`ui_shared`、`jobs` 是横向基础设施，不计入五个业务领域。依赖只能从领域 UI/适配器指向领域 core、共享契约和基础设施，不能反向依赖应用组装层、Streamlit 或其他领域的页面实现。
 
 **Tech Stack:** Python 3.13 runtime、Streamlit、pandas、DuckDB、openpyxl、statsmodels、Ts、pytest、Streamlit `AppTest`、Windows `start.bat`。
@@ -47,7 +49,8 @@ htfa/
   workspace/                  # session workspace、页面快照、handoff
   ui_shared/                  # 纯共享渲染基础设施
   jobs/                       # 数据维护执行入口
-components/data_overview/     # 可移植 Streamlit 组件，不依赖 dashboard/htfa
+htfa/data/tabular/            # 普通表格读取、解析和数据集契约
+htfa/ui_shared/data_overview/ # 内部复用的 Streamlit 数据概览 UI
 data/                         # 数据资产；DuckDB 为事实源，Excel 为快照
 tests/                        # 领域和架构测试
 scripts/ tooling/ runtime/   # 启动、工具链和项目运行时
@@ -70,7 +73,7 @@ exploration -> tabular input contract
 
 - `data`、`monitoring`、`exploration`、`models` 的 core 导入 Streamlit、session state 或 `app`。
 - 一个领域导入另一个领域的页面、renderer 或私有状态。
-- `components/data_overview` 导入 `dashboard` 或新的 `htfa` 包。
+- `htfa.data.tabular` 不导入 Streamlit；`htfa.ui_shared.data_overview` 只向 UI 方向依赖普通表格能力。
 - `jobs` 通过 UI 页面执行数据发布。
 - DFM 通过 univariate workflow、SARIMAX 页面或模型库获得隐式耦合。
 - 任何模块继续通过 `sys.path` 注入维持旧顶层包名。
@@ -174,7 +177,7 @@ class TopicResult(Protocol):
 - 将 `D:/HTFA_v1.1/dashboard/core/ui/` 中真正跨领域的图例、Matplotlib、错误展示和共享组件迁移至 `D:/HTFA_v1.1/htfa/ui_shared/`。
 - 将路由、导航、页面组合和共享 Streamlit 组装逻辑迁移至 `D:/HTFA_v1.1/htfa/app/`。
 - 修改 `D:/HTFA_v1.1/app.py`、`D:/HTFA_v1.1/scripts/run_htfa.py`、`D:/HTFA_v1.1/scripts/start.bat` 和 `D:/HTFA_v1.1/tooling/pytest.ini` 使用新顶层包。
-- 将 `components/data_overview` 保持为独立可移植包；移除对 `dashboard` 的路径注入依赖，补齐其独立安装/导入入口。
+- 将数据概览从旧 `components/data_overview` 直接切换到 `htfa.data.tabular` 与 `htfa.ui_shared.data_overview`；不建立独立安装入口或兼容包。
 - 删除 `app.py` 的 `components` 路径注入和测试配置中的旧路径注入，前提是组件已通过明确的项目运行时安装方式可导入；不得用另一条隐式注入替代。
 - 删除旧 `dashboard/core/workspace`、旧共享 UI 转发层和旧组装入口。
 
@@ -183,7 +186,7 @@ class TopicResult(Protocol):
 1. 运行 workspace、navigation、component import boundary、AppTest 基线。
 2. 运行 `runtime\\python.exe -m compileall -q app.py htfa components`。
 3. 用 `inspect` 检查 workspace 和 shared UI 的公共入口只存在于新路径。
-4. 从干净 Python 进程导入 `htfa.app`、`htfa.workspace`、`components.data_overview.core`；纯 core 导入不得加载 Streamlit。
+4. 从干净 Python 进程导入 `htfa.app`、`htfa.workspace`、`htfa.data.tabular`；纯数据导入不得加载 Streamlit。
 5. 提交：`refactor(app): move session infrastructure and composition shell`。
 
 **阶段出口：** 应用入口、workspace、共享 UI 有唯一实现；`dashboard.core` 不再是公共根；启动脚本不依赖兼容 import。
@@ -310,9 +313,9 @@ class TopicResult(Protocol):
 git branch --show-current
 git status --short
 runtime\python.exe -B -m pytest -c tooling\pytest.ini tests -q
-runtime\python.exe -B -m pytest -c tooling\pytest.ini components\data_overview\tests -q
-runtime\python.exe -B -m compileall -q app.py htfa components
-rg -n "dashboard\.|dashboard/|dashboard\\|from dashboard|import dashboard|sys\.path.*components|fallback|compat|legacy" app.py htfa components scripts tooling tests docs
+runtime\python.exe -B -m pytest -c tooling\pytest.ini tests\data\tabular tests\ui_shared\data_overview -q
+runtime\python.exe -B -m compileall -q app.py htfa
+rg -n "dashboard\.|dashboard/|dashboard\\|from dashboard|import dashboard|components\.data_overview|from data_overview|import data_overview|sys\.path.*components" app.py htfa scripts tooling tests
 ```
 
 `rg` 结果必须只允许测试规则本身、ADR 的历史决策文字和必要的安全 rollback 术语；不得出现可执行旧路径、兼容入口或 fallback 分支。若仓库规范要求对关键词采用更精确的白名单，则在测试中按 AST/import 语义检查，不能通过简单删词掩盖旧路径。
@@ -335,7 +338,7 @@ rg -n "dashboard\.|dashboard/|dashboard\\|from dashboard|import dashboard|sys\.p
 
 - 五个领域目录存在且各自有明确 core/UI 边界：`htfa/data`、`htfa/monitoring`、`htfa/exploration`、`htfa/models/univariate`、`htfa/models/dfm`。
 - 经济工作簿与普通表格是两个显式协议；`0`、whitelist、元数据和 fail-closed 语义均经过测试。
-- `dashboard/`、旧 import、旧 API、wrapper、alias、双路径和迁移 fallback 均不存在。
+- `dashboard/`、`components/`、顶层 `data_overview`、旧 import、旧 API、wrapper、alias、双路径和迁移 fallback 均不存在。
 - 应用入口与 jobs 入口均只使用新路径；纯 core 导入边界成立。
 - 所有主要用户流程、模型数值、图表语义、workspace/handoff、监测失败隔离和数据安全行为均验证通过。
 - 测试不低于基线：主套件至少 `573 passed` 的量级并逐项解释变化；组件至少 `74 passed` 的量级；任何减少都必须先补齐等价覆盖，不能以删除测试解决。

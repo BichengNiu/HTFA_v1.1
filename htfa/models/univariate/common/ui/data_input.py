@@ -6,8 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from components.data_overview import create_data_overview
-from components.data_overview.ui.data_source import DataSource
+from htfa.ui_shared.data_overview import DataSource, create_data_overview
 
 
 @dataclass(frozen=True)

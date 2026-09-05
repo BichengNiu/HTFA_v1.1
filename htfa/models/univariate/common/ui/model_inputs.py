@@ -8,7 +8,7 @@ from typing import Any
 
 import pandas as pd
 
-from components.data_overview.core.dataset import numeric_variable_names
+from htfa.data.tabular import numeric_variable_names
 
 from htfa.models.univariate.common.contracts import ModelingInput
 from htfa.models.univariate.common.state import StateStore

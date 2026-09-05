@@ -14,7 +14,7 @@ from typing import Protocol
 import pandas as pd
 import streamlit as st
 
-from ..core.file_parsing import (
+from htfa.data.tabular.file_parsing import (
     FileParseError,
     build_dataframe_from_rows,
     file_fingerprint,
