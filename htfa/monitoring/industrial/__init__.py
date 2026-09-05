@@ -1,11 +1,1 @@
-"""
-Industrial Analysis Module
-工业分析模块
-"""
-
-# 导入统一的工业分析模块
-from htfa.monitoring.industrial.industrial_analysis import render_industrial_analysis
-
-__all__ = [
-    'render_industrial_analysis'
-]
+"""工业监测领域；页面入口从具体 UI 模块显式导入。"""

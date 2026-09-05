@@ -9,8 +9,6 @@ from htfa.monitoring.uae.contracts import (
     ProvenanceKind,
     UAEDataBundle,
 )
-from htfa.monitoring.uae.renderer import render_uae_monitoring
-
 __all__ = [
     "ConfidenceLevel",
     "DataProvenance",
@@ -19,5 +17,4 @@ __all__ = [
     "EvidenceItem",
     "ProvenanceKind",
     "UAEDataBundle",
-    "render_uae_monitoring",
 ]

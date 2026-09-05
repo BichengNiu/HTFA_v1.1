@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+import subprocess
+import sys
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -143,3 +145,33 @@ def test_model_domains_have_no_cross_family_or_application_imports() -> None:
             module.startswith("htfa.models.dfm")
             for module in modules
         ), source_file
+
+
+def test_domain_core_imports_do_not_preload_streamlit() -> None:
+    core_modules = (
+        "htfa.data.tabular_input",
+        "htfa.data.economic_workbook.core.workbook_parser",
+        "htfa.monitoring.uae.contracts",
+        "htfa.monitoring.uae.services",
+        "htfa.exploration.core.data_source",
+        "htfa.exploration.analysis.stationarity",
+        "htfa.models.univariate.common.contracts",
+        "htfa.models.univariate.sarimax.core.modeling",
+        "htfa.models.dfm.train.core.models",
+        "htfa.models.dfm.decomp.core.impact_analyzer",
+    )
+    module_literal = repr(core_modules)
+    code = (
+        "import importlib, sys; "
+        f"sys.path.insert(0, {str(PROJECT_ROOT)!r}); "
+        f"[importlib.import_module(name) for name in {module_literal}]; "
+        "assert 'streamlit' not in sys.modules; "
+        "assert 'dashboard' not in sys.modules"
+    )
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", code],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr

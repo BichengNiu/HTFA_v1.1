@@ -91,11 +91,13 @@ def render_data_preview_content(sub_module: str | None) -> None:
 def render_monitoring_analysis_content(sub_module: str | None) -> None:
     """渲染选中的监测分析领域。"""
     if sub_module == "工业":
-        from htfa.monitoring.industrial import render_industrial_analysis
+        from htfa.monitoring.industrial.industrial_analysis import (
+            render_industrial_analysis,
+        )
 
         render_industrial_analysis(st)
     elif sub_module == "阿联酋":
-        from htfa.monitoring.uae import render_uae_monitoring
+        from htfa.monitoring.uae.renderer import render_uae_monitoring
 
         render_uae_monitoring(st)
     else:
