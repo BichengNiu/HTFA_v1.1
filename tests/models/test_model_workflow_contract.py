@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 from types import SimpleNamespace
 
-from dashboard.models.common.contracts import (
+from htfa.models.univariate.common.contracts import (
     EstimationResultView,
     ForecastContext,
     ForecastRequest,
@@ -15,16 +15,16 @@ from dashboard.models.common.contracts import (
     ModelingInput,
     ResidualDiagnosticView,
 )
-from dashboard.models.common.workflow import ModelWorkflow
-from dashboard.models.common.ui.data_input import create_data_input_module
-from dashboard.models.SARIMAX.core import adapters
-from dashboard.models.SARIMAX.core.adapters import (
+from htfa.models.univariate.common.workflow import ModelWorkflow
+from htfa.models.univariate.common.ui.data_input import create_data_input_module
+from htfa.models.univariate.sarimax.core import adapters
+from htfa.models.univariate.sarimax.core.adapters import (
     ARDLAdapter,
     SARIMAXAdapter,
 )
-from dashboard.models.SARIMAX.core.model_config import ARDLConfig, SARIMAXConfig
+from htfa.models.univariate.sarimax.core.model_config import ARDLConfig, SARIMAXConfig
 from data_overview.ui.data_source import BuiltinDataSource
-from dashboard.models.common.ui.forecast_view import build_forecast_table
+from htfa.models.univariate.common.ui.forecast_view import build_forecast_table
 
 
 def test_modeling_input_copies_and_normalises_public_fields():

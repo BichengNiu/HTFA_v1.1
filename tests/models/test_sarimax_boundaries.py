@@ -5,7 +5,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from dashboard.navigation_config import MODULE_CONFIG
+from htfa.app.navigation.config import MODULE_CONFIG
 
 SUB_MODULE = "单变量模型"
 EXPECTED_TABS = ("SARIMAX", "RDL", "ARDL")
@@ -40,21 +40,14 @@ def test_content_router_dispatches_univariate_ts_submodule():
 
 def test_sarimax_pages_expose_public_render_entries():
     pages_init = (
-        PROJECT_ROOT / "dashboard/models/SARIMAX/ui/pages/__init__.py"
+        PROJECT_ROOT / "htfa/models/univariate/sarimax/ui/pages/__init__.py"
     ).read_text(encoding="utf-8")
     assert "render_sarimax_model_page" in pages_init
     assert "render_rdl_model_page" in pages_init
     assert "render_ardl_model_page" in pages_init
 
-    model_init = (
-        PROJECT_ROOT / "dashboard/models/SARIMAX/__init__.py"
-    ).read_text(encoding="utf-8")
-    assert "render_sarimax_model_page" in model_init
-    assert "render_rdl_model_page" in model_init
-    assert "render_ardl_model_page" in model_init
-
     sections_init = (
-        PROJECT_ROOT / "dashboard/models/SARIMAX/ui/pages/sections/__init__.py"
+        PROJECT_ROOT / "htfa/models/univariate/sarimax/ui/pages/sections/__init__.py"
     ).read_text(encoding="utf-8")
     for function in SECTION_FUNCTIONS:
         assert function in sections_init
@@ -62,7 +55,7 @@ def test_sarimax_pages_expose_public_render_entries():
 
 def test_model_tabs_have_isolated_state_and_widget_namespaces():
     """三个同级模型 Tab 不共享上传、控件或结果缓存命名空间。"""
-    from dashboard.models.SARIMAX.ui.state import (
+    from htfa.models.univariate.sarimax.ui.state import (
         ARDL_SCOPE,
         RDL_SCOPE,
         SARIMAX_SCOPE,
@@ -81,7 +74,7 @@ def test_forecast_planning_module_has_no_ui_or_ts_dependency():
     """预测规划保持为可独立测试的纯 core 模块。"""
     import ast
 
-    from dashboard.models.SARIMAX.core import forecast_planning
+    from htfa.models.univariate.sarimax.core import forecast_planning
 
     tree = ast.parse(Path(forecast_planning.__file__).read_text(encoding="utf-8"))
     imported_modules = {
@@ -110,7 +103,7 @@ def test_downstream_result_publication_is_not_owned_by_page_sections():
     for filename in ("analysis_section.py", "forecast_section.py"):
         source = (
             PROJECT_ROOT
-            / "dashboard/models/SARIMAX/ui/pages/sections"
+            / "htfa/models/univariate/sarimax/ui/pages/sections"
             / filename
         ).read_text(encoding="utf-8")
         for key in result_keys:
@@ -121,10 +114,10 @@ def test_downstream_result_publication_is_not_owned_by_page_sections():
 def test_model_family_implementations_are_split_from_facades():
     """模型族拟合和参数控件必须由各自 module 承担。"""
     core_modeling = (
-        PROJECT_ROOT / "dashboard/models/SARIMAX/core/modeling.py"
+        PROJECT_ROOT / "htfa/models/univariate/sarimax/core/modeling.py"
     ).read_text(encoding="utf-8")
     options_facade = (
-        PROJECT_ROOT / "dashboard/models/SARIMAX/ui/model_options.py"
+        PROJECT_ROOT / "htfa/models/univariate/sarimax/ui/model_options.py"
     ).read_text(encoding="utf-8")
 
     assert "from Ts.TsModels" not in core_modeling
@@ -142,7 +135,7 @@ def test_model_family_implementations_are_split_from_facades():
         "model_options_rdl.py",
         "model_options_ardl.py",
     ):
-        assert (PROJECT_ROOT / "dashboard/models/SARIMAX" / (
+        assert (PROJECT_ROOT / "htfa/models/univariate/sarimax" / (
             "core" if module.endswith("modeling.py") else "ui"
         ) / module).exists()
 
@@ -152,7 +145,7 @@ def test_forecast_and_training_pages_consume_stable_seams():
     for filename in ("training_section.py", "forecast_section.py"):
         source = (
             PROJECT_ROOT
-            / "dashboard/models/SARIMAX/ui/pages/sections"
+            / "htfa/models/univariate/sarimax/ui/pages/sections"
             / filename
         ).read_text(encoding="utf-8")
         for leaked_detail in (
@@ -168,7 +161,7 @@ def test_forecast_and_training_pages_consume_stable_seams():
 
 def test_sarimax_main_page_only_orchestrates_sections():
     """主页面只做四环节编排，不直接 import Ts。"""
-    path = PROJECT_ROOT / "dashboard/models/SARIMAX/ui/pages/sarimax_page.py"
+    path = PROJECT_ROOT / "htfa/models/univariate/sarimax/ui/pages/sarimax_page.py"
     tree = ast.parse(path.read_text(encoding="utf-8"))
     entry = next(
         node
@@ -190,7 +183,7 @@ def test_section_entry_functions_do_not_import_ts_directly():
         "analysis_section.py",
         "forecast_section.py",
     ):
-        path = PROJECT_ROOT / "dashboard/models/SARIMAX/ui/pages/sections" / section
+        path = PROJECT_ROOT / "htfa/models/univariate/sarimax/ui/pages/sections" / section
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in tree.body:
             if not isinstance(node, ast.FunctionDef):
@@ -209,7 +202,7 @@ def test_section_entry_functions_do_not_import_ts_directly():
                     )
     # 模型页接线不直接 import Ts；绘图能力在独立组件包 data_overview 中。
     for wiring_path in (
-        "dashboard/models/SARIMAX/ui/pages/sections/__init__.py",
+        "htfa/models/univariate/sarimax/ui/pages/sections/__init__.py",
     ):
         tree = ast.parse(
             (PROJECT_ROOT / wiring_path).read_text(encoding="utf-8")
@@ -227,7 +220,7 @@ def test_section_entry_functions_do_not_import_ts_directly():
 
 def test_analysis_section_uses_the_model_diagnostic_seam():
     """分析页不得读取 Ts 结果属性或直接调用诊断实现。"""
-    path = PROJECT_ROOT / "dashboard/models/SARIMAX/ui/pages/sections/analysis_section.py"
+    path = PROJECT_ROOT / "htfa/models/univariate/sarimax/ui/pages/sections/analysis_section.py"
     source = path.read_text(encoding="utf-8")
 
     assert "ModelWorkflow" in source

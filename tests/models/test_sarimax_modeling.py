@@ -14,7 +14,7 @@ from Ts.TsModels import TimeSeriesOperator
 from Ts.TsSims import simulate_sarima
 
 from htfa.workspace import stable_signature
-from dashboard.models.SARIMAX.core.data_loader import (
+from htfa.models.univariate.sarimax.core.data_loader import (
     MISSING_VALUE_OPTIONS,
     dataset_time_index,
     effective_modeling_date_bounds,
@@ -22,7 +22,7 @@ from dashboard.models.SARIMAX.core.data_loader import (
     preprocess_modeling_frame,
     prepare_modeling_inputs,
 )
-from dashboard.models.SARIMAX.core.model_config import (
+from htfa.models.univariate.sarimax.core.model_config import (
     ARDLConfig,
     AutoSARIMAXConfig,
     RDLConfig,
@@ -30,7 +30,7 @@ from dashboard.models.SARIMAX.core.model_config import (
     RDLInputConfig,
     SARIMAXConfig,
 )
-from dashboard.models.SARIMAX.core.modeling import (
+from htfa.models.univariate.sarimax.core.modeling import (
     build_auto_sarimax_criterion_table,
     build_prediction_table,
     fit_ardl,
@@ -48,11 +48,11 @@ from dashboard.models.SARIMAX.core.modeling import (
     translate_ts_error,
     validate_fit_inputs,
 )
-from dashboard.models.SARIMAX.core.rdl_modeling import (
+from htfa.models.univariate.sarimax.core.rdl_modeling import (
     build_rdl_intervention_analysis,
     build_rdl_intervention_path,
 )
-from dashboard.models.SARIMAX.core.forecast_planning import (
+from htfa.models.univariate.sarimax.core.forecast_planning import (
     build_forecast_calendar,
     build_future_exog,
     normalise_date_window,
@@ -143,8 +143,8 @@ def test_forecast_chart_date_adapter_preserves_ts_actual_values(monkeypatch):
     import matplotlib.pyplot as plt
     from Ts.TsModels._base import PredictResult
 
-    import dashboard.models.SARIMAX.ui.pages.sections.forecast_chart as chart
-    from dashboard.models.common.contracts import ForecastResult
+    import htfa.models.univariate.sarimax.ui.pages.sections.forecast_chart as chart
+    from htfa.models.univariate.common.contracts import ForecastResult
 
     calendar = pd.DatetimeIndex(["2024-01-01", "2024-02-01", "2024-03-01"])
     prediction = PredictResult(
@@ -192,8 +192,8 @@ def test_forecast_chart_uses_target_ylabel_without_titles(monkeypatch):
     import matplotlib.pyplot as plt
     from Ts.TsModels._base import PredictResult
 
-    import dashboard.models.SARIMAX.ui.pages.sections.forecast_chart as chart
-    from dashboard.models.common.contracts import ForecastResult
+    import htfa.models.univariate.sarimax.ui.pages.sections.forecast_chart as chart
+    from htfa.models.univariate.common.contracts import ForecastResult
 
     calendar = pd.DatetimeIndex(["2024-01-01", "2024-02-01", "2024-03-01"])
     prediction = PredictResult(
@@ -240,7 +240,7 @@ def test_forecast_error_chart_uses_ts_plot_series(monkeypatch):
     """预测误差图应通过 Ts 的统一序列绘图接口生成。"""
     import matplotlib.pyplot as plt
 
-    import dashboard.models.SARIMAX.ui.pages.sections.forecast_chart as chart
+    import htfa.models.univariate.sarimax.ui.pages.sections.forecast_chart as chart
 
     captured = {}
 
@@ -285,8 +285,8 @@ def test_forecast_chart_autoscales_y_to_selected_date_window(monkeypatch):
     from Ts.TsModels._base import PredictResult
     from Ts.TsPlots.style import GRAY
 
-    import dashboard.models.SARIMAX.ui.pages.sections.forecast_chart as chart
-    from dashboard.models.common.contracts import ForecastResult
+    import htfa.models.univariate.sarimax.ui.pages.sections.forecast_chart as chart
+    from htfa.models.univariate.common.contracts import ForecastResult
 
     calendar = pd.date_range("2024-01-01", periods=4, freq="MS")
     prediction = PredictResult(

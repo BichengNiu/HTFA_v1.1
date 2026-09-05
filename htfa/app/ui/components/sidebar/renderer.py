@@ -78,7 +78,7 @@ def render_complete_sidebar(
         # 模型页直接读取数据探索中的共享数据集，不在模型页重复渲染上传器。
 
         if selected_main == "模型分析":
-            from dashboard.models.common.ui.model_library import (
+            from htfa.models.univariate.common.ui.model_library import (
                 render_model_library_sidebar,
             )
 

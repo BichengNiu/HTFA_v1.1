@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from dashboard.models.common.model_library import (
+from htfa.models.univariate.common.model_library import (
     ModelContext,
     ModelLibrary,
     ModelLibraryStore,

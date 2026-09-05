@@ -12,8 +12,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from data_overview.core.file_parsing import load_dataframe
-from dashboard.explore.ui.shared_dataset_source import SharedDatasetSource
-from dashboard.explore.ui import shared_dataset_source
+from htfa.exploration.ui.shared_dataset_source import SharedDatasetSource
+from htfa.exploration.ui import shared_dataset_source
 
 
 class _UploadedFile:

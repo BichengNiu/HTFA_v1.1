@@ -28,10 +28,10 @@ from htfa.exploration.ui.standalone_data_overview import (
     is_standalone_data_overview_request,
     render_standalone_data_overview,
 )
-from dashboard.navigation_config import MODULE_CONFIG as NAV_MODULE_CONFIG
+from htfa.app.navigation.config import MODULE_CONFIG as NAV_MODULE_CONFIG
 
 
-# 保留入口级名称，方便部署检查和导航回归测试；数据只定义在 navigation_config。
+# 保留入口级名称，方便部署检查和导航回归测试；数据只定义在 app.navigation.config。
 MODULE_CONFIG = NAV_MODULE_CONFIG
 
 
@@ -40,7 +40,7 @@ def main() -> None:
 
     inject_cached_styles()
     if st.query_params.get("view") == "sarimax-model":
-        from dashboard.models.SARIMAX.ui.standalone_model import (
+        from htfa.models.univariate.sarimax.ui.standalone_model import (
             render_standalone_sarimax_model,
         )
 

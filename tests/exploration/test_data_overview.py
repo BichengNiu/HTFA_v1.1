@@ -25,7 +25,7 @@ def test_univariate_data_overview_keeps_its_own_namespace():
     source = (
         PROJECT_ROOT / "htfa/exploration/ui/data_overview.py"
     ).read_text(encoding="utf-8")
-    assert "dashboard.models." not in source
+    assert "htfa.models" not in source
     assert "model_analysis." not in source
 
 

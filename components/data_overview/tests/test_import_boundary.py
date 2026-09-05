@@ -40,8 +40,8 @@ assert not any(
     for name in sys.modules
 )
 assert not any(
-    name == "dashboard.core.workspace"
-    or name.startswith("dashboard.core.workspace.")
+    name == "htfa.workspace"
+    or name.startswith("htfa.workspace.")
     for name in sys.modules
 )
 """

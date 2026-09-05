@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from dashboard.navigation_config import MODULE_CONFIG
+from htfa.app.navigation.config import MODULE_CONFIG
 
 
 def test_navigation_registers_only_business_modules() -> None:

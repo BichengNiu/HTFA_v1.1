@@ -120,7 +120,7 @@ def render_model_analysis_content(sub_module: str | None) -> None:
         return
 
     if sub_module == "单变量模型":
-        from dashboard.models.SARIMAX.ui.pages import (
+        from htfa.models.univariate.sarimax.ui.pages import (
             render_ardl_model_page,
             render_rdl_model_page,
             render_sarimax_model_page,

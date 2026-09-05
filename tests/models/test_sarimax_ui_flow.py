@@ -197,7 +197,7 @@ class _FakeTrendSelector:
     ],
 )
 def test_trend_multiselect_maps_to_ts_code(selected, expected):
-    from dashboard.models.SARIMAX.ui.model_options import (
+    from htfa.models.univariate.sarimax.ui.model_options import (
         _render_trend_selector,
     )
 
@@ -931,7 +931,7 @@ def test_rdl_intervention_switches_from_step_to_inclusive_temporary_window(
 
 def test_rdl_intervention_timestamp_display_uses_meaningful_precision():
     """冲击日期标签按实际时间戳精度显示，不给日度追加零时分秒。"""
-    from dashboard.models.SARIMAX.ui.model_options_rdl import (
+    from htfa.models.univariate.sarimax.ui.model_options_rdl import (
         _build_intervention_timestamp_formatter,
     )
 

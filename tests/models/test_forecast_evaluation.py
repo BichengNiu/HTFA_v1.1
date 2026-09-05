@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from dashboard.models.common.forecast_evaluation import (
+from htfa.models.univariate.common.forecast_evaluation import (
     build_accuracy_workbook,
     evaluate_current_forecast,
     evaluate_fixed_holdout,
@@ -14,13 +14,13 @@ from dashboard.models.common.forecast_evaluation import (
     evaluate_rolling_forecast,
     evaluate_training_rolling,
 )
-from dashboard.models.SARIMAX.core.model_config import (
+from htfa.models.univariate.sarimax.core.model_config import (
     ARDLConfig,
     RDLConfig,
     RDLInputConfig,
     SARIMAXConfig,
 )
-from dashboard.models.SARIMAX.core.modeling import (
+from htfa.models.univariate.sarimax.core.modeling import (
     fit_dynamic_model,
     run_fixed_holdout_evaluation,
     run_historical_rolling_evaluation,
@@ -271,7 +271,7 @@ def test_all_univariate_model_families_can_run_historical_backtest():
 
 
 def test_fixed_holdout_evaluation_reuses_fitted_result(monkeypatch):
-    from dashboard.models.SARIMAX.core import modeling
+    from htfa.models.univariate.sarimax.core import modeling
 
     calls = {}
 
@@ -300,7 +300,7 @@ def test_fixed_holdout_evaluation_reuses_fitted_result(monkeypatch):
 
 
 def test_training_rolling_model_entry_uses_two_horizon_initial_window(monkeypatch):
-    from dashboard.models.SARIMAX.core import modeling
+    from htfa.models.univariate.sarimax.core import modeling
 
     calls = {}
 
@@ -328,7 +328,7 @@ def test_training_rolling_model_entry_uses_two_horizon_initial_window(monkeypatc
 def test_historical_rolling_model_entry_caps_large_sample_to_recent_origins(
     monkeypatch,
 ):
-    from dashboard.models.SARIMAX.core import modeling
+    from htfa.models.univariate.sarimax.core import modeling
 
     calls = {}
 

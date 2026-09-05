@@ -11,7 +11,7 @@ def test_browser_tab_uses_platform_name() -> None:
 
 
 def test_public_entry_renders_navigation_without_exception():
-    from dashboard.models.common.model_library import MODEL_LIBRARY_TOKEN_KEY
+    from htfa.models.univariate.common.model_library import MODEL_LIBRARY_TOKEN_KEY
 
     app = AppTest.from_file(APP_PATH, default_timeout=30).run()
 
@@ -37,7 +37,7 @@ def test_public_entry_renders_navigation_without_exception():
 
 
 def test_model_library_is_not_initialized_outside_model_analysis():
-    from dashboard.models.common.model_library import MODEL_LIBRARY_TOKEN_KEY
+    from htfa.models.univariate.common.model_library import MODEL_LIBRARY_TOKEN_KEY
 
     app = AppTest.from_file(APP_PATH, default_timeout=30).run()
     next(
