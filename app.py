@@ -24,7 +24,7 @@ st.set_page_config(
 from htfa.app.ui.components.content_router import render_main_content
 from htfa.app.ui.components.sidebar import render_complete_sidebar
 from htfa.app.ui.style_loader import inject_cached_styles
-from dashboard.explore.ui.standalone_data_overview import (
+from htfa.exploration.ui.standalone_data_overview import (
     is_standalone_data_overview_request,
     render_standalone_data_overview,
 )

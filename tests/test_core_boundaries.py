@@ -26,7 +26,7 @@ def test_retired_feature_package_and_core_wrappers_are_absent() -> None:
 
 
 def test_explore_core_depends_on_tabular_input_contract():
-    source = Path("dashboard/explore/core/data_source.py").read_text(
+    source = Path("htfa/exploration/core/data_source.py").read_text(
         encoding="utf-8"
     )
 

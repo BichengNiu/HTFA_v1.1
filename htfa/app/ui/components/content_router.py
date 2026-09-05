@@ -8,9 +8,9 @@ from collections.abc import Callable
 import streamlit as st
 
 from htfa.app import get_current_main_module, get_current_sub_module
-from dashboard.explore.ui.bivariate_page import render_bivariate_analysis_page
-from dashboard.explore.ui.pages import render_data_exploration_welcome_page
-from dashboard.explore.ui.univariate_page import render_univariate_analysis_page
+from htfa.exploration.ui.bivariate_page import render_bivariate_analysis_page
+from htfa.exploration.ui.pages import render_data_exploration_welcome_page
+from htfa.exploration.ui.univariate_page import render_univariate_analysis_page
 
 logger = logging.getLogger(__name__)
 
