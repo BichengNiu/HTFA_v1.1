@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from dashboard.models.DFM.decomp.core.model_loader import ModelLoader
-from dashboard.models.DFM.decomp.utils.exceptions import ModelLoadError
-from dashboard.models.DFM.decomp.utils.validators import validate_model_data
-from dashboard.models.DFM.results.ui.pages.domain import DFMMetadataAccessor
+from htfa.models.dfm.decomp.core.model_loader import ModelLoader
+from htfa.models.dfm.decomp.utils.exceptions import ModelLoadError
+from htfa.models.dfm.decomp.utils.validators import validate_model_data
+from htfa.models.dfm.results.ui.pages.domain import DFMMetadataAccessor
 
 
 def _metadata() -> dict:

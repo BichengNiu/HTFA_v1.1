@@ -3,17 +3,17 @@ from pathlib import Path
 
 import pandas as pd
 
-from dashboard.models.DFM.prep import processor as processor_module
-from dashboard.models.DFM.prep.processor import DataPreparationProcessor
-from dashboard.models.DFM.decomp.core.impact_analyzer import (
+from htfa.models.dfm.prep import processor as processor_module
+from htfa.models.dfm.prep.processor import DataPreparationProcessor
+from htfa.models.dfm.decomp.core.impact_analyzer import (
     DataRelease,
     ImpactAnalyzer,
     ImpactResult,
 )
-from dashboard.models.DFM.decomp.core.model_loader import SavedNowcastData
-from dashboard.models.DFM.train.training.config import TrainingConfig
-from dashboard.models.DFM.train.utils.data_utils import load_and_validate_data
-from dashboard.models.DFM.utils.parallel_config import ParallelConfig
+from htfa.models.dfm.decomp.core.model_loader import SavedNowcastData
+from htfa.models.dfm.train.training.config import TrainingConfig
+from htfa.models.dfm.train.utils.data_utils import load_and_validate_data
+from htfa.models.dfm.utils.parallel_config import ParallelConfig
 
 
 def test_training_data_stays_in_memory():
@@ -40,7 +40,7 @@ def test_training_data_stays_in_memory():
 
 def test_training_page_public_entry_only_orchestrates_sections():
     path = Path(
-        "dashboard/models/DFM/train/ui/pages/model_training_page.py"
+        "htfa/models/dfm/train/ui/pages/model_training_page.py"
     )
     tree = ast.parse(path.read_text(encoding="utf-8"))
     entry = next(
@@ -56,7 +56,7 @@ def test_training_page_public_entry_only_orchestrates_sections():
 
 def test_variable_transformer_has_one_active_batch_entry():
     source = Path(
-        "dashboard/models/DFM/prep/modules/variable_transformer.py"
+        "htfa/models/dfm/prep/modules/variable_transformer.py"
     ).read_text(encoding="utf-8")
 
     assert "def transform_dataframe(" not in source
@@ -98,7 +98,7 @@ def test_news_impact_pipeline_uses_saved_nowcast_data_directly(monkeypatch):
         "inside"
     ]
     assert not Path(
-        "dashboard/models/DFM/decomp/core/nowcast_extractor.py"
+        "htfa/models/dfm/decomp/core/nowcast_extractor.py"
     ).exists()
 
 

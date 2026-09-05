@@ -105,10 +105,10 @@ def render_monitoring_analysis_content(sub_module: str | None) -> None:
 def render_model_analysis_content(sub_module: str | None) -> None:
     """渲染模型分析子模块标签页。"""
     if sub_module == "DFM 模型":
-        from dashboard.models.DFM.decomp.ui.pages import render_dfm_news_analysis_page
-        from dashboard.models.DFM.prep.ui.pages import render_dfm_data_prep_page
-        from dashboard.models.DFM.results.ui.pages import render_dfm_model_analysis_page
-        from dashboard.models.DFM.train.ui.pages import render_dfm_model_training_page
+        from htfa.models.dfm.decomp.ui.pages import render_dfm_news_analysis_page
+        from htfa.models.dfm.prep.ui.pages import render_dfm_data_prep_page
+        from htfa.models.dfm.results.ui.pages import render_dfm_model_analysis_page
+        from htfa.models.dfm.train.ui.pages import render_dfm_model_training_page
 
         all_tabs = [
             ("数据准备", lambda: render_dfm_data_prep_page(st)),

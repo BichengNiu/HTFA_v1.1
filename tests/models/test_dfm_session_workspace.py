@@ -3,7 +3,7 @@ from __future__ import annotations
 from io import BytesIO
 
 from htfa.workspace import SessionWorkspace
-from dashboard.models.DFM.train.ui.components.file_uploader_component import (
+from htfa.models.dfm.train.ui.components.file_uploader_component import (
     FileUploaderComponent,
 )
 
