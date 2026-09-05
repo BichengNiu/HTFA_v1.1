@@ -21,7 +21,6 @@ from htfa.app.state.shared_dataset import (
 )
 from htfa.app.state.session_state import NamespacedStateManager
 from htfa.exploration.analysis.stationarity import (
-    numeric_variable_names,
     prepare_selected_series,
     resolve_correlation_lags,
     transform_series,

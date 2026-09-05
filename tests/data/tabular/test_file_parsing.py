@@ -10,11 +10,11 @@ import pytest
 from htfa.data.tabular.file_parsing import (
     FileParseError,
     build_dataframe_from_rows,
-    file_fingerprint,
     list_excel_sheets,
     load_dataframe,
     read_raw_rows,
 )
+from htfa.data.file_content import file_fingerprint
 
 
 def test_file_fingerprint_depends_only_on_content():

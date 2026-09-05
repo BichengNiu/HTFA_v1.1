@@ -257,7 +257,7 @@ def artifact_is_current(stored: str | None, current: str) -> bool:
 页面输入规范必须满足：
 
 - 动态回归：复用 `WIDGET_KEYS`，但显式排除拟合、诊断、预测和下载按钮。
-- `components/data_overview` 保持独立，不得导入 `dashboard.core.workspace`；由 SARIMAX 宿主把组件键登记到页面规范。
+- `htfa/ui_shared/data_overview` 属于 HTFA 内部共享 UI，不得导入 `htfa.workspace`；由 SARIMAX 宿主把组件键登记到页面规范。
 - 数据探索：保存表、变量、日期、检验参数和图表配置；不保存运行检验按钮。
 - 数据预览：保存工作表、频率、指标选择和显示配置；不保存导出动作。
 - DFM：保存数据准备、变量选择、训练配置、影响分解配置；动态行业键使用经过审查的前缀。
@@ -394,7 +394,7 @@ runtime\python.exe -m pytest -c tooling\pytest.ini tests\explore\test_shared_dat
 runtime\python.exe -m pytest -c tooling\pytest.ini tests\models\test_sarimax_ui_flow.py tests\models\test_sarimax_boundaries.py tests\models\test_sarimax_modeling.py -q
 ```
 
-**Expected:** 动态回归全部相关测试通过；`components/data_overview` 仍无 `dashboard.` 导入。
+**Expected:** 动态回归全部相关测试通过；`htfa/ui_shared/data_overview` 不导入领域页面或 workspace。
 
 ### Task 6: 接入数据探索与阿联酋监测
 
@@ -523,10 +523,10 @@ runtime\python.exe -m pytest -c tooling\pytest.ini tests\core\test_cache_policy.
 runtime\python.exe -m pytest -c tooling\pytest.ini tests -q
 ```
 
-3. 运行独立数据概览组件测试：
+3. 运行共享数据概览 UI 测试：
 
 ```powershell
-runtime\python.exe -c "import sys, pytest; sys.path.insert(0, r'D:\HTFA_v1.1\components'); raise SystemExit(pytest.main(['-q', r'D:\HTFA_v1.1\components\data_overview\tests']))"
+runtime\python.exe -m pytest -c tooling\pytest.ini tests\ui_shared\data_overview -q
 ```
 
 4. 运行语法和边界检查：
@@ -552,7 +552,7 @@ git status --short
 - 任何结果展示前都校验数据指纹和参数签名。
 - 按钮、下载、密码、认证对象不进入页面输入快照。
 - 公共工作区不依赖 Streamlit，不包含统计或模型业务逻辑。
-- `components/data_overview` 继续保持零 `dashboard.` 导入。
+- `htfa/ui_shared/data_overview` 继续保持不导入领域页面和 workspace。
 - 当前会话之外不产生持久化文件。
 - 全量测试与组件测试通过，并提醒用户修改后重启 `scripts\start.bat`。
 

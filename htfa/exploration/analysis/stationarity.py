@@ -34,6 +34,7 @@ from htfa.exploration.core.series_utils import (
 from htfa.exploration.core.validation import (
     validate_real_series as _validate_numeric_series,
 )
+from htfa.data.tabular import numeric_variable_names as _numeric_variable_names
 from htfa.ui_shared.matplotlib_compat import matplotlib_date_compatibility
 
 logger = logging.getLogger(__name__)
@@ -180,17 +181,6 @@ SUMMARY_LABELS = {
 }
 
 
-def numeric_variable_names(data: pd.DataFrame) -> list[str]:
-    """按原始列顺序返回可分析的实数型变量。"""
-    return [
-        column
-        for column in data.columns
-        if pd.api.types.is_numeric_dtype(data[column].dtype)
-        and not pd.api.types.is_bool_dtype(data[column].dtype)
-        and not pd.api.types.is_complex_dtype(data[column].dtype)
-    ]
-
-
 def prepare_selected_series(
     data: pd.DataFrame,
     variable: str,
@@ -198,7 +188,7 @@ def prepare_selected_series(
     """提取变量并尽可能建立经过校验的升序时间索引。"""
     if variable not in data.columns:
         raise KeyError(f"数据表中不存在变量: {variable}")
-    if variable not in numeric_variable_names(data):
+    if variable not in _numeric_variable_names(data):
         raise TypeError(f"变量“{variable}”不是可分析的实数型变量")
 
     time_column = identify_time_column(data, exclude_columns=[variable])
@@ -711,7 +701,6 @@ __all__ = [
     "localize_summary_text",
     "matplotlib_date_compatibility",
     "normalize_frequency",
-    "numeric_variable_names",
     "prepare_selected_series",
     "resolve_correlation_lags",
     "resolve_year_over_year_lag",

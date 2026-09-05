@@ -7,6 +7,7 @@ import logging
 import pandas as pd
 
 from htfa.ui_shared.chart_legend import render_pyplot_figure
+from htfa.data.tabular import numeric_variable_names
 from htfa.exploration.analysis.stationarity import (
     TABLE_FREQUENCIES,
     TEST_LABELS,
@@ -16,7 +17,6 @@ from htfa.exploration.analysis.stationarity import (
     create_time_series_figure,
     matplotlib_date_compatibility,
     normalize_frequency,
-    numeric_variable_names,
     prepare_selected_series,
     resolve_year_over_year_lag,
     run_selected_stationarity_tests,

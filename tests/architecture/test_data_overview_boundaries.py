@@ -39,6 +39,11 @@ assert not any(
     or name.startswith("htfa.workspace.")
     for name in sys.modules
 )
+assert not any(
+    name == "htfa.data.economic_workbook"
+    or name.startswith("htfa.data.economic_workbook.")
+    for name in sys.modules
+)
 """
     )
 

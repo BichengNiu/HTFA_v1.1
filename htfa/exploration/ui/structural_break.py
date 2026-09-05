@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pandas as pd
 
+from htfa.data.tabular import numeric_variable_names
 from htfa.exploration.analysis.stationarity import (
-    numeric_variable_names,
     prepare_selected_series,
 )
 from htfa.exploration.analysis.structural_break import (

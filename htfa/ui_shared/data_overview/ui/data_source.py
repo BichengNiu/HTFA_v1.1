@@ -14,10 +14,10 @@ from typing import Protocol
 import pandas as pd
 import streamlit as st
 
+from htfa.data.file_content import file_fingerprint
 from htfa.data.tabular.file_parsing import (
     FileParseError,
     build_dataframe_from_rows,
-    file_fingerprint,
     list_excel_sheets,
     read_raw_rows,
 )

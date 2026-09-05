@@ -8,8 +8,6 @@ from typing import Any
 
 import pandas as pd
 
-from htfa.data.file_content import file_fingerprint
-
 
 class FileParseError(ValueError):
     """用户输入文件无法读取或无法按指定结构解析。"""
@@ -247,7 +245,6 @@ def _parse_time_column(frame: pd.DataFrame, column: str) -> pd.DataFrame:
 __all__ = [
     "FileParseError",
     "build_dataframe_from_rows",
-    "file_fingerprint",
     "list_excel_sheets",
     "load_dataframe",
     "read_raw_rows",

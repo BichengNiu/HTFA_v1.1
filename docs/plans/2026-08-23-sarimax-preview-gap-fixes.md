@@ -13,8 +13,8 @@
 ### Task 1: Add regression tests for the three failures
 
 **Files:**
-- Modify: `components/data_overview/tests/test_chart_panel.py`
-- Test target: `components/data_overview/ui/chart_panel.py`
+- Modify: `tests/ui_shared/data_overview/test_chart_panel.py`
+- Test target: `htfa/ui_shared/data_overview/ui/chart_panel.py`
 
 **Steps:**
 
@@ -26,7 +26,7 @@
 ### Task 2: Apply the minimal adapter fix
 
 **Files:**
-- Modify: `components/data_overview/ui/chart_panel.py`
+- Modify: `htfa/ui_shared/data_overview/ui/chart_panel.py`
 
 **Steps:**
 
@@ -40,7 +40,7 @@
 **Commands:**
 
 ```powershell
-D:\HTFA_v1.1\runtime\python.exe -c "import sys, pytest; sys.path.insert(0, r'D:\HTFA_v1.1\components'); raise SystemExit(pytest.main(['-q', r'D:\HTFA_v1.1\components\data_overview\tests']))"
+D:\HTFA_v1.1\runtime\python.exe -m pytest -c tooling\pytest.ini tests\ui_shared\data_overview -q
 D:\HTFA_v1.1\runtime\python.exe -m pytest -c tooling\pytest.ini tests\models\test_sarimax_ui_flow.py tests\models\test_sarimax_boundaries.py -q
 ```
 

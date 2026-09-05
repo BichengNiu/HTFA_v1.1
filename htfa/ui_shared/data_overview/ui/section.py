@@ -15,7 +15,11 @@ from typing import Any, Callable
 import pandas as pd
 import streamlit as st
 
-from htfa.data.tabular import build_overview_dataset, numeric_variable_names
+from htfa.data.tabular import (
+    build_overview_dataset,
+    numeric_variable_names,
+    suggest_time_column,
+)
 from ..core.options import build_chart_options, build_table_options
 from .chart_options_tabs import render_chart_options_expander
 from .chart_panel import draw_series_plot
@@ -288,7 +292,7 @@ def render_data_overview(
         st.session_state.pop(time_key, None)
         state.set("time_options_signature", time_options_signature)
     time_default = st.session_state.get(
-        time_key, _suggest_time_column(raw_data)
+        time_key, suggest_time_column(raw_data) or "无"
     )
     if time_default not in time_options:
         time_default = "无"
@@ -354,7 +358,7 @@ def render_data_overview(
     if not config.show_preview:
         return
 
-    variables = _numeric_variable_names(dataset)
+    variables = numeric_variable_names(dataset.frame)
     if not variables:
         st_obj.error(config.empty_variables_message)
         return
@@ -519,27 +523,6 @@ def _make_sheet_callback(data_source: DataSource, sheet_key: str):
             data_source.select_sheet(sheet)
 
     return _callback
-
-
-def _numeric_variable_names(dataset) -> list[str]:
-    """数值变量名（兼容 OverviewDataset 与自定义数据集对象）。"""
-    return numeric_variable_names(dataset.frame)
-
-
-def _suggest_time_column(frame: pd.DataFrame) -> str:
-    """建议可解析的首列为时间列，否则默认不使用时间列。"""
-    if frame.shape[1] == 0:
-        return "无"
-    first = frame.iloc[:, 0]
-    if pd.api.types.is_datetime64_any_dtype(first):
-        return str(frame.columns[0])
-    if pd.api.types.is_numeric_dtype(first):
-        return "无"
-    nonblank = first.notna() & first.astype(str).str.strip().ne("")
-    parsed = pd.to_datetime(first, errors="coerce", format="mixed")
-    if nonblank.any() and parsed.loc[nonblank].notna().all():
-        return str(frame.columns[0])
-    return "无"
 
 
 __all__ = [

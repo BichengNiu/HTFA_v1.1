@@ -4,7 +4,7 @@
 
 **Goal:** 将组件和 dashboard 中重复的 CSV/Excel 读取、原始行解析、DataFrame 构建与文件指纹逻辑收敛为一个纯的 canonical parser，并删除所有旧实现与 `allow_unparsed` 兼容回退。
 
-**Architecture:** 在 `components/data_overview/core/file_parsing.py` 建立不依赖 Streamlit/session state 的深 module。它接收文件内容和明确的解析参数，负责文件格式读取、工作表枚举、原始行构建、表头/数值/时间解析和内容指纹；UI 与 dashboard adapter 只负责 session state、上传控件、状态清理和错误展示。迁移完成后，旧 helper、旧 loader、旧 wrapper 与 `allow_unparsed` 参数全部删除，不保留双路径。
+**Architecture:** 在 `htfa/data/tabular/file_parsing.py` 建立不依赖 Streamlit/session state 的深 module。它接收文件内容和明确的解析参数，负责文件格式读取、工作表枚举、原始行构建和表头/数值/时间解析；文件内容指纹位于 `htfa/data/file_content.py`，UI 与领域 adapter 只负责 session state、上传控件、状态清理和错误展示。迁移完成后，旧 helper、旧 loader、旧 wrapper 与 `allow_unparsed` 参数全部删除，不保留双路径。
 
 **Tech Stack:** Python 3、pandas、openpyxl/xlrd、Streamlit、pytest。
 
@@ -13,8 +13,8 @@
 ### Task 1: Write the canonical parser contract tests
 
 **Files:**
-- Create: `components/data_overview/tests/test_file_parsing.py`
-- Reference: `components/data_overview/ui/data_source.py`
+- Create: `tests/data/tabular/test_file_parsing.py`
+- Reference: `htfa/ui_shared/data_overview/ui/data_source.py`
 - Reference: `dashboard/core/ui/utils/shared_dataset.py`
 
 **Step 1: Write the failing tests**
@@ -34,17 +34,17 @@
 Run from `D:\HTFA_v1.1`:
 
 ```powershell
-runtime\python.exe -m pytest -c tooling\pytest.ini components\data_overview\tests\test_file_parsing.py -p no:cacheprovider -q
+runtime\python.exe -m pytest -c tooling\pytest.ini tests\data\tabular\test_file_parsing.py -p no:cacheprovider -q
 ```
 
-Expected: FAIL because `data_overview.core.file_parsing` does not exist yet.
+Expected: FAIL because `htfa.data.tabular.file_parsing` does not exist yet.
 
 ### Task 2: Implement the pure parser
 
 **Files:**
-- Create: `components/data_overview/core/file_parsing.py`
+- Create: `htfa/data/tabular/file_parsing.py`
 - Create: `CONTEXT.md`
-- Modify: `components/data_overview/core/__init__.py`
+- Modify: `htfa/data/tabular/__init__.py`
 
 **Step 1: Implement the minimal canonical module**
 
@@ -53,7 +53,7 @@ Expected: FAIL because `data_overview.core.file_parsing` does not exist yet.
 **Step 2: Run parser tests**
 
 ```powershell
-runtime\python.exe -m pytest -c tooling\pytest.ini components\data_overview\tests\test_file_parsing.py -p no:cacheprovider -q
+runtime\python.exe -m pytest -c tooling\pytest.ini tests\data\tabular\test_file_parsing.py -p no:cacheprovider -q
 ```
 
 Expected: all new parser tests pass.
@@ -61,9 +61,9 @@ Expected: all new parser tests pass.
 ### Task 3: Migrate the component data source
 
 **Files:**
-- Modify: `components/data_overview/ui/data_source.py`
-- Modify: `components/data_overview/ui/section.py`
-- Modify: `components/data_overview/tests/test_data_source.py`
+- Modify: `htfa/ui_shared/data_overview/ui/data_source.py`
+- Modify: `htfa/ui_shared/data_overview/ui/section.py`
+- Modify: `tests/exploration/test_shared_dataset_source.py`
 
 **Step 1: Replace local parsing calls with the canonical module**
 
@@ -100,8 +100,8 @@ Expected: all new parser tests pass.
 **Step 1: Run focused component and HTFA tests**
 
 ```powershell
-runtime\python.exe -m pytest -c tooling\pytest.ini components\data_overview\tests -p no:cacheprovider -q
-runtime\python.exe -m pytest -c tooling\pytest.ini tests\explore tests\models tests\core components\data_overview\tests -p no:cacheprovider -q
+runtime\python.exe -m pytest -c tooling\pytest.ini tests\data\tabular tests\ui_shared\data_overview -p no:cacheprovider -q
+runtime\python.exe -m pytest -c tooling\pytest.ini tests\exploration tests\models tests\architecture -p no:cacheprovider -q
 ```
 
 Expected: both commands pass; the second command should preserve the previously verified 208-test scope or report only justified test-count changes.
@@ -109,7 +109,7 @@ Expected: both commands pass; the second command should preserve the previously 
 **Step 2: Run static residue checks**
 
 ```powershell
-rg -n "allow_unparsed|load_shared_dataframe|_load_dataframe|def _read_raw_rows|def _build_dataframe_from_rows|def fingerprint_file|def list_excel_sheets" components dashboard tests -g "*.py"
+rg -n "allow_unparsed|load_shared_dataframe|_load_dataframe|def _read_raw_rows|def _build_dataframe_from_rows|def fingerprint_file|def list_excel_sheets" htfa tests -g "*.py"
 ```
 
 Expected: no obsolete compatibility parameter/function or duplicate parser definition remains outside the canonical module.
@@ -120,7 +120,7 @@ Expected: no obsolete compatibility parameter/function or duplicate parser defin
 git status --short
 git diff --check
 git diff --stat
-git diff -- components/data_overview dashboard tests
+git diff -- htfa/data/tabular htfa/ui_shared/data_overview tests
 ```
 
 Expected: only the approved parser migration, tests, and this plan are changed; existing unrelated worktree changes remain untouched; no cache/temp artifacts are staged or added.

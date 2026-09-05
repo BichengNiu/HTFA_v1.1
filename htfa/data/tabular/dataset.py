@@ -1,4 +1,4 @@
-"""数据概览的数据契约：数据集对象与默认构建器（纯 pandas，无 streamlit）。
+"""普通表格数据集契约与默认构建器（纯 pandas，无 streamlit）。
 
 外部项目可提供自己的 dataset_builder 返回任意满足该契约的对象
 （需要 frame / time_column / fingerprint 三个属性）。
@@ -53,8 +53,28 @@ def numeric_variable_names(frame: pd.DataFrame) -> list[str]:
         if pd.api.types.is_bool_dtype(series):
             continue
         if pd.api.types.is_numeric_dtype(series):
+            if pd.api.types.is_complex_dtype(series):
+                continue
             names.append(str(column))
     return names
+
+
+def suggest_time_column(frame: pd.DataFrame) -> str | None:
+    """返回首个可完整解析为日期的列名，否则返回 None。"""
+    if frame.shape[1] == 0:
+        return None
+    first = frame.iloc[:, 0]
+    if pd.api.types.is_datetime64_any_dtype(first):
+        return str(frame.columns[0])
+    if pd.api.types.is_numeric_dtype(first):
+        return None
+    nonblank = first.notna() & first.astype(str).str.strip().ne("")
+    if not nonblank.any():
+        return None
+    parsed = pd.to_datetime(first, errors="coerce", format="mixed")
+    if parsed.loc[nonblank].notna().all():
+        return str(frame.columns[0])
+    return None
 
 
 def build_overview_dataset(
@@ -86,4 +106,5 @@ __all__ = [
     "OverviewDataset",
     "build_overview_dataset",
     "numeric_variable_names",
+    "suggest_time_column",
 ]
