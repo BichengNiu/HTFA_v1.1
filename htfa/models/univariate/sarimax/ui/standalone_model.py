@@ -11,14 +11,13 @@ from urllib.parse import urlencode
 import pandas as pd
 import streamlit as st
 
-from htfa.workspace import HandoffStore
+from htfa.workspace import DatasetSnapshot, HandoffStore
 from htfa.models.univariate.common.model_library import (
     MODEL_LIBRARY_TOKEN_KEY,
     model_library_store,
 )
 from htfa.models.univariate.common.ui.model_library import render_model_library_sidebar
 from htfa.models.univariate.sarimax.ui.data_input import (
-    SARIMAXDataSnapshot,
     SARIMAX_DATA_OVERVIEW_WIDGET_KEYS,
     export_sarimax_data_snapshot,
     mark_sarimax_handoff_restore,
@@ -58,7 +57,7 @@ SARIMAX_HANDOFF_WIDGET_KEYS = tuple(
 class SARIMAXHandoff:
     """独立动态回归模型页所需的输入与结果上下文快照。"""
 
-    dataset: SARIMAXDataSnapshot
+    dataset: DatasetSnapshot
     widget_state: dict[str, object]
     result_state: dict[str, object]
     model_library_token: str

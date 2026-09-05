@@ -7,16 +7,22 @@ from .dataset import (
     suggest_time_column,
 )
 from .file_parsing import (
+    ECONOMIC_WORKBOOK_SHEET,
     FileParseError,
+    TabularFileSnapshot,
     build_dataframe_from_rows,
     list_excel_sheets,
     load_dataframe,
     read_raw_rows,
 )
+from .source import TabularInputSource
 
 __all__ = [
     "FileParseError",
+    "ECONOMIC_WORKBOOK_SHEET",
     "OverviewDataset",
+    "TabularFileSnapshot",
+    "TabularInputSource",
     "build_dataframe_from_rows",
     "build_overview_dataset",
     "list_excel_sheets",

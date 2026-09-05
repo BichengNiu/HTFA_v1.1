@@ -1,11 +1,10 @@
 import io
 from types import SimpleNamespace
-import warnings
 
 import pandas as pd
 
 from htfa.data.file_content import file_fingerprint
-from htfa.data.tabular.file_parsing import load_dataframe
+from htfa.data.tabular import load_dataframe
 from htfa.app.state.shared_dataset import (
     clear_shared_dataset,
     export_shared_dataset_snapshot,
@@ -42,24 +41,67 @@ def test_shared_csv_loader_parses_first_column_as_time():
     assert result["value"].tolist() == [1.5, 2.5]
 
 
-def test_shared_xlsx_loader_keeps_indicator_names_without_date_warning():
+def _economic_workbook_bytes() -> bytes:
+    """构造最小合法经济工作簿，供共享协议边界测试使用。"""
     content = io.BytesIO()
     source = pd.DataFrame(
         {
-            "指标名称": ["阿联酋:GDP:现价", "阿联酋:GDP:不变价"],
-            "类型": ["金额", "金额"],
+            "指标名称": ["阿联酋:GDP:现价"],
+            "类型": ["金额"],
+            "行业": ["宏观"],
+            "数据来源": ["测试来源"],
+            "预测变量": ["是"],
         }
+    )
+    data = pd.DataFrame(
+        [
+            ["来源", "测试来源"],
+            ["指标名称", "阿联酋:GDP:现价"],
+            ["频率", "月"],
+            ["单位", "亿元"],
+            ["来源", "测试来源"],
+            ["更新时间", "2026-09-05"],
+            ["2026-08-31", 123.0],
+        ]
     )
     with pd.ExcelWriter(content, engine="openpyxl") as writer:
         source.to_excel(writer, sheet_name="指标字典", index=False)
-    uploaded = UploadedBytes(content.getvalue(), "阿联酋.xlsx")
+        data.to_excel(writer, sheet_name="月度_测试", index=False, header=False)
+    return content.getvalue()
 
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", UserWarning)
-        result = load_dataframe(uploaded.getvalue(), uploaded.name)
 
-    assert result["指标名称"].tolist() == source["指标名称"].tolist()
-    assert not pd.api.types.is_datetime64_any_dtype(result["指标名称"])
+def test_shared_xlsx_loader_rejects_economic_workbook_in_tabular_protocol(
+    monkeypatch,
+):
+    state: dict = {}
+    _use_session_state(monkeypatch, state)
+    uploader = _Uploader(
+        UploadedBytes(_economic_workbook_bytes(), "阿联酋.xlsx")
+    )
+
+    result = render_shared_dataset_uploader(uploader, protocol="tabular")
+
+    assert result["has_data"] is False
+    assert uploader.errors
+    assert "经济工作簿" in uploader.errors[-1]
+
+
+def test_shared_xlsx_loader_accepts_economic_workbook_in_explicit_protocol(
+    monkeypatch,
+):
+    state: dict = {}
+    _use_session_state(monkeypatch, state)
+    uploader = _Uploader(
+        UploadedBytes(_economic_workbook_bytes(), "阿联酋.xlsx")
+    )
+
+    result = render_shared_dataset_uploader(uploader, protocol="economic")
+
+    assert result["has_data"] is True
+    assert uploader.errors == []
+    assert shared_dataset.get_shared_dataset_protocol() == "economic"
+    assert get_shared_dataset_data() is None
+    assert export_shared_dataset_snapshot() is None
 
 
 def test_shared_file_fingerprint_changes_when_content_changes():

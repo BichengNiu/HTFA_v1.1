@@ -1,5 +1,7 @@
 # SARIMAX Auto-Order Layout Implementation Plan
 
+> **Archive:** 历史计划，仅保留迁移前路径记录；其中路径不可作为运行入口。
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Make the SARIMAX automatic-order controls compact with six range sliders on the left, model settings on the right, and post-fit multi-criterion model selection.

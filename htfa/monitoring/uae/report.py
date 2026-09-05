@@ -6,12 +6,12 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from htfa.monitoring.uae.government_finance import (
+from htfa.monitoring.uae.government_finance.renderer import (
     render_government_finance_section,
 )
-from htfa.monitoring.uae.oil import render_oil_fiscal_panel
-from htfa.monitoring.uae.real_estate import render_real_estate_section
-from htfa.monitoring.uae.transport import render_transport_section
+from htfa.monitoring.uae.oil.renderer import render_oil_fiscal_panel
+from htfa.monitoring.uae.real_estate.renderer import render_real_estate_section
+from htfa.monitoring.uae.transport.renderer import render_transport_section
 
 
 TopicStatus = Literal["ok", "empty", "failed"]

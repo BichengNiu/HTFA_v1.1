@@ -1,5 +1,7 @@
 # HTFA System Session Workspace Cache Implementation Plan
 
+> **Archive:** 历史计划，仅保留迁移前路径记录；其中路径不可作为运行入口。
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 在当前 Streamlit 会话存活期间，统一保留 HTFA 各分析模块的上传文件和有效输入参数，并以数据指纹和参数签名精确控制派生结果失效。

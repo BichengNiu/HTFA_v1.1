@@ -15,24 +15,25 @@ import pandas as pd
 import streamlit as st
 
 from htfa.data.file_content import file_fingerprint
-from htfa.data.tabular.file_parsing import (
+from htfa.data.tabular import (
     FileParseError,
+    TabularFileSnapshot,
+    TabularInputSource,
     build_dataframe_from_rows,
-    list_excel_sheets,
-    read_raw_rows,
 )
 
 SUPPORTED_FILE_TYPES = ["csv", "xlsx", "xls"]
+_TABULAR_INPUT_SOURCE = TabularInputSource()
 
 
 class DataSource(Protocol):
-    """数据源接口：渲染上传控件并暴露当前数据集信息。"""
+    """数据源协议：渲染控件并暴露一次读取状态快照。"""
 
     def render_uploader(self, st_obj, *, compact: bool = False) -> dict:
         """渲染上传控件；返回 {"has_data": bool, ...}。"""
 
-    def current_data(self) -> pd.DataFrame | None:
-        """当前会话的数据框；未上传时为 None。"""
+    def snapshot(self) -> TabularFileSnapshot | None:
+        """返回当前文件、工作表和原始行的纯读取快照。"""
 
     def load_data(
         self,
@@ -42,21 +43,6 @@ class DataSource(Protocol):
         time_column: str | None = None,
     ) -> pd.DataFrame | None:
         """按变量名行和数据开始行从当前原始文件构建数据。"""
-
-    def row_count(self) -> int:
-        """返回当前工作表的可选原始行数。"""
-
-    def current_fingerprint(self) -> str:
-        """当前文件内容指纹（用于缓存失效）。"""
-
-    def current_name(self) -> str:
-        """当前文件名。"""
-
-    def sheets(self) -> list[str] | None:
-        """Excel 工作表名列表（非 Excel 为 None）。"""
-
-    def current_sheet(self) -> str | None:
-        """当前选中的工作表名。"""
 
     def select_sheet(self, sheet: str) -> None:
         """切换工作表并重载数据。"""
@@ -92,8 +78,26 @@ class BuiltinDataSource:
         st.session_state[self._key("file")] = restored_file
         st.session_state[self._key("restored_sheet")] = sheet
         st.session_state[self._key("sheet")] = sheet
-        for field in ("fingerprint", "sheets", "raw_rows", "data"):
+        for field in (
+            "fingerprint", "sheets", "raw_rows", "data", "parse_error"
+        ):
             st.session_state.pop(self._key(field), None)
+        st.session_state[self._key("file_name")] = restored_file.name
+        try:
+            snapshot = _TABULAR_INPUT_SOURCE.read_source(
+                content, restored_file.name, sheet_name=sheet
+            )
+        except FileParseError as exc:
+            snapshot = TabularFileSnapshot(
+                file_name=restored_file.name,
+                fingerprint=file_fingerprint(content),
+                sheets=None,
+                sheet=None,
+                raw_rows=[],
+                frame=None,
+                parse_error=str(exc),
+            )
+        self._store_snapshot(snapshot)
 
     def render_uploader(self, st_obj, *, compact: bool = False) -> dict:
         if not compact:
@@ -121,6 +125,7 @@ class BuiltinDataSource:
                 "fingerprint",
                 "sheets",
                 "sheet",
+                "parse_error",
             ):
                 st.session_state.pop(self._key(name), None)
             return {"has_data": False}
@@ -129,33 +134,31 @@ class BuiltinDataSource:
         fingerprint = file_fingerprint(content)
         stored_fingerprint = st.session_state.get(self._key("fingerprint"), "")
         if fingerprint != stored_fingerprint:
-            sheets = None
-            sheet = None
-            raw_rows = []
-            data = None
             read_error = None
+            raw_rows = []
             try:
-                sheets = list_excel_sheets(content, uploaded_file.name)
-                restored_sheet = st.session_state.get(self._key("restored_sheet"))
-                sheet = (
-                    restored_sheet
-                    if restored_sheet in (sheets or [])
-                    else (sheets[0] if sheets else None)
+                snapshot = _TABULAR_INPUT_SOURCE.read_source(
+                    content,
+                    uploaded_file.name,
+                    sheet_name=st.session_state.get(self._key("restored_sheet")),
                 )
-                raw_rows = read_raw_rows(content, uploaded_file.name, sheet_name=sheet)
-                data = build_dataframe_from_rows(raw_rows)
             except FileParseError as exc:
+                snapshot = None
                 read_error = str(exc)
+            else:
+                read_error = snapshot.parse_error
+                raw_rows = snapshot.raw_rows
             st.session_state[self._key("file")] = uploaded_file
             st.session_state[self._key("file_name")] = uploaded_file.name
             st.session_state[self._key("fingerprint")] = fingerprint
-            st.session_state[self._key("sheets")] = sheets
-            st.session_state[self._key("sheet")] = sheet
-            st.session_state[self._key("raw_rows")] = raw_rows
-            if data is None:
+            if snapshot is None:
+                st.session_state[self._key("sheets")] = None
+                st.session_state[self._key("sheet")] = None
+                st.session_state[self._key("raw_rows")] = raw_rows
+                st.session_state[self._key("parse_error")] = read_error
                 st.session_state.pop(self._key("data"), None)
             else:
-                st.session_state[self._key("data")] = data
+                self._store_snapshot(snapshot)
             if read_error is not None:
                 st_obj.error(f"数据文件读取失败：{read_error}")
                 return {
@@ -164,14 +167,44 @@ class BuiltinDataSource:
                     "error": read_error,
                 }
 
+        snapshot = self.snapshot()
+        if snapshot is None:
+            return {"has_data": False, "file_name": uploaded_file.name}
+        if snapshot.parse_error is not None:
+            st_obj.error(f"数据文件读取失败：{snapshot.parse_error}")
+            return {
+                "has_data": bool(snapshot.raw_rows),
+                "file_name": uploaded_file.name,
+                "error": snapshot.parse_error,
+            }
+
         if not compact:
-            data = self.current_data()
+            data = snapshot.frame
             if data is not None:
                 st_obj.caption(f"{data.shape[0]:,} 行 × {data.shape[1]:,} 列")
         return {"has_data": True, "file_name": uploaded_file.name}
 
-    def current_data(self) -> pd.DataFrame | None:
-        return st.session_state.get(self._key("data"))
+    def snapshot(self) -> TabularFileSnapshot | None:
+        fingerprint = st.session_state.get(self._key("fingerprint"), "")
+        if not fingerprint:
+            return None
+        return TabularFileSnapshot(
+            file_name=st.session_state.get(self._key("file_name"), ""),
+            fingerprint=fingerprint,
+            sheets=st.session_state.get(self._key("sheets")),
+            sheet=st.session_state.get(self._key("sheet")),
+            raw_rows=st.session_state.get(self._key("raw_rows"), []),
+            frame=st.session_state.get(self._key("data")),
+            parse_error=st.session_state.get(self._key("parse_error")),
+        )
+
+    def _store_snapshot(self, snapshot: TabularFileSnapshot) -> None:
+        st.session_state[self._key("fingerprint")] = snapshot.fingerprint
+        st.session_state[self._key("sheets")] = snapshot.sheets
+        st.session_state[self._key("sheet")] = snapshot.sheet
+        st.session_state[self._key("raw_rows")] = snapshot.raw_rows
+        st.session_state[self._key("data")] = snapshot.frame
+        st.session_state[self._key("parse_error")] = snapshot.parse_error
 
     def load_data(
         self,
@@ -181,45 +214,22 @@ class BuiltinDataSource:
         time_column: str | None = None,
     ) -> pd.DataFrame | None:
         """按变量名行和数据开始行从当前原始文件构建数据。"""
-        uploaded_file = st.session_state.get(self._key("file"))
-        if uploaded_file is None:
+        snapshot = self.snapshot()
+        if snapshot is None:
             return None
-        rows = st.session_state.get(self._key("raw_rows"))
-        if rows is None:
-            rows = read_raw_rows(
-                uploaded_file.getvalue(),
-                uploaded_file.name,
-                sheet_name=self.current_sheet(),
-            )
-            st.session_state[self._key("raw_rows")] = rows
         return build_dataframe_from_rows(
-            rows,
+            snapshot.raw_rows,
             variable_name_row=variable_name_row,
             data_start_row=data_start_row,
             time_column=time_column,
         )
-
-    def row_count(self) -> int:
-        return len(st.session_state.get(self._key("raw_rows"), []))
-
-    def current_fingerprint(self) -> str:
-        return st.session_state.get(self._key("fingerprint"), "")
-
-    def current_name(self) -> str:
-        return st.session_state.get(self._key("file_name"), "")
-
-    def sheets(self) -> list[str] | None:
-        return st.session_state.get(self._key("sheets"))
-
-    def current_sheet(self) -> str | None:
-        return st.session_state.get(self._key("sheet"))
 
     def select_sheet(self, sheet: str) -> None:
         uploaded_file = st.session_state.get(self._key("file"))
         if uploaded_file is None:
             return
         try:
-            raw_rows = read_raw_rows(
+            snapshot = _TABULAR_INPUT_SOURCE.read_source(
                 uploaded_file.getvalue(), uploaded_file.name, sheet_name=sheet
             )
         except FileParseError as exc:
@@ -228,16 +238,9 @@ class BuiltinDataSource:
             st.session_state[self._key("raw_rows")] = []
             st.session_state[self._key("sheet")] = sheet
             return
-        try:
-            data = build_dataframe_from_rows(raw_rows)
-        except FileParseError:
-            st.session_state.pop(self._key("data"), None)
-            st.session_state[self._key("raw_rows")] = raw_rows
-            st.session_state[self._key("sheet")] = sheet
-            return
-        st.session_state[self._key("data")] = data
-        st.session_state[self._key("raw_rows")] = raw_rows
-        st.session_state[self._key("sheet")] = sheet
+        self._store_snapshot(snapshot)
+        if snapshot.parse_error is not None:
+            st.error(f"工作表读取失败：{snapshot.parse_error}")
 
 
 __all__ = [

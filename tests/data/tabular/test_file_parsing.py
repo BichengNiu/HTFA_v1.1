@@ -7,6 +7,7 @@ import io
 import pandas as pd
 import pytest
 
+from htfa.data.tabular import TabularInputSource
 from htfa.data.tabular.file_parsing import (
     FileParseError,
     build_dataframe_from_rows,
@@ -15,6 +16,9 @@ from htfa.data.tabular.file_parsing import (
     read_raw_rows,
 )
 from htfa.data.file_content import file_fingerprint
+
+
+TABULAR_SOURCE = TabularInputSource()
 
 
 def test_file_fingerprint_depends_only_on_content():
@@ -156,3 +160,67 @@ def test_file_parser_does_not_require_file_objects():
 
     with pytest.raises(TypeError):
         load_dataframe(content, "data.csv")
+
+
+def _ordinary_workbook() -> io.BytesIO:
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2026-01-01", "2026-02-01"]),
+                "value": [0, 2],
+            }
+        ).to_excel(writer, index=False, sheet_name="月度")
+        pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2026-01-01"]),
+                "other": [3],
+            }
+        ).to_excel(writer, index=False, sheet_name="补充")
+    output.seek(0)
+    return output
+
+
+def _economic_workbook_marker() -> io.BytesIO:
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        pd.DataFrame(
+            {
+                "指标名称": ["指标A"],
+                "类型": ["指数"],
+                "行业": ["金融"],
+                "数据来源": ["Wind"],
+                "预测变量": ["是"],
+            }
+        ).to_excel(writer, index=False, sheet_name="指标字典")
+    output.seek(0)
+    return output
+
+
+def test_ordinary_excel_protocol_keeps_zero_and_reads_each_nonempty_sheet():
+    tables = TABULAR_SOURCE.read(_ordinary_workbook(), "普通表格.xlsx")
+
+    assert list(tables) == ["月度", "补充"]
+    assert tables["月度"]["value"].tolist() == [0, 2]
+
+
+def test_ordinary_protocol_rejects_economic_workbook_without_fallback():
+    with pytest.raises(FileParseError, match="经济工作簿输入协议"):
+        TABULAR_SOURCE.read(_economic_workbook_marker(), "经济工作簿.xlsx")
+
+    with pytest.raises(FileParseError, match="经济工作簿输入协议"):
+        TABULAR_SOURCE.read_source(
+            _economic_workbook_marker(), "经济工作簿.xlsx"
+        )
+
+
+def test_tabular_source_retains_raw_rows_when_default_layout_needs_row_selection():
+    source = TABULAR_SOURCE.read_source(
+        "说明\n来源：测试\ndate,value\n2026-01-01,1\n".encode(),
+        "带前导行.csv",
+    )
+
+    assert source.frame is None
+    assert source.parse_error is not None
+    assert source.raw_rows[2] == ["date", "value"]
+    assert source.row_count == 4

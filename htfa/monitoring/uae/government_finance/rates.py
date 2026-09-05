@@ -22,10 +22,9 @@ from htfa.monitoring.uae.plot_helpers import (
     normalize_ts_axis,
     source_note,
 )
-from htfa.monitoring.uae.sheet_reader import (
+from htfa.data.economic_workbook import (
+    EconomicWorkbookReader,
     SheetSeriesMetadata,
-    open_uae_workbook,
-    parse_target_sheet,
 )
 
 
@@ -56,6 +55,10 @@ RATES_SERIES = (
 )
 
 ALLOWED_FREQUENCIES = {"日", "日度", "月", "月度"}
+_WORKBOOK_READER = EconomicWorkbookReader(
+    "uae_monitoring",
+    "monitoring.uae",
+)
 
 
 @dataclass(frozen=True)
@@ -74,11 +77,11 @@ def load_rates_data(
 ) -> RatesData:
     """读 ``日度_Wind`` 的四条利率并聚合成月度均值。"""
 
-    with open_uae_workbook(file_input, file_name=file_name) as (
+    with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
         excel_file,
         source_name,
     ):
-        frame, metadata = parse_target_sheet(
+        frame, metadata = _WORKBOOK_READER.read_target_sheet(
             excel_file,
             sheet_name=RATES_SHEET,
             targets=RATES_INDICATORS,

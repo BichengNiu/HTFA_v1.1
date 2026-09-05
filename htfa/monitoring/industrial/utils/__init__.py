@@ -11,7 +11,6 @@ from htfa.monitoring.industrial.utils.weight_calculator import get_weight_for_ye
 from htfa.monitoring.industrial.utils.data_converter import convert_cumulative_to_yoy, convert_margin_to_yoy_diff, convert_cumulative_to_current
 from htfa.monitoring.industrial.utils.data_loader import (
     load_macro_data,
-    load_weights_data,
     load_overall_industrial_data,
     load_enterprise_profit_data,
     load_industry_profit_data,
@@ -36,7 +35,6 @@ __all__ = [
     'convert_cumulative_to_current',
     # 数据加载
     'load_macro_data',
-    'load_weights_data',
     'load_overall_industrial_data',
     'load_enterprise_profit_data',
     'load_industry_profit_data',

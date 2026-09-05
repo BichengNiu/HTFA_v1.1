@@ -6,7 +6,6 @@
 
 import pandas as pd
 import math
-import io
 from typing import Dict, Optional, Tuple
 from datetime import date
 import logging
@@ -15,6 +14,13 @@ logger = logging.getLogger(__name__)
 
 # 频率周期映射（从统一常量导入）
 from htfa.models.dfm.prep.modules.config_constants import FREQ_DAYS_MAP
+from htfa.data.economic_workbook import EconomicWorkbookReader
+
+
+_WORKBOOK_READER = EconomicWorkbookReader(
+    "dfm_stats",
+    "models.dfm.prep.stats",
+)
 
 
 class StatsService:
@@ -34,18 +40,16 @@ class StatsService:
             (开始日期, 结束日期, 变量数, 频率统计字典)
         """
         try:
-            excel_file = io.BytesIO(file_content)
             all_dates_found = []
             all_variables = set()
 
-            xl_file = pd.ExcelFile(excel_file)
-            sheet_names = xl_file.sheet_names
+            tables = _WORKBOOK_READER.read_tables(file_content)
+            sheet_names = tuple(tables)
 
             # 读取指标字典获取频率映射
             var_frequency_map = {}
             if '指标字典' in sheet_names:
-                excel_file.seek(0)
-                df_mapping = pd.read_excel(excel_file, sheet_name='指标字典')
+                df_mapping = tables['指标字典']
                 df_mapping.columns = df_mapping.columns.str.strip()
                 if '指标名称' in df_mapping.columns and '频率' in df_mapping.columns:
                     for _, row in df_mapping.iterrows():
@@ -60,8 +64,7 @@ class StatsService:
                     continue
 
                 try:
-                    excel_file.seek(0)
-                    df_raw = pd.read_excel(excel_file, sheet_name=sheet_name)
+                    df_raw = tables[sheet_name]
 
                     if len(df_raw) < 5:
                         continue
@@ -152,15 +155,13 @@ class StatsService:
             DataFrame: [变量名, 频率, 缺失值占比, 开始日期, 结束日期]
         """
         try:
-            excel_file = io.BytesIO(file_content)
-            xl_file = pd.ExcelFile(excel_file)
-            sheet_names = xl_file.sheet_names
+            tables = _WORKBOOK_READER.read_tables(file_content)
+            sheet_names = tuple(tables)
 
             # 读取频率映射
             var_frequency_map = {}
             if '指标字典' in sheet_names:
-                excel_file.seek(0)
-                df_mapping = pd.read_excel(excel_file, sheet_name='指标字典')
+                df_mapping = tables['指标字典']
                 df_mapping.columns = df_mapping.columns.str.strip()
                 if '指标名称' in df_mapping.columns and '频率' in df_mapping.columns:
                     for _, row in df_mapping.iterrows():
@@ -176,8 +177,7 @@ class StatsService:
                     continue
 
                 try:
-                    excel_file.seek(0)
-                    df = pd.read_excel(excel_file, sheet_name=sheet_name)
+                    df = tables[sheet_name]
                     if len(df) < 2 or len(df.columns) < 2:
                         continue
 

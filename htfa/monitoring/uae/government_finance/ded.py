@@ -25,14 +25,14 @@ from htfa.monitoring.uae.plot_helpers import (
     normalize_ts_axis,
     source_note,
 )
-from htfa.monitoring.uae.sheet_reader import (
+from htfa.data.economic_workbook import (
+    EconomicWorkbookReader,
     METADATA_LABELS,
     SheetSeriesMetadata,
     format_updated_at,
-    open_uae_workbook,
     optional_text,
+    normalize_indicator_name,
 )
-from htfa.data.economic_workbook.core.workbook_parser import normalize_indicator_name
 from Ts.TsPlots.style import GRAY
 
 
@@ -48,6 +48,10 @@ DED_INDICATORS: tuple[tuple[str, str], ...] = (
     (LICENCES_DISPLAY, LICENCES_INDICATOR),
 )
 ALLOWED_UNITS = {"家", "张"}
+_WORKBOOK_READER = EconomicWorkbookReader(
+    "uae_monitoring",
+    "monitoring.uae",
+)
 
 
 @dataclass(frozen=True)
@@ -66,7 +70,7 @@ def load_ded_data(
 ) -> DedData:
     """读取 ``月度_DED`` 的有发证活动企业数与当月新发执照数两列。"""
 
-    with open_uae_workbook(file_input, file_name=file_name) as (
+    with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
         excel_file,
         source_name,
     ):
@@ -93,7 +97,7 @@ def _parse_ded_sheet(
     if DED_SHEET not in excel_file.sheet_names:
         raise ValueError(f"工作簿缺少“{DED_SHEET}”sheet")
 
-    raw = pd.read_excel(excel_file, sheet_name=DED_SHEET, header=None)
+    raw = _WORKBOOK_READER.read_raw_sheet(excel_file, sheet_name=DED_SHEET)
     if raw.shape[0] < 7 or raw.shape[1] < 3:
         raise ValueError(f"sheet“{DED_SHEET}”不符合前六行元数据协议")
     for row_index, expected in METADATA_LABELS.items():

@@ -1,5 +1,7 @@
 # RDL Intervention Analysis Implementation Plan
 
+> **Archive:** 历史计划，仅保留迁移前路径记录；其中路径不可作为运行入口。
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 在 HTFA 的 RDL 页面增加历史样本干预分析。用户勾选“干预分析”后，可在模型观测日期内选择 pulse、step 或 temporary 冲击，系统生成二元干预变量 I，并让 I 与普通外生变量 X 一样进入 RDL；拟合后展示 I 的路径、RDL 动态响应/稳态增益，以及目标变量在有无干预路径下的对比。

@@ -1,5 +1,7 @@
 # SARIMAX Data Preprocessing Implementation Plan
 
+> **Archive:** 历史计划，仅保留迁移前路径记录；其中路径不可作为运行入口。
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 在动态回归模型的训练时间范围右侧增加可多选的数据预处理参数，用于把 0 或负值按用户选择转换为缺失值，并使该选择真正影响拟合输入和结果缓存。

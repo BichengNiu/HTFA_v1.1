@@ -89,6 +89,41 @@ def _sample_csv() -> tuple[str, bytes, str]:
     )
 
 
+def _multi_sheet_model_workbook() -> tuple[str, bytes, str]:
+    """生成普通多工作表输入，验证工作表切换只暴露当前表变量。"""
+    monthly_target = "中国:出口金额:阿联酋:当月值"
+
+    def rows(target: str, auxiliary: str) -> list[list[object]]:
+        return [
+            ["文件说明", None, None],
+            ["指标名称", target, auxiliary],
+            ["频率", "月度", "月度"],
+            ["单位", "元", "元"],
+            ["来源", "Wind", "Wind"],
+            ["更新时间", "2026-09-05", "2026-09-05"],
+            ["2026-01-01", 10, 1],
+            ["2026-02-01", 11, 2],
+            ["2026-03-01", 12, 3],
+            ["2026-04-01", 13, 4],
+            ["2026-05-01", 14, 5],
+            ["2026-06-01", 15, 6],
+        ]
+
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        pd.DataFrame(rows(monthly_target, "月度辅助")).to_excel(
+            writer, index=False, header=False, sheet_name="月度_Wind"
+        )
+        pd.DataFrame(rows("中国:出口金额:阿联酋:日均值", "日度辅助")).to_excel(
+            writer, index=False, header=False, sheet_name="日度_Wind"
+        )
+    return (
+        "model-input.xlsx",
+        output.getvalue(),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
 def _preamble_csv() -> tuple[str, bytes, str]:
     """生成前两行是说明、第三行是变量名的 CSV。"""
     content = (
@@ -1711,22 +1746,16 @@ def test_preprocessing_change_clears_model_input_until_reprocessed(monkeypatch):
     assert _by_key(app.selectbox, "sarimax_target_select").options == ["value"]
 
 
-def test_uae_workbook_target_variables_follow_selected_sheet(monkeypatch):
-    """真实 UAE 工作簿中，日度页不能出现月度目标变量。"""
+def test_model_workbook_target_variables_follow_selected_sheet(monkeypatch):
+    """普通多工作表输入中，切换工作表只暴露当前表变量。"""
     from streamlit.testing.v1 import AppTest
 
     monkeypatch.setenv("HTFA_DEBUG_MODE", "true")
-    workbook = PROJECT_ROOT / "data" / "UAE" / "阿联酋.xlsx"
-    assert workbook.exists()
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=90).run()
     _navigate_to_sarimax(app)
     _by_key(
         app.file_uploader, "model_analysis.sarimax.upload.uploader"
-    ).upload(
-        workbook.name,
-        workbook.read_bytes(),
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
+    ).upload(*_multi_sheet_model_workbook())
     app.run()
     assert not app.exception
 

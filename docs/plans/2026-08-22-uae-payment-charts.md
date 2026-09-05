@@ -1,5 +1,7 @@
 # UAE Enterprise Activity Payment Charts Implementation Plan
 
+> **Archive:** 历史计划，仅保留迁移前路径记录；其中路径不可作为运行入口。
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 在 HTFA 的“企业活动”部分，在现有 DED 与 PMI 图表下方增加 FTS 客户转账和支票清算两张双轴当月值图。

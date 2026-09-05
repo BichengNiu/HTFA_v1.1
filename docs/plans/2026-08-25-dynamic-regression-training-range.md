@@ -1,5 +1,7 @@
 # Dynamic Regression Training Range Implementation Plan
 
+> **Archive:** 历史计划，仅保留迁移前路径记录；其中路径不可作为运行入口。
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Add an inclusive date-range picker beside the target and exogenous-variable selectors, so Dynamic Regression fits only the selected dated observations.

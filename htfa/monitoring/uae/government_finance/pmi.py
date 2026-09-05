@@ -18,10 +18,9 @@ from htfa.monitoring.uae.plot_helpers import (
     normalize_ts_axis,
     source_note,
 )
-from htfa.monitoring.uae.sheet_reader import (
+from htfa.data.economic_workbook import (
+    EconomicWorkbookReader,
     SheetSeriesMetadata,
-    open_uae_workbook,
-    parse_target_sheet,
 )
 
 
@@ -31,6 +30,10 @@ PMI_INDICATOR = PMI_LABEL
 PMI_DISPLAY_NAME = "非油私营部门采购经理指数（PMI）"
 
 DISPLAY_MONTHS = 37
+_WORKBOOK_READER = EconomicWorkbookReader(
+    "uae_monitoring",
+    "monitoring.uae",
+)
 
 
 @dataclass(frozen=True)
@@ -49,11 +52,11 @@ def load_pmi_data(
 ) -> PmiData:
     """只读取 ``月度_LSEG`` 的单一 PMI 指标并校验元数据。"""
 
-    with open_uae_workbook(file_input, file_name=file_name) as (
+    with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
         excel_file,
         source_name,
     ):
-        values, metadata = parse_target_sheet(
+        values, metadata = _WORKBOOK_READER.read_target_sheet(
             excel_file,
             sheet_name=PMI_SHEET,
             targets=((PMI_LABEL, PMI_INDICATOR),),

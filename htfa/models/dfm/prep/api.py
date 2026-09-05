@@ -20,6 +20,7 @@ import logging
 import threading
 from datetime import datetime
 
+from htfa.data.economic_workbook import EconomicWorkbookReader
 from htfa.models.dfm.prep.processor import DataPreparationProcessor
 from htfa.models.dfm.utils.parallel_config import ParallelConfig
 from htfa.models.dfm.utils.text_utils import normalize_text
@@ -30,6 +31,10 @@ logger = logging.getLogger(__name__)
 # 线程安全的缓存机制
 _MAPPING_CACHE = {}
 _CACHE_LOCK = threading.Lock()
+_WORKBOOK_READER = EconomicWorkbookReader(
+    "dfm",
+    "models.dfm.prep",
+)
 
 def load_mappings_once(
     excel_path: Union[str, Any],
@@ -83,9 +88,15 @@ def load_mappings_once(
                         'mappings': _MAPPING_CACHE[cache_key]
                     }
 
-        # 加载映射表
-        logger.info("  从Excel文件加载映射表...")
-        df = pd.read_excel(excel_input, sheet_name=reference_sheet_name)
+        # 通过统一经济工作簿读取器加载映射表
+        logger.info("  从经济工作簿读取器加载映射表...")
+        tables = _WORKBOOK_READER.read_tables(excel_input)
+        try:
+            df = tables[reference_sheet_name]
+        except KeyError as exc:
+            raise ValueError(
+                f"工作簿缺少映射表：{reference_sheet_name}"
+            ) from exc
 
         # 标准化列名
         df.columns = df.columns.str.strip()
@@ -246,6 +257,7 @@ def prepare_dfm_data_simple(
 
         # 步骤1: 处理文件输入
         excel_input = _handle_file_input(uploaded_file)
+        workbook_tables = _WORKBOOK_READER.read_tables(excel_input)
 
         # 步骤1: 加载映射表（带缓存）
         mapping_result = load_mappings_once(
@@ -269,7 +281,7 @@ def prepare_dfm_data_simple(
         logger.info(f"负值处理: {negative_handling}")
         logger.info(f"发布日期校准: {'启用' if enable_publication_calibration else '禁用'}")
         processor = DataPreparationProcessor(
-            excel_path=excel_input,
+            workbook_tables=workbook_tables,
             var_industry_map=var_industry_map,
             var_frequency_map=var_frequency_map,
             target_freq=target_freq,

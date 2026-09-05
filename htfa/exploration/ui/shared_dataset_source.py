@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from htfa.data.tabular.file_parsing import load_dataframe
+from htfa.data.tabular import TabularFileSnapshot, build_dataframe_from_rows
 from htfa.app.state import shared_dataset
 
 
@@ -16,18 +16,18 @@ class SharedDatasetSource:
 
     def render_uploader(self, st_obj, *, compact: bool = False) -> dict:
         if not self.uploader_enabled:
-            fingerprint = self.current_fingerprint()
+            snapshot = self.snapshot()
             return {
-                "has_data": bool(fingerprint),
-                "file_name": self.current_name(),
+                "has_data": snapshot is not None,
+                "file_name": snapshot.file_name if snapshot else "",
             }
         return shared_dataset.render_shared_dataset_uploader(
             st_obj,
             compact=compact,
         )
 
-    def current_data(self) -> pd.DataFrame | None:
-        return shared_dataset.get_shared_dataset_data()
+    def snapshot(self) -> TabularFileSnapshot | None:
+        return shared_dataset.get_shared_dataset_snapshot()
 
     def load_data(
         self,
@@ -37,33 +37,15 @@ class SharedDatasetSource:
         time_column: str | None = None,
     ) -> pd.DataFrame | None:
         """Load the selected worksheet using the current overview settings."""
-        uploaded_file = shared_dataset.get_shared_dataset_file()
-        if uploaded_file is None:
+        snapshot = self.snapshot()
+        if snapshot is None:
             return None
-        return load_dataframe(
-            uploaded_file.getvalue(),
-            uploaded_file.name,
-            sheet_name=self.current_sheet(),
+        return build_dataframe_from_rows(
+            snapshot.raw_rows,
             variable_name_row=variable_name_row,
             data_start_row=data_start_row,
             time_column=time_column,
-            raw_rows=shared_dataset.get_shared_dataset_raw_rows(),
         )
-
-    def row_count(self) -> int:
-        return shared_dataset.get_shared_dataset_row_count()
-
-    def current_fingerprint(self) -> str:
-        return shared_dataset.get_shared_dataset_fingerprint()
-
-    def current_name(self) -> str:
-        return shared_dataset.get_shared_dataset_name()
-
-    def sheets(self) -> list[str] | None:
-        return shared_dataset.get_shared_dataset_sheets()
-
-    def current_sheet(self) -> str | None:
-        return shared_dataset.get_shared_dataset_sheet()
 
     def select_sheet(self, sheet: str) -> None:
         shared_dataset.select_shared_dataset_sheet(sheet)

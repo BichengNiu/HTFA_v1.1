@@ -1,5 +1,7 @@
 # 单变量预测评估双 Tab Implementation Plan
 
+> **Archive:** 历史计划，仅保留迁移前路径记录；其中路径不可作为运行入口。
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 将单变量模型预测评估改为“训练期评估”和“样本外评估”两个 Tab，并在每个 Tab 内同时支持完整窗口指标与可选 H 期滚动结果。

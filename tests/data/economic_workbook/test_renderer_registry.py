@@ -2,11 +2,13 @@ from pathlib import Path
 
 import pytest
 
+import htfa.data as data
+import htfa.data.economic_workbook as economic_workbook
 from htfa.data.economic_workbook.modules import (
     ECONOMIC_WORKBOOK_MODULES,
     create_economic_workbook_renderer,
 )
-from htfa.data.economic_workbook.shared.loader import EconomicWorkbookLoader
+from htfa.data.economic_workbook.shared.loader import EconomicWorkbookReader
 from htfa.data.economic_workbook.shared.renderer import EconomicWorkbookRenderer
 
 
@@ -15,7 +17,7 @@ def test_preview_modules_are_declared_config_not_class_per_module():
 
     industrial = create_economic_workbook_renderer("industrial")
     assert isinstance(industrial, EconomicWorkbookRenderer)
-    assert isinstance(industrial.loader, EconomicWorkbookLoader)
+    assert isinstance(industrial.reader, EconomicWorkbookReader)
     assert industrial.module_title == "工业数据预览"
     assert industrial.state_namespace == "economic_workbook.industrial"
     assert industrial.default_relative_path is None
@@ -36,3 +38,10 @@ def test_preview_plugin_abstraction_layer_is_absent():
     assert not Path("htfa/data/economic_workbook/core/base_renderer.py").exists()
     assert not Path("htfa/data/economic_workbook/modules/industrial").exists()
     assert not Path("htfa/data/economic_workbook/modules/uae").exists()
+
+
+def test_reader_is_the_only_public_economic_workbook_parser_boundary():
+    assert "parse_economic_workbook" not in data.__all__
+    assert "parse_economic_workbook" not in economic_workbook.__all__
+    assert not hasattr(data, "parse_economic_workbook")
+    assert not hasattr(economic_workbook, "parse_economic_workbook")

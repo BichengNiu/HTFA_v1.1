@@ -48,6 +48,7 @@ def test_migration_decisions_are_recorded_in_domain_docs() -> None:
 def test_data_overview_has_one_internal_ownership_boundary() -> None:
     assert (PROJECT_ROOT / "htfa/data/tabular/__init__.py").is_file()
     assert (PROJECT_ROOT / "htfa/ui_shared/data_overview/__init__.py").is_file()
+    assert not (PROJECT_ROOT / "htfa/data/tabular_input.py").exists()
     assert not (PROJECT_ROOT / "components/__init__.py").exists()
     assert not list((PROJECT_ROOT / "components").rglob("*.py"))
 
@@ -138,32 +139,100 @@ def test_model_domains_have_no_cross_family_or_application_imports() -> None:
 
 
 def test_domain_core_imports_do_not_preload_streamlit() -> None:
-    core_modules = (
-        "htfa.data.file_content",
-        "htfa.data.tabular",
-        "htfa.data.tabular_input",
-        "htfa.data.economic_workbook.core.workbook_parser",
-        "htfa.monitoring.uae.contracts",
-        "htfa.monitoring.uae.services",
-        "htfa.exploration.core.data_source",
-        "htfa.exploration.analysis.stationarity",
-        "htfa.models.univariate.common.contracts",
-        "htfa.models.univariate.sarimax.core.modeling",
-        "htfa.models.dfm.train.core.models",
-        "htfa.models.dfm.decomp.core.impact_analyzer",
-    )
-    module_literal = repr(core_modules)
-    code = (
-        "import importlib, sys; "
-        f"sys.path.insert(0, {str(PROJECT_ROOT)!r}); "
-        f"[importlib.import_module(name) for name in {module_literal}]; "
-        "assert 'streamlit' not in sys.modules; "
-        "assert 'dashboard' not in sys.modules"
-    )
-    result = subprocess.run(
-        [sys.executable, "-B", "-c", code],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0, result.stderr
+    explicit_modules = {
+        "data": {
+            "htfa.data.file_content",
+            "htfa.data.tabular",
+            "htfa.data.economic_workbook.core.workbook_parser",
+        },
+        "monitoring": {
+            "htfa.monitoring.uae.contracts",
+            "htfa.monitoring.uae.services",
+            "htfa.monitoring.industrial.utils.data_loader",
+        },
+        "exploration": {"htfa.exploration.analysis.stationarity"},
+        "models/univariate": {"htfa.models.univariate.common.contracts"},
+        "models/dfm": set(),
+    }
+    for domain_name, module_names in _discovered_core_modules().items():
+        core_modules = module_names | explicit_modules[domain_name]
+        module_literal = repr(tuple(sorted(core_modules)))
+        code = (
+            "import importlib, sys\n"
+            f"sys.path.insert(0, {str(PROJECT_ROOT)!r})\n"
+            f"for name in {module_literal}:\n"
+            "    importlib.import_module(name)\n"
+            "    assert 'streamlit' not in sys.modules, name\n"
+            "    assert 'dashboard' not in sys.modules, name\n"
+            "    assert 'components' not in sys.modules, name\n"
+            "    assert 'htfa.app' not in sys.modules, name\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-B", "-c", code],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, f"{domain_name}: {result.stderr}"
+
+
+def _discovered_core_modules() -> dict[str, set[str]]:
+    roots = {
+        "data": PROJECT_ROOT / "htfa/data",
+        "monitoring": PROJECT_ROOT / "htfa/monitoring",
+        "exploration": PROJECT_ROOT / "htfa/exploration",
+        "models/univariate": PROJECT_ROOT / "htfa/models/univariate",
+        "models/dfm": PROJECT_ROOT / "htfa/models/dfm",
+    }
+    discovered: dict[str, set[str]] = {}
+    for domain_name, root in roots.items():
+        modules: set[str] = set()
+        for source_file in root.rglob("*.py"):
+            if source_file.name == "__init__.py":
+                continue
+            relative = source_file.relative_to(PROJECT_ROOT).with_suffix("")
+            parts = [part for part in relative.parts if part != "__init__"]
+            if not _is_core_source_file(source_file, parts):
+                continue
+            modules.add(".".join(parts))
+        discovered[domain_name] = modules
+    return discovered
+
+
+_NON_CORE_PATH_PARTS = {"ui", "pages", "components", "modules", "charts"}
+_NON_CORE_FILE_NAMES = {
+    "charts.py",
+    "download_utils.py",
+    "data_cache.py",
+    "downloads.py",
+    "enterprise_analysis.py",
+    "fragment_components.py",
+    "industrial_analysis.py",
+    "macro_analysis.py",
+    "plotting.py",
+    "report.py",
+    "renderer.py",
+    "standalone_data_overview.py",
+    "standalone_model.py",
+    "state_manager.py",
+    "tabs.py",
+}
+
+
+def _is_core_source_file(source_file, parts: list[str]) -> bool:
+    """识别五个领域中不应加载 Streamlit 的规则/数据核心模块。"""
+    if _NON_CORE_PATH_PARTS.intersection(parts):
+        return False
+    return source_file.name not in _NON_CORE_FILE_NAMES
+
+
+def test_industrial_data_loader_is_pure_and_cache_adapter_is_explicit() -> None:
+    loader = PROJECT_ROOT / "htfa/monitoring/industrial/utils/data_loader.py"
+    cache_adapter = PROJECT_ROOT / "htfa/monitoring/industrial/utils/data_cache.py"
+
+    loader_source = loader.read_text(encoding="utf-8")
+    cache_source = cache_adapter.read_text(encoding="utf-8")
+    assert "import streamlit" not in loader_source
+    assert "st.cache_data" not in loader_source
+    assert "import streamlit" in cache_source
+    assert "st.cache_data" in cache_source

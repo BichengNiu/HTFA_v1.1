@@ -1,5 +1,7 @@
 # RDL Intervention Time Controls Implementation Plan
 
+> **Archive:** 历史计划，仅保留迁移前路径记录；其中路径不可作为运行入口。
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Make the RDL intervention date controls visually match the three shock semantics: a point for `pulse`, a red tail for `step`, and an unchanged red interval for `temporary`, while displaying the latter as “区间冲击（interval）”.

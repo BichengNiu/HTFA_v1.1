@@ -7,10 +7,9 @@ from typing import Any
 
 import pandas as pd
 
-from htfa.monitoring.uae.sheet_reader import (
+from htfa.data.economic_workbook import (
+    EconomicWorkbookReader,
     SheetSeriesMetadata,
-    open_uae_workbook,
-    parse_target_sheet,
 )
 
 
@@ -44,6 +43,10 @@ WAM_INDICATORS: tuple[tuple[str, str, str], ...] = (
         "指数",
     ),
 )
+_WORKBOOK_READER = EconomicWorkbookReader(
+    "uae_monitoring",
+    "monitoring.uae",
+)
 
 
 @dataclass(frozen=True)
@@ -62,7 +65,7 @@ def load_war_pressure_data(
 ) -> WarPressureData:
     """读取 ``月度_WAM``，并保留武器数量中的零值观测。"""
 
-    with open_uae_workbook(file_input, file_name=file_name) as (
+    with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
         excel_file,
         source_name,
     ):
@@ -78,7 +81,7 @@ def load_war_pressure_data(
                 (display_name, indicator_name)
                 for display_name, indicator_name, _ in specifications
             )
-            frame, group_metadata = parse_target_sheet(
+            frame, group_metadata = _WORKBOOK_READER.read_target_sheet(
                 excel_file,
                 sheet_name=WAM_SHEET,
                 targets=targets,

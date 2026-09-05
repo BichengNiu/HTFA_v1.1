@@ -4,21 +4,22 @@ from importlib import import_module
 from typing import Any
 
 _EXPORTS = {
-    "DICTIONARY_SHEET_NAME": "DICTIONARY_SHEET_NAME",
-    "FREQUENCIES": "FREQUENCIES",
-    "IndicatorMetadata": "IndicatorMetadata",
-    "EconomicWorkbookSnapshot": "EconomicWorkbookSnapshot",
-    "parse_economic_workbook": "parse_economic_workbook",
+    "DICTIONARY_SHEET_NAME": (".economic_workbook", "DICTIONARY_SHEET_NAME"),
+    "FREQUENCIES": (".economic_workbook", "FREQUENCIES"),
+    "IndicatorMetadata": (".economic_workbook", "IndicatorMetadata"),
+    "EconomicWorkbookReader": (".economic_workbook", "EconomicWorkbookReader"),
+    "EconomicWorkbookSnapshot": (".economic_workbook", "EconomicWorkbookSnapshot"),
+    "TabularInputSource": (".tabular", "TabularInputSource"),
 }
 
 
 def __getattr__(name: str) -> Any:
-    """仅在调用经济工作簿入口时加载经济工作簿实现。"""
+    """按需加载数据领域的公共协议，避免顶层导入 UI 依赖。"""
     try:
-        attribute_name = _EXPORTS[name]
+        module_name, attribute_name = _EXPORTS[name]
     except KeyError as exc:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from exc
-    module = import_module(".economic_workbook", __name__)
+    module = import_module(module_name, __name__)
     value = getattr(module, attribute_name)
     globals()[name] = value
     return value
@@ -28,5 +29,6 @@ __all__ = [
     "FREQUENCIES",
     "IndicatorMetadata",
     "EconomicWorkbookSnapshot",
-    "parse_economic_workbook",
+    "EconomicWorkbookReader",
+    "TabularInputSource",
 ]

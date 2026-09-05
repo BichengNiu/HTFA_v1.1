@@ -169,8 +169,8 @@ def render_data_overview(
         dataset = None
         notify_dataset_replaced()
 
-    source_fingerprint = data_source.current_fingerprint()
-    if not source_fingerprint:
+    source_snapshot = data_source.snapshot()
+    if source_snapshot is None or not source_snapshot.fingerprint:
         clear_dataset()
         state.set("source_fingerprint", None)
         state.set("time_options_signature", None)
@@ -178,7 +178,8 @@ def render_data_overview(
         return
 
     # 工作表、变量名行、时间列和数据开始行在同一排。
-    sheets = data_source.sheets()
+    source_fingerprint = source_snapshot.fingerprint
+    sheets = source_snapshot.sheets
     has_sheet_selector = bool(sheets and len(sheets) > 1)
     selection_columns = st_obj.columns(4 if has_sheet_selector else 3)
     column_index = 0
@@ -190,7 +191,7 @@ def render_data_overview(
                 and st.session_state[sheet_key] not in sheets
             ):
                 st.session_state[sheet_key] = sheets[0]
-            current_sheet = data_source.current_sheet()
+            current_sheet = source_snapshot.sheet
             selected_sheet = selection_columns[column_index].selectbox(
                 "选择工作表",
                 options=sheets,
@@ -201,16 +202,17 @@ def render_data_overview(
                 on_change=_make_sheet_callback(data_source, sheet_key),
                 help="Excel 文件包含多个工作表时，切换后重新加载该表数据。",
             )
-            if selected_sheet != data_source.current_sheet():
+            if selected_sheet != source_snapshot.sheet:
                 data_source.select_sheet(selected_sheet)
-            if data_source.current_sheet() != selected_sheet:
+            source_snapshot = data_source.snapshot()
+            if source_snapshot is None or source_snapshot.sheet != selected_sheet:
                 clear_dataset()
                 st_obj.error("工作表状态同步失败，请重新选择工作表。")
                 return
         column_index += 1
 
-    sheet_identity = data_source.current_sheet() or "none"
-    row_count = data_source.row_count()
+    sheet_identity = source_snapshot.sheet or "none"
+    row_count = source_snapshot.row_count
     if row_count < 2:
         clear_dataset()
         st_obj.error("文件中至少需要一行变量名和一行数据。")
@@ -341,7 +343,7 @@ def render_data_overview(
         try:
             dataset = config.dataset_builder(
                 data,
-                data_source.current_name(),
+                source_snapshot.file_name,
                 fingerprint,
             )
         except Exception as exc:  # noqa: BLE001 - 用户可读的数据解析边界

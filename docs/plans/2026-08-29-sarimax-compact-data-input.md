@@ -1,5 +1,7 @@
 # SARIMAX Compact Data Input Implementation Plan
 
+> **Archive:** 历史计划，仅保留迁移前路径记录；其中路径不可作为运行入口。
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 将“动态回归模型”标签页的数据区收窄为文件上传、工作表选择、变量名行、时间列和数据开始行，然后直接进入模型训练。

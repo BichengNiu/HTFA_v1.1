@@ -21,10 +21,9 @@ from typing import Any
 
 import pandas as pd
 
-from htfa.monitoring.uae.sheet_reader import (
+from htfa.data.economic_workbook import (
+    EconomicWorkbookReader,
     SheetSeriesMetadata,
-    open_uae_workbook,
-    parse_target_sheet,
 )
 from htfa.monitoring.uae.periods import (
     anchor_last_month as _anchor_last_month,
@@ -81,6 +80,10 @@ DOTT100_PASSENGER_TARGETS: tuple[tuple[str, str], ...] = (
 DOTT100_FREIGHT_TARGETS: tuple[tuple[str, str], ...] = (
     (US_UAE_AIR_FREIGHT, US_UAE_AIR_FREIGHT),
 )
+_WORKBOOK_READER = EconomicWorkbookReader(
+    "uae_monitoring",
+    "monitoring.uae",
+)
 
 
 @dataclass(frozen=True)
@@ -111,7 +114,7 @@ def _try_parse_target_sheet(
     """读取扩展指标；缺失或协议错误只影响对应图表。"""
 
     try:
-        frame, metadata = parse_target_sheet(
+        frame, metadata = _WORKBOOK_READER.read_target_sheet(
             excel_file,
             sheet_name=sheet_name,
             targets=targets,
@@ -134,18 +137,18 @@ def load_transport_data(
     并把错误写入 ``load_errors``，由页面对对应图表显示警告。
     """
 
-    with open_uae_workbook(file_input, file_name=file_name) as (
+    with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
         excel_file,
         source_name,
     ):
-        port_volume_frame, port_volume_metadata = parse_target_sheet(
+        port_volume_frame, port_volume_metadata = _WORKBOOK_READER.read_target_sheet(
             excel_file,
             sheet_name=PORTWATCH_SHEET,
             targets=PORT_VOLUME_TARGETS,
             allowed_frequencies={"月", "月度"},
             expected_unit="吨",
         )
-        calls_frame, calls_metadata = parse_target_sheet(
+        calls_frame, calls_metadata = _WORKBOOK_READER.read_target_sheet(
             excel_file,
             sheet_name=PORTWATCH_SHEET,
             targets=CALLS_TARGETS,

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from htfa.app.state.shared_dataset import SharedDatasetSnapshot
-from htfa.workspace import FileAsset
+from htfa.workspace import DatasetSnapshot, FileAsset
 from htfa.exploration.core.overview_handoff import (
     OverviewHandoff,
     OverviewHandoffStore,
@@ -10,7 +9,7 @@ from htfa.exploration.core.overview_handoff import (
 
 def _handoff() -> OverviewHandoff:
     return OverviewHandoff(
-        dataset=SharedDatasetSnapshot(
+        dataset=DatasetSnapshot(
             asset=FileAsset(
                 slot="shared",
                 name="sample.csv",
@@ -18,6 +17,7 @@ def _handoff() -> OverviewHandoff:
                 fingerprint="file-fingerprint",
             ),
             sheet=None,
+            protocol="tabular",
         ),
         widget_state={"univariate_overview_preview_variable_name_row": 1},
     )

@@ -48,7 +48,7 @@ class DataPreparationProcessor:
 
     def __init__(
         self,
-        excel_path: str,
+        workbook_tables: Dict[str, pd.DataFrame],
         var_industry_map: Dict[str, str] = None,
         var_frequency_map: Dict[str, str] = None,
         target_freq: str = 'W-FRI',
@@ -65,7 +65,7 @@ class DataPreparationProcessor:
         """初始化处理器
 
         Args:
-            excel_path: Excel文件路径
+            workbook_tables: 已由经济工作簿读取器加载的各工作表
             var_industry_map: 变量-行业映射字典（从指标字典加载）
             var_frequency_map: 变量-频率映射字典（从指标字典加载）
             target_freq: 目标频率，默认'W-FRI'
@@ -87,7 +87,9 @@ class DataPreparationProcessor:
             if not target_freq.upper().endswith('-FRI'):
                 raise ValueError(f"当前仅支持周五对齐 (W-FRI)，提供的频率 '{target_freq}' 无效")
 
-        self.excel_path = excel_path
+        if not workbook_tables:
+            raise ValueError("workbook_tables不能为None或空")
+        self.workbook_tables = workbook_tables
         self.var_industry_map = var_industry_map or {}
         self.var_frequency_map = var_frequency_map or {}
         self.target_freq = target_freq
@@ -243,23 +245,19 @@ class DataPreparationProcessor:
         """
         all_dates = []
 
-        with pd.ExcelFile(self.excel_path) as excel_file:
-            for sheet_name in excel_file.sheet_names:
-                # 跳过映射表
-                if sheet_name == '指标字典':
-                    continue
+        for sheet_name, df in self.workbook_tables.items():
+            # 跳过映射表
+            if sheet_name == '指标字典':
+                continue
+            if df.empty or df.shape[1] == 0:
+                continue
 
-                # 读取第一列作为日期列
-                df = pd.read_excel(excel_file, sheet_name=sheet_name, usecols=[0])
-                if df.empty:
-                    continue
+            # 第一列是日期列
+            dates = pd.to_datetime(df.iloc[:, 0], errors='coerce')
+            valid_dates = dates.dropna()
 
-                # 尝试解析为日期
-                dates = pd.to_datetime(df.iloc[:, 0], errors='coerce')
-                valid_dates = dates.dropna()
-
-                if not valid_dates.empty:
-                    all_dates.extend(valid_dates.tolist())
+            if not valid_dates.empty:
+                all_dates.extend(valid_dates.tolist())
 
         if not all_dates:
             raise ValueError("未能从任何工作表中提取有效日期")
@@ -283,105 +281,97 @@ class DataPreparationProcessor:
                 'monthly': {'var4': series4, ...}
             }
         """
-        if self.excel_path is None:
-            raise ValueError("excel_path不能为None")
+        data_by_freq = {
+            'daily': {},
+            'weekly': {},
+            'dekad': {},
+            'monthly': {},
+            'quarterly': {},
+            'yearly': {}
+        }
 
-        with pd.ExcelFile(self.excel_path) as excel_file:
-            data_by_freq = {
-                'daily': {},
-                'weekly': {},
-                'dekad': {},
-                'monthly': {},
-                'quarterly': {},
-                'yearly': {}
-            }
+        for sheet_name, df in self.workbook_tables.items():
+            if sheet_name == '指标字典':
+                continue
 
-            for sheet_name in excel_file.sheet_names:
-                if sheet_name == '指标字典':
+            logger.info(f"  加载工作表: {sheet_name}")
+            if df is None or df.shape[1] < 2:
+                continue
+
+            # 第一列是日期
+            date_col = pd.to_datetime(df.iloc[:, 0], errors='coerce')
+            valid_mask = date_col.notna()
+
+            # 遍历每个变量列，根据映射表频率分类
+            for col_idx in range(1, df.shape[1]):
+                var_name = df.columns[col_idx]
+                norm_var_name = normalize_text(var_name)
+
+                # 从映射表获取频率
+                freq = self.var_frequency_map.get(norm_var_name, '').lower()
+
+                if not freq:
+                    logger.debug(f"    变量 '{var_name}' 未在映射表中找到频率，跳过")
                     continue
 
-                logger.info(f"  加载工作表: {sheet_name}")
+                # 提取数据
+                values = pd.to_numeric(df.loc[valid_mask, var_name], errors='coerce')
+                series = pd.Series(values.values, index=date_col[valid_mask], name=var_name)
 
-                # 统一读取所有sheet
-                df = pd.read_excel(excel_file, sheet_name=sheet_name, header=0)
-                if df.shape[1] < 2:
-                    continue
+                # 按频率分类
+                if '日' in freq or 'daily' in freq:
+                    data_by_freq['daily'][var_name] = series
+                elif '周' in freq or 'weekly' in freq:
+                    data_by_freq['weekly'][var_name] = series
+                elif '旬' in freq or 'dekad' in freq:
+                    data_by_freq['dekad'][var_name] = series
+                elif '月' in freq or 'monthly' in freq:
+                    data_by_freq['monthly'][var_name] = series
+                elif '季' in freq or 'quarterly' in freq:
+                    data_by_freq['quarterly'][var_name] = series
+                elif '年' in freq or 'yearly' in freq or 'annual' in freq:
+                    data_by_freq['yearly'][var_name] = series
+                else:
+                    logger.warning(f"    变量 '{var_name}' 频率 '{freq}' 无法识别，跳过")
 
-                # 第一列是日期
-                date_col = pd.to_datetime(df.iloc[:, 0], errors='coerce')
-                valid_mask = date_col.notna()
+        # 转换为DataFrame格式并应用全局预处理
+        for freq_type in ['daily', 'weekly', 'dekad', 'monthly', 'quarterly', 'yearly']:
+            if data_by_freq[freq_type]:
+                series_list = []
+                for var_name, series in data_by_freq[freq_type].items():
+                    if series.index.duplicated().any():
+                        series = series[~series.index.duplicated(keep='last')]
+                    series_list.append(series)
+                if series_list:
+                    combined_df = pd.concat(series_list, axis=1)
 
-                # 遍历每个变量列，根据映射表频率分类
-                for col_idx in range(1, df.shape[1]):
-                    var_name = df.columns[col_idx]
-                    norm_var_name = normalize_text(var_name)
+                    # 1. 日期筛选（在所有处理之前）
+                    if self.data_start_date or self.data_end_date:
+                        original_shape = combined_df.shape
+                        if self.data_start_date:
+                            start_dt = pd.to_datetime(self.data_start_date)
+                            combined_df = combined_df[combined_df.index >= start_dt]
+                        if self.data_end_date:
+                            end_dt = pd.to_datetime(self.data_end_date)
+                            combined_df = combined_df[combined_df.index <= end_dt]
+                        if combined_df.shape[0] != original_shape[0]:
+                            logger.info(f"    [{freq_type}] 日期筛选: {original_shape[0]} -> {combined_df.shape[0]} 行")
 
-                    # 从映射表获取频率
-                    freq = self.var_frequency_map.get(norm_var_name, '').lower()
-
-                    if not freq:
-                        logger.debug(f"    变量 '{var_name}' 未在映射表中找到频率，跳过")
+                    if combined_df.empty:
+                        logger.warning(f"    [{freq_type}] 日期筛选后数据为空，跳过")
+                        data_by_freq[freq_type] = {}
                         continue
 
-                    # 提取数据
-                    values = pd.to_numeric(df.loc[valid_mask, var_name], errors='coerce')
-                    series = pd.Series(values.values, index=date_col[valid_mask], name=var_name)
+                    # 2. 应用全局零值和负值预处理
+                    combined_df = self._apply_global_preprocessing(combined_df)
 
-                    # 按频率分类
-                    if '日' in freq or 'daily' in freq:
-                        data_by_freq['daily'][var_name] = series
-                    elif '周' in freq or 'weekly' in freq:
-                        data_by_freq['weekly'][var_name] = series
-                    elif '旬' in freq or 'dekad' in freq:
-                        data_by_freq['dekad'][var_name] = series
-                    elif '月' in freq or 'monthly' in freq:
-                        data_by_freq['monthly'][var_name] = series
-                    elif '季' in freq or 'quarterly' in freq:
-                        data_by_freq['quarterly'][var_name] = series
-                    elif '年' in freq or 'yearly' in freq or 'annual' in freq:
-                        data_by_freq['yearly'][var_name] = series
-                    else:
-                        logger.warning(f"    变量 '{var_name}' 频率 '{freq}' 无法识别，跳过")
+                    # 3. 应用发布日期校准（传入频率类型）
+                    combined_df = self._apply_publication_date_calibration(combined_df, freq_type)
 
+                    # 借调逻辑已移至步骤5（缺失值检测之后）
+                    data_by_freq[freq_type] = {'combined': combined_df}
 
-            # 转换为DataFrame格式并应用全局预处理
-            for freq_type in ['daily', 'weekly', 'dekad', 'monthly', 'quarterly', 'yearly']:
-                if data_by_freq[freq_type]:
-                    series_list = []
-                    for var_name, series in data_by_freq[freq_type].items():
-                        if series.index.duplicated().any():
-                            series = series[~series.index.duplicated(keep='last')]
-                        series_list.append(series)
-                    if series_list:
-                        combined_df = pd.concat(series_list, axis=1)
-
-                        # 1. 日期筛选（在所有处理之前）
-                        if self.data_start_date or self.data_end_date:
-                            original_shape = combined_df.shape
-                            if self.data_start_date:
-                                start_dt = pd.to_datetime(self.data_start_date)
-                                combined_df = combined_df[combined_df.index >= start_dt]
-                            if self.data_end_date:
-                                end_dt = pd.to_datetime(self.data_end_date)
-                                combined_df = combined_df[combined_df.index <= end_dt]
-                            if combined_df.shape[0] != original_shape[0]:
-                                logger.info(f"    [{freq_type}] 日期筛选: {original_shape[0]} -> {combined_df.shape[0]} 行")
-
-                        if combined_df.empty:
-                            logger.warning(f"    [{freq_type}] 日期筛选后数据为空，跳过")
-                            data_by_freq[freq_type] = {}
-                            continue
-
-                        # 2. 应用全局零值和负值预处理
-                        combined_df = self._apply_global_preprocessing(combined_df)
-
-                        # 3. 应用发布日期校准（传入频率类型）
-                        combined_df = self._apply_publication_date_calibration(combined_df, freq_type)
-
-                        # 借调逻辑已移至步骤5（缺失值检测之后）
-                        data_by_freq[freq_type] = {'combined': combined_df}
-
-            return data_by_freq
+        return data_by_freq
 
     def _step5_smart_missing_detection_and_align(
         self,

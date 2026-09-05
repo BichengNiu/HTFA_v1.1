@@ -18,14 +18,13 @@ from htfa.monitoring.uae.plot_helpers import (
     normalize_ts_axis,
     source_note,
 )
-from htfa.monitoring.uae.sheet_reader import (
+from htfa.data.economic_workbook import (
+    EconomicWorkbookReader,
     SheetSeriesMetadata,
     format_updated_at,
-    open_uae_workbook,
+    normalize_indicator_name,
     optional_text,
-    parse_target_sheet,
 )
-from htfa.data.economic_workbook.core.workbook_parser import normalize_indicator_name
 
 
 FOREIGN_LABOR_SHEET = "月度_外籍劳动力"
@@ -42,6 +41,10 @@ SERIES_SPECS = (
 )
 
 DISPLAY_MONTHS = 37
+_WORKBOOK_READER = EconomicWorkbookReader(
+    "uae_monitoring",
+    "monitoring.uae",
+)
 
 
 @dataclass(frozen=True)
@@ -60,7 +63,7 @@ def load_foreign_labor_data(
 ) -> ForeignLaborData:
     """Read the two official labour-flow series from the foreign-labour sheet."""
 
-    with open_uae_workbook(file_input, file_name=file_name) as (
+    with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
         excel_file,
         source_name,
     ):
@@ -81,7 +84,9 @@ def _parse_foreign_labor_sheet(
     if FOREIGN_LABOR_SHEET not in excel_file.sheet_names:
         raise ValueError(f"工作簿缺少“{FOREIGN_LABOR_SHEET}”sheet")
 
-    raw = pd.read_excel(excel_file, sheet_name=FOREIGN_LABOR_SHEET, header=None)
+    raw = _WORKBOOK_READER.read_raw_sheet(
+        excel_file, sheet_name=FOREIGN_LABOR_SHEET
+    )
     if raw.shape[0] < 7 or raw.shape[1] < 3:
         raise ValueError(f"sheet“{FOREIGN_LABOR_SHEET}”不符合前六行元数据协议")
 
@@ -89,7 +94,7 @@ def _parse_foreign_labor_sheet(
     # 当前写表器及 source_extended 的旧版通用写表器使用标准元数据标签。
     # 两种布局都按目标指标读取，避免已有工作簿在管线修复后失效。
     if optional_text(raw.iloc[1, 0]) == "指标名称":
-        return parse_target_sheet(
+        return _WORKBOOK_READER.read_target_sheet(
             excel_file,
             sheet_name=FOREIGN_LABOR_SHEET,
             targets=(

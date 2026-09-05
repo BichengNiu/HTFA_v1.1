@@ -1,9 +1,10 @@
 from io import BytesIO
 
-from htfa.exploration.core.data_source import (
-    fingerprint_uploaded_file,
-    load_stationarity_data,
-)
+from htfa.data.file_content import file_fingerprint, read_file_bytes
+from htfa.data.tabular import TabularInputSource
+
+
+TABULAR_SOURCE = TabularInputSource()
 
 
 def test_file_fingerprint_detects_same_name_with_different_content():
@@ -12,15 +13,16 @@ def test_file_fingerprint_detects_same_name_with_different_content():
     second = BytesIO(b"second")
     second.name = "database.xlsx"
 
-    assert fingerprint_uploaded_file(first) != fingerprint_uploaded_file(second)
+    assert file_fingerprint(read_file_bytes(first)) != file_fingerprint(
+        read_file_bytes(second)
+    )
 
 
 def test_csv_is_kept_as_a_single_table():
     uploaded = BytesIO("date,value\n2026-01-01,1\n".encode())
     uploaded.name = "series.csv"
 
-    tables, metadata = load_stationarity_data(uploaded)
+    tables = TABULAR_SOURCE.read(uploaded, uploaded.name)
 
     assert list(tables) == ["table"]
     assert tables["table"].shape == (1, 2)
-    assert metadata == {}

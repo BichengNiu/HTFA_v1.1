@@ -1,5 +1,7 @@
 # RDL/ARDL 手动阶数与 SARIMA 误差 Implementation Plan
 
+> **Archive:** 历史计划，仅保留迁移前路径记录；其中路径不可作为运行入口。
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 让 HTFA 的 RDL 和 ARDL 都取消自动选阶，并允许用户分别手动指定其 ARDL/RDL 动态结构以及误差项 SARIMA 阶数；SARIMAX 自身的自动选阶保持不变。

@@ -13,17 +13,17 @@ from typing import Any
 
 import pandas as pd
 
-from htfa.monitoring.uae.sheet_reader import (
+from htfa.data.economic_workbook import (
+    EconomicWorkbookReader,
     SheetSeriesMetadata,
     format_updated_at,
-    open_uae_workbook,
     optional_text,
 )
 from htfa.monitoring.uae.periods import (
     anchor_last_month as _anchor_last_month,
     latest_complete_month as _latest_complete_month,
 )
-from htfa.data.economic_workbook.core.workbook_parser import normalize_indicator_name
+from htfa.data.economic_workbook import normalize_indicator_name
 
 
 DLD_SHEET = "月度_DLD"
@@ -52,6 +52,10 @@ AGGREGATE_TARGETS: tuple[tuple[str, tuple[str, str], str], ...] = (
     (READY_COUNT, ("现房住宅笔数", "现房商业笔数"), "笔"),
     (READY_AMOUNT, ("现房住宅金额", "现房商业金额"), "百万AED"),
 )
+_WORKBOOK_READER = EconomicWorkbookReader(
+    "uae_monitoring",
+    "monitoring.uae",
+)
 
 @dataclass(frozen=True)
 class RealEstateData:
@@ -69,7 +73,7 @@ def load_real_estate_data(
 ) -> RealEstateData:
     """只读取 ``月度_DLD`` 的 8 个销售列并合并为 4 个聚合口径。"""
 
-    with open_uae_workbook(file_input, file_name=file_name) as (
+    with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
         excel_file,
         source_name,
     ):
@@ -96,7 +100,7 @@ def _parse_sales_sheet(
     if DLD_SHEET not in excel_file.sheet_names:
         raise ValueError(f"工作簿缺少“{DLD_SHEET}”sheet")
 
-    raw = pd.read_excel(excel_file, sheet_name=DLD_SHEET, header=None)
+    raw = _WORKBOOK_READER.read_raw_sheet(excel_file, sheet_name=DLD_SHEET)
     if raw.shape[0] < 7 or raw.shape[1] < 2:
         raise ValueError(f"sheet“{DLD_SHEET}”不符合前六行元数据协议")
     metadata_rows = _scan_metadata_rows(raw)

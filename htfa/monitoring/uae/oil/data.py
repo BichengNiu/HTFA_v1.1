@@ -7,10 +7,9 @@ from typing import Any
 
 import pandas as pd
 
-from htfa.monitoring.uae.sheet_reader import (
+from htfa.data.economic_workbook import (
+    EconomicWorkbookReader,
     SheetSeriesMetadata,
-    open_uae_workbook,
-    parse_target_sheet,
 )
 
 
@@ -26,6 +25,10 @@ PRICE_INDICATORS: tuple[tuple[str, str], ...] = (
 )
 PRODUCTION_INDICATOR = ("阿联酋原油产量", "阿联酋: 产量: 原油")
 RIG_COUNT_INDICATOR = ("阿联酋石油活跃钻机数", "阿联酋石油活跃钻机数")
+_WORKBOOK_READER = EconomicWorkbookReader(
+    "uae_monitoring",
+    "monitoring.uae",
+)
 
 
 @dataclass(frozen=True)
@@ -46,18 +49,18 @@ def load_oil_market_data(
 ) -> OilMarketData:
     """只读取日度油价和月度原油产量，不依赖完整指标字典。"""
 
-    with open_uae_workbook(file_input, file_name=file_name) as (
+    with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
         excel_file,
         source_name,
     ):
-        prices, price_metadata = parse_target_sheet(
+        prices, price_metadata = _WORKBOOK_READER.read_target_sheet(
             excel_file,
             sheet_name=DAILY_SHEET,
             targets=PRICE_INDICATORS,
             allowed_frequencies={"日", "日度", "周", "周度"},
             expected_unit="美元/桶",
         )
-        production_frame, production_metadata = parse_target_sheet(
+        production_frame, production_metadata = _WORKBOOK_READER.read_target_sheet(
             excel_file,
             sheet_name=MONTHLY_SHEET,
             targets=(PRODUCTION_INDICATOR,),
@@ -65,7 +68,7 @@ def load_oil_market_data(
             expected_unit="桶/天",
         )
         if RIG_COUNT_SHEET in excel_file.sheet_names:
-            rig_count_frame, rig_count_metadata = parse_target_sheet(
+            rig_count_frame, rig_count_metadata = _WORKBOOK_READER.read_target_sheet(
                 excel_file,
                 sheet_name=RIG_COUNT_SHEET,
                 targets=(RIG_COUNT_INDICATOR,),

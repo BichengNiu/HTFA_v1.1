@@ -16,7 +16,13 @@ from htfa.monitoring.uae.plot_helpers import (
     normalize_ts_axis,
     source_note,
 )
-from htfa.monitoring.uae.sheet_reader import open_uae_workbook, parse_target_sheet
+from htfa.data.economic_workbook import EconomicWorkbookReader
+
+
+_WORKBOOK_READER = EconomicWorkbookReader(
+    "uae_monitoring",
+    "monitoring.uae",
+)
 
 SMOOTH_WINDOW = 7
 SMOOTH_POLYORDER = 2
@@ -50,8 +56,11 @@ def load_search_index_data(
 ) -> pd.DataFrame:
     """从工作簿的 ``月度_工作搜索热度`` 读取谷歌趋势序列。"""
 
-    with open_uae_workbook(file_input, file_name=file_name) as (excel_file, _):
-        values, _ = parse_target_sheet(
+    with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
+        excel_file,
+        _,
+    ):
+        values, _ = _WORKBOOK_READER.read_target_sheet(
             excel_file,
             sheet_name=SEARCH_SHEET,
             targets=SEARCH_INDICATORS,

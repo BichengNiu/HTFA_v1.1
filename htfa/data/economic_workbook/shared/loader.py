@@ -1,10 +1,20 @@
 """统一模板的数据加载入口。"""
 
 import re
-from typing import Any, List
+from collections.abc import Collection, Iterator
+from contextlib import contextmanager
+from typing import Any
+
+import pandas as pd
 
 from ..core.workbook_parser import parse_economic_workbook
 from ..domain.models import EconomicWorkbookSnapshot
+from .target_reader import (
+    SheetSeriesMetadata,
+    open_workbook as open_economic_workbook,
+    parse_target_sheet,
+    validate_sheet,
+)
 
 
 _SOURCE_TOKENS = {
@@ -40,26 +50,93 @@ def extract_industry_name(source: str) -> str:
     )
 
 
-class EconomicWorkbookLoader:
-    """调用唯一工作簿协议的共享加载器。"""
+class EconomicWorkbookReader:
+    """调用唯一经济工作簿协议的共享读取器。"""
 
-    def __init__(self, module_name: str, state_namespace: str):
+    def __init__(
+        self,
+        module_name: str,
+        state_namespace: str,
+        indicator_allowlist: Collection[str] | None = None,
+    ):
         self.module_name = module_name
         self.state_namespace = state_namespace
+        self.indicator_allowlist = indicator_allowlist
 
-    def load_and_process_data(self, files: List[Any]) -> EconomicWorkbookSnapshot:
-        """解析一个正式模板工作簿。"""
-        if len(files) != 1:
-            raise ValueError("每个预览模块必须提供且只能提供一个经济数据库文件")
-
+    def read(self, file_input: Any) -> EconomicWorkbookSnapshot:
+        """按模块规则读取一个正式经济工作簿。"""
         return parse_economic_workbook(
-            files[0],
+            file_input,
             module_name=self.module_name,
+            indicator_allowlist=self.indicator_allowlist,
         )
+
+    def read_tables(
+        self,
+        file_input: Any,
+        *,
+        header: int | None = 0,
+    ) -> dict[str, pd.DataFrame]:
+        """读取工作簿各 sheet 的表格视图，供领域处理器消费。"""
+        with self.open_workbook(file_input) as (excel_file, _):
+            return {
+                sheet_name: pd.read_excel(
+                    excel_file,
+                    sheet_name=sheet_name,
+                    header=header,
+                )
+                for sheet_name in excel_file.sheet_names
+            }
 
     def get_state_namespace(self) -> str:
         """返回模块隔离的状态命名空间。"""
         return self.state_namespace
 
+    @contextmanager
+    def open_workbook(
+        self,
+        file_input: Any,
+        *,
+        file_name: str | None = None,
+    ) -> Iterator[tuple[pd.ExcelFile, str]]:
+        """打开供主题读取的正式经济工作簿。"""
+        with open_economic_workbook(file_input, file_name=file_name) as opened:
+            yield opened
 
-__all__ = ["EconomicWorkbookLoader", "extract_industry_name"]
+    def read_target_sheet(
+        self,
+        excel_file: pd.ExcelFile,
+        *,
+        sheet_name: str,
+        targets: tuple[tuple[str, str], ...],
+        allowed_frequencies: set[str],
+        expected_unit: str,
+        zero_is_missing: bool = True,
+    ) -> tuple[pd.DataFrame, dict[str, SheetSeriesMetadata]]:
+        """按目标指标和元数据约束读取一个经济工作簿 sheet。"""
+        return parse_target_sheet(
+            excel_file,
+            sheet_name=sheet_name,
+            targets=targets,
+            allowed_frequencies=allowed_frequencies,
+            expected_unit=expected_unit,
+            zero_is_missing=zero_is_missing,
+        )
+
+    def validate_target_sheet(self, raw: Any, sheet_name: str) -> None:
+        """校验一个经济数据 sheet 的元数据结构。"""
+        validate_sheet(raw, sheet_name)
+
+    def read_raw_sheet(
+        self,
+        excel_file: pd.ExcelFile,
+        *,
+        sheet_name: str,
+    ) -> pd.DataFrame:
+        """读取一个经济数据 sheet 的原始二维表。"""
+        if sheet_name not in excel_file.sheet_names:
+            raise ValueError(f"工作簿缺少“{sheet_name}”sheet")
+        return pd.read_excel(excel_file, sheet_name=sheet_name, header=None)
+
+
+__all__ = ["EconomicWorkbookReader", "extract_industry_name"]

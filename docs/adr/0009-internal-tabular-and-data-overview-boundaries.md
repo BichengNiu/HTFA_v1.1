@@ -1,5 +1,7 @@
 # 普通表格能力与数据概览 UI 内部化拆分
 
+> **History:** 本 ADR 保留迁移前组件路径作为决策背景；该路径不可作为运行入口。
+
 **Status:** accepted
 
 ## Context

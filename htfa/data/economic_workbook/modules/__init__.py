@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from ..shared.loader import EconomicWorkbookLoader
+from ..shared.loader import EconomicWorkbookReader
 from ..shared.renderer import EconomicWorkbookRenderer
 
 ECONOMIC_WORKBOOK_MODULES = {
@@ -37,12 +37,12 @@ def create_economic_workbook_renderer(module_name: str) -> EconomicWorkbookRende
     if config is None:
         raise ValueError(f"未找到子模块: {module_name}")
 
-    loader = EconomicWorkbookLoader(
+    reader = EconomicWorkbookReader(
         config["module_name"],
         config["state_namespace"],
     )
     return EconomicWorkbookRenderer(
-        loader,
+        reader,
         module_title=config["module_title"],
         default_relative_path=config["default_relative_path"],
     )

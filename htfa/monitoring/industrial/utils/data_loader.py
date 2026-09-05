@@ -1,6 +1,6 @@
 """
 Data Loader Utility
-数据加载工具 - 统一的Excel数据加载函数（带缓存）
+数据加载工具 - 统一的Excel数据加载函数
 
 所有 Excel sheet 读取共享同一套清洗流程：
 1. 文件输入归一化（上传对象 / 路径）
@@ -12,11 +12,11 @@ Data Loader Utility
 import pandas as pd
 from typing import Optional
 import logging
-import streamlit as st
 from io import BytesIO
 
 import numpy as np
 
+from htfa.data.economic_workbook import EconomicWorkbookReader
 from htfa.monitoring.industrial.constants import (
     SHEET_NAME_ENTERPRISE_PROFIT,
     SHEET_NAME_MACRO_DATA,
@@ -24,10 +24,10 @@ from htfa.monitoring.industrial.constants import (
 )
 
 logger = logging.getLogger(__name__)
-
-# 上传文件属于用户会话资产，不进入进程级 Streamlit 缓存；调用方应通过
-# SessionWorkspace 保留原始 bytes，解析结果留在模块会话状态中。
-
+_WORKBOOK_READER = EconomicWorkbookReader(
+    "industrial_monitoring",
+    "monitoring.industrial",
+)
 
 def clean_dataframe_index(df: pd.DataFrame, data_name: str = "数据") -> pd.DataFrame:
     """
@@ -103,15 +103,14 @@ def _load_excel_sheet(uploaded_file, sheet_name: str) -> Optional[pd.DataFrame]:
     try:
         logger.info(f"读取{sheet_name}数据")
 
-        file_input = _resolve_file_input(uploaded_file)
-
-        df = pd.read_excel(
-            file_input,
-            sheet_name=sheet_name,
-            header=0,
-            index_col=0,
-            parse_dates=True
-        )
+        tables = _WORKBOOK_READER.read_tables(_resolve_file_input(uploaded_file))
+        if sheet_name not in tables:
+            raise ValueError(f"工作簿缺少“{sheet_name}”sheet")
+        df = tables[sheet_name]
+        if df.shape[1] == 0:
+            return None
+        df = df.set_index(df.columns[0])
+        df.index = pd.to_datetime(df.index, errors="coerce")
 
         df = df.dropna(how='all').dropna(axis=1, how='all')
         df = clean_dataframe_index(df, sheet_name)
@@ -139,8 +138,7 @@ def load_macro_data(uploaded_file, sheet_name: str = SHEET_NAME_MACRO_DATA) -> O
     return _zero_to_nan(df)
 
 
-@st.cache_data(ttl=3600, max_entries=1, show_spinner=False)
-def load_weights_data() -> Optional[pd.DataFrame]:
+def read_weights_data() -> Optional[pd.DataFrame]:
     """
     加载权重数据：从内部CSV文件读取行业属性和权重
 

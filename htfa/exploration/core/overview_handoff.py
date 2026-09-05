@@ -8,14 +8,14 @@ from htfa.workspace.handoff import (
     DEFAULT_HANDOFF_TTL_SECONDS,
     HandoffStore,
 )
-from htfa.app.state.shared_dataset import SharedDatasetSnapshot
+from htfa.workspace import DatasetSnapshot
 
 
 @dataclass(frozen=True)
 class OverviewHandoff:
     """独立数据概览页所需的、不可变的短期快照。"""
 
-    dataset: SharedDatasetSnapshot
+    dataset: DatasetSnapshot
     widget_state: dict[str, object]
 
 

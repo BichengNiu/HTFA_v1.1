@@ -1,21 +1,17 @@
-"""阿联酋监测模块共享的 Excel sheet 读取与校验基础设施。
-
-石油、PMI、钢材（已下线）、政府财政、外籍劳动力等面板共用同一套
-“前六行元数据 + 数据块”sheet 协议。
-"""
+"""经济工作簿目标指标读取的纯规则实现。"""
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 import pandas as pd
 
-from htfa.data.economic_workbook.core.workbook_parser import normalize_indicator_name
+from ..core.workbook_parser import normalize_indicator_name
+
 
 METADATA_LABELS = {
     1: "指标名称",
@@ -28,7 +24,7 @@ METADATA_LABELS = {
 
 @dataclass(frozen=True)
 class SheetSeriesMetadata:
-    """一条序列的来源与口径。"""
+    """一条经济工作簿序列的来源与口径。"""
 
     display_name: str
     indicator_name: str
@@ -40,13 +36,15 @@ class SheetSeriesMetadata:
 
 
 def optional_text(value: Any) -> str:
+    """把可选单元格值规范为文本。"""
     if value is None or (not isinstance(value, str) and pd.isna(value)):
         return ""
     return str(value).strip()
 
 
 def format_updated_at(value: Any) -> str:
-    if isinstance(value, (pd.Timestamp,)):
+    """把更新时间单元格规范为 YYYY-MM-DD 文本。"""
+    if isinstance(value, pd.Timestamp):
         return value.strftime("%Y-%m-%d")
     try:
         timestamp = pd.Timestamp(value)
@@ -62,29 +60,31 @@ def workbook_buffer(
     *,
     file_name: str | None = None,
 ) -> tuple[BytesIO, str]:
+    """把工作簿输入规范为带来源名的内存文件。"""
     if isinstance(file_input, (str, Path)):
         path = Path(file_input)
         return BytesIO(path.read_bytes()), path.name
     if isinstance(file_input, bytes):
-        return BytesIO(file_input), file_name or "阿联酋.xlsx"
+        return BytesIO(file_input), file_name or "经济数据库.xlsx"
     if hasattr(file_input, "getvalue"):
         content = file_input.getvalue()
     elif hasattr(file_input, "read"):
         content = file_input.read()
     else:
-        raise TypeError("数据源必须是 Excel 路径或二进制文件")
-    name = file_name or getattr(file_input, "name", "阿联酋.xlsx")
+        raise TypeError("工作簿输入必须是路径或可读取的二进制文件对象")
+    if not isinstance(content, bytes):
+        raise TypeError("工作簿输入必须提供 bytes 内容")
+    name = file_name or getattr(file_input, "name", "经济数据库.xlsx")
     return BytesIO(content), Path(str(name)).name
 
 
 @contextmanager
-def open_uae_workbook(
+def open_workbook(
     file_input: Any,
     *,
     file_name: str | None = None,
 ) -> Iterator[tuple[pd.ExcelFile, str]]:
-    """打开 UAE 工作簿，并在退出时关闭 ExcelFile。"""
-
+    """打开经济工作簿并在退出时关闭 ExcelFile。"""
     buffer, source_name = workbook_buffer(file_input, file_name=file_name)
     excel_file = pd.ExcelFile(buffer)
     try:
@@ -94,6 +94,7 @@ def open_uae_workbook(
 
 
 def validate_sheet(raw: pd.DataFrame, sheet_name: str) -> None:
+    """校验目标数据 sheet 的五行元数据标签。"""
     if raw.shape[0] < 7 or raw.shape[1] < 2:
         raise ValueError(f"sheet“{sheet_name}”不符合第2至第6行元数据协议")
     for row_index, expected in METADATA_LABELS.items():
@@ -114,6 +115,7 @@ def parse_target_sheet(
     expected_unit: str,
     zero_is_missing: bool = True,
 ) -> tuple[pd.DataFrame, dict[str, SheetSeriesMetadata]]:
+    """按目标、频率和单位从一个正式数据 sheet 提取序列。"""
     if sheet_name not in excel_file.sheet_names:
         raise ValueError(f"工作簿缺少“{sheet_name}”sheet")
 
@@ -126,8 +128,7 @@ def parse_target_sheet(
     }
     candidate_columns: dict[str, list[int]] = {}
     for column_index in range(1, raw.shape[1]):
-        raw_name = raw.iloc[1, column_index]
-        normalized_name = normalize_indicator_name(raw_name)
+        normalized_name = normalize_indicator_name(raw.iloc[1, column_index])
         if normalized_name not in normalized_targets:
             continue
         display_name = normalized_targets[normalized_name]
@@ -150,13 +151,12 @@ def parse_target_sheet(
         if len(compatible_columns) == 1:
             matching_columns[display_name] = compatible_columns[0]
         elif len(columns) == 1:
-            # 保留单一候选，交由下方校验给出具体的频率、单位或来源错误。
             matching_columns[display_name] = columns[0]
         else:
             indicator_name = normalize_indicator_name(raw.iloc[1, columns[0]])
             raise ValueError(
                 f"sheet“{sheet_name}”的重复指标“{indicator_name}”中，"
-                f"没有唯一符合频率、单位和来源要求的列"
+                "没有唯一符合频率、单位和来源要求的列"
             )
 
     missing = [
@@ -243,6 +243,7 @@ __all__ = [
     "METADATA_LABELS",
     "SheetSeriesMetadata",
     "format_updated_at",
+    "open_workbook",
     "optional_text",
     "parse_target_sheet",
     "validate_sheet",

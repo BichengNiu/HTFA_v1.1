@@ -7,10 +7,9 @@ from typing import Any
 
 import pandas as pd
 
-from htfa.monitoring.uae.sheet_reader import (
+from htfa.data.economic_workbook import (
+    EconomicWorkbookReader,
     SheetSeriesMetadata,
-    open_uae_workbook,
-    parse_target_sheet,
 )
 from htfa.monitoring.uae.periods import latest_complete_month as _latest_complete_month
 
@@ -26,6 +25,10 @@ CBUAE_INDICATORS: tuple[tuple[str, str], ...] = (
     (GOVERNMENT_CREDIT, GOVERNMENT_CREDIT),
     (GRE_DEPOSITS, GRE_DEPOSITS),
     (GRE_CREDIT, GRE_CREDIT),
+)
+_WORKBOOK_READER = EconomicWorkbookReader(
+    "uae_monitoring",
+    "monitoring.uae",
 )
 
 
@@ -45,11 +48,11 @@ def load_government_finance_data(
 ) -> GovernmentFinanceData:
     """只读取 ``月度_CBUAE`` 的四个目标指标并校验元数据。"""
 
-    with open_uae_workbook(file_input, file_name=file_name) as (
+    with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
         excel_file,
         source_name,
     ):
-        values, metadata = parse_target_sheet(
+        values, metadata = _WORKBOOK_READER.read_target_sheet(
             excel_file,
             sheet_name=CBUAE_SHEET,
             targets=CBUAE_INDICATORS,

@@ -4,14 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Iterable, MutableMapping
 from dataclasses import dataclass
-from hashlib import sha256
 from io import BytesIO
-from typing import Any
+from typing import Any, Literal
+
+from htfa.data.file_content import file_fingerprint, read_file_bytes
 
 
 _ASSETS_PREFIX = "workspace.assets."
 _PAGES_PREFIX = "workspace.pages."
 _ACTIVE_PAGE_KEY = "workspace.active_page"
+DatasetProtocol = Literal["tabular", "economic"]
 
 
 @dataclass(frozen=True)
@@ -32,6 +34,15 @@ class AssetUpdate:
     changed: bool
 
 
+@dataclass(frozen=True)
+class DatasetSnapshot:
+    """可在独立页面会话间交接的文件资产和工作表选择。"""
+
+    asset: FileAsset
+    sheet: str | None
+    protocol: DatasetProtocol
+
+
 class NamedBytesIO(BytesIO):
     """带文件名的内存文件视图，供既有读取器使用。"""
 
@@ -49,9 +60,9 @@ class SessionWorkspace:
     def put_asset(self, slot: str, file_input: Any) -> AssetUpdate:
         """把上传文件保存为原始 bytes，并报告内容是否改变。"""
 
-        content = self._read_content(file_input)
+        content = read_file_bytes(file_input)
         name = str(getattr(file_input, "name", "未命名文件"))
-        fingerprint = sha256(content).hexdigest()
+        fingerprint = file_fingerprint(content)
         previous = self.get_asset(slot)
         if previous is not None and previous.fingerprint == fingerprint:
             return AssetUpdate(asset=previous, changed=False)
@@ -154,25 +165,6 @@ class SessionWorkspace:
         return keys
 
     @staticmethod
-    def _read_content(file_input: Any) -> bytes:
-        if file_input is None:
-            raise TypeError("文件输入不能为空")
-        position = None
-        if hasattr(file_input, "tell") and hasattr(file_input, "seek"):
-            position = file_input.tell()
-        if hasattr(file_input, "getvalue"):
-            content = file_input.getvalue()
-        elif hasattr(file_input, "read"):
-            content = file_input.read()
-        else:
-            raise TypeError("文件输入必须提供 getvalue() 或 read()")
-        if position is not None:
-            file_input.seek(position)
-        if not isinstance(content, bytes):
-            raise TypeError("文件输入必须提供 bytes 内容")
-        return content
-
-    @staticmethod
     def _asset_key(slot: str) -> str:
         return f"{_ASSETS_PREFIX}{slot}"
 
@@ -185,4 +177,11 @@ class SessionWorkspace:
         return f"{_PAGES_PREFIX}{page_id}.spec"
 
 
-__all__ = ["AssetUpdate", "FileAsset", "NamedBytesIO", "SessionWorkspace"]
+__all__ = [
+    "AssetUpdate",
+    "DatasetSnapshot",
+    "DatasetProtocol",
+    "FileAsset",
+    "NamedBytesIO",
+    "SessionWorkspace",
+]

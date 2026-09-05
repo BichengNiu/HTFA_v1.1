@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import csv
 import io
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
+from htfa.data.file_content import file_fingerprint, read_file_bytes
 from .time import infer_time_values, parse_time_values
 
 
@@ -17,6 +20,26 @@ class FileParseError(ValueError):
 
 _AUTO_TIME_COLUMN = object()
 _EXCEL_EXTENSIONS = {"xlsx", "xls"}
+ECONOMIC_WORKBOOK_SHEET = "指标字典"
+
+
+@dataclass(frozen=True)
+class TabularFileSnapshot:
+    """一次普通表格读取的文件身份、工作表和原始行快照。"""
+
+    file_name: str
+    fingerprint: str
+    sheets: list[str] | None
+    sheet: str | None
+    raw_rows: list[list[Any]]
+    frame: pd.DataFrame | None
+    parse_error: str | None = None
+
+    @property
+    def row_count(self) -> int:
+        """返回当前工作表的原始行数。"""
+
+        return len(self.raw_rows)
 
 
 def list_excel_sheets(content: bytes, file_name: str) -> list[str] | None:
@@ -157,6 +180,27 @@ def _file_extension(file_name: str) -> str:
     return str(file_name).rsplit(".", 1)[-1].lower()
 
 
+def _resolve_file_name(file_input: Any, file_name: str | None) -> str:
+    candidate = file_name
+    if candidate is None:
+        candidate = getattr(file_input, "name", None)
+    if candidate is None and isinstance(file_input, (str, Path)):
+        candidate = Path(file_input).name
+    if not candidate:
+        raise TypeError("普通表格输入必须提供文件名")
+    return Path(str(candidate)).name
+
+
+def _prepare_tabular_input(
+    file_input: Any, file_name: str | None
+) -> tuple[bytes, str, str]:
+    """统一普通表格输入的 bytes、文件名和扩展名解析。"""
+
+    content = read_file_bytes(file_input)
+    resolved_name = _resolve_file_name(file_input, file_name)
+    return content, resolved_name, _file_extension(resolved_name)
+
+
 def _validate_content(content: bytes) -> None:
     if not isinstance(content, bytes):
         raise TypeError("文件内容必须是 bytes")
@@ -238,7 +282,9 @@ def _parse_time_column(frame: pd.DataFrame, column: str) -> pd.DataFrame:
 
 
 __all__ = [
+    "ECONOMIC_WORKBOOK_SHEET",
     "FileParseError",
+    "TabularFileSnapshot",
     "build_dataframe_from_rows",
     "list_excel_sheets",
     "load_dataframe",

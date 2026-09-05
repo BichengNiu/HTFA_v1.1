@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from htfa.data.tabular.file_parsing import load_dataframe
+from htfa.data.tabular import load_dataframe
 from htfa.exploration.ui.shared_dataset_source import SharedDatasetSource
 from htfa.exploration.ui import shared_dataset_source
 
@@ -81,15 +81,30 @@ def test_shared_reader_reuses_supplied_raw_rows_without_reopening_file(
     assert frame["value"].tolist() == [3]
 
 
-def test_shared_source_passes_cached_rows_to_shared_reader(monkeypatch):
-    """SARIMAX 数据源应把当前工作表缓存传给共享读取器。"""
-    uploaded = _UploadedFile("sample.xlsx", b"not-used")
+def test_shared_source_builds_from_the_canonical_snapshot(monkeypatch):
+    """共享数据源应把同一份原始行快照交给普通表格解析器。"""
     raw_rows = [["date", "value"], ["2020-01-01", 3]]
     captured = {}
 
     monkeypatch.setattr(
-        "htfa.app.state.shared_dataset.get_shared_dataset_file",
-        lambda: uploaded,
+        "htfa.app.state.shared_dataset.get_shared_dataset_fingerprint",
+        lambda: "fingerprint",
+    )
+    monkeypatch.setattr(
+        "htfa.app.state.shared_dataset.get_shared_dataset_protocol",
+        lambda: "tabular",
+    )
+    monkeypatch.setattr(
+        "htfa.app.state.shared_dataset.get_shared_dataset_name",
+        lambda: "sample.xlsx",
+    )
+    monkeypatch.setattr(
+        "htfa.app.state.shared_dataset.get_shared_dataset_sheets",
+        lambda: ["数据"],
+    )
+    monkeypatch.setattr(
+        "htfa.app.state.shared_dataset.get_shared_dataset_data",
+        lambda: None,
     )
     monkeypatch.setattr(
         "htfa.app.state.shared_dataset.get_shared_dataset_raw_rows",
@@ -100,16 +115,15 @@ def test_shared_source_passes_cached_rows_to_shared_reader(monkeypatch):
         lambda: "数据",
     )
 
-    def fake_load_dataframe(content, file_name, **kwargs):
-        captured["content"] = content
-        captured["file_name"] = file_name
+    def fake_build_dataframe(rows, **kwargs):
+        captured["rows"] = rows
         captured.update(kwargs)
         return pd.DataFrame({"value": [3]})
 
     monkeypatch.setattr(
         shared_dataset_source,
-        "load_dataframe",
-        fake_load_dataframe,
+        "build_dataframe_from_rows",
+        fake_build_dataframe,
     )
 
     frame = SharedDatasetSource().load_data(
@@ -119,10 +133,10 @@ def test_shared_source_passes_cached_rows_to_shared_reader(monkeypatch):
     )
 
     assert frame["value"].tolist() == [3]
-    assert captured["content"] == uploaded.getvalue()
-    assert captured["file_name"] == uploaded.name
-    assert captured["sheet_name"] == "数据"
-    assert captured["raw_rows"] is raw_rows
+    assert captured["rows"] is raw_rows
+    assert captured["variable_name_row"] == 1
+    assert captured["data_start_row"] == 2
+    assert captured["time_column"] == "date"
 
 
 def test_shared_reader_supports_selected_rows_with_irregular_preamble():

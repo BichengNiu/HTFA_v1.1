@@ -10,7 +10,11 @@ from typing import Tuple, Optional, Dict
 from hashlib import sha256
 
 from htfa.models.dfm.utils.text_utils import normalize_variable_name
+from htfa.data.tabular import TabularInputSource
 from htfa.workspace import SessionWorkspace
+
+
+_TABULAR_INPUT_SOURCE = TabularInputSource()
 
 
 class FileUploaderComponent:
@@ -239,16 +243,16 @@ class FileUploaderComponent:
             excel_file.seek(0)
             print(f"[模型训练] 开始加载Excel文件: {excel_file.name}")
 
-            # 读取'数据'sheet
-            print("[模型训练] 读取'数据'sheet...")
-            input_df = pd.read_excel(excel_file, sheet_name='数据', index_col=0, parse_dates=True)
+            # 通过普通表格输入协议读取'数据'和'映射'sheet
+            print("[模型训练] 通过普通表格输入协议读取文件...")
+            tables = _TABULAR_INPUT_SOURCE.read(excel_file, excel_file.name)
+            input_df = tables.get('数据')
+            industry_map_df = tables.get('映射')
+            if input_df is None or industry_map_df is None:
+                raise ValueError("Excel文件必须包含'数据'和'映射'两个非空sheet")
+            input_df = input_df.set_index(input_df.columns[0])
             print(f"[模型训练] 数据shape: {input_df.shape}, 列数: {len(input_df.columns)}")
             print(f"[模型训练] 时间范围: {input_df.index.min()} 至 {input_df.index.max()}")
-
-            # 读取'映射'sheet
-            excel_file.seek(0)
-            print("[模型训练] 读取'映射'sheet...")
-            industry_map_df = pd.read_excel(excel_file, sheet_name='映射')
             print(f"[模型训练] 映射表shape: {industry_map_df.shape}, 列名: {list(industry_map_df.columns)}")
 
             # 验证必需列

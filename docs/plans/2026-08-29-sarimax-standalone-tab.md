@@ -1,5 +1,7 @@
 # SARIMAX 独立标签页 Implementation Plan
 
+> **Archive:** 历史计划，仅保留迁移前路径记录；其中路径不可作为运行入口。
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 为动态回归模型增加浏览器独立标签页入口，复制当前 SARIMAX 自有数据、读取设置、可编辑模型输入以及当前拟合、诊断和预测结果。

@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import io
+from types import SimpleNamespace
+
 import pandas as pd
 
-from htfa.data.tabular import build_overview_dataset
+from htfa.data.tabular import TabularFileSnapshot, build_overview_dataset
 from htfa.ui_shared.data_overview import DataOverview, create_data_overview
+from htfa.ui_shared.data_overview.ui import data_source as data_source_module
 from htfa.ui_shared.data_overview.ui.data_source import BuiltinDataSource
 from htfa.ui_shared.data_overview.ui.widget_keys import overview_widget_keys
 
@@ -19,8 +23,15 @@ class _FakeSource:
     def render_uploader(self, st_obj, *, compact=False):
         return {"has_data": True}
 
-    def current_data(self):
-        return self._frame
+    def snapshot(self):
+        return TabularFileSnapshot(
+            file_name="fake.csv",
+            fingerprint="fp-1",
+            sheets=None,
+            sheet=None,
+            raw_rows=[["date", "a"], ["2020-01-01", 1]],
+            frame=self._frame,
+        )
 
     def load_data(
         self, *, variable_name_row=0, data_start_row=1, time_column=None
@@ -29,21 +40,6 @@ class _FakeSource:
         assert data_start_row == 1
         assert time_column is None
         return self._frame
-
-    def row_count(self):
-        return len(self._frame)
-
-    def current_fingerprint(self):
-        return "fp-1"
-
-    def current_name(self):
-        return "fake.csv"
-
-    def sheets(self):
-        return None
-
-    def current_sheet(self):
-        return None
 
     def select_sheet(self, sheet):
         pass
@@ -112,3 +108,52 @@ def test_data_source_injection():
     source = _FakeSource(_frame())
     component = DataOverview(key_prefix="x", state_namespace="ns.x", data_source=source)
     assert component.data_source is source
+
+
+class _UploadedFile(io.BytesIO):
+    def __init__(self, content: bytes, name: str):
+        super().__init__(content)
+        self.name = name
+
+
+class _Uploader:
+    def __init__(self, uploaded_file):
+        self.uploaded_file = uploaded_file
+        self.captions: list[str] = []
+
+    def markdown(self, *_args, **_kwargs):
+        pass
+
+    def file_uploader(self, *_args, **_kwargs):
+        return self.uploaded_file
+
+    def caption(self, text: str):
+        self.captions.append(text)
+
+    def error(self, *_args, **_kwargs):
+        raise AssertionError("有效文件不应触发读取错误")
+
+
+def test_builtin_data_source_uses_snapshot_for_render_and_load(monkeypatch):
+    """内置数据源的渲染和加载均通过同一快照协议。"""
+    monkeypatch.setattr(
+        data_source_module,
+        "st",
+        SimpleNamespace(session_state={}),
+    )
+    uploader = _Uploader(
+        _UploadedFile(
+            b"date,value\n2025-01-31,1\n2025-02-28,2\n",
+            "data.csv",
+        )
+    )
+    source = BuiltinDataSource("test.snapshot")
+
+    result = source.render_uploader(uploader, compact=True)
+    loaded = source.load_data()
+
+    assert result["has_data"] is True
+    assert loaded is not None
+    assert loaded["value"].tolist() == [1, 2]
+    assert source.snapshot() is not None
+    assert source.snapshot().row_count == 3

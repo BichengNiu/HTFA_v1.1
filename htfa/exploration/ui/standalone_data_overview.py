@@ -79,6 +79,7 @@ def _handoff_signature(handoff: OverviewHandoff) -> str:
             "fingerprint": handoff.dataset.asset.fingerprint,
             "file_name": handoff.dataset.asset.name,
             "sheet": handoff.dataset.sheet,
+            "protocol": handoff.dataset.protocol,
             "widget_state": handoff.widget_state,
         },
         ensure_ascii=False,

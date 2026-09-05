@@ -9,7 +9,7 @@ import streamlit as st
 from htfa.data.file_content import file_fingerprint
 from htfa.ui_shared.data_overview import BuiltinDataSource, overview_widget_keys
 
-from htfa.workspace import FileAsset
+from htfa.workspace import DatasetSnapshot, FileAsset
 from htfa.models.univariate.common.ui.data_input import create_data_input_module
 from htfa.models.univariate.sarimax.core.data_loader import (
     DATA_REPLACEMENT_OPTIONS,
@@ -17,14 +17,6 @@ from htfa.models.univariate.sarimax.core.data_loader import (
     preprocess_modeling_frame,
 )
 from htfa.models.univariate.sarimax.ui.state import ModelPageScope, SARIMAX_SCOPE
-
-
-@dataclass(frozen=True)
-class SARIMAXDataSnapshot:
-    """SARIMAX 独立窗口所需的原始文件与工作表快照。"""
-
-    asset: FileAsset
-    sheet: str | None
 
 
 @dataclass
@@ -185,12 +177,7 @@ _SARIMAX_MODEL_DATA = get_model_data_input(SARIMAX_SCOPE)
 SARIMAX_DATA_OVERVIEW_WIDGET_KEYS = _SARIMAX_MODEL_DATA.overview_widget_keys
 
 
-def render_sarimax_data_input(st_obj) -> None:
-    """兼容既有 SARIMAX 页面入口。"""
-    render_model_data_input(st_obj, SARIMAX_SCOPE)
-
-
-def export_sarimax_data_snapshot() -> SARIMAXDataSnapshot | None:
+def export_sarimax_data_snapshot() -> DatasetSnapshot | None:
     """导出当前 SARIMAX 文件和工作表，供独立窗口交接。"""
     if SARIMAX_SCOPE.state.get("dataset") is None:
         return None
@@ -199,29 +186,33 @@ def export_sarimax_data_snapshot() -> SARIMAXDataSnapshot | None:
         return None
     content = uploaded_file.getvalue()
     source = _SARIMAX_MODEL_DATA.data_source
-    fingerprint = source.current_fingerprint() or file_fingerprint(content)
-    return SARIMAXDataSnapshot(
+    source_snapshot = source.snapshot()
+    fingerprint = source_snapshot.fingerprint if source_snapshot else file_fingerprint(content)
+    return DatasetSnapshot(
         asset=FileAsset(
             slot=SARIMAX_SCOPE.namespace,
             name=str(getattr(uploaded_file, "name", "未命名文件")),
             content=content,
             fingerprint=fingerprint,
         ),
-        sheet=source.current_sheet(),
+        sheet=source_snapshot.sheet if source_snapshot else None,
+        protocol="tabular",
     )
 
 
-def restore_sarimax_data_snapshot(snapshot: SARIMAXDataSnapshot) -> None:
+def restore_sarimax_data_snapshot(snapshot: DatasetSnapshot) -> None:
     """把 SARIMAX 文件预置到当前会话。"""
-    if not isinstance(snapshot, SARIMAXDataSnapshot):
+    if not isinstance(snapshot, DatasetSnapshot):
         raise TypeError("SARIMAX 数据快照类型无效")
+    if snapshot.protocol != "tabular":
+        raise ValueError("SARIMAX 数据快照不是普通表格协议")
     _SARIMAX_MODEL_DATA.data_source.restore_file(
         snapshot.asset.content, snapshot.asset.name, sheet=snapshot.sheet,
     )
 
 
 def mark_sarimax_handoff_restore(
-    st_obj, snapshot: SARIMAXDataSnapshot, *, variable_name_row: int, data_start_row: int,
+    st_obj, snapshot: DatasetSnapshot, *, variable_name_row: int, data_start_row: int,
 ) -> None:
     """预置 SARIMAX 独立窗口的文件和读取设置。"""
     restore_sarimax_data_snapshot(snapshot)
@@ -247,7 +238,7 @@ def mark_sarimax_handoff_restore(
 
 
 __all__ = [
-    "ModelDataInput", "SARIMAXDataSnapshot", "SARIMAX_DATA_OVERVIEW_WIDGET_KEYS",
+    "ModelDataInput", "SARIMAX_DATA_OVERVIEW_WIDGET_KEYS",
     "export_sarimax_data_snapshot", "get_model_data_input", "mark_sarimax_handoff_restore",
-    "render_model_data_input", "render_sarimax_data_input", "restore_sarimax_data_snapshot",
+    "render_model_data_input", "restore_sarimax_data_snapshot",
 ]

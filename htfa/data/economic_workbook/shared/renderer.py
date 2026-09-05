@@ -9,7 +9,7 @@ import logging
 
 from ..domain.models import EconomicWorkbookSnapshot
 from .loader import (
-    EconomicWorkbookLoader,
+    EconomicWorkbookReader,
     extract_industry_name,
 )
 from .tabs import display_time_series_tab, display_overview_tab
@@ -39,16 +39,16 @@ class EconomicWorkbookRenderer:
 
     def __init__(
         self,
-        loader: EconomicWorkbookLoader,
+        reader: EconomicWorkbookReader,
         *,
         module_title: str,
         default_relative_path: Optional[Path] = None,
     ):
         """初始化渲染器。"""
-        self.loader = loader
+        self.reader = reader
         self.module_title = module_title
         self.default_relative_path = default_relative_path
-        self.state_namespace = loader.get_state_namespace()
+        self.state_namespace = reader.get_state_namespace()
 
     def render(self):
         """按固定流程渲染侧边栏和主内容。"""
@@ -202,7 +202,7 @@ class EconomicWorkbookRenderer:
         """
         try:
             # 加载并处理数据
-            preview_data = self.loader.load_and_process_data([uploaded_file])
+            preview_data = self.reader.read(uploaded_file)
 
             # 保存到session_state
             self._save_to_state(preview_data)

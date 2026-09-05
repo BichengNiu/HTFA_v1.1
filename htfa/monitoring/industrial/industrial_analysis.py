@@ -11,7 +11,6 @@ This module provides:
 
 import streamlit as st
 import pandas as pd
-from pathlib import Path
 from typing import Optional, Tuple
 import logging
 
@@ -19,25 +18,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 # 导入统一的数据加载函数
-from htfa.monitoring.industrial.utils.data_loader import load_macro_data, load_weights_data
+from htfa.monitoring.industrial.utils.data_loader import load_macro_data
+from htfa.monitoring.industrial.utils.data_cache import load_weights_data
 
 from htfa.app.state.shared_dataset import get_shared_dataset_file, get_shared_dataset_name
-
-
-def load_default_monitoring_data() -> Optional[str]:
-    """
-    获取默认监测分析数据文件路径
-
-    Returns:
-        Optional[str]: 文件路径或None
-    """
-    default_path = Path(__file__).parent.parent.parent.parent / "data" / "监测分析数据库.xlsx"
-
-    if default_path.exists():
-        return str(default_path)
-
-    logger.warning(f"默认数据文件不存在: {default_path}")
-    return None
 
 
 def load_and_cache_data(uploaded_file) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame]]:
@@ -99,11 +83,11 @@ def render_industrial_analysis(st_obj):
     Args:
         st_obj: Streamlit对象
     """
-    # 1. 优先使用侧边栏共享数据集；未上传时保留默认文件作为兜底。
-    uploaded_file = get_shared_dataset_file() or load_default_monitoring_data()
+    # 1. 工业监测只使用侧栏已通过经济工作簿协议的共享文件。
+    uploaded_file = get_shared_dataset_file()
 
     if uploaded_file is None:
-        st_obj.error("请先在侧边栏上传数据集，或补充 data/监测分析数据库.xlsx")
+        st_obj.error("请先在侧边栏上传并通过经济工作簿协议校验的数据集")
         return
 
     source_name = get_shared_dataset_name() or "监测分析数据库.xlsx"

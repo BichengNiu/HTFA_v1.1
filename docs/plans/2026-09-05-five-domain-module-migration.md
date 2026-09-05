@@ -1,5 +1,7 @@
 # Five-Domain Module Migration Implementation Plan
 
+> **Archive:** 历史计划，完成态规格；旧路径仅作迁移记录，不可作为运行入口。
+
 > **For Codex:** Execute this plan task-by-task with explicit verification at every phase boundary.
 
 **Goal:** 将 HTFA 从现有 `dashboard/` 模块化单体迁移为五个内部领域模块，并明确分离经济工作簿协议与普通表格输入协议；通过逻辑 seam、直接切换、删除旧路径和完整回归验证，最终确认功能无退化。
@@ -150,7 +152,7 @@ class TopicResult(Protocol):
 
 **文件范围：**
 
-- 新建 `D:/HTFA_v1.1/htfa/data/`，按 `contracts.py`、`economic_workbook.py`、`tabular_input.py`、`dataset.py`、`identity.py` 拆分职责。
+- 新建 `D:/HTFA_v1.1/htfa/data/`，按经济工作簿、普通表格、文件身份和数据契约拆分职责；普通表格唯一入口为 `htfa.data.tabular`。
 - 将 `D:/HTFA_v1.1/dashboard/preview/` 的完整经济工作簿能力（`core`、`domain`、`modules`、`shared`，包括 loader、计算、summary 导出、renderer、tabs 和 plotting）迁移到 `htfa/data/economic_workbook/`；其中纯规则与 UI 适配分离，保留已验证的白名单、元数据和缺失值规则。
 - 修改探索、模型输入和共享数据概览 UI 的适配配置，让探索和模型输入显式使用 `TabularInputSource`。
 - 修改 UAE 监测和数据服务调用方，让经济工作簿只经过 `EconomicWorkbookReader`。
@@ -161,7 +163,7 @@ class TopicResult(Protocol):
 
 1. 先写 seam 测试：经济工作簿 whitelist/元数据/`0`-as-missing、普通表格 `0` 保留、日期和缺失值、身份 fingerprint、解析失败清空旧数据。
 2. 用 runtime 执行纯导入检查：导入 `htfa.data` 和普通表格 parser 后，`streamlit`、`htfa.app`、旧 `dashboard` 均不得进入 `sys.modules`。
-3. 用 `rg` 检查生产代码不再导入 `dashboard.preview`；禁止加入 fallback 分支或兼容名称。
+3. 用 `rg` 检查生产代码不再导入 `dashboard.preview`；禁止加入 fallback 分支或兼容名称。最终由 `tests/architecture/test_no_legacy_paths.py` 执行零遗留门禁。
 4. 运行 data、exploration、model-input、component 相关测试，再运行主套件。
 5. 提交：`refactor(data): split economic and tabular input seams`。
 

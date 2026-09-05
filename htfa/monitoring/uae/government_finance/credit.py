@@ -27,14 +27,17 @@ from htfa.monitoring.uae.plot_helpers import (
     normalize_ts_axis,
     source_note,
 )
-from htfa.monitoring.uae.sheet_reader import (
+from htfa.data.economic_workbook import (
+    EconomicWorkbookReader,
     SheetSeriesMetadata,
-    open_uae_workbook,
-    parse_target_sheet,
 )
 
 
 CBUAE_SHEET = "月度_CBUAE"
+_WORKBOOK_READER = EconomicWorkbookReader(
+    "uae_monitoring",
+    "monitoring.uae",
+)
 
 FOREIGN_LIABILITIES = "阿联酋:银行国外负债(Foreign Liabilities)"
 FOREIGN_LIABILITIES_DISPLAY = "银行外债"
@@ -97,11 +100,11 @@ def load_foreign_inflow_data(
 ) -> CbuaeSeriesData:
     """读取外资流入三个指标：银行外债、外币存款与外国主体存款（非居民存款合计）。"""
 
-    with open_uae_workbook(file_input, file_name=file_name) as (
+    with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
         excel_file,
         source_name,
     ):
-        frame, metadata = parse_target_sheet(
+        frame, metadata = _WORKBOOK_READER.read_target_sheet(
             excel_file,
             sheet_name=CBUAE_SHEET,
             targets=FOREIGN_INFLOW_INDICATORS,
@@ -149,11 +152,11 @@ def _load_cbuae_series(
     targets: tuple[tuple[str, str], ...],
     file_name: str | None,
 ) -> CbuaeSeriesData:
-    with open_uae_workbook(file_input, file_name=file_name) as (
+    with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
         excel_file,
         source_name,
     ):
-        frame, metadata = parse_target_sheet(
+        frame, metadata = _WORKBOOK_READER.read_target_sheet(
             excel_file,
             sheet_name=CBUAE_SHEET,
             targets=targets,

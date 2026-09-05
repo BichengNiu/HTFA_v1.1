@@ -18,14 +18,13 @@ from htfa.monitoring.uae.plot_helpers import (
     normalize_ts_axis,
     source_note,
 )
-from htfa.monitoring.uae.sheet_reader import (
+from htfa.data.economic_workbook import (
+    EconomicWorkbookReader,
     SheetSeriesMetadata,
     format_updated_at,
-    open_uae_workbook,
+    normalize_indicator_name,
     optional_text,
-    validate_sheet,
 )
-from htfa.data.economic_workbook.core.workbook_parser import normalize_indicator_name
 
 
 PAYMENT_SHEET = "月度_CBUAE"
@@ -56,6 +55,10 @@ CUSTOMER_TRANSFER_SERIES = (
     CUSTOMER_TRANSFERS_AMOUNT_DISPLAY,
 )
 CHEQUE_SERIES = (CHEQUES_NUMBER_DISPLAY, CHEQUES_AMOUNT_DISPLAY)
+_WORKBOOK_READER = EconomicWorkbookReader(
+    "uae_monitoring",
+    "monitoring.uae",
+)
 
 
 @dataclass(frozen=True)
@@ -74,7 +77,7 @@ def load_payment_data(
 ) -> PaymentData:
     """读取 FTS 客户转账和支票清算四个累计指标。"""
 
-    with open_uae_workbook(file_input, file_name=file_name) as (
+    with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
         excel_file,
         source_name,
     ):
@@ -90,8 +93,10 @@ def _parse_payment_sheet(
     if PAYMENT_SHEET not in excel_file.sheet_names:
         raise ValueError(f"工作簿缺少“{PAYMENT_SHEET}”sheet")
 
-    raw = pd.read_excel(excel_file, sheet_name=PAYMENT_SHEET, header=None)
-    validate_sheet(raw, PAYMENT_SHEET)
+    raw = _WORKBOOK_READER.read_raw_sheet(
+        excel_file, sheet_name=PAYMENT_SHEET
+    )
+    _WORKBOOK_READER.validate_target_sheet(raw, PAYMENT_SHEET)
 
     normalized_targets = {
         normalize_indicator_name(indicator_name): (display_name, unit)

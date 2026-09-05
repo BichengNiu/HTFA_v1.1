@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from htfa.data.file_content import file_fingerprint, read_file_bytes
 from htfa.exploration.core.data_source import (
     ExploreDataset,
-    fingerprint_uploaded_file,
     load_explore_dataset,
 )
 from htfa.app.state.shared_dataset import get_shared_dataset_file
@@ -26,7 +26,7 @@ def get_explore_dataset(st_obj, file_input: Any) -> ExploreDataset | None:
         cached = state.get(DATASET_STATE_KEY)
         return cached if isinstance(cached, ExploreDataset) else None
 
-    fingerprint = fingerprint_uploaded_file(file_input)
+    fingerprint = file_fingerprint(read_file_bytes(file_input))
     cached = state.get(DATASET_STATE_KEY)
     if (
         isinstance(cached, ExploreDataset)
