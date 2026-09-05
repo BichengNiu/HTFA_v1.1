@@ -1,4 +1,4 @@
-from dashboard.analysis.uae.indicator_catalog import (
+from htfa.monitoring.uae.indicator_catalog import (
     INDICATOR_SPECS,
 )
 

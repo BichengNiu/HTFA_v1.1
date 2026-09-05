@@ -5,13 +5,13 @@ from io import BytesIO
 import pandas as pd
 import pytest
 
-from dashboard.analysis.uae.government_finance.pmi import (
+from htfa.monitoring.uae.government_finance.pmi import (
     PMI_INDICATOR,
     build_pmi_figure,
     display_pmi_values,
     load_pmi_data,
 )
-from dashboard.analysis.uae.government_finance.search_index import (
+from htfa.monitoring.uae.government_finance.search_index import (
     SEARCH_SHEET,
     START_YEAR,
     WORK_DUBAI_COLUMN,

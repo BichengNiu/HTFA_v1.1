@@ -6,14 +6,14 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
-from dashboard.analysis.uae.real_estate import renderer
-from dashboard.analysis.uae.real_estate.charts import (
+from htfa.monitoring.uae.real_estate import renderer
+from htfa.monitoring.uae.real_estate.charts import (
     AMOUNT_LABEL,
     COUNT_LABEL,
     MARKET_CONFIG,
     build_sales_figure,
 )
-from dashboard.analysis.uae.real_estate.data import (
+from htfa.monitoring.uae.real_estate.data import (
     OFFPLAN_AMOUNT,
     OFFPLAN_COUNT,
     READY_AMOUNT,
@@ -137,7 +137,7 @@ def test_latest_complete_month_requires_all_four_aggregates() -> None:
 def test_anchor_last_month_skips_the_in_progress_month() -> None:
     """最新月若恰为当前自然月（尚未过完）→ 回退一个月；否则取数据最新月。"""
 
-    from dashboard.analysis.uae.real_estate.data import anchor_last_month
+    from htfa.monitoring.uae.real_estate.data import anchor_last_month
 
     data = load_real_estate_data(_workbook_bytes(), file_name="test.xlsx")
 
@@ -209,7 +209,7 @@ def test_build_sales_figure_renders_bar_and_amount_line_for_both_markets() -> No
 def test_sales_display_values_converts_amount_to_yi_aed() -> None:
     """展示表金额由百万 AED 折算为亿 AED，笔数不变。"""
 
-    from dashboard.analysis.uae.real_estate.charts import sales_display_values
+    from htfa.monitoring.uae.real_estate.charts import sales_display_values
 
     data = load_real_estate_data(_workbook_bytes(), file_name="test.xlsx")
     last_month = data.values.index.max().to_period("M")

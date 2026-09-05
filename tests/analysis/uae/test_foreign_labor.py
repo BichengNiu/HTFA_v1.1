@@ -4,7 +4,7 @@ from io import BytesIO
 
 import pandas as pd
 
-from dashboard.analysis.uae.foreign_labor import (
+from htfa.monitoring.uae.foreign_labor import (
     BANGLADESH_CLEARANCES,
     BANGLADESH_LABEL,
     FOREIGN_LABOR_SHEET,

@@ -9,18 +9,18 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from dashboard.analysis.uae.oil import renderer
-from dashboard.analysis.uae.periods import (
+from htfa.monitoring.uae.oil import renderer
+from htfa.monitoring.uae.periods import (
     common_latest_month,
     within_month_window,
 )
-from dashboard.analysis.uae.oil.charts import (
+from htfa.monitoring.uae.oil.charts import (
     build_oil_market_figure,
     build_oil_revenue_figure,
     plot_series,
 )
-from dashboard.analysis.uae.oil.data import load_oil_market_data
-from dashboard.analysis.uae.oil.revenue import (
+from htfa.monitoring.uae.oil.data import load_oil_market_data
+from htfa.monitoring.uae.oil.revenue import (
     DAYS_COLUMN,
     PRICE_CONTRIBUTION_COLUMN,
     PRICE_BENCHMARK_COLUMN,
@@ -33,18 +33,11 @@ from dashboard.analysis.uae.oil.revenue import (
 )
 
 
-def test_oil_panel_reports_missing_shared_workbook(monkeypatch) -> None:
+def test_oil_panel_requires_explicit_workbook_payload() -> None:
     st_obj = MagicMock()
-    monkeypatch.setattr(renderer, "_source_payload", lambda: None)
 
-    result = renderer.render_oil_fiscal_panel(st_obj)
-
-    assert result["status"] == "no_data"
-    assert [call.args[0] for call in st_obj.subheader.call_args_list] == [
-        "战争压力",
-        "石油生产与收入",
-    ]
-    st_obj.info.assert_called_once()
+    with pytest.raises(TypeError):
+        renderer.render_oil_fiscal_panel(st_obj)
 
 
 def test_common_latest_month_uses_the_earliest_indicator_cutoff() -> None:
@@ -361,7 +354,7 @@ def test_oil_figures_accept_ts_ndarray_axes(monkeypatch) -> None:
         return figure, np.asarray([axis], dtype=object)
 
     monkeypatch.setattr(
-        "dashboard.analysis.uae.oil.charts.plot_series",
+        "htfa.monitoring.uae.oil.charts.plot_series",
         plot_series_with_array_axis,
     )
     data = load_oil_market_data(_workbook_bytes(), file_name="test.xlsx")

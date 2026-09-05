@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 from tests.analysis.uae._helpers import data_lines
-from dashboard.analysis.uae.government_finance.credit import (
+from htfa.monitoring.uae.government_finance.credit import (
     BUSINESS_INDUSTRIAL,
     BUSINESS_INDUSTRIAL_DISPLAY,
     FOREIGN_CURRENCIES,

@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from dashboard.analysis.uae.contracts import (
+from htfa.monitoring.uae.contracts import (
     ConfidenceLevel,
     DataProvenance,
     DiagnosticResult,

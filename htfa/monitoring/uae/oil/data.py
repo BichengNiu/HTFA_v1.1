@@ -1,0 +1,109 @@
+"""阿联酋 V2 油价与原油产量的窄范围工作簿适配器。"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+import pandas as pd
+
+from htfa.monitoring.uae.sheet_reader import (
+    SheetSeriesMetadata,
+    open_uae_workbook,
+    parse_target_sheet,
+)
+
+
+DAILY_SHEET = "日度_Wind"
+MONTHLY_SHEET = "月度_Wind"
+RIG_COUNT_SHEET = "月度_贝克休斯"
+
+PRICE_INDICATORS: tuple[tuple[str, str], ...] = (
+    ("布伦特期货", "期货结算价(连续): 布伦特原油"),
+    ("布伦特现货", "全球: 现货价: 原油(英国布伦特Dtd)"),
+    ("迪拜现货", "全球: 现货价: 原油(阿联酋迪拜)"),
+    ("穆尔班现货", "全球: 现货均价: 原油(阿联酋穆尔班)"),
+)
+PRODUCTION_INDICATOR = ("阿联酋原油产量", "阿联酋: 产量: 原油")
+RIG_COUNT_INDICATOR = ("阿联酋石油活跃钻机数", "阿联酋石油活跃钻机数")
+
+
+@dataclass(frozen=True)
+class OilMarketData:
+    """油价与产量监测所需的最小数据集。"""
+
+    prices: pd.DataFrame
+    production: pd.Series
+    rig_count: pd.Series | None
+    metadata: dict[str, SheetSeriesMetadata]
+    source_name: str
+
+
+def load_oil_market_data(
+    file_input: Any,
+    *,
+    file_name: str | None = None,
+) -> OilMarketData:
+    """只读取日度油价和月度原油产量，不依赖完整指标字典。"""
+
+    with open_uae_workbook(file_input, file_name=file_name) as (
+        excel_file,
+        source_name,
+    ):
+        prices, price_metadata = parse_target_sheet(
+            excel_file,
+            sheet_name=DAILY_SHEET,
+            targets=PRICE_INDICATORS,
+            allowed_frequencies={"日", "日度", "周", "周度"},
+            expected_unit="美元/桶",
+        )
+        production_frame, production_metadata = parse_target_sheet(
+            excel_file,
+            sheet_name=MONTHLY_SHEET,
+            targets=(PRODUCTION_INDICATOR,),
+            allowed_frequencies={"月", "月度"},
+            expected_unit="桶/天",
+        )
+        if RIG_COUNT_SHEET in excel_file.sheet_names:
+            rig_count_frame, rig_count_metadata = parse_target_sheet(
+                excel_file,
+                sheet_name=RIG_COUNT_SHEET,
+                targets=(RIG_COUNT_INDICATOR,),
+                allowed_frequencies={"月", "月度"},
+                expected_unit="台",
+            )
+        else:
+            rig_count_frame = None
+            rig_count_metadata = {}
+
+    production = production_frame[PRODUCTION_INDICATOR[0]].rename(
+        PRODUCTION_INDICATOR[0]
+    )
+    rig_count = (
+        None
+        if rig_count_frame is None
+        else rig_count_frame[RIG_COUNT_INDICATOR[0]].rename(
+            RIG_COUNT_INDICATOR[0]
+        )
+    )
+    return OilMarketData(
+        prices=prices,
+        production=production,
+        rig_count=rig_count,
+        metadata={
+            **price_metadata,
+            **production_metadata,
+            **rig_count_metadata,
+        },
+        source_name=source_name,
+    )
+
+
+__all__ = [
+    "OilMarketData",
+    "PRICE_INDICATORS",
+    "PRODUCTION_INDICATOR",
+    "RIG_COUNT_INDICATOR",
+    "RIG_COUNT_SHEET",
+    "load_oil_market_data",
+]

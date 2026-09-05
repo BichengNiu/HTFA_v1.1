@@ -33,13 +33,13 @@ def test_workspace_does_not_use_process_wide_cache() -> None:
 
 def test_only_fixed_weight_resource_uses_streamlit_process_cache() -> None:
     cached = {}
-    for path in (PROJECT_ROOT / "dashboard").rglob("*.py"):
+    for path in (PROJECT_ROOT / "htfa").rglob("*.py"):
         functions = _cached_functions(path)
         if functions:
             cached[path.relative_to(PROJECT_ROOT).as_posix()] = functions
 
     assert cached == {
-        "dashboard/analysis/industrial/utils/data_loader.py": {
+        "htfa/monitoring/industrial/utils/data_loader.py": {
             "load_weights_data"
         }
     }

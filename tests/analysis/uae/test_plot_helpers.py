@@ -4,7 +4,7 @@ from matplotlib.figure import Figure
 
 import pytest
 
-from dashboard.analysis.uae.plot_helpers import (
+from htfa.monitoring.uae.plot_helpers import (
     format_compact_y_axis,
     source_note,
 )

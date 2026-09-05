@@ -3,14 +3,14 @@ from pathlib import Path
 import pandas as pd
 import plotly.graph_objects as go
 
-from dashboard.analysis.industrial.charts.config import (
+from htfa.monitoring.industrial.charts.config import (
     ENTERPRISE_INDICATORS_CONFIG,
     PROFIT_CONTRIBUTION_CONFIG,
 )
-from dashboard.analysis.industrial.charts.enterprise_indicators_chart import (
+from htfa.monitoring.industrial.charts.enterprise_indicators_chart import (
     EnterpriseIndicatorsChart,
 )
-from dashboard.analysis.industrial.utils.chart_creator_unified import (
+from htfa.monitoring.industrial.utils.chart_creator_unified import (
     create_time_series_chart,
 )
 
@@ -28,7 +28,7 @@ def test_active_industrial_chart_path_builds_requested_series():
 
 def test_industrial_module_has_no_retired_combined_page_or_upload_state():
     source = Path(
-        "dashboard/analysis/industrial/enterprise_analysis.py"
+        "htfa/monitoring/industrial/enterprise_analysis.py"
     ).read_text(encoding="utf-8")
 
     assert "render_enterprise_operations_analysis_with_data" not in source

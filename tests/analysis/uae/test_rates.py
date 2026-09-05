@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 from tests.analysis.uae._helpers import data_lines
-from dashboard.analysis.uae.government_finance.rates import (
+from htfa.monitoring.uae.government_finance.rates import (
     EIBOR_ONEYEAR_DISPLAY,
     EIBOR_ONEYEAR_INDICATOR,
     EIBOR_OVERNIGHT_DISPLAY,

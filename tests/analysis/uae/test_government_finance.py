@@ -8,12 +8,12 @@ import pandas as pd
 import pytest
 
 from tests.analysis.uae._helpers import data_lines
-from dashboard.analysis.uae.government_finance import renderer
-from dashboard.analysis.uae.government_finance.charts import (
+from htfa.monitoring.uae.government_finance import renderer
+from htfa.monitoring.uae.government_finance.charts import (
     YOY_SERIES,
     build_government_finance_yoy_figure,
 )
-from dashboard.analysis.uae.government_finance.data import (
+from htfa.monitoring.uae.government_finance.data import (
     GOVERNMENT_CREDIT,
     GOVERNMENT_DEPOSITS,
     GRE_CREDIT,
@@ -21,11 +21,11 @@ from dashboard.analysis.uae.government_finance.data import (
     calculate_calendar_yoy,
     load_government_finance_data,
 )
-from dashboard.analysis.uae.government_finance.ded import (
+from htfa.monitoring.uae.government_finance.ded import (
     ENTERPRISES_DISPLAY,
     LICENCES_DISPLAY,
 )
-from dashboard.analysis.uae.government_finance.credit import (
+from htfa.monitoring.uae.government_finance.credit import (
     BUSINESS_INDUSTRIAL_DISPLAY,
     FOREIGN_CURRENCIES_DISPLAY,
     FOREIGN_LIABILITIES_DISPLAY,
@@ -33,28 +33,28 @@ from dashboard.analysis.uae.government_finance.credit import (
     NONRESIDENT_DEPOSITS,
     PRIVATE_CORPORATE_DISPLAY,
 )
-from dashboard.analysis.uae.foreign_labor import (
+from htfa.monitoring.uae.foreign_labor import (
     BANGLADESH_CLEARANCES,
     NEPAL_APPROVALS,
 )
-from dashboard.analysis.uae.government_finance.pmi import PMI_LABEL
-from dashboard.analysis.uae.government_finance.payments import (
+from htfa.monitoring.uae.government_finance.pmi import PMI_LABEL
+from htfa.monitoring.uae.government_finance.payments import (
     CHEQUES_AMOUNT_DISPLAY,
     CHEQUES_NUMBER_DISPLAY,
     CUSTOMER_TRANSFERS_AMOUNT_DISPLAY,
     CUSTOMER_TRANSFERS_NUMBER_DISPLAY,
 )
-from dashboard.analysis.uae.government_finance.rates import (
+from htfa.monitoring.uae.government_finance.rates import (
     EIBOR_ONEYEAR_DISPLAY,
     EIBOR_OVERNIGHT_DISPLAY,
     US_OVERNIGHT_DISPLAY,
     US_SOFR_12M_DISPLAY,
 )
-from dashboard.analysis.uae.government_finance.search_index import (
+from htfa.monitoring.uae.government_finance.search_index import (
     WORK_DUBAI_COLUMN,
     WORK_UAE_COLUMN,
 )
-from dashboard.analysis.uae.government_finance.renderer import _render_charts
+from htfa.monitoring.uae.government_finance.renderer import _render_charts
 
 
 def _workbook_bytes() -> bytes:
@@ -313,7 +313,7 @@ def test_section_renders_quad_business_and_labor_employment_subsections(
 def test_quad_cell_failure_warns_cell_and_keeps_section(monkeypatch) -> None:
     """某个格子的渲染 KeyError 只能让该格警告，不能拖垮整个区块。"""
 
-    from dashboard.analysis.uae.government_finance.rates import (
+    from htfa.monitoring.uae.government_finance.rates import (
         EIBOR_OVERNIGHT_DISPLAY,
     )
 

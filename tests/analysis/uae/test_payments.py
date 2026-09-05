@@ -5,7 +5,7 @@ from io import BytesIO
 import pandas as pd
 import pytest
 
-from dashboard.analysis.uae.government_finance.payments import (
+from htfa.monitoring.uae.government_finance.payments import (
     CHEQUES_AMOUNT,
     CHEQUES_AMOUNT_DISPLAY,
     CHEQUES_NUMBER,

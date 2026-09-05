@@ -7,8 +7,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from dashboard.analysis.uae.transport import renderer
-from dashboard.analysis.uae.transport.charts import (
+from htfa.monitoring.uae.transport import renderer
+from htfa.monitoring.uae.transport.charts import (
     DUBAI_AIR_CARGO_TITLE,
     HORMUZ_CALLS_TITLE,
     US_UAE_AIR_TITLE,
@@ -16,7 +16,7 @@ from dashboard.analysis.uae.transport.charts import (
     build_multi_series_figure,
     UAE_PORT_VOLUME_TITLE,
 )
-from dashboard.analysis.uae.transport.data import (
+from htfa.monitoring.uae.transport.data import (
     DUBAI_AIR_EXPORT_AWBS,
     DUBAI_AIR_EXPORT_TOTAL,
     DUBAI_AIR_IMPORT_AWBS,
@@ -642,7 +642,7 @@ def test_cell_failure_warns_cell_and_keeps_other_chart(monkeypatch) -> None:
 
 
 def test_figures_accept_ts_ndarray_axes(monkeypatch) -> None:
-    from dashboard.analysis.uae.transport import charts
+    from htfa.monitoring.uae.transport import charts
 
     original_plot_series = charts.plot_series
 
@@ -651,7 +651,7 @@ def test_figures_accept_ts_ndarray_axes(monkeypatch) -> None:
         return figure, np.asarray([axis], dtype=object)
 
     monkeypatch.setattr(
-        "dashboard.analysis.uae.transport.charts.plot_series",
+        "htfa.monitoring.uae.transport.charts.plot_series",
         plot_series_with_array_axis,
     )
     data = load_transport_data(_workbook_bytes(), file_name="test.xlsx")

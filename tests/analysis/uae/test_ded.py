@@ -6,7 +6,7 @@ import matplotlib.colors
 import pandas as pd
 import pytest
 
-from dashboard.analysis.uae.government_finance.ded import (
+from htfa.monitoring.uae.government_finance.ded import (
     ENTERPRISES_DISPLAY,
     ENTERPRISES_INDICATOR,
     LICENCES_DISPLAY,

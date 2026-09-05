@@ -9,11 +9,11 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
-from dashboard.analysis.uae.oil.charts import (
+from htfa.monitoring.uae.oil.charts import (
     build_war_pressure_index_figure,
     build_war_pressure_raw_figure,
 )
-from dashboard.analysis.uae.oil.war_pressure import (
+from htfa.monitoring.uae.oil.war_pressure import (
     BALLISTIC_LABEL,
     CRUISE_LABEL,
     PRESSURE_LABEL,
@@ -114,7 +114,7 @@ def test_war_pressure_raw_chart_uses_three_series_on_one_left_axis() -> None:
 
 
 def test_war_pressure_metrics_render_latest_month_four_cards() -> None:
-    from dashboard.analysis.uae.oil import renderer
+    from htfa.monitoring.uae.oil import renderer
 
     st_obj = MagicMock()
     st_obj.columns.return_value = tuple(MagicMock() for _ in range(4))
@@ -163,7 +163,7 @@ def test_war_pressure_index_chart_is_a_single_index_series() -> None:
 
 
 def test_war_pressure_section_renders_algorithm_and_interpretation(monkeypatch) -> None:
-    from dashboard.analysis.uae.oil import renderer
+    from htfa.monitoring.uae.oil import renderer
 
     st_obj = MagicMock()
     st_obj.columns.return_value = (MagicMock(), MagicMock())
@@ -191,11 +191,10 @@ def test_war_pressure_section_renders_algorithm_and_interpretation(monkeypatch) 
 
 
 def test_oil_panel_places_war_pressure_before_revenue(monkeypatch) -> None:
-    from dashboard.analysis.uae.oil import renderer
+    from htfa.monitoring.uae.oil import renderer
 
     events: list[str] = []
     st_obj = type("StubStreamlit", (), {})()
-    monkeypatch.setattr(renderer, "_source_payload", lambda: (b"workbook", "test.xlsx"))
     monkeypatch.setattr(
         renderer,
         "_load_oil_market_cached",
@@ -231,18 +230,6 @@ def test_oil_panel_places_war_pressure_before_revenue(monkeypatch) -> None:
         "_render_charts",
         lambda *args: events.append("charts"),
     )
-    monkeypatch.setattr(
-        "dashboard.analysis.uae.government_finance.render_government_finance_section",
-        lambda *args: {"status": "success"},
-    )
-    monkeypatch.setattr(
-        "dashboard.analysis.uae.real_estate.render_real_estate_section",
-        lambda *args: {"status": "success"},
-    )
-    monkeypatch.setattr(
-        "dashboard.analysis.uae.transport.render_transport_section",
-        lambda *args: {"status": "success"},
-    )
     st_obj.spinner = lambda *args, **kwargs: _NullContext()
     st_obj.expander = lambda *args, **kwargs: _NullContext()
     st_obj.subheader = lambda *args, **kwargs: None
@@ -251,7 +238,7 @@ def test_oil_panel_places_war_pressure_before_revenue(monkeypatch) -> None:
     st_obj.metric = lambda *args, **kwargs: None
     st_obj.caption = lambda *args, **kwargs: None
 
-    result = renderer.render_oil_fiscal_panel(st_obj)
+    result = renderer.render_oil_fiscal_panel(st_obj, (b"workbook", "test.xlsx"))
 
     assert result["status"] == "success"
     assert events[:2] == ["war", "revenue_metrics"]

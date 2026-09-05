@@ -7,16 +7,16 @@ from io import BytesIO
 import pandas as pd
 import pytest
 
-from dashboard.analysis.uae.contracts import (
+from htfa.monitoring.uae.contracts import (
     DataProvenance,
     ProvenanceKind,
     UAEDataBundle,
 )
-from dashboard.analysis.uae.indicator_catalog import (
+from htfa.monitoring.uae.indicator_catalog import (
     INDICATOR_SPECS,
     INDUSTRY_NAMES,
 )
-from dashboard.analysis.uae.services import (
+from htfa.monitoring.uae.services import (
     build_growth_panel,
     build_monitoring_dashboard,
 )

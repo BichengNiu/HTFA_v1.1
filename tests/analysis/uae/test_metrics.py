@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
-from dashboard.analysis.uae.metrics import (
+from htfa.monitoring.uae.metrics import (
     change_in_points,
     latest_calendar_yoy_and_pp,
     latest_month_value,

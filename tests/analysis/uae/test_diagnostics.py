@@ -1,12 +1,12 @@
 import pytest
 
-from dashboard.analysis.uae.contracts import (
+from htfa.monitoring.uae.contracts import (
     ConfidenceLevel,
     EvidenceClass,
     EvidenceItem,
     ProvenanceKind,
 )
-from dashboard.analysis.uae.diagnostics import (
+from htfa.monitoring.uae.diagnostics import (
     build_diagnostic,
     grade_confidence,
 )

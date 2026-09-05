@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-from dashboard.analysis.uae.periods import (
+from htfa.monitoring.uae.periods import (
     anchor_last_month,
     common_latest_month,
     latest_complete_month,

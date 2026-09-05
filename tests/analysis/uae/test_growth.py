@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from dashboard.analysis.uae.growth import (
+from htfa.monitoring.uae.growth import (
     calculate_growth_contributions,
     calculate_industry_diagnostics,
     validate_additivity,

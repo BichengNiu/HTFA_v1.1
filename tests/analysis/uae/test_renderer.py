@@ -3,7 +3,7 @@
 import re
 from unittest.mock import MagicMock
 
-from dashboard.analysis.uae.renderer import _render_report_header
+from htfa.monitoring.uae.renderer import _render_report_header
 
 
 def test_report_header_places_organization_and_datetime_on_meta_line() -> None:
