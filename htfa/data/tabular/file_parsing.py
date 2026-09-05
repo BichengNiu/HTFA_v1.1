@@ -8,6 +8,8 @@ from typing import Any
 
 import pandas as pd
 
+from .time import infer_time_values
+
 
 class FileParseError(ValueError):
     """用户输入文件无法读取或无法按指定结构解析。"""
@@ -165,18 +167,8 @@ def _parse_first_column_as_time(frame: pd.DataFrame) -> pd.DataFrame:
     if frame.empty or frame.shape[1] == 0:
         return frame
 
-    first_column = frame.iloc[:, 0]
-    if pd.api.types.is_datetime64_any_dtype(first_column):
-        return frame
-    if pd.api.types.is_numeric_dtype(first_column):
-        return frame
-
-    nonblank = first_column.notna() & first_column.astype(str).str.strip().ne("")
-    if not nonblank.any():
-        return frame
-
-    parsed = pd.to_datetime(first_column, errors="coerce", format="mixed")
-    if not parsed.loc[nonblank].notna().all():
+    parsed = infer_time_values(frame.iloc[:, 0])
+    if parsed is None:
         return frame
 
     result = frame.copy()

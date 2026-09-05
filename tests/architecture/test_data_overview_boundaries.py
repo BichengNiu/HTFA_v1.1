@@ -62,3 +62,21 @@ assert "htfa.ui_shared.data_overview.ui" in sys.modules
     )
 
     assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_removed_data_overview_import_paths_are_not_resolvable() -> None:
+    result = _run_fresh_process(
+        """
+import importlib
+
+for name in ("components.data_overview", "data_overview"):
+    try:
+        importlib.import_module(name)
+    except ModuleNotFoundError:
+        pass
+    else:
+        raise AssertionError(f"旧入口仍可导入：{name}")
+"""
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout

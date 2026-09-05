@@ -10,6 +10,8 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from .time import infer_time_values
+
 
 @dataclass(frozen=True)
 class OverviewDataset:
@@ -43,7 +45,7 @@ def _detect_time_column(frame: pd.DataFrame) -> str | None:
     return None
 
 
-def numeric_variable_names(frame: pd.DataFrame) -> list[str]:
+def numeric_variable_names(frame: pd.DataFrame) -> list[object]:
     """返回可用于建模的数值型列名（排除日期与布尔列）。"""
     names = []
     for column in frame.columns:
@@ -55,7 +57,7 @@ def numeric_variable_names(frame: pd.DataFrame) -> list[str]:
         if pd.api.types.is_numeric_dtype(series):
             if pd.api.types.is_complex_dtype(series):
                 continue
-            names.append(str(column))
+            names.append(column)
     return names
 
 
@@ -64,15 +66,7 @@ def suggest_time_column(frame: pd.DataFrame) -> str | None:
     if frame.shape[1] == 0:
         return None
     first = frame.iloc[:, 0]
-    if pd.api.types.is_datetime64_any_dtype(first):
-        return str(frame.columns[0])
-    if pd.api.types.is_numeric_dtype(first):
-        return None
-    nonblank = first.notna() & first.astype(str).str.strip().ne("")
-    if not nonblank.any():
-        return None
-    parsed = pd.to_datetime(first, errors="coerce", format="mixed")
-    if parsed.loc[nonblank].notna().all():
+    if infer_time_values(first) is not None:
         return str(frame.columns[0])
     return None
 
