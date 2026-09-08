@@ -46,7 +46,6 @@ import math
 import os
 import re
 import statistics
-import subprocess
 import sys
 import tempfile
 import time
@@ -57,6 +56,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from .paths import DATA_DIR, SCRIPTS_DIR
+from ._excel_helpers import run_powershell_command
 
 
 from . import db  # noqa: E402
@@ -1927,8 +1927,8 @@ def merge(workbook_path: Path) -> dict:
             temporary_path = Path(handle.name)
             _write_weekly_csv(handle, rows)
 
-        completed = subprocess.run(
-            [
+        completed = run_powershell_command(
+            (
                 "powershell.exe",
                 "-NoProfile",
                 "-ExecutionPolicy",
@@ -1943,12 +1943,7 @@ def merge(workbook_path: Path) -> dict:
                 f"{_as_date(rows[-1][0]):%Y-%m-%d}",
                 "-SheetName",
                 WORKSHEET_NAME,
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
+            )
         )
         if completed.returncode != 0:
             raise RuntimeError(

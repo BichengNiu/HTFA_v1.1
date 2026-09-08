@@ -117,10 +117,8 @@ try {
     $dictionarySheet.Cells.Item($indicatorRow, 3).Value2 = $payload.indicator.industry
     $dictionarySheet.Cells.Item($indicatorRow, 4).Value2 = $payload.source
 
-    $sheet.Activate()
-    $excel.ActiveWindow.SplitColumn = 0
-    $excel.ActiveWindow.SplitRow = 6
-    $excel.ActiveWindow.FreezePanes = $true
+    # Keep the COM instance headless.  Activating a sheet can surface Excel's
+    # automation window even when Application.Visible is false.
     $workbook.Save()
     if (-not $workbook.Saved) {
         throw "Excel did not save the destination workbook: $resolvedWorkbook"

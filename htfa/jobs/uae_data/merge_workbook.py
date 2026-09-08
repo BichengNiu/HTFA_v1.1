@@ -28,6 +28,7 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from .paths import DATA_DIR, SCRIPTS_DIR
+from ._excel_helpers import cleanup_excel_automation
 
 
 from . import db  # noqa: E402
@@ -92,6 +93,10 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[merge_workbook] sources: {', '.join(names)}", flush=True)
     failures = 0
     for name in names:
+        # A COM helper may outlive its PowerShell process by a short interval.
+        # Clean that state before and after every source so the next writer or
+        # an OOXML atomic replace never races a stale hidden Excel lock.
+        cleanup_excel_automation()
         try:
             module = importlib.import_module(f".source_{name}", package=__package__)
             outcome = module.merge(workbook_path)
@@ -109,6 +114,8 @@ def main(argv: list[str] | None = None) -> int:
                 traceback.format_exception_only(type(exc), exc)
             ).strip()
             print(f"[merge_workbook] {name:<16} FAILED  {detail}", flush=True)
+        finally:
+            cleanup_excel_automation()
     if failures == 0:
         try:
             dictionary = sync_workbook_dictionary(workbook_path)

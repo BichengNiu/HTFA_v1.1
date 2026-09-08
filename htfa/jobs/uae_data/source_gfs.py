@@ -20,6 +20,7 @@ import json
 import os
 import re
 import sys
+import time
 import uuid
 import zipfile
 from contextlib import contextmanager
@@ -34,6 +35,7 @@ from openpyxl import load_workbook
 from pypdf import PdfReader
 
 from .paths import DATA_DIR, SCRIPTS_DIR
+from ._excel_helpers import cleanup_excel_automation
 
 
 from .db import (  # noqa: E402
@@ -493,10 +495,12 @@ def build_payload(
     """构建 Excel COM 写入器消费的 JSON 安全 payload。"""
 
     def frequency_indicators(label: str) -> list[dict[str, str]]:
+        frequency = "季" if label == "季度" else "年"
         return [
             {
                 "code": indicator.code,
                 "name": indicator.name.replace("阿联酋:GFS:", f"阿联酋:GFS:{label}:", 1),
+                "frequency": frequency,
                 "type": "金额",
                 "industry": "财政",
                 "source": SOURCE_NAME,
@@ -825,9 +829,28 @@ def _update_dictionary_xml(data: bytes, entries: dict[str, bytes], payload: dict
                 names[value] = row_number
                 last_data_row = max(last_data_row, row_number)
 
+    header_row = rows.get(1)
+    header_values: dict[str, str | None] = {}
+    if header_row is not None:
+        for cell in header_row.findall(f"{{{MAIN_NS}}}c"):
+            reference = cell.attrib.get("r", "")
+            match = re.fullmatch(r"([A-Z]+)1", reference)
+            if match:
+                header_values[match.group(1)] = _cell_text(cell, shared)
+    extended_dictionary = (
+        header_values.get("D") == "频率"
+        and header_values.get("H") == "数据来源"
+    )
+    dictionary_columns = (
+        ("A", "B", "C", "D", "H")
+        if extended_dictionary
+        else ("A", "B", "C", "D")
+    )
+    dictionary_span = "1:9" if extended_dictionary else "1:4"
+
     template_row = rows[last_data_row]
     styles: dict[str, str | None] = {}
-    for column in "ABCD":
+    for column in dictionary_columns:
         cell = next((item for item in template_row.findall(f"{{{MAIN_NS}}}c") if item.attrib.get("r") == f"{column}{last_data_row}"), None)
         styles[column] = cell.attrib.get("s") if cell is not None else None
 
@@ -840,11 +863,29 @@ def _update_dictionary_xml(data: bytes, entries: dict[str, bytes], payload: dict
             names[name] = row_number
         row = rows.get(row_number)
         if row is None:
-            row = ET.Element(f"{{{MAIN_NS}}}row", {"r": str(row_number), "spans": "1:4"})
+            row = ET.Element(
+                f"{{{MAIN_NS}}}row",
+                {"r": str(row_number), "spans": dictionary_span},
+            )
             rows[row_number] = row
             sheet_data.append(row)
-        values = (name, indicator["type"], indicator["industry"], indicator["source"])
-        for column, value in zip("ABCD", values, strict=True):
+        if extended_dictionary:
+            values_by_column = {
+                "A": name,
+                "B": indicator["type"],
+                "C": indicator["industry"],
+                "D": indicator.get("frequency", ""),
+                "H": indicator["source"],
+            }
+        else:
+            values_by_column = {
+                "A": name,
+                "B": indicator["type"],
+                "C": indicator["industry"],
+                "D": indicator["source"],
+            }
+        for column in dictionary_columns:
+            value = values_by_column[column]
             reference = f"{column}{row_number}"
             for old_cell in list(row.findall(f"{{{MAIN_NS}}}c")):
                 if old_cell.attrib.get("r") == reference:
@@ -858,7 +899,11 @@ def _update_dictionary_xml(data: bytes, entries: dict[str, bytes], payload: dict
     sheet_data[:] = sorted(sheet_data, key=lambda row: int(row.attrib.get("r", "0")))
     dimension = root.find(f"{{{MAIN_NS}}}dimension")
     if dimension is not None:
-        dimension.set("ref", f"A1:G{max(max(rows), last_data_row)}")
+        last_column = 9 if extended_dictionary else 5
+        dimension.set(
+            "ref",
+            f"A1:{_column_name(last_column)}{max(max(rows), last_data_row)}",
+        )
     return _xml_bytes(root)
 
 
@@ -962,7 +1007,22 @@ def write_workbook(workbook_path: Path, payload: dict[str, object]) -> None:
             bad_entry = check.testzip()
             if bad_entry:
                 raise ValueError(f"Corrupt generated XLSX entry: {bad_entry}")
-        os.replace(temp_path, workbook_path)
+        # A previous Excel COM writer can finish its PowerShell process before
+        # Excel has released the workbook handle.  Reap only hidden automation
+        # instances and retry the atomic replacement; a user-visible Excel is
+        # never terminated by this path.
+        last_error: PermissionError | None = None
+        for _attempt in range(4):
+            cleanup_excel_automation()
+            try:
+                os.replace(temp_path, workbook_path)
+                last_error = None
+                break
+            except PermissionError as exc:
+                last_error = exc
+                time.sleep(1.0)
+        if last_error is not None:
+            raise last_error
     finally:
         temp_path.unlink(missing_ok=True)
 
@@ -1038,9 +1098,14 @@ def validate_target(
         removable_dictionary_names = set(
             payload.get("remove_dictionary_indicators", [])
         )
+        updated_dictionary_names = {
+            item["name"] for item in payload["indicators"]
+        }
         dictionary = workbook["指标字典"]
         for row_number, expected_row in enumerate(prior_dictionary, start=1):
-            if expected_row and expected_row[0] in removable_dictionary_names:
+            if expected_row and expected_row[0] in (
+                removable_dictionary_names | updated_dictionary_names
+            ):
                 continue
             actual_row = tuple(
                 _json_value(dictionary.cell(row_number, column).value)

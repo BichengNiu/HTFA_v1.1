@@ -12,16 +12,32 @@ echo [1/2] update_data.py --skip-download
 "runtime\python.exe" -B -c "import sys; sys.path.insert(0, r'%CD%'); from htfa.jobs.uae_data.update_data import main; sys.argv[0] = 'update_data.py'; raise SystemExit(main())" --skip-download
 if errorlevel 1 goto :failed
 
-echo [prep] close any lingering Excel
-taskkill /IM EXCEL.EXE /F >nul 2>&1
+echo [prep] close hidden Excel automation only
+"runtime\python.exe" -B -c "import sys; sys.path.insert(0, r'%CD%'); from htfa.jobs.uae_data._excel_helpers import cleanup_excel_automation; cleanup_excel_automation()"
+if errorlevel 1 goto :failed
 
 echo [2/2] merge_workbook.py
 "runtime\python.exe" -B -c "import sys; sys.path.insert(0, r'%CD%'); from htfa.jobs.uae_data.merge_workbook import main; sys.argv[0] = 'merge_workbook.py'; raise SystemExit(main())"
 if errorlevel 1 goto :failed
 
-echo [OK] auto update finished.
-exit /b 0
+:success
+set "UPDATE_EXIT=0"
+goto :cleanup
 
 :failed
+set "UPDATE_EXIT=1"
+
+:cleanup
+echo [cleanup] remove temporary files and caches
+powershell -NoProfile -ExecutionPolicy Bypass -File "tooling\scripts\clean_temps.ps1"
+if errorlevel 1 (
+    echo [WARN] temporary-file cleanup failed.
+    set "UPDATE_EXIT=1"
+)
+
+if "%UPDATE_EXIT%"=="0" (
+    echo [OK] auto update finished.
+    exit /b 0
+)
 echo [ERROR] auto update aborted.
 exit /b 1

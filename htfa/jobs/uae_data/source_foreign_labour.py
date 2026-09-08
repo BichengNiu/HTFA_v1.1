@@ -865,6 +865,10 @@ def write_workbook(
 
     temporary = output_path.with_suffix(".xlsx.tmp")
     workbook.save(temporary)
+    # openpyxl keeps the source package open on Windows until the workbook is
+    # explicitly closed.  Close it before replacing the canonical workbook so
+    # the following GFS OOXML merge cannot receive WinError 5.
+    workbook.close()
     os.replace(temporary, output_path)
     return output_path, backup
 

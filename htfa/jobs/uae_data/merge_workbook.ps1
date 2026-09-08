@@ -76,7 +76,26 @@ try {
     $excel.DisplayAlerts = $false
     $excel.ScreenUpdating = $false
     $excel.AskToUpdateLinks = $false
-    $book = $excel.Workbooks.Open($WorkbookPath, 0, $false)
+    # Excel 16 on this workstation can reject the workbook through the short
+    # Open overload after another COM writer has replaced the package.  Use
+    # the explicit repair-capable overload, as in the CBUAE writer.
+    $book = $excel.Workbooks.Open(
+        $WorkbookPath,
+        0,
+        $false,
+        5,
+        '',
+        '',
+        $true,
+        2,
+        $null,
+        $false,
+        $false,
+        $null,
+        $false,
+        $null,
+        1
+    )
 
     foreach ($worksheet in $book.Worksheets) {
         if ($worksheet.Name -ne $targetSheetName) {
@@ -98,12 +117,16 @@ try {
         1..$dictionary.UsedRange.Columns.Count |
             ForEach-Object { $dictionary.Cells.Item(1, $_).Text }
     )
-    if (@($dictionaryHeaders[0..($legacyHeaders.Count - 1)]) -ceq $legacyHeaders) {
+    # PowerShell 的集合 -ceq 比较不是可靠的逐项数组比较；把表头连接成
+    # 单一字符串后再比较，兼容旧版 5 列和当前 9 列指标字典。
+    $legacyHeaderText = $legacyHeaders -join "`0"
+    $extendedHeaderText = $extendedHeaders -join "`0"
+    if (($dictionaryHeaders[0..($legacyHeaders.Count - 1)] -join "`0") -ceq $legacyHeaderText) {
         $dictionarySourceColumn = 4
         $dictionaryForecastColumn = 5
         $dictionaryLastColumn = 5
     }
-    elseif (@($dictionaryHeaders[0..($extendedHeaders.Count - 1)]) -ceq $extendedHeaders) {
+    elseif (($dictionaryHeaders[0..($extendedHeaders.Count - 1)] -join "`0") -ceq $extendedHeaderText) {
         $dictionarySourceColumn = 8
         $dictionaryForecastColumn = 9
         $dictionaryLastColumn = 9
@@ -245,10 +268,8 @@ try {
     $target.Rows.Item(2).RowHeight = 60
     $target.Range("A2:P2").WrapText = $true
 
-    $target.Activate() | Out-Null
-    $excel.ActiveWindow.SplitColumn = 0
-    $excel.ActiveWindow.SplitRow = 6
-    $excel.ActiveWindow.FreezePanes = $true
+    # Keep the repair-mode COM instance headless.  Activating a sheet can
+    # surface Excel's automation window even when Application.Visible is false.
     $book.SaveCopyAs($temporaryPath)
     $savedCopy = $true
     $book.Close($false)

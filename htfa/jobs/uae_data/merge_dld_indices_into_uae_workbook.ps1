@@ -192,13 +192,8 @@ try {
     $sheet.Rows.Item(2).RowHeight = 32
     $sheet.Rows.Item('3:6').RowHeight = 20
 
-    [void]$sheet.Activate()
-    [void]$sheet.Range('A7').Select()
-    $excel.ActiveWindow.FreezePanes = $false
-    $excel.ActiveWindow.SplitColumn = 0
-    $excel.ActiveWindow.SplitRow = 6
-    $excel.ActiveWindow.FreezePanes = $true
-    [void]$sheet.Range('A7').Select()
+    # Do not activate/select a sheet in a headless COM run; that can surface
+    # the automation window despite Application.Visible being false.
 
     if ($PreviewPath) {
         $PreviewPath = [IO.Path]::GetFullPath($PreviewPath)

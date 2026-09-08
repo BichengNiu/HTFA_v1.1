@@ -175,9 +175,8 @@ try {
     $dataSheet.Columns.Item("A").ColumnWidth = 13
     $dataSheet.Columns.Item("B:K").ColumnWidth = 28
     $dataRange.AutoFilter() | Out-Null
-    $dataSheet.Activate()
-    $excel.ActiveWindow.SplitRow = 1
-    $freezeResult = $excel.ActiveWindow.FreezePanes = $true
+    # Do not activate the sheet in a headless COM run; that can surface the
+    # automation window despite Application.Visible being false.
 
     $dictionary = $workbook.Worksheets.Item(1)
     $lastRow = $dictionary.Cells.Item(

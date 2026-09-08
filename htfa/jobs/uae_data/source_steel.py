@@ -13,7 +13,6 @@ import hashlib
 import json
 import os
 import re
-import subprocess
 import sys
 import tempfile
 from calendar import monthrange
@@ -28,6 +27,7 @@ from .paths import DATA_DIR, SCRIPTS_DIR
 
 
 from . import db  # noqa: E402
+from ._excel_helpers import run_powershell_command  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # 常量
@@ -441,8 +441,8 @@ def merge(workbook_path: Path) -> dict:
     finally:
         con.close()
     try:
-        completed = subprocess.run(
-            [
+        completed = run_powershell_command(
+            (
                 "powershell",
                 "-NoProfile",
                 "-ExecutionPolicy",
@@ -453,13 +453,7 @@ def merge(workbook_path: Path) -> dict:
                 str(workbook_path),
                 "-WideCsvPath",
                 str(wide_path),
-            ],
-            check=False,
-            cwd=DATA_DIR,
-            text=True,
-            capture_output=True,
-            encoding="utf-8",
-            errors="replace",
+            )
         )
         if completed.returncode != 0:
             raise RuntimeError(

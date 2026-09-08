@@ -162,10 +162,8 @@ try {
         }
     }
 
-    $sheet.Activate()
-    $excel.ActiveWindow.SplitColumn = 0
-    $excel.ActiveWindow.SplitRow = 6
-    $excel.ActiveWindow.FreezePanes = $true
+    # Keep the COM instance headless.  Activating a sheet can surface Excel's
+    # automation window even when Application.Visible is false.
     # Repair-mode opens require SaveAs rather than the short Save property on
     # this Excel installation.  Save beside the target and replace it only
     # after Excel has closed the repaired package successfully.

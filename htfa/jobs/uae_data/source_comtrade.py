@@ -12,7 +12,6 @@ from __future__ import annotations
 import csv
 import json
 import os
-import subprocess
 import sys
 import time
 import urllib.error
@@ -29,6 +28,7 @@ from .paths import DATA_DIR, SCRIPTS_DIR
 
 
 from . import db  # noqa: E402
+from ._excel_helpers import run_powershell_command  # noqa: E402
 from .source_comtrade_scope import (  # noqa: E402
     CODE_DESCRIPTIONS,
     EXCLUDED_RELATED_CODES,
@@ -44,7 +44,10 @@ from .source_comtrade_scope import (  # noqa: E402
 
 RAW_DIR = DATA_DIR / "raw" / "comtrade"
 REFERENCE_DIR = RAW_DIR / "reference"
-PROCESSED_DIR = DATA_DIR / "processed"
+# merge_with_excel.ps1 reads this generated CSV from the package-local
+# processed/ directory.  Keep the derived intermediary beside the helper;
+# source data still enters DuckDB before it is reconstructed here.
+PROCESSED_DIR = SCRIPTS_DIR / "processed"
 REPORTERS_PATH = REFERENCE_DIR / "reporters.json"
 QUALITY_PATH = RAW_DIR / "quality_report.json"
 MERGE_SCRIPT = SCRIPTS_DIR / "merge_with_excel.ps1"
@@ -747,8 +750,8 @@ def merge(workbook_path: Path) -> dict:
                 }
             )
 
-    completed = subprocess.run(
-        [
+    completed = run_powershell_command(
+        (
             "powershell",
             "-NoProfile",
             "-ExecutionPolicy",
@@ -757,13 +760,7 @@ def merge(workbook_path: Path) -> dict:
             str(MERGE_SCRIPT),
             "-SourceWorkbook",
             str(workbook_path),
-        ],
-        check=False,
-        cwd=DATA_DIR,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
+        )
     )
     if completed.returncode != 0:
         raise RuntimeError(

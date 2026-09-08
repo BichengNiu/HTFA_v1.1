@@ -39,10 +39,14 @@ Remove-ItemNow (Join-Path $root '.coverage')
 Remove-ItemNow (Join-Path $root 'data\UAE\backups') -Recurse
 Remove-ItemNow (Join-Path $root 'data\UAE\processed') -Recurse
 Remove-ItemNow (Join-Path $root 'data\UAE\.cache') -Recurse
+Remove-ItemNow (Join-Path $root 'htfa\jobs\uae_data\backups') -Recurse
+Remove-ItemNow (Join-Path $root 'htfa\jobs\uae_data\processed') -Recurse
 Get-ChildItem -Path (Join-Path $root 'data\UAE') -File -Force -ErrorAction SilentlyContinue |
     Where-Object {
         $_.Name -like '.mesteel-wide-*.csv' -or $_.Name -like '.dld_indices_*.csv' -or
-        $_.Name -like '*.duckdb.wal' -or $_.Name -like '*.duckdb.tmp'
+        $_.Name -like '*.duckdb.wal' -or $_.Name -like '*.duckdb.tmp' -or
+        $_.Name -match '^\.(portwatch-sheet|rta-monthly)-.*\.json$' -or
+        $_.Name -match '^[0-9A-Fa-f]{8}(\.xlsx)?$'
     } |
     ForEach-Object { Remove-ItemNow $_.FullName }
 
