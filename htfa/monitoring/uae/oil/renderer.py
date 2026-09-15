@@ -18,13 +18,18 @@ from htfa.monitoring.uae.oil.charts import (
     REVENUE_LABEL,
     REVENUE_PRICE_LABEL,
     build_oil_market_figure,
+    build_oil_price_figure,
+    build_oil_production_figure,
     build_oil_revenue_figure,
+    build_oil_revenue_only_figure,
+    build_oil_rig_count_figure,
     build_war_pressure_index_figure,
     build_war_pressure_raw_figure,
 )
 from htfa.monitoring.uae.oil.data import OilMarketData, load_oil_market_data
 from htfa.monitoring.uae.oil.revenue import (
     PRICE_BENCHMARK_COLUMN,
+    PRICE_COLUMN,
     REVENUE_PRICE_BENCHMARK,
     REVENUE_COLUMN,
     YOY_COLUMN,
@@ -49,10 +54,10 @@ from htfa.monitoring.uae.metrics import (
 from htfa.ui_shared.chart_legend import render_pyplot_figure
 
 OIL_FISCAL_EXPLANATION = """
-- **油价**：布伦特期货由洲际交易所发布、布伦特现货由金联创发布；原始数据为日度/周度价格（美元/桶），油价卡片按原始频率显示最新观测，反映国际原油价格。
-- **原油产量**：由欧佩克发布；原始数据为月度阿联酋原油产量（桶/天），反映原油生产规模。
+- **油价**：由美国能源信息署（EIA）发布 Brent 原油现货日度历史数据；原始数据单位为美元/桶，油价卡片按日度频率显示最新观测，反映国际原油价格。
+- **原油产量**：由 OPEC 月度石油市场报告（MOMR）原油产量 secondary sources 表发布；当前报告为 Table 5-7，历史报告的同一表曾编号为 Table 5-8，单位为桶/天，反映原油生产规模。
 - **活跃钻机数**：由贝克休斯发布；原始数据按月份、地区及陆上/海上拆分，汇总为阿联酋月度活跃钻机数（台），反映石油勘探开发活动。
-- **月度石油收入（估算）**：由金联创、欧佩克发布；布伦特现货为日度/周度价格，按自然月取月均值；阿联酋原油产量为月度数据，按月取有效观测均值后按
+- **月度石油收入（估算）**：由 EIA Brent 现货与 OPEC MOMR 阿联酋原油产量计算；价格按自然月取月均值；阿联酋原油产量为月度数据，按月取有效观测均值后按
   `价格 × 产量 × 当月天数 ÷ 1亿` 计算（亿美元）；价格或产量缺失时不估算，作为销售收入规模代理。
 """.strip()
 
@@ -92,7 +97,11 @@ def _metric_delta(label: str, change: float | None) -> str | None:
 
 def _render_oil_metrics(st_obj: Any, data: OilMarketData) -> None:
     columns = st_obj.columns(4)
-    price_names = ("布伦特期货", "布伦特现货")
+    price_names = tuple(
+        name
+        for name in ("布伦特期货", "布伦特现货")
+        if name in data.prices.columns
+    )
     for column, name in zip(columns[:2], price_names):
         value, as_of, change = _latest_change(data.prices[name], days=30)
         metadata = data.metadata[name]
@@ -111,7 +120,8 @@ def _render_oil_metrics(st_obj: Any, data: OilMarketData) -> None:
 
     value, as_of, change = _latest_change(data.production)
     metadata = data.metadata[data.production.name]
-    with columns[2]:
+    production_column = columns[len(price_names)]
+    with production_column:
         st_obj.metric(
             "阿联酋原油产量",
             format_count_value(value, "桶/天"),
@@ -125,13 +135,13 @@ def _render_oil_metrics(st_obj: Any, data: OilMarketData) -> None:
         )
 
     if data.rig_count is None or data.rig_count.dropna().empty:
-        with columns[3]:
+        with columns[len(price_names) + 1]:
             st_obj.metric("阿联酋石油活跃钻机数", "—")
         return
 
     value, as_of, change = _latest_change(data.rig_count)
     metadata = data.metadata[data.rig_count.name]
-    with columns[3]:
+    with columns[len(price_names) + 1]:
         st_obj.metric(
             "阿联酋石油活跃钻机数",
             format_count_value(value, "台"),
@@ -260,7 +270,7 @@ def _render_war_pressure_section(
     st_obj.divider()
 
 
-def _render_charts(
+def _render_legacy_combined_charts(
     st_obj: Any,
     data: OilMarketData,
     revenue: pd.DataFrame,
@@ -368,6 +378,136 @@ def _render_charts(
             st_obj,
             revenue_download,
             title="石油价格与阿联酋石油收入",
+            key="analysis.uae.oil.revenue.download",
+        )
+
+
+def _render_charts(
+    st_obj: Any,
+    data: OilMarketData,
+    revenue: pd.DataFrame,
+) -> None:
+    """Render the oil charts in the requested two-by-two layout."""
+
+    production_source = data.metadata[data.production.name].source
+    rig_count_source = (
+        None
+        if data.rig_count is None
+        else data.metadata[data.rig_count.name].source
+    )
+    price_source = data.metadata[REVENUE_PRICE_BENCHMARK].source
+    revenue_sources = "、".join(
+        dict.fromkeys((price_source, production_source))
+    )
+
+    production_last_month = common_latest_month(
+        [(data.production.name, data.production)]
+    )
+    production = within_month_window(
+        data.production,
+        first_month=production_last_month - 36,
+        last_month=production_last_month,
+    ).div(10_000).rename(MARKET_PRODUCTION_LABEL)
+    if data.rig_count is None or data.rig_count.dropna().empty:
+        rigs = None
+    else:
+        rig_last_month = common_latest_month(
+            [(data.rig_count.name, data.rig_count)]
+        )
+        rigs = within_month_window(
+            data.rig_count,
+            first_month=rig_last_month - 36,
+            last_month=rig_last_month,
+        ).rename(MARKET_RIG_COUNT_LABEL)
+
+    revenue_last_month = common_latest_month(
+        [(REVENUE_COLUMN, revenue[REVENUE_COLUMN])]
+    )
+    revenue_window = within_month_window(
+        revenue,
+        first_month=revenue_last_month - 36,
+        last_month=revenue_last_month,
+    )
+    price_download = revenue_window[[PRICE_COLUMN]].rename(
+        columns={PRICE_COLUMN: REVENUE_PRICE_LABEL}
+    )
+    revenue_download = revenue_window[[REVENUE_COLUMN]]
+
+    first_row = st_obj.columns(2, gap="small")
+    second_row = st_obj.columns(2, gap="small")
+    with first_row[0]:
+        render_pyplot_figure(
+            st_obj,
+            build_oil_production_figure(
+                production,
+                production_source,
+                units={MARKET_PRODUCTION_LABEL: "万桶/天"},
+            ),
+            bbox_inches=None,
+            place_legend_bottom=False,
+        )
+        render_chart_download(
+            st_obj,
+            production,
+            title="原油产量",
+            key="analysis.uae.oil.production.download",
+        )
+    with first_row[1]:
+        if rigs is None or rigs.dropna().empty:
+            st_obj.info("活动钻井机数暂无有效观测。")
+        else:
+            render_pyplot_figure(
+                st_obj,
+                build_oil_rig_count_figure(
+                    rigs,
+                    rig_count_source or "",
+                    units={MARKET_RIG_COUNT_LABEL: data.metadata[
+                        data.rig_count.name
+                    ].unit},
+                ),
+                bbox_inches=None,
+                place_legend_bottom=False,
+            )
+            render_chart_download(
+                st_obj,
+                rigs,
+                title="活动钻井机数",
+                key="analysis.uae.oil.rig_count.download",
+            )
+    with second_row[0]:
+        render_pyplot_figure(
+            st_obj,
+            build_oil_price_figure(
+                revenue_window,
+                price_source,
+                units={REVENUE_PRICE_LABEL: data.metadata[
+                    REVENUE_PRICE_BENCHMARK
+                ].unit},
+            ),
+            bbox_inches=None,
+            place_legend_bottom=False,
+        )
+        render_chart_download(
+            st_obj,
+            price_download,
+            title="石油价格",
+            key="analysis.uae.oil.price.download",
+        )
+    with second_row[1]:
+        render_pyplot_figure(
+            st_obj,
+            build_oil_revenue_only_figure(
+                revenue_window,
+                revenue_sources,
+                units={REVENUE_LABEL: "亿美元"},
+            ),
+            bbox_inches=None,
+            place_legend_bottom=False,
+        )
+        render_chart_download(
+            st_obj,
+            revenue_download,
+            title="石油收入",
             key="analysis.uae.oil.revenue.download",
         )
 

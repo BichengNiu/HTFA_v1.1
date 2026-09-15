@@ -1,23 +1,22 @@
-"""从美国能源信息署（EIA）抓取阿联酋原油产量与 Brent 油价。
+"""从 OPEC MOMR/EIA 抓取阿联酋原油产量与 Brent 油价。
 
-数据链路为：EIA API/XLS → ``data/UAE/raw/eia_oil/`` → DuckDB 长表 →
-``月度_EIA``/``日度_EIA`` 宽表。Excel 只由 ``merge()`` 重建，不在抓取阶段
+数据链路为：OPEC MOMR + EIA XLS → ``data/UAE/raw/oil/`` → DuckDB 长表 →
+``月度_OPEC``/``日度_EIA`` 宽表。Excel 只由 ``merge()`` 重建，不在抓取阶段
 直接写入指标数据。
 """
 
 from __future__ import annotations
 
 import calendar
-import json
 import math
-import os
 import re
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
+from html.parser import HTMLParser
 from io import BytesIO
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urljoin
 
 import pandas as pd
 
@@ -26,37 +25,31 @@ from ._official_download import download_file
 from .paths import DATA_DIR
 from .workbook_sheet_writer import write_indicator_sheets
 
-RAW_DIR = DATA_DIR / "raw" / "eia_oil"
-PRODUCTION_RAW_PATH = RAW_DIR / "uae_crude_production.json"
+RAW_DIR = DATA_DIR / "raw" / "oil"
 PRICE_RAW_PATH = RAW_DIR / "brent_spot_daily.xls"
+OPEC_RAW_PATH = RAW_DIR / "momr_world_oil_supply.html"
+OPEC_HOME_RAW_PATH = RAW_DIR / "momr_home.html"
 
-EIA_API_URL = "https://api.eia.gov/v2/international/data/"
-EIA_PRODUCTION_PAGE = (
-    "https://www.eia.gov/international/data/world/crude-oil-production.php"
-    "?country=UAE&dl=none"
-)
 EIA_BRENT_XLS_URL = "https://www.eia.gov/dnav/pet/hist_xls/RBRTEd.xls"
-EIA_DEFAULT_API_KEY = "DEMO_KEY"
-EIA_PRODUCTION_TABLE = "eia_crude_production_monthly"
+OPEC_MOMR_HOME_URL = "https://publications.opec.org/momr/"
+OPEC_PRODUCTION_TABLE = "opec_crude_production_monthly"
 EIA_PRICE_TABLE = "eia_brent_spot_daily"
 
-PRODUCTION_SHEET = "月度_EIA"
+PRODUCTION_SHEET = "月度_OPEC"
 PRICE_SHEET = "日度_EIA"
 PRODUCTION_INDICATOR = "阿联酋原油产量"
 PRICE_INDICATOR = "布伦特现货"
-PRODUCTION_SOURCE = "U.S. EIA International"
+PRODUCTION_SOURCE = "OPEC MOMR（secondary sources）"
 PRICE_SOURCE = "U.S. EIA"
-
-_PERIOD_RE = re.compile(r"^(?P<year>\d{4})-(?P<month>\d{2})$")
-
 
 @dataclass(frozen=True)
 class ProductionObservation:
-    """一条 EIA 月度原油产量观测，单位为桶/日。"""
+    """一条 OPEC MOMR 月度原油产量观测，单位为桶/日。"""
 
     period: date
     production_bpd: float
     source_period: str
+    source_file: str = ""
 
 
 @dataclass(frozen=True)
@@ -67,93 +60,220 @@ class PriceObservation:
     price_usd_bbl: float
 
 
-def _api_key() -> str:
-    return os.environ.get("EIA_API_KEY", EIA_DEFAULT_API_KEY).strip() or EIA_DEFAULT_API_KEY
-
-
-def production_url() -> str:
-    """Return the public EIA API URL for UAE crude production."""
-
-    query = [
-        ("api_key", _api_key()),
-        ("frequency", "monthly"),
-        ("data[]", "value"),
-        ("facets[countryRegionId][]", "ARE"),
-        ("facets[productId][]", "57"),
-        ("facets[activityId][]", "1"),
-        ("sort[0][column]", "period"),
-        ("sort[0][direction]", "asc"),
-        ("length", "5000"),
-    ]
-    return f"{EIA_API_URL}?{urlencode(query)}"
-
-
-def _parse_period(value: object) -> tuple[date, str]:
-    text = str(value or "").strip()
-    match = _PERIOD_RE.fullmatch(text)
-    if match is None:
-        raise ValueError(f"EIA period 不是 YYYY-MM：{value!r}")
-    year = int(match.group("year"))
-    month = int(match.group("month"))
-    if not 1 <= month <= 12:
-        raise ValueError(f"EIA period 月份无效：{value!r}")
-    return date(year, month, calendar.monthrange(year, month)[1]), text
-
-
 def _positive_number(value: object, *, field: str) -> float:
     try:
         number = float(str(value).replace(",", "").strip())
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"EIA {field} 不是数值：{value!r}") from exc
+        raise ValueError(f"{field} 不是数值：{value!r}") from exc
     if not math.isfinite(number) or number < 0:
-        raise ValueError(f"EIA {field} 不是非负有限数值：{value!r}")
+        raise ValueError(f"{field} 不是非负有限数值：{value!r}")
     return number
 
 
-def parse_production_payload(payload: bytes | str) -> list[ProductionObservation]:
-    """Parse EIA API JSON and convert thousand barrels/day to barrels/day."""
+def discover_opec_supply_url(payload: bytes | str) -> str:
+    """从 OPEC MOMR 首页发现当前报告的 World oil supply 页面。"""
 
-    try:
-        document = json.loads(payload.decode("utf-8") if isinstance(payload, bytes) else payload)
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError("EIA 原油产量响应不是有效 JSON") from exc
+    html = payload.decode("utf-8", errors="replace") if isinstance(payload, bytes) else payload
+    candidates: list[str] = []
+    for anchor in re.finditer(
+        r"<a\b(?P<attrs>[^>]*)>(?P<body>.*?)</a>",
+        html,
+        flags=re.IGNORECASE | re.DOTALL,
+    ):
+        body = " ".join(re.sub(r"<[^>]+>", " ", anchor.group("body")).split())
+        if body.casefold() != "world oil supply":
+            continue
+        href = re.search(
+            r"\bhref=[\"'](?P<href>/momr/(?:archive/)?chapter/\d+/\d+)[\"']",
+            anchor.group("attrs"),
+            flags=re.IGNORECASE,
+        )
+        if href is not None:
+            candidates.append(href.group("href"))
+    archive_candidate = next(
+        (href for href in candidates if "/archive/chapter/" in href),
+        None,
+    )
+    if archive_candidate is not None:
+        return urljoin(OPEC_MOMR_HOME_URL, archive_candidate)
+    if candidates:
+        return urljoin(OPEC_MOMR_HOME_URL, candidates[0])
+    raise ValueError("OPEC MOMR 首页未发现当前 World oil supply 页面")
 
-    records = document.get("response", {}).get("data")
-    if not isinstance(records, list):
-        raise ValueError("EIA 原油产量响应缺少 response.data")
+
+def discover_opec_archive_links(payload: bytes | str) -> list[tuple[date, str]]:
+    """发现 OPEC MOMR 首页列出的历史月报，按发布日期倒序返回。"""
+
+    html = payload.decode("utf-8", errors="replace") if isinstance(payload, bytes) else payload
+    month_numbers = {
+        name: number
+        for number, name in enumerate(
+            ("january", "february", "march", "april", "may", "june",
+             "july", "august", "september", "october", "november", "december"),
+            start=1,
+        )
+    }
+    discovered: dict[str, tuple[date, str]] = {}
+    for anchor in re.finditer(
+        r"<a\b(?P<attrs>[^>]*)>(?P<body>.*?)</a>",
+        html,
+        flags=re.IGNORECASE | re.DOTALL,
+    ):
+        href = re.search(
+            r"\bhref=[\"'](?P<href>/momr/archive/(?P<id>\d+)/?)[\"']",
+            anchor.group("attrs"),
+            flags=re.IGNORECASE,
+        )
+        if href is None:
+            continue
+        body = " ".join(re.sub(r"<[^>]+>", " ", anchor.group("body")).split())
+        release = re.search(
+            r"(?P<month>January|February|March|April|May|June|July|August|"
+            r"September|October|November|December)\s+(?P<year>20\d{2})",
+            body,
+            flags=re.IGNORECASE,
+        )
+        if release is None:
+            continue
+        month = month_numbers[release.group("month").casefold()]
+        release_date = date(int(release.group("year")), month, 1)
+        report_id = href.group("id")
+        discovered[report_id] = (
+            release_date,
+            urljoin(OPEC_MOMR_HOME_URL, href.group("href")),
+        )
+    return sorted(discovered.values(), reverse=True)
+
+
+class _OpecTableParser(HTMLParser):
+    """Extract rows from one already-isolated HTML table."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.rows: list[list[str]] = []
+        self._row: list[str] | None = None
+        self._cell: list[str] | None = None
+
+    def handle_starttag(self, tag: str, attrs) -> None:  # noqa: ANN001
+        if tag.lower() == "tr":
+            self._row = []
+        elif tag.lower() in {"td", "th"} and self._row is not None:
+            self._cell = []
+
+    def handle_data(self, data: str) -> None:
+        if self._cell is not None:
+            self._cell.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag in {"td", "th"} and self._cell is not None and self._row is not None:
+            value = " ".join("".join(self._cell).split())
+            self._row.append(value)
+            self._cell = None
+        elif tag == "tr" and self._row is not None:
+            if self._row:
+                self.rows.append(self._row)
+            self._row = None
+
+
+def parse_opec_latest_production(payload: bytes | str) -> list[ProductionObservation]:
+    """Parse UAE monthly observations from OPEC MOMR's secondary-source table.
+
+    Each OPEC report publishes its latest available months in ``tb/d``.
+    Historical reports are parsed with the same table and methodology.
+    """
+
+    html = payload.decode("utf-8", errors="replace") if isinstance(payload, bytes) else payload
+    headings = re.finditer(
+        r"<h4\b[^>]*>\s*Table\s+5\s*-\s*\d+\s*</h4>",
+        html,
+        flags=re.IGNORECASE,
+    )
+    header: list[str] | None = None
+    uae_row: list[str] | None = None
+    for heading in headings:
+        table_start = html.find("<table", heading.end())
+        table_end = html.find("</table>", table_start)
+        if table_start < 0 or table_end < 0:
+            continue
+        parser = _OpecTableParser()
+        parser.feed(html[table_start : table_end + len("</table>")])
+        candidate_header = next(
+            (
+                row
+                for row in parser.rows
+                if row and row[0].casefold() == "secondary sources"
+            ),
+            None,
+        )
+        candidate_uae_row = next(
+            (row for row in parser.rows if row and row[0].casefold() == "uae"),
+            None,
+        )
+        if candidate_header is not None and candidate_uae_row is not None:
+            header = candidate_header
+            uae_row = candidate_uae_row
+            break
+    if header is None or uae_row is None:
+        raise ValueError("OPEC MOMR 缺少 Secondary sources/UAE 原油产量表格")
+
+    month_columns: list[tuple[int, date, str]] = []
+    for column, value in enumerate(header[1:], start=1):
+        match = re.fullmatch(
+            r"(?P<month>Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+"
+            r"(?P<year>\d{2})",
+            value,
+            flags=re.IGNORECASE,
+        )
+        if match is None:
+            continue
+        month = datetime.strptime(match.group("month"), "%b").month
+        year = 2000 + int(match.group("year"))
+        month_columns.append(
+            (column, date(year, month, calendar.monthrange(year, month)[1]), value)
+        )
+
+    observations: list[ProductionObservation] = []
+    for column, period, source_period in month_columns:
+        if column >= len(uae_row):
+            continue
+        value = uae_row[column].replace("*", "").strip()
+        if value in {"", "..", "—", "-"}:
+            continue
+        observations.append(
+            ProductionObservation(
+                period=period,
+                production_bpd=_positive_number(value, field="OPEC 原油产量") * 1_000,
+                source_period=f"{period:%Y-%m}",
+            )
+        )
+    if not observations:
+        raise ValueError("OPEC MOMR Secondary sources 表格没有 UAE 月度原油产量")
+    return observations
+
+
+def parse_opec_production_reports(
+    paths: list[Path],
+) -> list[ProductionObservation]:
+    """Parse reports newest-first and keep the newest revision per month."""
 
     observations: dict[date, ProductionObservation] = {}
-    for record in records:
-        if not isinstance(record, dict):
-            continue
-        if str(record.get("countryRegionId")) != "ARE":
-            continue
-        if str(record.get("productId")) != "57":
-            continue
-        if str(record.get("activityId")) != "1":
-            continue
-        unit = str(record.get("unit") or "").upper()
-        unit_name = str(record.get("unitName") or "").casefold()
-        if unit != "TBPD" and "thousand barrels per day" not in unit_name:
-            raise ValueError(f"EIA 原油产量单位异常：{record.get('unitName')!r}")
-
-        period, source_period = _parse_period(record.get("period"))
-        observation = ProductionObservation(
-            period=period,
-            production_bpd=_positive_number(
-                record.get("value"), field="原油产量"
+    for path in paths:
+        for item in parse_opec_latest_production(path.read_bytes()):
+            observations.setdefault(
+                item.period,
+                replace(item, source_file=path.name),
             )
-            * 1_000,
-            source_period=source_period,
-        )
-        previous = observations.get(period)
-        if previous is not None and previous != observation:
-            raise ValueError(f"EIA 原油产量存在重复月份：{source_period}")
-        observations[period] = observation
-
     if not observations:
-        raise ValueError("EIA 原油产量响应没有阿联酋 productId=57 的有效观测")
+        raise ValueError("OPEC MOMR 历史月报没有有效的阿联酋原油产量")
     return [observations[key] for key in sorted(observations)]
+
+
+def _opec_supply_sort_key(path: Path) -> int:
+    """Return the numeric archive id so revisions are applied newest-first."""
+
+    match = re.search(r"momr_supply_(\d+)\.html$", path.name)
+    return int(match.group(1)) if match else -1
 
 
 def parse_brent_xls(payload: bytes) -> list[PriceObservation]:
@@ -243,7 +363,6 @@ def _dictionary_rows() -> list[dict[str, object]]:
 def _download_inputs(*, force: bool) -> str:
     notes: list[str] = []
     downloads = (
-        (production_url(), PRODUCTION_RAW_PATH, EIA_PRODUCTION_PAGE),
         (EIA_BRENT_XLS_URL, PRICE_RAW_PATH, EIA_BRENT_XLS_URL),
     )
     for url, target, referer in downloads:
@@ -260,14 +379,65 @@ def _download_inputs(*, force: bool) -> str:
                 raise
             status = f"缓存（{exc}）"
         notes.append(f"{target.name}:{status}")
+
+    download_file(
+        OPEC_MOMR_HOME_URL,
+        OPEC_HOME_RAW_PATH,
+        # 首页链接会随月报切换，不能按固定文件名长期复用旧首页。
+        force=True,
+        min_bytes=10_000,
+    )
+    momr_home = OPEC_HOME_RAW_PATH.read_bytes()
+    current_supply_url = discover_opec_supply_url(momr_home)
+    current_status = download_file(
+        current_supply_url,
+        OPEC_RAW_PATH,
+        # 当前月报的 World oil supply 页面会随新一期月报切换。
+        force=True,
+        min_bytes=10_000,
+        referer=OPEC_MOMR_HOME_URL,
+    )
+    notes.append(f"{OPEC_RAW_PATH.name}:{current_status}")
+
+    archive_links = discover_opec_archive_links(momr_home)[:36]
+    for release_date, archive_url in archive_links:
+        report_id = archive_url.rstrip("/").rsplit("/", 1)[-1]
+        archive_path = RAW_DIR / f"momr_archive_{report_id}.html"
+        archive_status = download_file(
+            archive_url,
+            archive_path,
+            force=force,
+            min_bytes=10_000,
+            referer=OPEC_MOMR_HOME_URL,
+        )
+        archive_supply_url = discover_opec_supply_url(archive_path.read_bytes())
+        supply_path = RAW_DIR / f"momr_supply_{report_id}.html"
+        supply_status = download_file(
+            archive_supply_url,
+            supply_path,
+            force=force,
+            min_bytes=10_000,
+            referer=archive_url,
+        )
+        notes.append(
+            f"{release_date:%Y-%m}:{archive_status}/{supply_status}"
+        )
     return "；".join(notes)
 
 
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict[str, object]:
-    """抓取并把 EIA 原油产量、Brent 价格写入 DuckDB。"""
+    """抓取并把 OPEC 原油产量、EIA Brent 价格写入 DuckDB。"""
 
     download_note = "" if skip_download else _download_inputs(force=force)
-    production = parse_production_payload(PRODUCTION_RAW_PATH.read_bytes())
+    opec_paths = [
+        OPEC_RAW_PATH,
+        *sorted(
+            RAW_DIR.glob("momr_supply_*.html"),
+            key=_opec_supply_sort_key,
+            reverse=True,
+        ),
+    ]
+    production = parse_opec_production_reports(opec_paths)
     prices = parse_brent_xls(PRICE_RAW_PATH.read_bytes())
 
     production_rows = [
@@ -275,7 +445,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict[str
             "period": item.period,
             "production_bpd": item.production_bpd,
             "source_period": item.source_period,
-            "source_file": PRODUCTION_RAW_PATH.name,
+            "source_file": item.source_file or OPEC_RAW_PATH.name,
         }
         for item in production
     ]
@@ -288,7 +458,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict[str
         for item in prices
     ]
     with _transaction(con):
-        db.replace(con, EIA_PRODUCTION_TABLE, production_rows)
+        db.replace(con, OPEC_PRODUCTION_TABLE, production_rows)
         db.replace(con, EIA_PRICE_TABLE, price_rows)
         db.upsert_dictionary_rows(con, _dictionary_rows())
 
@@ -311,14 +481,14 @@ def _metadata(name: str, *, frequency: str, unit: str, source: str) -> dict[str,
 
 
 def merge(workbook_path: Path) -> dict[str, object]:
-    """从 EIA DuckDB 长表重建 ``月度_EIA`` 与 ``日度_EIA``。"""
+    """从 DuckDB 长表重建 ``月度_OPEC`` 与 ``日度_EIA``。"""
 
     if not Path(workbook_path).is_file():
         raise FileNotFoundError(f"Destination workbook not found: {workbook_path}")
     con = db.connect(read_only=True)
     try:
         production_rows = con.execute(
-            f"SELECT period, production_bpd FROM {EIA_PRODUCTION_TABLE} ORDER BY period"
+            f"SELECT period, production_bpd FROM {OPEC_PRODUCTION_TABLE} ORDER BY period"
         ).fetchall()
         price_rows = con.execute(
             f"SELECT period, price_usd_bbl FROM {EIA_PRICE_TABLE} ORDER BY period"
@@ -326,14 +496,14 @@ def merge(workbook_path: Path) -> dict[str, object]:
     finally:
         con.close()
     if not production_rows or not price_rows:
-        raise ValueError("EIA 原油产量或 Brent 价格长表为空，无法合并")
+        raise ValueError("OPEC 原油产量或 Brent 价格长表为空，无法合并")
 
     counts = write_indicator_sheets(
         Path(workbook_path),
         [
             {
                 "name": PRODUCTION_SHEET,
-                "title": "阿联酋原油产量（EIA）",
+                "title": "阿联酋原油产量（OPEC MOMR）",
                 "indicators": [PRODUCTION_INDICATOR],
                 "metadata": {
                     PRODUCTION_INDICATOR: _metadata(
@@ -378,22 +548,24 @@ def merge(workbook_path: Path) -> dict[str, object]:
 
 
 __all__ = [
-    "EIA_API_URL",
     "EIA_BRENT_XLS_URL",
-    "EIA_PRODUCTION_PAGE",
-    "EIA_PRODUCTION_TABLE",
     "EIA_PRICE_TABLE",
+    "OPEC_MOMR_HOME_URL",
+    "OPEC_HOME_RAW_PATH",
+    "OPEC_PRODUCTION_TABLE",
+    "OPEC_RAW_PATH",
     "PRICE_INDICATOR",
     "PRICE_RAW_PATH",
     "PRICE_SHEET",
     "PRODUCTION_INDICATOR",
-    "PRODUCTION_RAW_PATH",
     "PRODUCTION_SHEET",
     "PriceObservation",
     "ProductionObservation",
     "merge",
     "parse_brent_xls",
-    "parse_production_payload",
-    "production_url",
+    "parse_opec_latest_production",
+    "parse_opec_production_reports",
+    "discover_opec_archive_links",
+    "discover_opec_supply_url",
     "update",
 ]

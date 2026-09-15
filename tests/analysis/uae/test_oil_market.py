@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from io import BytesIO
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import numpy as np
 import pandas as pd
@@ -16,7 +16,11 @@ from htfa.monitoring.uae.periods import (
 )
 from htfa.monitoring.uae.oil.charts import (
     build_oil_market_figure,
+    build_oil_price_figure,
+    build_oil_production_figure,
     build_oil_revenue_figure,
+    build_oil_revenue_only_figure,
+    build_oil_rig_count_figure,
     plot_series,
 )
 from htfa.monitoring.uae.oil.data import load_oil_market_data
@@ -287,6 +291,58 @@ def test_oil_market_figure_combines_production_and_rigs() -> None:
         text.get_text() == "数据来源：欧佩克、贝克休斯"
         for text in figure.texts
     )
+
+
+def test_oil_split_figures_are_single_series() -> None:
+    data = load_oil_market_data(_workbook_bytes(), file_name="test.xlsx")
+    revenue = estimate_monthly_oil_revenue(data.prices, data.production)
+    figures = [
+        (
+            build_oil_production_figure(data.production.div(10_000), "OPEC MOMR"),
+            True,
+            data.production.dropna().size,
+        ),
+        (
+            build_oil_rig_count_figure(data.rig_count, "Baker Hughes"),
+            False,
+            data.rig_count.dropna().size,
+        ),
+        (build_oil_price_figure(revenue, "U.S. EIA"), False, len(revenue)),
+        (
+            build_oil_revenue_only_figure(revenue, "OPEC MOMR、U.S. EIA"),
+            True,
+            len(revenue),
+        ),
+    ]
+    titles = ["原油产量", "活动钻井机数", "石油价格", "石油收入"]
+
+    for (figure, bars, expected_points), title in zip(figures, titles):
+        assert len(figure.axes) == 1
+        axis = figure.axes[0]
+        assert axis.get_title() == title
+        if bars:
+            assert len(axis.patches) == expected_points
+        else:
+            assert len(axis.get_lines()) == 1
+
+
+def test_render_charts_uses_requested_two_by_two_rows(monkeypatch) -> None:
+    data = load_oil_market_data(_workbook_bytes(), file_name="test.xlsx")
+    revenue = estimate_monthly_oil_revenue(data.prices, data.production)
+    st_obj = MagicMock()
+    st_obj.columns.side_effect = [
+        [MagicMock(), MagicMock()],
+        [MagicMock(), MagicMock()],
+    ]
+    monkeypatch.setattr(renderer, "render_pyplot_figure", lambda *args, **kwargs: None)
+    monkeypatch.setattr(renderer, "render_chart_download", lambda *args, **kwargs: None)
+
+    renderer._render_charts(st_obj, data, revenue)
+
+    assert st_obj.columns.call_args_list == [
+        call(2, gap="small"),
+        call(2, gap="small"),
+    ]
 
 
 def test_oil_market_figure_marks_war_start_with_red_dashed_line() -> None:

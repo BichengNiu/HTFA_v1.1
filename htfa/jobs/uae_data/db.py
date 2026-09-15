@@ -64,7 +64,7 @@ _BASE_DDL = (
     )
     """,
     """
-    CREATE TABLE IF NOT EXISTS eia_crude_production_monthly (
+    CREATE TABLE IF NOT EXISTS opec_crude_production_monthly (
         period        DATE PRIMARY KEY,
         production_bpd DOUBLE NOT NULL,
         source_period VARCHAR,
