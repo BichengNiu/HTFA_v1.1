@@ -1,9 +1,9 @@
 """UAE military strike exposure and war-pressure index (WAM registry).
 
-The reviewed daily registry is stored in ``data/UAE/raw/wam/``.  This module
-validates that registry, preserves the daily detail in DuckDB, aggregates the
-three weapon counts and the daily three-log pressure measure by month, and
-rebuilds ``月度_WAM`` from DuckDB.
+The reviewed daily registry and the generated automatic extension are stored
+in ``data/UAE/raw/wam/``.  This module validates both, preserves the daily
+detail in DuckDB, aggregates the three weapon counts and the daily three-log
+pressure measure by month, and rebuilds ``月度_WAM`` from DuckDB.
 
 The raw pressure measure is deliberately aggregated as the sum of daily
 weighted values: ``sum(9*log1p(ballistic) + 3*log1p(cruise) + log1p(uavs))``.
@@ -16,8 +16,12 @@ from __future__ import annotations
 
 import calendar
 import csv
+import html
 import math
+import os
+import re
 import sys
+import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import date
@@ -29,6 +33,7 @@ from .paths import DATA_DIR, SCRIPTS_DIR
 
 RAW_DIR = DATA_DIR / "raw" / "wam"
 DAILY_PATH = RAW_DIR / "uae_military_strike_intensity_daily.csv"
+AUTO_DAILY_PATH = RAW_DIR / "auto_daily_observations.csv"
 ASSET_PATH = RAW_DIR / "asset_sources.csv"
 TARGET_SHEET = "月度_WAM"
 DICTIONARY_SHEET = "指标字典"
@@ -165,8 +170,13 @@ def _asset_sources() -> dict[str, str]:
     return result
 
 
-def load_daily_observations(path: Path = DAILY_PATH) -> list[dict]:
-    """Load and validate the reviewed daily registry."""
+def load_daily_observations(
+    path: Path = DAILY_PATH,
+    *,
+    require_start: bool = True,
+    require_contiguous: bool = True,
+) -> list[dict]:
+    """Load and validate a WAM daily registry or a generated extension."""
 
     if not path.is_file():
         raise FileNotFoundError(f"WAM daily registry not found: {path}")
@@ -225,15 +235,289 @@ def load_daily_observations(path: Path = DAILY_PATH) -> list[dict]:
     if not observations:
         raise ValueError("WAM daily registry is empty")
     observations.sort(key=lambda item: item["date"])
-    if observations[0]["date"] != START_DATE:
+    if require_start and observations[0]["date"] != START_DATE:
         raise ValueError(f"WAM registry must start at {START_DATE}, got {observations[0]['date']}")
-    expected_dates = {START_DATE}
-    for item in observations[1:]:
-        previous = max(expected_dates)
-        expected_dates.add(previous.fromordinal(previous.toordinal() + 1))
-        if item["date"] != max(expected_dates):
-            raise ValueError(f"WAM registry has a date gap or duplicate near {item['date']}")
+    if require_contiguous:
+        expected_date = observations[0]["date"]
+        for item in observations[1:]:
+            expected_date = expected_date.fromordinal(expected_date.toordinal() + 1)
+            if item["date"] != expected_date:
+                raise ValueError(f"WAM registry has a date gap or duplicate near {item['date']}")
     return observations
+
+
+_MONTHS = {
+    name.casefold(): number
+    for number, name in enumerate(calendar.month_name)
+    if name
+}
+_NUMBER_WORDS = {
+    "a": 1,
+    "an": 1,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "thirteen": 13,
+    "fourteen": 14,
+    "fifteen": 15,
+    "sixteen": 16,
+    "seventeen": 17,
+    "eighteen": 18,
+    "nineteen": 19,
+    "twenty": 20,
+}
+_NUMBER_TOKEN = r"(?:\d[\d,]*|a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)"
+
+
+def _number_value(value: str) -> int:
+    token = value.casefold().replace(",", "").strip()
+    if token.isdigit():
+        return int(token)
+    return _NUMBER_WORDS[token]
+
+
+def _first_event_text(body: str, headline: str) -> str:
+    """Keep the first operational statement, excluding cumulative totals."""
+
+    text = html.unescape(f"{body} {headline}").replace("\xa0", " ")
+    lowered = text.casefold()
+    cut_positions = [
+        lowered.find(marker)
+        for marker in (
+            " since the start",
+            " since beginning",
+            " since onset",
+            " since saturday",
+            " over the past",
+            " in the past",
+        )
+        if lowered.find(marker) >= 0
+    ]
+    if cut_positions:
+        text = text[: min(cut_positions)]
+    return text
+
+
+def _extract_weapon_count(text: str, kind: str) -> int:
+    labels = {
+        "ballistic_missiles": r"ballistic\s+miss(?:ile|les)s?",
+        "cruise_missiles": r"cruise\s+miss(?:ile|les)s?",
+        "uavs": r"(?:uav(?:s|'s)?|drone(?:s)?)",
+        "unclassified_missiles": r"miss(?:ile|les)s?",
+    }
+    label = labels[kind]
+    pattern = re.compile(
+        rf"\b({_NUMBER_TOKEN})\s+(?:of\s+)?(?:the\s+)?{label}\b",
+        re.IGNORECASE,
+    )
+    match = pattern.search(text)
+    if match:
+        return _number_value(match.group(1))
+    if kind == "uavs" and re.search(
+        r"\b(?:respond(?:ed|s)?|detect(?:ed|s)?|intercept(?:ed|s)?|engag(?:e|ed|es))\s+an?\s+uav\b",
+        text,
+        re.IGNORECASE,
+    ):
+        return 1
+    return 0
+
+
+def _event_date(record: dict, body: str) -> date | None:
+    match = re.search(
+        r"\b(\d{1,2})(?:st|nd|rd|th)?\s+"
+        r"(January|February|March|April|May|June|July|August|September|October|November|December)"
+        r"[, ]+(\d{4})\b",
+        body,
+        re.IGNORECASE,
+    )
+    if match:
+        return date(int(match.group(3)), _MONTHS[match.group(2).casefold()], int(match.group(1)))
+    published = str(record.get("date_published") or record.get("sitemap_published_at") or "")
+    try:
+        return date.fromisoformat(published[:10])
+    except ValueError:
+        return None
+
+
+def extract_auto_article_observation(record: dict) -> dict | None:
+    """Extract one high-confidence daily observation from a WAM JSON-LD record."""
+
+    body = html.unescape(str(record.get("article_body") or ""))
+    headline = html.unescape(str(record.get("headline") or record.get("sitemap_title") or ""))
+    if not body and not headline:
+        return None
+    full_text = f"{body} {headline}"
+    lowered = full_text.casefold()
+    event_text = _first_event_text(body, headline)
+    counts = {
+        kind: _extract_weapon_count(event_text, kind)
+        for kind in WEAPON_PRESSURE_WEIGHTS
+    }
+    if not any(counts.values()):
+        for kind in WEAPON_PRESSURE_WEIGHTS:
+            counts[kind] = _extract_weapon_count(headline, kind)
+
+    # Cumulative and interval statements cannot be assigned to one day safely.
+    cumulative = bool(
+        re.search(r"\bsince\s+(?:the\s+start|beginning|onset|saturday)", lowered)
+    )
+    interval = bool(re.search(r"\b(?:over|in)\s+the\s+past\s+\d+\s+hours?", lowered))
+    if not any(counts.values()) or cumulative or interval:
+        return None
+    period = _event_date(record, body)
+    if period is None:
+        return None
+    return {
+        "date": period,
+        **counts,
+        "unclassified_missiles": 0,
+        "source_url": record.get("url"),
+        "published_at": record.get("date_published") or record.get("sitemap_published_at"),
+        "headline": headline,
+        "origin": "Iran" if "iran" in lowered else "Unknown/Not stated",
+    }
+
+
+def derive_auto_daily_observations(
+    base_daily: list[dict], article_records: list[dict]
+) -> list[dict]:
+    """Build the machine-generated daily extension after the reviewed registry."""
+
+    if not base_daily:
+        raise ValueError("Cannot derive WAM automatic extension from an empty registry")
+    last_date = base_daily[-1]["date"]
+    by_date: dict[date, list[dict]] = {}
+    for record in article_records:
+        observation = extract_auto_article_observation(record)
+        if observation is not None and observation["date"] > last_date:
+            by_date.setdefault(observation["date"], []).append(observation)
+    if not by_date:
+        return []
+
+    last_event_date = max(by_date)
+    result: list[dict] = []
+    period = last_date.fromordinal(last_date.toordinal() + 1)
+    while period <= last_event_date:
+        candidates = by_date.get(period, [])
+        if candidates:
+            values = {
+                kind: max(item[kind] for item in candidates)
+                for kind in WEAPON_PRESSURE_WEIGHTS
+            }
+            best = max(
+                candidates,
+                key=lambda item: (
+                    sum(item[kind] for kind in WEAPON_PRESSURE_WEIGHTS),
+                    str(item.get("published_at") or ""),
+                ),
+            )
+            urls = list(dict.fromkeys(str(item["source_url"]) for item in candidates if item.get("source_url")))
+            result.append(
+                {
+                    "date": period,
+                    **values,
+                    "unclassified_missiles": 0,
+                    "strike_intensity_log": weighted_pressure(**values),
+                    "attack_any": True,
+                    "uae_asset_attack": False,
+                    "origin": best["origin"],
+                    "observation_status": "auto_extracted_wam_jsonld",
+                    "count_basis": "official_wam_article_direct_daily_statement",
+                    "external_threat_alert": False,
+                    "source_url": urls[0] if urls else None,
+                    "source_url_2": urls[1] if len(urls) > 1 else None,
+                    "source_url_3": None,
+                    "notes": "自动从 WAM NewsArticle JSON-LD 正文提取；同日多篇取各类武器最大明确值",
+                }
+            )
+        else:
+            result.append(
+                {
+                    "date": period,
+                    "ballistic_missiles": 0,
+                    "cruise_missiles": 0,
+                    "uavs": 0,
+                    "unclassified_missiles": 0,
+                    "strike_intensity_log": 0.0,
+                    "attack_any": False,
+                    "uae_asset_attack": False,
+                    "origin": "Unknown/Not stated",
+                    "observation_status": "auto_wam_scan_no_verified_attack_article",
+                    "count_basis": "official_wam_sitemap_scan_no_qualifying_article",
+                    "external_threat_alert": False,
+                    "source_url": None,
+                    "source_url_2": None,
+                    "source_url_3": None,
+                    "notes": "WAM 官方英文月度 sitemap 扫描未发现可提取的 UAE 空袭数字；不代表绝对没有事件",
+                }
+            )
+        period = period.fromordinal(period.toordinal() + 1)
+    return result
+
+
+def write_auto_daily_observations(rows: list[dict]) -> None:
+    """Atomically persist the generated extension as a raw/cache artifact."""
+
+    RAW_DIR.mkdir(parents=True, exist_ok=True)
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            newline="",
+            suffix=".tmp",
+            delete=False,
+            dir=RAW_DIR,
+        ) as handle:
+            temporary_path = Path(handle.name)
+            writer = csv.DictWriter(handle, fieldnames=REQUIRED_COLUMNS)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow(
+                    {
+                        field: (
+                            row[field].isoformat()
+                            if field == "date"
+                            else int(row[field])
+                            if field in {"ballistic_missiles", "cruise_missiles", "uavs", "unclassified_missiles"}
+                            else float(row[field])
+                            if field == "strike_intensity_log"
+                            else int(bool(row[field]))
+                            if field in {"attack_any", "uae_asset_attack", "external_threat_alert"}
+                            else row[field] or ""
+                        )
+                        for field in REQUIRED_COLUMNS
+                    }
+                )
+        os.replace(temporary_path, AUTO_DAILY_PATH)
+    finally:
+        if temporary_path is not None and temporary_path.exists():
+            temporary_path.unlink()
+
+
+def load_effective_daily_observations() -> list[dict]:
+    """Load the reviewed registry plus any generated automatic extension."""
+
+    base = load_daily_observations()
+    if not AUTO_DAILY_PATH.is_file():
+        return base
+    auto = load_daily_observations(
+        AUTO_DAILY_PATH,
+        require_start=False,
+        require_contiguous=True,
+    )
+    if auto and auto[0]["date"] <= base[-1]["date"]:
+        raise ValueError("WAM automatic extension overlaps the reviewed registry")
+    return base + auto
 
 
 def build_monthly_observations(daily: list[dict]) -> list[MonthlyObservation]:
@@ -318,13 +602,28 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     """Refresh source archives when requested, then validate and load WAM data."""
 
     fetch_note = ""
+    base_daily = load_daily_observations()
     if not skip_download:
-        counts = fetch_wam.refresh_source_manifest(force=force)
+        archive_counts = fetch_wam.refresh_source_manifest(force=force)
+        auto_counts = fetch_wam.refresh_auto_articles(force=force)
+        if auto_counts["failed"]:
+            raise RuntimeError(
+                f"WAM 自动文章抓取/解析失败 {auto_counts['failed']} 篇；"
+                f"请检查 {fetch_wam.AUTO_ARTICLES_PATH}"
+            )
         fetch_note = (
-            f"来源页 total={counts['total']}, downloaded={counts['downloaded']}, "
-            f"reused={counts['reused']}, failed={counts['failed']}"
+            f"WAM cited sources total={archive_counts['total']}, "
+            f"downloaded={archive_counts['downloaded']}, reused={archive_counts['reused']}, "
+            f"failed={archive_counts['failed']}; auto articles discovered={auto_counts['discovered']}, "
+            f"downloaded={auto_counts['downloaded']}, reused={auto_counts['reused']}, "
+            f"failed={auto_counts['failed']}"
         )
-    daily = load_daily_observations()
+    auto_rows = derive_auto_daily_observations(
+        base_daily, fetch_wam.load_auto_articles()
+    )
+    if auto_rows:
+        write_auto_daily_observations(auto_rows)
+    daily = load_effective_daily_observations()
     monthly = build_monthly_observations(daily)
     daily_rows = [dict(row) for row in daily]
     monthly_rows = [

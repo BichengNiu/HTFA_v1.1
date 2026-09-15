@@ -3,20 +3,22 @@
 HTFA 使用项目根目录中的 `runtime/`，因此复制整个项目目录后，无需另外安装 Python。正常启动运行：
 
 ```powershell
-scripts\start.bat
+htfa.bat
 ```
 
 仅在 `runtime/` 缺失、损坏或依赖发生变化时重建：
 
 ```powershell
-python scripts\htfa.py setup-runtime
+htfa.bat setup-runtime
 ```
 
 重建脚本下载固定版本的 CPython 和依赖，校验下载文件，构建候选运行时，并在关键导入成功后替换现有 `runtime/`。替换失败会恢复旧运行时。
 
 启动时会检查 `BichengNiu/Ts` 的 `main`。发现新提交时更新本地 Ts；断网、下载失败或替换失败时继续使用现有版本。该过程不依赖系统 Git。
 
-如果项目目录本身是 Git 仓库，`scripts\start.bat` 会在上述 Ts 检查前尝试执行 `git pull --ff-only origin main` 更新 HTFA 源码。仅当当前分支是 `main` 且工作区干净时才会更新；Git 不可用、目录不是 Git 仓库、存在本地改动、无法快进或网络失败时会显示警告并继续使用当前 HTFA 源码，不会覆盖本地改动。
+如果项目目录本身是 Git 仓库，`htfa.bat` 会通过统一 PowerShell 入口在上述 Ts 检查前尝试执行 `git pull --ff-only origin main` 更新 HTFA 源码。仅当当前分支是 `main` 且工作区干净时才会更新；Git 不可用、目录不是 Git 仓库、存在本地改动、无法快进或网络失败时会显示警告并继续使用当前 HTFA 源码，不会覆盖本地改动。
+
+`htfa.bat` 是鼠标双击入口；底层 `htfa.ps1` 负责统一启动、停止和运行时管理，`scripts\htfa.py` 仍作为内部 Python 运行时管理模块使用。
 
 启动时会使用独立的 Edge/Chrome 应用窗口打开 HTFA，并由隐藏监控进程联动三者生命周期：关闭该浏览器窗口会终止后端并退出启动 CMD；点击启动 CMD 右上角关闭按钮会由监控进程终止后端并关闭该浏览器窗口；后端异常退出时也会关闭该浏览器窗口。监控只匹配本次启动生成的独立浏览器用户目录，不会关闭用户其他浏览器窗口或标签页。
 

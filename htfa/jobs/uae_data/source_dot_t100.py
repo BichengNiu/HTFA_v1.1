@@ -24,7 +24,10 @@ from __future__ import annotations
 
 import csv
 import io
+import os
+import shutil
 import sys
+import subprocess
 import zipfile
 from contextlib import contextmanager
 from datetime import date
@@ -65,7 +68,8 @@ INDICATOR_TPL = {
     ("all", "departures"): "美国↔阿联酋_执行航班_合计(班次)",
 }
 
-MIN_YEAR, MAX_YEAR = 1990, 2026
+MIN_YEAR, MAX_YEAR = 1990, date.today().year
+T100_DOWNLOAD_SCRIPT = RAW_DIR / "download_uae_years.mjs"
 
 
 # ---------------------------------------------------------------------------
@@ -308,13 +312,86 @@ def _dictionary_rows() -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
-def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
-    """解析 raw/t100/csv/uae_*.zip → 质检 → 事务内入库 dot_t100_monthly。
+def _download_recent_years(*, force: bool) -> str:
+    """Run the official TranStats browser downloader for recent years.
 
-    CSVs 由 download_uae_years.mjs（Playwright, transtats 表单）生成；本函数
-    不联网。缺失文件即报错提示。
+    BTS requires a JavaScript/browser session for the filtered table.  The
+    repository already contains that official-form downloader; this adapter
+    gives it a repository-relative output path and retries the current years.
+    Playwright is installed under raw/t100 on first online run, which is an
+    ignored cache and never part of the data commit.
     """
+
+    if not T100_DOWNLOAD_SCRIPT.is_file():
+        raise FileNotFoundError(f"T-100 下载脚本缺失: {T100_DOWNLOAD_SCRIPT}")
+    node = shutil.which("node") or shutil.which("node.exe")
+    if node is None:
+        raise RuntimeError("未找到 Node.js，无法运行 BTS T-100 浏览器下载器")
+
+    probe = subprocess.run(
+        [node, "-e", "import('playwright')"],
+        cwd=RAW_DIR,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if probe.returncode != 0:
+        npm = shutil.which("npm.cmd") or shutil.which("npm")
+        if npm is None:
+            raise RuntimeError("未找到 npm，无法自动安装 T-100 下载器依赖")
+        install = subprocess.run(
+            [npm, "install", "--no-save", "--prefix", str(RAW_DIR), "playwright@1.55.0"],
+            cwd=RAW_DIR,
+            capture_output=True,
+            text=True,
+            timeout=900,
+            check=False,
+        )
+        if install.returncode != 0:
+            detail = (install.stderr or install.stdout or "").strip()[-800:]
+            raise RuntimeError(f"Playwright 自动安装失败: {detail}")
+
+    current_year = date.today().year
+    start_year = max(MIN_YEAR, current_year - 2)
+    years = ",".join(str(year) for year in range(start_year, current_year + 1))
+    env = os.environ.copy()
+    env.update(
+        {
+            "T100_OUTPUT": str(CSV_DIR),
+            "T100_YEARS": years,
+            "T100_RETRY_NODATA": "1",
+            "T100_MARK_NODATA": "0",
+            "T100_FORCE": "1" if force else "0",
+        }
+    )
+    result = subprocess.run(
+        [node, str(T100_DOWNLOAD_SCRIPT)],
+        cwd=RAW_DIR,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=1800,
+        check=False,
+    )
+    output = "\n".join(part for part in (result.stdout, result.stderr) if part).strip()
+    if result.returncode != 0:
+        detail = output[-1200:] if output else "无输出"
+        raise RuntimeError(f"T-100 下载器失败: {detail}")
+    return output[-1200:] if output else "已运行 BTS T-100 下载器"
+
+
+def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
+    """自动抓取近期 BTS T-100 年包，再质检并入库 ``dot_t100_monthly``。"""
     import json as _json
+
+    download_note = ""
+    if not skip_download:
+        try:
+            download_note = _download_recent_years(force=force)
+        except Exception as exc:  # noqa: BLE001 - a valid local cache remains usable
+            if not any(CSV_DIR.glob("uae_*.zip")):
+                raise
+            download_note = f"官网下载未完成，使用本地缓存：{exc}"
 
     zips = sorted(CSV_DIR.glob("uae_*.zip"))
     if not zips:
@@ -346,16 +423,17 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         f"{len(rows)} 条指标观测（{start} 至 {end}，"
         f"{report['coverage']['month_count']} 个月 × {report['coverage']['indicator_count']} 指标）"
     )
+    if download_note:
+        note += f"；{download_note}"
     return {"status": "ok", "rows": len(rows), "note": note}
 
 
 def merge(workbook_path: Path) -> dict:
-    """US↔UAE T-100 数据暂未接入 Excel 写表（预留占位）。"""
+    """由 ``source_extended.merge`` 统一写入「月度_DOTT100」。"""
     return {
         "status": "skipped",
         "note": (
-            "dot_t100_monthly 尚未接入 Excel 写表；"
-            "如需合并请实现 write_dot_t100_sheet.ps1 并注册到 merge_workbook.py"
+            "T-100 已入 DuckDB；Excel 由 source_extended.merge 统一写入"
         ),
     }
 
@@ -363,4 +441,4 @@ def merge(workbook_path: Path) -> dict:
 if __name__ == "__main__":
     print("source_dot_t100.py 自检：")
     print("  update(con, force=, skip_download=) 解析 raw/t100/csv/uae_*.zip → 入库 dot_t100_monthly")
-    print("  merge(workbook_path) 暂未接入 Excel 写表")
+    print("  merge(workbook_path) 由 source_extended.merge 统一写入 月度_DOTT100")

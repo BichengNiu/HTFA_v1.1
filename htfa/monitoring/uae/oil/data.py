@@ -15,6 +15,8 @@ from htfa.data.economic_workbook import (
 
 DAILY_SHEET = "日度_Wind"
 MONTHLY_SHEET = "月度_Wind"
+EIA_DAILY_SHEET = "日度_EIA"
+EIA_MONTHLY_SHEET = "月度_EIA"
 RIG_COUNT_SHEET = "月度_贝克休斯"
 
 PRICE_INDICATORS: tuple[tuple[str, str], ...] = (
@@ -25,6 +27,8 @@ PRICE_INDICATORS: tuple[tuple[str, str], ...] = (
 )
 PRODUCTION_INDICATOR = ("阿联酋原油产量", "阿联酋: 产量: 原油")
 RIG_COUNT_INDICATOR = ("阿联酋石油活跃钻机数", "阿联酋石油活跃钻机数")
+EIA_PRICE_INDICATORS = (("布伦特现货", "布伦特现货"),)
+EIA_PRODUCTION_INDICATOR = ("阿联酋原油产量", "阿联酋原油产量")
 _WORKBOOK_READER = EconomicWorkbookReader(
     "uae_monitoring",
     "monitoring.uae",
@@ -53,20 +57,36 @@ def load_oil_market_data(
         excel_file,
         source_name,
     ):
-        prices, price_metadata = _WORKBOOK_READER.read_target_sheet(
-            excel_file,
-            sheet_name=DAILY_SHEET,
-            targets=PRICE_INDICATORS,
-            allowed_frequencies={"日", "日度", "周", "周度"},
-            expected_unit="美元/桶",
-        )
-        production_frame, production_metadata = _WORKBOOK_READER.read_target_sheet(
-            excel_file,
-            sheet_name=MONTHLY_SHEET,
-            targets=(PRODUCTION_INDICATOR,),
-            allowed_frequencies={"月", "月度"},
-            expected_unit="桶/天",
-        )
+        if EIA_DAILY_SHEET in excel_file.sheet_names and EIA_MONTHLY_SHEET in excel_file.sheet_names:
+            prices, price_metadata = _WORKBOOK_READER.read_target_sheet(
+                excel_file,
+                sheet_name=EIA_DAILY_SHEET,
+                targets=EIA_PRICE_INDICATORS,
+                allowed_frequencies={"日", "日度", "周", "周度"},
+                expected_unit="美元/桶",
+            )
+            production_frame, production_metadata = _WORKBOOK_READER.read_target_sheet(
+                excel_file,
+                sheet_name=EIA_MONTHLY_SHEET,
+                targets=(EIA_PRODUCTION_INDICATOR,),
+                allowed_frequencies={"月", "月度"},
+                expected_unit="桶/天",
+            )
+        else:
+            prices, price_metadata = _WORKBOOK_READER.read_target_sheet(
+                excel_file,
+                sheet_name=DAILY_SHEET,
+                targets=PRICE_INDICATORS,
+                allowed_frequencies={"日", "日度", "周", "周度"},
+                expected_unit="美元/桶",
+            )
+            production_frame, production_metadata = _WORKBOOK_READER.read_target_sheet(
+                excel_file,
+                sheet_name=MONTHLY_SHEET,
+                targets=(PRODUCTION_INDICATOR,),
+                allowed_frequencies={"月", "月度"},
+                expected_unit="桶/天",
+            )
         if RIG_COUNT_SHEET in excel_file.sheet_names:
             rig_count_frame, rig_count_metadata = _WORKBOOK_READER.read_target_sheet(
                 excel_file,
@@ -104,6 +124,10 @@ def load_oil_market_data(
 
 __all__ = [
     "OilMarketData",
+    "EIA_DAILY_SHEET",
+    "EIA_MONTHLY_SHEET",
+    "EIA_PRICE_INDICATORS",
+    "EIA_PRODUCTION_INDICATOR",
     "PRICE_INDICATORS",
     "PRODUCTION_INDICATOR",
     "RIG_COUNT_INDICATOR",

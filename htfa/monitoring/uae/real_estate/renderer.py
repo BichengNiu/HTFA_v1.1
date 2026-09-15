@@ -12,6 +12,7 @@ from htfa.monitoring.uae.real_estate.charts import (
     AMOUNT_UNIT_FACTOR,
     COUNT_LABEL,
     DEFAULT_TITLES,
+    SALES_CONFIG,
     build_sales_figure,
     sales_display_values,
 )
@@ -50,11 +51,10 @@ def _load_real_estate_cached(
 
 
 def _market_columns(market: str) -> tuple[str, str]:
-    if market == "期房":
-        return OFFPLAN_COUNT, OFFPLAN_AMOUNT
-    if market == "现房":
-        return READY_COUNT, READY_AMOUNT
-    raise ValueError(f"未知房地产市场：{market}")
+    try:
+        return SALES_CONFIG[market]
+    except KeyError as exc:
+        raise ValueError(f"未知房地产口径：{market}") from exc
 
 
 def _format_real_estate_value(
@@ -111,17 +111,25 @@ def _render_sales_chart(
 ) -> None:
     title = DEFAULT_TITLES[market]
     count_column, amount_column = _market_columns(market)
-    source_text = source_text_from_metadata(data.metadata)
+    chart_values = data.values
+    chart_metadata = data.metadata
+    if count_column not in chart_values.columns:
+        if data.raw_values is None:
+            raise ValueError(f"{market}明细数据不可用")
+        chart_values = data.raw_values
+        chart_metadata = data.raw_metadata or {}
+    count_metadata = chart_metadata.get(count_column)
+    source_text = source_text_from_metadata(chart_metadata)
     render_pyplot_figure(
         st_obj,
         build_sales_figure(
-            data.values,
+            chart_values,
             market=market,
             title=title,
             source_text=source_text,
             last_month=last_month,
             units={
-                COUNT_LABEL: data.metadata[count_column].unit,
+                COUNT_LABEL: count_metadata.unit if count_metadata else "笔",
                 AMOUNT_LABEL: "亿迪拉姆",
             },
         ),
@@ -129,7 +137,7 @@ def _render_sales_chart(
         place_legend_bottom=False,
     )
     chart_frame = sales_display_values(
-        data.values,
+        chart_values,
         last_month=last_month,
     )[[count_column, amount_column]].dropna(how="all")
     render_chart_download(
@@ -145,7 +153,7 @@ def render_real_estate_section(
     content: bytes,
     file_name: str,
 ) -> dict[str, Any]:
-    """渲染「房地产」板块：期房、现房 两张笔数+金额双轴图。"""
+    """渲染「房地产」板块：交易类型×用途四张笔数+金额双轴图。"""
 
     st_obj.divider()
     st_obj.subheader("房地产")
@@ -157,15 +165,16 @@ def render_real_estate_section(
             _render_real_estate_metrics(st_obj, data, last_month)
         except (KeyError, TypeError, ValueError) as exc:
             st_obj.warning(f"房地产指标卡未加载：{exc}")
-        left, right = st_obj.columns(2, gap="small")
-        try:
-            _render_sales_chart(left, data, last_month, market="现房")
-        except (KeyError, TypeError, ValueError) as exc:
-            left.warning(f"现房销售图未加载：{exc}")
-        try:
-            _render_sales_chart(right, data, last_month, market="期房")
-        except (KeyError, TypeError, ValueError) as exc:
-            right.warning(f"期房销售图未加载：{exc}")
+        for row_markets in (
+            ("现房住宅", "现房商业"),
+            ("期房住宅", "期房商业"),
+        ):
+            columns = st_obj.columns(2, gap="small")
+            for column, market in zip(columns, row_markets, strict=True):
+                try:
+                    _render_sales_chart(column, data, last_month, market=market)
+                except (KeyError, TypeError, ValueError) as exc:
+                    column.warning(f"{market}销售图未加载：{exc}")
         with st_obj.expander("指标算法与解读", expanded=True):
             st_obj.markdown(REAL_ESTATE_EXPLANATION)
     except (KeyError, TypeError, ValueError, FileNotFoundError) as exc:

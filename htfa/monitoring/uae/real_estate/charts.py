@@ -1,6 +1,6 @@
-"""DLD 迪拜房地产月度销售图：期房 / 现房 笔数柱 + 金额线双轴图。
+"""DLD 迪拜房地产月度销售图：分交易类型与用途的笔数/金额双轴图。
 
-每市场一张图，直接使用 Ts ``plot_series`` 默认绘图模板（模板配色、
+每个口径一张图，直接使用 Ts ``plot_series`` 默认绘图模板（模板配色、
 ``style_axes`` 网格与脊线、月历刻度、战争基准线、底部图例与图注托管），
 笔数柱在左轴、金额折线在右轴；窗口锚定最新完整月往前 36 个月。
 """
@@ -23,9 +23,17 @@ from htfa.monitoring.uae.plot_helpers import (
 )
 from htfa.monitoring.uae.real_estate.data import (
     OFFPLAN_AMOUNT,
+    OFFPLAN_COMMERCIAL_AMOUNT,
+    OFFPLAN_COMMERCIAL_COUNT,
     OFFPLAN_COUNT,
+    OFFPLAN_RESIDENTIAL_AMOUNT,
+    OFFPLAN_RESIDENTIAL_COUNT,
     READY_AMOUNT,
+    READY_COMMERCIAL_AMOUNT,
+    READY_COMMERCIAL_COUNT,
     READY_COUNT,
+    READY_RESIDENTIAL_AMOUNT,
+    READY_RESIDENTIAL_COUNT,
 )
 from Ts.TsPlots.style import GRAY
 
@@ -38,12 +46,33 @@ AMOUNT_UNIT_FACTOR = 100
 DEFAULT_TITLES = {
     "期房": "迪拜期房销售：笔数与金额",
     "现房": "迪拜现房销售：笔数与金额",
+    "期房住宅": "迪拜期房住宅销售：笔数与金额",
+    "期房商业": "迪拜期房商业销售：笔数与金额",
+    "现房住宅": "迪拜现房住宅销售：笔数与金额",
+    "现房商业": "迪拜现房商业销售：笔数与金额",
 }
 
 MARKET_CONFIG = {
     "期房": (OFFPLAN_COUNT, OFFPLAN_AMOUNT),
     "现房": (READY_COUNT, READY_AMOUNT),
 }
+
+PROPERTY_CONFIG = {
+    "期房住宅": (OFFPLAN_RESIDENTIAL_COUNT, OFFPLAN_RESIDENTIAL_AMOUNT),
+    "期房商业": (OFFPLAN_COMMERCIAL_COUNT, OFFPLAN_COMMERCIAL_AMOUNT),
+    "现房住宅": (READY_RESIDENTIAL_COUNT, READY_RESIDENTIAL_AMOUNT),
+    "现房商业": (READY_COMMERCIAL_COUNT, READY_COMMERCIAL_AMOUNT),
+}
+
+SALES_CONFIG = {**MARKET_CONFIG, **PROPERTY_CONFIG}
+AMOUNT_COLUMNS = (
+    OFFPLAN_AMOUNT,
+    READY_AMOUNT,
+    OFFPLAN_RESIDENTIAL_AMOUNT,
+    OFFPLAN_COMMERCIAL_AMOUNT,
+    READY_RESIDENTIAL_AMOUNT,
+    READY_COMMERCIAL_AMOUNT,
+)
 
 
 def sales_display_values(
@@ -59,8 +88,9 @@ def sales_display_values(
         last_month=last_month,
     ).dropna(how="all")
     converted = display_values.copy()
-    for column in (OFFPLAN_AMOUNT, READY_AMOUNT):
-        converted[column] = display_values[column] / AMOUNT_UNIT_FACTOR
+    for column in AMOUNT_COLUMNS:
+        if column in converted:
+            converted[column] = display_values[column] / AMOUNT_UNIT_FACTOR
     return converted
 
 
@@ -73,15 +103,16 @@ def build_sales_figure(
     last_month: pd.Period,
     units: Mapping[str, str | None] | None = None,
 ) -> Figure:
-    """绘制某市场（期房/现房）的笔数柱 + 金额线双轴图（Ts 默认模板）。
+    """绘制某房地产口径的笔数柱 + 金额线双轴图（Ts 默认模板）。
 
-    ``values`` 为四个聚合口径的完整月度表；窗口在函数内按
-    ``[last_month-36, last_month]`` 截取，与板块锚定月保持一致。
+    ``values`` 可以是四个全市场聚合口径或八个交易类型×用途明细口径的
+    完整月度表；窗口在函数内按 ``[last_month-36, last_month]`` 截取，
+    与板块锚定月保持一致。
     """
 
-    if market not in MARKET_CONFIG:
-        raise ValueError(f"未知房地产市场：{market}")
-    count_col, amount_col = MARKET_CONFIG[market]
+    if market not in SALES_CONFIG:
+        raise ValueError(f"未知房地产口径：{market}")
+    count_col, amount_col = SALES_CONFIG[market]
 
     display_values = sales_display_values(values, last_month=last_month)
     if display_values[count_col].dropna().empty:
@@ -135,6 +166,8 @@ __all__ = [
     "COUNT_LABEL",
     "DEFAULT_TITLES",
     "MARKET_CONFIG",
+    "PROPERTY_CONFIG",
+    "SALES_CONFIG",
     "build_sales_figure",
     "sales_display_values",
 ]

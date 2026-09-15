@@ -21,7 +21,7 @@
 
 ## Run and test
 
-- Run HTFA with `scripts\start.bat` (project-local runtime; system Python is used only for first-time runtime setup).
+- Run HTFA by double-clicking `htfa.bat` (project-local runtime; system Python is used only for first-time runtime setup). Use `htfa.bat stop` to stop it explicitly.
 - Runtime Python: `runtime\python.exe`.
 - After a code change, run only the tests relevant to the changed behavior. Run the complete suite only for broad cross-module changes.
 - HTFA SARIMAX regression tests (12 passed):
@@ -40,11 +40,11 @@ Any change touching plotting (chart style, axes, legend, titles, grid, multi-axi
 4. **Then edit HTFA / shared UI**: UI controls (`htfa/ui_shared/data_overview/ui/chart_options_tabs.py`) → `htfa/ui_shared/data_overview/core/options.py` `build_chart_options` (session_state → options) → `htfa/ui_shared/data_overview/ui/chart_panel.py` `draw_series_plot` signature and the `plot_series` call → `htfa/ui_shared/data_overview/ui/widget_keys.py` + model `WIDGET_KEYS`.
 5. **Sync the runtime copy**: copy changed files to `C:\Users\NIU\Desktop\HTFA_v1.1\runtime\Lib\site-packages\Ts\TsPlots\` (e.g. `ts_plot.py`, `style.py`). HTFA imports Ts from the runtime, not from the desktop source.
 6. **Verify parameter consistency**: the HTFA UI layer (every dropdown/input/slider value) and the Ts `plot_series` parameters must map one-to-one — no extras, no gaps, matching defaults. Verify via static signature check (`inspect.signature`) + Chinese-option→enum mapping assertions + AppTest rendering.
-7. **Remind the user to restart** `start.bat`: the Streamlit process caches modules; a page refresh is not enough.
+7. **Remind the user to restart** `htfa.bat`: the Streamlit process caches modules; a page refresh is not enough.
 
 ## Known pitfalls and conventions
 
-- **Module cache**: after Ts/HTFA changes the running process still uses old modules; kill the old process and restart `start.bat`.
+- **Module cache**: after Ts/HTFA changes the running process still uses old modules; kill the old process and restart `htfa.bat`.
 - **matplotlib 3.11**: `set_title(loc=)` uses three slots (`_left_title`/`title`/`_right_title`); `get_title()` reads only the center slot. `mdates.date2num` rejects plain strings (0-d IndexError) — normalize with `pd.to_datetime` first. An undrawn `ScalarFormatter` returns empty strings — call `formatter.set_locs(ticks)` before formatting.
 - **Console Chinese mojibake** is only a GBK display issue, not a logic problem.
 - **Preview input formats** (SARIMAX data overview): reference lines and shade intervals accept comma-separated row numbers or dates (e.g. `1987-07`, resolved to the first data point on or after it); shade intervals are paired (start,end). Parse errors surface as `st.warning`.
@@ -95,7 +95,7 @@ Use four-space indentation and PEP 8 naming. Keep UI rendering separate from dat
 - [ ] UI-layer ↔ Ts-parameter consistency verified (`tests/ui_shared/data_overview/test_options.py`)
 - [ ] `WIDGET_KEYS` updated
 - [ ] User instructed push: run `tooling/scripts/clean_temps.ps1` → `git status` 复核 → commit → push（见「推送规范」）
-- [ ] User reminded to restart `start.bat`
+- [ ] User reminded to restart `htfa.bat`
 
 ## Agent skills
 

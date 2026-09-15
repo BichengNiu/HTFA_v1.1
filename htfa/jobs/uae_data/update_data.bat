@@ -5,7 +5,7 @@ cd /d "%~dp0..\..\.."
 if errorlevel 1 goto :failed
 if not exist "runtime\python.exe" (
     echo [ERROR] Bundled runtime\python.exe was not found.
-    echo [HINT] Run scripts\start.bat first.
+    echo [HINT] Run htfa.bat first.
     goto :failed
 )
 "runtime\python.exe" -B -c "import sys; sys.path.insert(0, r'%CD%'); from htfa.jobs.uae_data.update_data import main; sys.argv[0] = 'update_data.py'; raise SystemExit(main())" %*

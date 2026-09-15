@@ -35,11 +35,12 @@ def test_update_roundtrip_creates_daily_monthly_and_dictionary_tables() -> None:
     con = db.connect(":memory:")
     db.init_schema(con)
     outcome = source.update(con, skip_download=True)
+    expected_daily = len(source.load_effective_daily_observations())
 
     assert outcome["status"] == "ok"
     assert con.execute(
         "SELECT COUNT(*) FROM detail.wam_military_strike_daily"
-    ).fetchone()[0] == 176
+    ).fetchone()[0] == expected_daily
     assert con.execute(
         "SELECT COUNT(*) FROM wam_military_strike_monthly"
     ).fetchone()[0] == 7
@@ -49,7 +50,7 @@ def test_update_roundtrip_creates_daily_monthly_and_dictionary_tables() -> None:
     ).fetchone() == pytest.approx((0.0, 100.0))
     assert con.execute(
         "SELECT COUNT(*) FROM main.wam_military_strike_daily"
-    ).fetchone()[0] == 176
+    ).fetchone()[0] == expected_daily
     assert con.execute(
         "SELECT COUNT(*) FROM meta_indicator_dictionary WHERE source = ?",
         [source.SOURCE_NAME],
@@ -80,3 +81,74 @@ def test_registry_keeps_unclassified_attack_out_of_pressure() -> None:
     assert row["unclassified_missiles"] == 1
     assert row["attack_any"] is True
     assert row["strike_intensity_log"] == 0
+
+
+def test_auto_article_extraction_handles_direct_counts_and_singular_uav() -> None:
+    direct = source.extract_auto_article_observation(
+        {
+            "url": "https://www.wam.ae/en/article/test-direct",
+            "headline": "UAE air defences intercept 2 ballistic missiles, 3 UAVs",
+            "article_body": (
+                "ABU DHABI, 8th August, 2026 (WAM) -- The Ministry of Defence "
+                "announced that UAE air defences intercepted two ballistic missiles "
+                "and detected three UAVs today."
+            ),
+        }
+    )
+    singular = source.extract_auto_article_observation(
+        {
+            "url": "https://www.wam.ae/en/article/test-uav",
+            "headline": "UAE Air Force responds to UAV over territorial waters",
+            "article_body": (
+                "ABU DHABI, 31st August, 2026 (WAM) -- The Ministry of Defence "
+                "announced that the UAE Air Force responded to a UAV detected over "
+                "the country's territorial waters."
+            ),
+        }
+    )
+    cumulative = source.extract_auto_article_observation(
+        {
+            "url": "https://www.wam.ae/en/article/test-cumulative",
+            "headline": "UAE air defences intercept 165 ballistic missiles since onset",
+            "article_body": (
+                "ABU DHABI, 1st March, 2026 (WAM) -- The UAE air force dealt "
+                "with 165 ballistic missiles since the start of the Iranian attack."
+            ),
+        }
+    )
+
+    assert direct is not None
+    assert (direct["date"].isoformat(), direct["ballistic_missiles"], direct["uavs"]) == (
+        "2026-08-08",
+        2,
+        3,
+    )
+    assert singular is not None
+    assert singular["date"].isoformat() == "2026-08-31"
+    assert singular["uavs"] == 1
+    assert cumulative is None
+
+
+def test_auto_daily_extension_fills_days_until_latest_event() -> None:
+    base = source.load_daily_observations()
+    rows = source.derive_auto_daily_observations(
+        base,
+        [
+            {
+                "url": "https://www.wam.ae/en/article/test-uav",
+                "headline": "UAE Air Force responds to UAV over territorial waters",
+                "article_body": (
+                    "ABU DHABI, 31st August, 2026 (WAM) -- The Ministry of Defence "
+                    "announced that the UAE Air Force responded to a UAV detected over "
+                    "the country's territorial waters."
+                ),
+                "date_published": "2026-08-31T10:35:47+04:00",
+            }
+        ],
+    )
+
+    assert len(rows) == 9
+    assert rows[0]["date"].isoformat() == "2026-08-23"
+    assert rows[-1]["date"].isoformat() == "2026-08-31"
+    assert all(not row["attack_any"] for row in rows[:-1])
+    assert rows[-1]["uavs"] == 1

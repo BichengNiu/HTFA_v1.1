@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 import streamlit as st
 
+from htfa.data.economic_workbook import EconomicWorkbookReader
 from htfa.monitoring.uae.charts import (
     build_growth_and_sector_pull_figure,
     build_industry_breadth_figure,
@@ -35,11 +36,92 @@ TAB_CONFIG = (
 )
 
 
-def _render_report_header(st_obj: Any) -> None:
+_HIGH_FREQUENCY_LABELS = frozenset(
+    {
+        "日",
+        "日度",
+        "周",
+        "周度",
+        "旬",
+        "旬度",
+        "月",
+        "月度",
+    }
+)
+_REPORT_WORKBOOK_READER = EconomicWorkbookReader(
+    "uae_monitoring_report",
+    "monitoring.uae.report",
+)
+
+
+def _latest_high_frequency_month(
+    payload: tuple[bytes, str],
+    *,
+    today: pd.Timestamp | None = None,
+) -> pd.Period | None:
+    """返回工作簿中最新的高频数据观测月份。"""
+
+    observation_cutoff = (
+        pd.Timestamp.today().normalize()
+        if today is None
+        else pd.Timestamp(today).normalize()
+    )
+    latest_date: pd.Timestamp | None = None
+    try:
+        content, file_name = payload
+        with _REPORT_WORKBOOK_READER.open_workbook(
+            content,
+            file_name=file_name,
+        ) as (excel_file, _):
+            for sheet_name in excel_file.sheet_names[1:]:
+                raw = _REPORT_WORKBOOK_READER.read_raw_sheet(
+                    excel_file,
+                    sheet_name=sheet_name,
+                )
+                if raw.shape[0] < 7 or raw.shape[1] < 2:
+                    continue
+
+                frequencies = {
+                    str(value).strip()
+                    for value in raw.iloc[2, 1:].tolist()
+                    if pd.notna(value)
+                }
+                if not frequencies & _HIGH_FREQUENCY_LABELS:
+                    continue
+
+                dates = pd.to_datetime(raw.iloc[6:, 0], errors="coerce")
+                values = raw.iloc[6:, 1:].apply(
+                    pd.to_numeric,
+                    errors="coerce",
+                )
+                valid = (
+                    dates.notna()
+                    & dates.le(observation_cutoff)
+                    & values.notna().any(axis=1)
+                )
+                if not valid.any():
+                    continue
+                candidate = pd.Timestamp(dates[valid].max())
+                if latest_date is None or candidate > latest_date:
+                    latest_date = candidate
+    except Exception:  # noqa: BLE001 - 日期仅用于打印头，不能阻断报告渲染
+        return None
+
+    return latest_date.to_period("M") if latest_date is not None else None
+
+
+def _render_report_header(
+    st_obj: Any,
+    latest_data_month: pd.Period | None = None,
+) -> None:
     """渲染网页标题，并提供仅打印显示的月报标题与报告时间。"""
 
     st_obj.title("阿联酋经济监测")
-    report_time = datetime.now().strftime("%Y年%m月%d日")
+    report_time = (
+        f"{latest_data_month.year}年{latest_data_month.month}月"
+        if latest_data_month is not None
+        else "—"
+    )
     st_obj.markdown(
         "<div class=\"uae-print-report-header\" aria-hidden=\"true\">"
         "<div class=\"uae-print-report-title\">阿联酋经济高频数据月报</div>"
@@ -297,9 +379,9 @@ def _render_growth_tab(
 def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
     """渲染阿联酋监测；不写入或生成任何工作簿。"""
 
-    _render_report_header(st_obj)
     file_input = get_shared_dataset_file()
     if file_input is None:
+        _render_report_header(st_obj)
         message = (
             "请先在侧边栏“共享数据集”上传阿联酋工作簿。"
             "只有上传并通过工作簿协议校验后，才会读取数据并显示图表。"
@@ -313,6 +395,7 @@ def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
 
     source_name = _source_name(file_input)
     payload = _source_payload(file_input, source_name)
+    _render_report_header(st_obj, _latest_high_frequency_month(payload))
 
     try:
         with st_obj.spinner("正在构建宏观监测页面..."):

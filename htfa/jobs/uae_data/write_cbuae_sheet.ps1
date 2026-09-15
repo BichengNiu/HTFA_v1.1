@@ -16,6 +16,7 @@ $sheet = $null
 $dictionarySheet = $null
 $range = $null
 $temporaryWorkbookPath = $null
+$temporaryBackupPath = $null
 
 try {
     $payload = Get-Content -Raw -LiteralPath $DataPath | ConvertFrom-Json
@@ -181,7 +182,23 @@ try {
     if (-not (Test-Path -LiteralPath $temporaryWorkbookPath)) {
         throw "Excel did not create the temporary workbook: $temporaryWorkbookPath"
     }
-    Move-Item -LiteralPath $temporaryWorkbookPath -Destination $resolvedWorkbook -Force
+    # Windows PowerShell's Move-Item -Force does not reliably replace an
+    # existing file on this workstation.  File.Replace performs the intended
+    # same-volume atomic replacement after Excel has closed the package.
+    $temporaryBackupPath = "$resolvedWorkbook.cbuae-write-backup.tmp.xlsx"
+    if (Test-Path -LiteralPath $temporaryBackupPath) {
+        Remove-Item -LiteralPath $temporaryBackupPath -Force
+    }
+    [System.IO.File]::Replace(
+        $temporaryWorkbookPath,
+        $resolvedWorkbook,
+        $temporaryBackupPath,
+        $true
+    )
+    if (Test-Path -LiteralPath $temporaryBackupPath) {
+        Remove-Item -LiteralPath $temporaryBackupPath -Force
+    }
+    $temporaryBackupPath = $null
     $temporaryWorkbookPath = $null
 }
 finally {
@@ -193,6 +210,9 @@ finally {
     }
     if ($null -ne $temporaryWorkbookPath -and (Test-Path -LiteralPath $temporaryWorkbookPath)) {
         Remove-Item -LiteralPath $temporaryWorkbookPath -Force
+    }
+    if ($null -ne $temporaryBackupPath -and (Test-Path -LiteralPath $temporaryBackupPath)) {
+        Remove-Item -LiteralPath $temporaryBackupPath -Force
     }
     foreach ($comObject in @(
         $range,

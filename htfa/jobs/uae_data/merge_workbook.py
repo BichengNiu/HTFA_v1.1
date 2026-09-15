@@ -38,6 +38,7 @@ WORKBOOK_PATH = DATA_DIR / "阿联酋.xlsx"
 
 SOURCES = (
     "baker_hughes",
+    "oil",
     "cbuae",
     "cloudflare_radar",
     "comtrade",

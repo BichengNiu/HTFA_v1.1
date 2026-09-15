@@ -32,7 +32,7 @@ def _prepared_dfm_workbook() -> tuple[str, bytes, str]:
 
 
 def test_browser_tab_uses_platform_name() -> None:
-    assert 'page_title="经世"' in APP_PATH.read_text(encoding="utf-8")
+    assert 'page_title="金轩监测"' in APP_PATH.read_text(encoding="utf-8")
 
 
 def test_public_entry_renders_navigation_without_exception():
@@ -48,17 +48,16 @@ def test_public_entry_renders_navigation_without_exception():
         "监测分析",
         "数据探索",
     ]
-    assert any("经世" in markdown.value for markdown in app.markdown)
+    assert any("金轩监测" in markdown.value for markdown in app.markdown)
     assert any(
-        "国家信息中心经济预测部政策仿真实验室" in markdown.value
+        "中国驻阿联酋大使馆经商处" in markdown.value
         for markdown in app.markdown
     )
-    assert any("经世" in markdown.value for markdown in app.sidebar.markdown)
     assert any(
-        "@版权所有：国家信息中心经济预测部政策仿真实验室 牛碧珵"
-        in markdown.value
-        for markdown in app.sidebar.markdown
+        "国家发展改革委国家信息中心" in markdown.value
+        for markdown in app.markdown
     )
+    assert any("金轩监测" in markdown.value for markdown in app.sidebar.markdown)
 
 
 def test_model_library_is_not_initialized_outside_model_analysis():

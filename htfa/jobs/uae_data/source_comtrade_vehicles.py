@@ -10,10 +10,10 @@
   直报的 CIF 与镜像 FOB 混在同一条长期序列导致口径断点）。
 
 - 原始 JSON：`raw/comtrade/hs87/{uae_reported,all_mirror}/hs87_*.json`（由
-  `raw/comtrade/hs87/download_hs87.py` 下载）。
+  UN Comtrade API 下载器自动刷新）。
 - 入库长表 `comtrade_vehicles_monthly`：(period, code, value_usd, units, source)。
-- ⚠️ 用户指示该源走 UN Comtrade API 核实更新；**暂不进入 Excel**（merge 占位跳过，
-  与 Salik 一致），待需要时补充写表助手与 sheet。
+- Excel 的 `月度_汽车进口` 由本模块从 DuckDB 聚合写入；金额与零件明细保留在 DuckDB，
+  工作簿只展示乘用车和商用车进口量。
 
 台数：与 source_comtrade.py 同规则，取 qtyUnitCode=5（number of items）且仅
 is*Estimated 一致的记录；金额取 primaryValue USD。
@@ -22,6 +22,7 @@ is*Estimated 一致的记录；金额取 primaryValue USD。
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from calendar import monthrange
 from datetime import date
@@ -42,6 +43,7 @@ from ._excel_helpers import (  # noqa: E402
 # ---------------------------------------------------------------------------
 
 RAW_DIR = DATA_DIR / "raw" / "comtrade" / "hs87"
+DOWNLOAD_SCRIPT = RAW_DIR / "download_hs87.py"
 TABLE = "comtrade_vehicles_monthly"
 SOURCE_NAME = "UN Comtrade (HS87 镜像口径)"
 UNIT = "台"
@@ -199,22 +201,52 @@ def _dictionary_rows() -> list[dict]:
     ]
 
 
-def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
-    """从 raw/comtrade/hs87/ JSON 聚合 → 整表替换入库。
+def _download_official_data(*, force: bool) -> str:
+    """Refresh HS87 JSON through the official UN Comtrade API downloader."""
 
-    下载由 `raw/comtrade/hs87/download_hs87.py` 负责（本模块不联网）。
-    """
-    if skip_download:
-        missing = [
-            folder
-            for folder in (RAW_DIR / "all_mirror", RAW_DIR / "uae_reported")
-            if not folder.exists() or not any(folder.glob("*.json"))
-        ]
-        if missing:
-            raise FileNotFoundError(
-                "--skip-download 但缺少 HS87 输入: "
-                + ", ".join(str(p) for p in missing)
-            )
+    if not DOWNLOAD_SCRIPT.is_file():
+        raise FileNotFoundError(f"UN Comtrade HS87 下载器缺失: {DOWNLOAD_SCRIPT}")
+    command = [sys.executable, str(DOWNLOAD_SCRIPT), "--start", "2015"]
+    if force:
+        command.append("--force")
+    result = subprocess.run(
+        command,
+        cwd=RAW_DIR,
+        capture_output=True,
+        text=True,
+        timeout=1800,
+        check=False,
+    )
+    output = "\n".join(part for part in (result.stdout, result.stderr) if part).strip()
+    if result.returncode != 0:
+        raise RuntimeError(f"UN Comtrade HS87 下载失败: {output[-1200:]}")
+    return output[-1200:] if output else "UN Comtrade HS87 数据已刷新"
+
+
+def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
+    """自动刷新 UN Comtrade HS87 JSON，再聚合入 DuckDB。"""
+
+    download_note = ""
+    if not skip_download:
+        try:
+            download_note = _download_official_data(force=force)
+        except Exception as exc:  # noqa: BLE001 - valid local JSON remains usable
+            if not all(
+                folder.exists() and any(folder.glob("*.json"))
+                for folder in (RAW_DIR / "all_mirror", RAW_DIR / "uae_reported")
+            ):
+                raise
+            download_note = f"API 下载未完成，使用本地缓存：{exc}"
+
+    missing = [
+        folder
+        for folder in (RAW_DIR / "all_mirror", RAW_DIR / "uae_reported")
+        if not folder.exists() or not any(folder.glob("*.json"))
+    ]
+    if missing:
+        raise FileNotFoundError(
+            "缺少 HS87 输入: " + ", ".join(str(p) for p in missing)
+        )
 
     collected = _collect()
     if not collected:
@@ -249,6 +281,8 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         f"{len(rows)} 行（{periods[0]} 至 {periods[-1]}），"
         f"来源分布 {source_counts}；Excel 只出两大整车类台数"
     )
+    if download_note:
+        note += f"；{download_note}"
     return {"status": "ok", "rows": len(rows), "note": note}
 
 

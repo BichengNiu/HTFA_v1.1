@@ -7,8 +7,8 @@
 - 粒度：运单行项目（line items），22 列，含 goods description、货运类型、
   件数、重量/体积及单位、起运/目的机场城市与代码、创建/修改时间戳。
 - 原始文件：``data/UAE/raw/dubai_customs_air/csv/<shard>.csv.gz``（由
-  ``raw/dubai_customs_air/download_dubai_customs_air.py`` 从 cdn.data.dubai
-  下载全量分片；每片约 100 万行，33 片覆盖 2019-08 起至今，长期逐月积累）。
+  ``raw/dubai_customs_air/download_dubai_customs_air.py`` 自动从 data.dubai
+  manifest 发现并从 cdn.data.dubai 下载全量分片；每片约 100 万行）。
 
 口径说明（重要）：
 
@@ -38,11 +38,13 @@ from __future__ import annotations
 import csv
 import gzip
 import json
+import subprocess
 import sys
 from collections import Counter
 from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, Iterable, Iterator
 
 from .paths import DATA_DIR, SCRIPTS_DIR
@@ -56,6 +58,7 @@ from . import db  # noqa: E402
 
 RAW_DIR = DATA_DIR / "raw" / "dubai_customs_air"
 CSV_DIR = RAW_DIR / "csv"
+DOWNLOAD_SCRIPT = RAW_DIR / "download_dubai_customs_air.py"
 
 TARGET_SHEET = "月度_迪拜海关航空"  # 预留（写表暂未实现）
 
@@ -152,7 +155,6 @@ def collect_rows(shard_paths: list[Path]) -> tuple[list[dict[str, Any]], dict[st
     返回 (长表行, 质量统计)。运单数按月度方向去重 airwaybillid 集合。
     """
     agg: dict[tuple[tuple[int, int], str, str], float] = {}  # (month, dir, measure)
-    awb_sets: dict[tuple[tuple[int, int], str], set] = {}
     stats = {
         "rows_read": 0,
         "bad_rows": 0,
@@ -201,10 +203,6 @@ def collect_rows(shard_paths: list[Path]) -> tuple[list[dict[str, Any]], dict[st
                         stats["neg_pieces_rows"] += 1
                     _bump(agg, (mk, direction, "pieces"), pieces)
 
-                awbid = (row.get("airwaybillid") or "").strip()
-                if awbid:
-                    awb_sets.setdefault((mk, direction), set()).add(awbid)
-
                 v_val = _to_float(row.get("volume"))
                 if v_val is not None:
                     mult = VOLUME_UNIT_MULT.get((row.get("volumetypename") or "").upper().strip())
@@ -223,12 +221,6 @@ def collect_rows(shard_paths: list[Path]) -> tuple[list[dict[str, Any]], dict[st
         if measure == "awbs":
             continue  # 运单数按集合合并计算
         agg[key] = agg.get(key, 0.0) + value
-    for (mk, direction), ids in list(awb_sets.items()):
-        if direction == "all":
-            continue
-        key_all = awb_sets.setdefault((mk, "all"), set())
-        key_all |= ids
-
     rows: list[dict[str, Any]] = []
     for (mk, direction, measure), value in sorted(agg.items()):
         indicator = INDICATOR_TPL.get((direction, measure))
@@ -242,7 +234,8 @@ def collect_rows(shard_paths: list[Path]) -> tuple[list[dict[str, Any]], dict[st
                 "source_file": ";".join(stats["files"]),
             }
         )
-    for (mk, direction), ids in sorted(awb_sets.items()):
+    # 运单号去重使用 DuckDB 的磁盘聚合，避免全量 airwaybillid 集合占满内存。
+    for (mk, direction), count in sorted(_distinct_awb_counts(shard_paths).items()):
         indicator = INDICATOR_TPL.get((direction, "awbs"))
         if indicator is None:
             continue
@@ -250,7 +243,7 @@ def collect_rows(shard_paths: list[Path]) -> tuple[list[dict[str, Any]], dict[st
             {
                 "period": date(mk[0], mk[1], 1),
                 "indicator": indicator,
-                "value": len(ids),
+                "value": count,
                 "source_file": ";".join(stats["files"]),
             }
         )
@@ -258,6 +251,99 @@ def collect_rows(shard_paths: list[Path]) -> tuple[list[dict[str, Any]], dict[st
     if not rows:
         raise ValueError("dubai_airway_bill_monthly: 未解析到任何观测（检查 raw/dubai_customs_air/csv）")
     return rows, stats
+
+
+def _distinct_awb_counts(
+    shard_paths: list[Path],
+) -> dict[tuple[tuple[int, int], str], int]:
+    """Count distinct airway bills with DuckDB's bounded, spillable aggregate."""
+
+    import duckdb
+
+    quoted_paths = ", ".join(
+        "'" + str(path).replace("\\", "/").replace("'", "''") + "'"
+        for path in shard_paths
+    )
+    if not quoted_paths:
+        return {}
+
+    def dubai_expr(name: str, code: str) -> str:
+        value = f"coalesce(upper({name}), '')"
+        return (
+            f"({value} LIKE 'AE%' OR position('DUBAI' IN {value}) > 0 "
+            f"OR position('DXB' IN {value}) > 0 "
+            f"OR position('DWC' IN {value}) > 0 "
+            f"OR position('AL MAKTOUM' IN {value}) > 0 "
+            f"OR coalesce(upper({code}), '') LIKE 'AE%')"
+        )
+
+    origin_dubai = dubai_expr("originairportcityname", "originairportcitycode")
+    dest_dubai = dubai_expr("destairportcityname", "destairportcitycode")
+    direction_expr = (
+        f"CASE WHEN {origin_dubai} AND {dest_dubai} THEN 'domestic' "
+        f"WHEN {dest_dubai} THEN 'import' "
+        f"WHEN {origin_dubai} THEN 'export' ELSE 'transit' END"
+    )
+    with TemporaryDirectory(prefix=".awb_duckdb_", dir=str(RAW_DIR)) as temp_dir:
+        temp_sql = str(Path(temp_dir).as_posix()).replace("'", "''")
+        con = duckdb.connect()
+        try:
+            con.execute("SET memory_limit = '1GB'")
+            con.execute("SET threads = 1")
+            con.execute("SET preserve_insertion_order = false")
+            con.execute(f"SET temp_directory = '{temp_sql}'")
+            query = f"""
+                WITH base AS (
+                    SELECT substr(createddate, 1, 7) AS month,
+                           {direction_expr} AS direction,
+                           nullif(trim(airwaybillid), '') AS airwaybillid
+                    FROM read_csv_auto(
+                        [{quoted_paths}],
+                        header = true,
+                        all_varchar = true,
+                        union_by_name = true
+                    )
+                    WHERE regexp_matches(createddate, '^\\d{{4}}-\\d{{2}}-')
+                      AND nullif(trim(airwaybillid), '') IS NOT NULL
+                )
+                SELECT month, direction, count(DISTINCT airwaybillid) AS count
+                FROM base
+                GROUP BY month, direction
+                UNION ALL
+                SELECT month, 'all' AS direction, count(DISTINCT airwaybillid) AS count
+                FROM base
+                GROUP BY month
+            """
+            result = con.execute(query).fetchall()
+        finally:
+            con.close()
+
+    counts: dict[tuple[tuple[int, int], str], int] = {}
+    for month, direction, count in result:
+        if not month or len(month) != 7:
+            continue
+        counts[((int(month[:4]), int(month[5:7])), direction)] = int(count)
+    return counts
+
+
+def _current_shards() -> list[Path]:
+    """Use only the files named by the newest manifest, not old snapshots."""
+
+    manifest_path = CSV_DIR / "manifest.json"
+    if manifest_path.is_file():
+        try:
+            entries = json.loads(manifest_path.read_text(encoding="utf-8"))
+            names = [
+                item["file_name"]
+                for item in entries
+                if item.get("file_extension") == "csv" and item.get("file_name")
+            ]
+            paths = [CSV_DIR / name for name in names]
+            if paths and all(path.is_file() for path in paths):
+                return sorted(paths)
+        except (OSError, json.JSONDecodeError, KeyError, TypeError):
+            pass
+    return sorted(CSV_DIR.glob("*.csv.gz"))
 
 
 def _bump(agg: dict, key: tuple[tuple[int, int], str, str], value: float) -> None:
@@ -394,12 +480,54 @@ def _transaction(con) -> Iterator[None]:
 # ---------------------------------------------------------------------------
 
 
-def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
-    """解析 raw/dubai_customs_air/csv/*.csv.gz → 质检 → 事务内入库。
+def _download_official_shards(*, force: bool) -> str:
+    """Refresh the Data Dubai manifest and download new CSV shards."""
 
-    下载由 ``download_dubai_customs_air.py`` 负责（33 片全量）；本函数不联网。
-    """
-    shards = sorted(CSV_DIR.glob("*.csv.gz"))
+    if not DOWNLOAD_SCRIPT.is_file():
+        raise FileNotFoundError(f"Data Dubai 下载器缺失: {DOWNLOAD_SCRIPT}")
+    command = [sys.executable, str(DOWNLOAD_SCRIPT), "--out", str(CSV_DIR)]
+    if force:
+        command.append("--force")
+    result = subprocess.run(
+        command,
+        cwd=RAW_DIR,
+        capture_output=True,
+        text=True,
+        timeout=1800,
+        check=False,
+    )
+    report_path = CSV_DIR / "download_report.json"
+    failed = []
+    if report_path.is_file():
+        try:
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            failed = [
+                item for item in report.get("files", [])
+                if item.get("status") not in {"ok", "skipped"}
+            ]
+        except (OSError, json.JSONDecodeError):
+            failed = ["download_report.json 无法读取"]
+    if result.returncode != 0 or failed:
+        detail = "\n".join(part for part in (result.stdout, result.stderr) if part)
+        raise RuntimeError(
+            f"Data Dubai 分片下载失败（失败 {len(failed)} 个）: {detail[-1200:]}"
+        )
+    output = "\n".join(part for part in (result.stdout, result.stderr) if part).strip()
+    return output[-1200:] if output else "Data Dubai 分片已刷新"
+
+
+def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
+    """自动刷新 Data Dubai 分片，再质检并入库。"""
+
+    download_note = ""
+    if not skip_download:
+        try:
+            download_note = _download_official_shards(force=force)
+        except Exception as exc:  # noqa: BLE001 - valid local shards remain usable
+            if not any(CSV_DIR.glob("*.csv.gz")):
+                raise
+            download_note = f"官网分片下载未完成，使用本地缓存：{exc}"
+    shards = _current_shards()
     if not shards:
         raise FileNotFoundError(
             f"未找到 {CSV_DIR}/*.csv.gz；请先运行 "
@@ -438,21 +566,22 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         f"{cov['month_count']} 个月 × {len(set(r['indicator'] for r in rows))} 指标，"
         f"{cov['file_count']} 个分片）"
     )
+    if download_note:
+        note += f"；{download_note}"
     return {"status": "ok", "rows": len(rows), "note": note}
 
 
 def merge(workbook_path: Path) -> dict:
-    """迪拜海关航空数据暂未接入 Excel 写表（预留占位）。"""
+    """由 ``source_extended.merge`` 统一写入「月度_迪拜海关航空」。"""
     return {
         "status": "skipped",
         "note": (
-            "dubai_airway_bill_monthly 尚未接入 Excel 写表；"
-            "如需合并请实现 write_dubai_customs_air_sheet.ps1 并注册到 merge_workbook.py"
+            "迪拜海关航空已入 DuckDB；Excel 由 source_extended.merge 统一写入"
         ),
     }
 
 
 if __name__ == "__main__":
     print("source_dubai_customs_air.py 自检：")
-    print("  update(con, force=, skip_download=) 解析 raw/dubai_customs_air/csv/*.csv.gz → 入库")
-    print("  merge(workbook_path) 暂未接入 Excel 写表")
+    print("  update(con, force=, skip_download=) 自动刷新 Data Dubai 分片并入库")
+    print("  merge(workbook_path) 由 source_extended.merge 统一写入 月度_迪拜海关航空")

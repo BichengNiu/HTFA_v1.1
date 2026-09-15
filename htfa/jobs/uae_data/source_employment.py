@@ -1,7 +1,7 @@
 """Google 趋势工作搜索热度数据源：解析 → 入库 → 导出宽表 CSV。
 
 无旧脚本（原数据直接人工维护在 data/UAE/工作搜索热度.csv）。本模块改为：
-- 原始 CSV 统一收在 data/UAE/raw/employment/ 下；
+- 优先读取 data/UAE/raw/工作搜索热度.csv，兼容 data/UAE/raw/employment/ 下的旧格式；
 - update() 解析成 long 行入 DuckDB（employment_search_index）；
 - merge() 从库导出宽表 CSV 到 data/UAE/工作搜索热度.csv（HTFA 监测输入）。
 
@@ -26,6 +26,8 @@ from .db import (  # noqa: E402
 )
 
 RAW_EMPLOYMENT = DATA_DIR / "raw" / "employment"
+DEFAULT_RAW_EMPLOYMENT = RAW_EMPLOYMENT
+RAW_EMPLOYMENT_EXPORT = DATA_DIR / "raw" / "工作搜索热度.csv"
 EXPORT_PATH = DATA_DIR / "工作搜索热度.csv"
 
 # HTFA 监测政府金融搜索指数模块期望的列
@@ -53,7 +55,17 @@ def _transaction(con):
 
 
 def _latest_source_file() -> Path:
-    """取 data/UAE/raw/employment/ 下最新的 CSV（按文件名排序取末位）。"""
+    """定位工作搜索热度输入，优先使用 raw 根目录下的人工更新文件。"""
+
+    # 测试和临时调用可以替换 RAW_EMPLOYMENT；替换后优先使用替换目录，
+    # 以便不被真实工作区中的人工更新文件干扰。
+    if RAW_EMPLOYMENT != DEFAULT_RAW_EMPLOYMENT:
+        files = sorted(RAW_EMPLOYMENT.glob("*.csv"))
+        if files:
+            return files[-1]
+
+    if RAW_EMPLOYMENT_EXPORT.exists():
+        return RAW_EMPLOYMENT_EXPORT
 
     files = sorted(RAW_EMPLOYMENT.glob("*.csv"))
     if not files:
@@ -71,6 +83,10 @@ def parse_csv(path: Path) -> list[dict[str, object]]:
     with open(path, "r", encoding="utf-8-sig", newline="") as source:
         reader = csv.DictReader(source)
         fieldnames = [name.strip() for name in (reader.fieldnames or [])]
+        if fieldnames and fieldnames[0] == "":
+            # Google Trends 导出文件的第一列表头为空，实际内容仍是月份。
+            fieldnames[0] = "Time"
+            reader.fieldnames = fieldnames
         missing = [column for column in EXPECTED_COLUMNS if column not in fieldnames]
         if missing:
             raise ValueError(
@@ -80,10 +96,14 @@ def parse_csv(path: Path) -> list[dict[str, object]]:
             time_value = str(raw.get("Time") or "").strip()
             try:
                 month = datetime.strptime(time_value, "%Y-%m-%d").date()
-            except ValueError as exc:
-                raise ValueError(
-                    f"第 {line_number} 行 Time 无法按 YYYY-MM-DD 解析: {time_value!r}"
-                ) from exc
+            except ValueError:
+                try:
+                    # Google Trends 的月度导出常用 Jan-04 这类格式。
+                    month = datetime.strptime(time_value, "%b-%y").date()
+                except ValueError as exc:
+                    raise ValueError(
+                        f"第 {line_number} 行 Time 无法按 YYYY-MM-DD 或 Mon-YY 解析: {time_value!r}"
+                    ) from exc
             for keyword in KEYWORDS:
                 cell = str(raw.get(keyword) or "").strip()
                 if cell == "":

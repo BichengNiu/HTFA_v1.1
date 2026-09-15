@@ -32,7 +32,7 @@
 | US DOT / `dot_t100_monthly` | 10 项：执行航班；航空旅客合计、美→阿、阿→美；航空货运合计、美→阿、阿→美；航空邮件合计、美→阿、阿→美 | 月；1991-02—2026-05。合计 4 项各 348 期；美→阿 3 项各 344 期；阿→美 3 项各 345 期 | 该历史跨度应有 424 个月；合计项缺 76 月，美→阿缺 80 月，阿→美缺 79 月；已有记录无 NULL。2026-05 为当前库最新月份，存在约 2—3 个月发布滞后 | US DOT BTS T-100 International Segment（All Carriers）；双向航段聚合，旅客为人次，货运/邮件为磅 |
 | UAEWPS / `uaewps_monthly` | `阿联酋:WPS平均工资同比%(3个月移动平均)`、`阿联酋:WPS覆盖员工数同比%(3个月移动平均)` | 季；2024Q2—2026Q1；9 期 | 工资指标完整；覆盖员工数在 2024Q2 为 1 个 NULL；QER 报告有额外源警告，缺值不应插补 | CBUAE Quarterly Economic Review（QER）WPS 图表 |
 | Salik / `salik_active_vehicles_quarterly` | `阿联酋:Salik注册活跃车辆:季末值` | 季；2022Q1—2025Q1；13 期 | 连续、无 NULL；仅季末，不是月度数据；已写入 `季度_Salik` | Salik Company PJSC 投资者关系报告/演示材料 |
-| 工作搜索热度 / `employment_search_index` | `work in dubai`、`work in uae` | 月；2004-01—2026-08；每项 272 期 | 连续、无 NULL；日期按输入 CSV 的 `Time` 原值保存，可能是月初，不强制改为月末 | `data/UAE/raw/employment/` 最新 CSV；人工维护的工作搜索热度数据，`visa uae` 未进入管线 |
+| 工作搜索热度 / `employment_search_index` | `work in dubai`、`work in uae` | 月；2004-01—2026-09；每项 273 期 | 连续、无 NULL；日期按输入 CSV 的 `Time` 原值保存，可能是月初，不强制改为月末；2026-09 为当前月部分数据 | `data/UAE/raw/工作搜索热度.csv`；兼容 `raw/employment/` 旧格式，`visa uae` 未进入管线 |
 | RTA / `rta_transport_monthly`、`rta_transport_daily` | 月度公交、水运、出租车趟次/车队；日度水运人次、公交平均速度，共 6 项 | 月度 222 行（公交 78、水运 42、出租车趟次/车队各 51）；日度 3,943 行（水运 2,828、公交速度 1,115），日度范围 2016-12—2026-08 | DuckDB 只保存聚合长表；RTA 明细 CSV 全部保存在 `data/UAE/raw/rta/`，不复制进主库，缺失月份/日期按缺行表达 | RTA Open Data（Data Dubai）；聚合逻辑见 `htfa/jobs/uae_data/source_rta.py` |
 
 ## 二、数据库字典补全后的变量边界

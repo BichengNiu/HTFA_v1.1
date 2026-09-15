@@ -29,6 +29,7 @@ import sys
 from datetime import date
 from pathlib import Path
 from typing import Iterable
+from urllib.parse import urljoin
 
 from openpyxl import load_workbook
 
@@ -40,6 +41,7 @@ from ._excel_helpers import (  # noqa: E402
     payload_json_file,
     run_powershell_sheet_writer,
 )
+from ._official_download import download_file, fetch_bytes  # noqa: E402
 
 RAW_DIR = DATA_DIR / "raw" / "scad" / "hotel"
 TARGET_SHEET = "月度_SCAD"
@@ -75,6 +77,35 @@ _SERIES_SLUG = {
 }
 
 _FILE_PERIOD = re.compile(r"(20\d{2})-(0[1-9]|1[0-2])\.xlsx")
+SCAD_PUBLICATION_URL = (
+    "https://scad.gov.ae/statistical-publication"
+    "?delta=40&sort=title%2B&q=Hotel&start={start}"
+)
+_SCAD_ARTICLE_RE = re.compile(
+    r"<div\b[^>]*class=[\"'][^\"']*journal-content-article[^\"']*[\"']"
+    r"[^>]*data-analytics-asset-title=[\"'](?P<title>[^\"']+)[\"'][^>]*>"
+    r"(?P<body>.*?)(?=<div\b[^>]*class=[\"'][^\"']*journal-content-article|\Z)",
+    re.I | re.S,
+)
+_SCAD_LINK_RE = re.compile(
+    r"\bhref=[\"'](?P<href>[^\"']+\.xlsx[^\"']*)[\"']",
+    re.I,
+)
+_SCAD_MONTHS = {
+    "january": 1,
+    "february": 2,
+    "feburary": 2,
+    "march": 3,
+    "april": 4,
+    "may": 5,
+    "june": 6,
+    "july": 7,
+    "august": 8,
+    "september": 9,
+    "october": 10,
+    "november": 11,
+    "december": 12,
+}
 
 
 def _month_end(year: int, month: int) -> date:
@@ -119,7 +150,18 @@ def parse_hpi_rows(rows: list) -> dict[str, float | None]:
         for i, cell in enumerate(cells):
             if cell == "Hotel Price Index" or cell.startswith("Hotel Price Index"):
                 number = _first_number(cells[i + 1:])
-                return {"阿布扎比:酒店价格指数(HPI)": number}
+                if number is not None:
+                    return {"阿布扎比:酒店价格指数(HPI)": number}
+            if cell.casefold() == "general index" or cell == "الرقم العام":
+                numbers = []
+                for candidate in cells[i + 1:]:
+                    try:
+                        numbers.append(float(candidate.replace(",", "")))
+                    except ValueError:
+                        continue
+                # 老版表格为“上月、当月、变动率”，第二个数是当月指数。
+                if len(numbers) >= 2:
+                    return {"阿布扎比:酒店价格指数(HPI)": numbers[1]}
     return {}
 
 
@@ -137,15 +179,29 @@ def _parse_workbook(path: Path) -> dict[str, float | None]:
     if match is None:
         raise ValueError(f"Unexpected hotel filename (expected YYYY-MM.xlsx): {path.name}")
     workbook = load_workbook(path, read_only=True, data_only=True)
-    try:
-        table1 = workbook["Table 1"]
-        rows = list(table1.iter_rows(values_only=True))
-    finally:
-        workbook.close()
     if path.name.upper().startswith("HPI"):
-        return parse_hpi_rows(rows)
+        try:
+            sheet_names = workbook.sheetnames
+            candidates = ["Table 1"] if "Table 1" in sheet_names else sheet_names
+            for sheet_name in candidates:
+                parsed = parse_hpi_rows(
+                    list(workbook[sheet_name].iter_rows(values_only=True))
+                )
+                if parsed:
+                    return parsed
+            raise ValueError("未找到 HPI 指数行")
+        finally:
+            workbook.close()
     if path.name.upper().startswith("HOTELSTATS"):
+        try:
+            table1 = workbook["Table 1"]
+            rows = list(table1.iter_rows(values_only=True))
+        except KeyError as exc:
+            raise ValueError("未找到 Hotel Statistics 的 Table 1") from exc
+        finally:
+            workbook.close()
         return parse_hotel_stats_rows(rows)
+    workbook.close()
     raise ValueError(f"Unexpected hotel series prefix: {path.name}")
 
 
@@ -196,12 +252,89 @@ def _dictionary_rows() -> list[dict]:
     ]
 
 
-def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
-    """扫描 raw/scad/hotel/ 下月度 Excel → 入长表 scad_monthly + 指标字典。
+def _discover_official_files() -> list[tuple[str, str, Path]]:
+    """Discover monthly Hotel Statistics/HPI Excel files from SCAD."""
 
-    本数据源无网络下载环节（文件来自官网手工下载），``skip_download``/``force``
-    仅作签名兼容。
-    """
+    discovered: dict[tuple[str, str], tuple[str, str, Path]] = {}
+    for start in range(1, 9):
+        url = SCAD_PUBLICATION_URL.format(start=start)
+        html = fetch_bytes(url, referer="https://scad.gov.ae/").decode(
+            "utf-8", errors="replace"
+        )
+        page_found = 0
+        for match in _SCAD_ARTICLE_RE.finditer(html):
+            title = re.sub(r"\s+", " ", match.group("title")).strip()
+            title_match = re.match(
+                r"^(Hotel Statistics-Monthly|Hotel Establishments Statistics|"
+                r"Hotel Price Index(?:-Monthly)?)\s+"
+                r"([A-Za-z]+)\s+(20\d{2})$",
+                title,
+                re.I,
+            )
+            if title_match is None:
+                continue
+            series_title, month_name, year_text = title_match.groups()
+            month = _SCAD_MONTHS.get(month_name.casefold())
+            if month is None:
+                continue
+            href_match = _SCAD_LINK_RE.search(match.group("body"))
+            if href_match is None:
+                continue
+            href = href_match.group("href").replace("&amp;", "&")
+            file_url = urljoin("https://scad.gov.ae", href)
+            prefix = "HPI" if "price index" in series_title.casefold() else "HotelStats"
+            target = RAW_DIR / f"{prefix}_{int(year_text):04d}-{month:02d}.xlsx"
+            discovered[(prefix, f"{year_text}-{month:02d}")] = (
+                prefix,
+                file_url,
+                target,
+            )
+            page_found += 1
+        if page_found == 0 and start > 1:
+            # The listing is paged; once a page is empty, later offsets are
+            # normally empty too.  Keeping the first page always checked also
+            # handles a temporary page with no result cards.
+            break
+    return list(discovered.values())
+
+
+def _download_official_files(*, force: bool) -> tuple[int, int, list[str]]:
+    downloaded = 0
+    existing = 0
+    errors: list[str] = []
+    for _prefix, url, target in _discover_official_files():
+        try:
+            status = download_file(
+                url,
+                target,
+                force=force,
+                min_bytes=1024,
+                referer="https://scad.gov.ae/statistical-publication",
+            )
+        except Exception as exc:  # noqa: BLE001 - report per-file drift/network errors
+            errors.append(f"{target.name}: {exc}")
+            continue
+        if status == "downloaded":
+            downloaded += 1
+        else:
+            existing += 1
+    return downloaded, existing, errors
+
+
+def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
+    """自动发现/下载 SCAD 月报，再解析并入长表 ``scad_monthly``。"""
+
+    download_note = ""
+    if not skip_download:
+        try:
+            downloaded, existing, download_errors = _download_official_files(force=force)
+            download_note = f"官网缓存：新增 {downloaded}，复用 {existing}"
+            if download_errors:
+                download_note += f"；下载警告 {len(download_errors)} 条（{download_errors[0]}）"
+        except Exception as exc:  # noqa: BLE001 - cached files remain usable
+            if not any(RAW_DIR.glob("*.xlsx")):
+                raise
+            download_note = f"官网发现失败，使用本地缓存：{exc}"
 
     paths = [
         path
@@ -226,6 +359,8 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     periods = sorted({row["period"] for row in rows})
     indicators = sorted({row["indicator"] for row in rows})
     note = f"{len(periods)} 个月 × {len(indicators)} 指标"
+    if download_note:
+        note += f"；{download_note}"
     if error_rows:
         note += f"；{len(error_rows)} 文件解析失败（{error_rows[0]['source_file']}）"
     return {"status": "ok", "rows": len(rows), "note": note}

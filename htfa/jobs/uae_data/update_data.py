@@ -35,6 +35,7 @@ from .uae_metadata import complete_metadata  # noqa: E402
 
 SOURCES = (
     "baker_hughes",
+    "oil",
     "cbuae",
     "cloudflare_radar",
     "comtrade",

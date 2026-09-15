@@ -180,11 +180,14 @@ def render_welcome_page() -> None:
         """
         <div style="display:flex; flex-direction:column; align-items:center;
                     justify-content:center; min-height:60vh; text-align:center;">
-            <h1 style="font-size:5em; margin:0;">经世</h1>
+            <h1 style="font-size:5em; margin:0;">金轩监测</h1>
             <hr style="width:60%; border:0; border-top:1px solid #ccc;
                        margin:1.25rem auto;">
             <p style="font-size:1.8rem; margin:0;">
-                国家信息中心经济预测部政策仿真实验室
+                中国驻阿联酋大使馆经商处
+            </p>
+            <p style="font-size:1.8rem; margin:0;">
+                国家发展改革委国家信息中心
             </p>
         </div>
         """,

@@ -9,7 +9,7 @@ Wages Protection System (UAEWPS) Statistics」所列月度统计发布。注意�
 因此，本模块的月度观测来自官方另一持续序列：**CBUAE 季度经济评论（Quarterly
 Economic Review, QER）正文的「Employment and Wages」小节**，每期公布截至季末
 月的 WPS 覆盖员工数与平均工资的同比增速（按 3 个月移动平均计算，见 QER 脚注）。
-原始文件为 raw/uaewps/qer/*.pdf（18 期，2021Q4 至 2026Q2），已人工下载；其中
+原始文件为 raw/uaewps/qer/*.pdf（自动从 CBUAE 出版物 API 下载；当前覆盖 2021Q4 至 2026Q2）；其中
 2024Q1 起的 9 期含 WPS 统计段落，合计 9 个月度观测点（2024-04 至 2026-03）。
 
 流程与 source_cbuae.py 一致：``update()`` 解析 PDF 原文 → 与期望值表逐期校验
@@ -22,10 +22,12 @@ Economic Review, QER）正文的「Employment and Wages」小节**，每期公�
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from datetime import date
 from pathlib import Path
+from urllib.parse import urljoin
 
 from pypdf import PdfReader
 
@@ -38,6 +40,7 @@ from ._excel_helpers import (  # noqa: E402
     records_latest_first,
     run_powershell_sheet_writer,
 )
+from ._official_download import download_file, fetch_bytes  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # 常量
@@ -78,9 +81,15 @@ _NUMBER_RE = re.compile(r"(\d{1,2}(?:\.\d{1,2})?)")
 _PERIOD_RE = re.compile(
     r"\b(" + "|".join(MONTH_NUMBERS) + r")\s+(20\d{2})\b", re.I
 )
+CBUAE_QER_API = (
+    "https://www.centralbank.ae/umbraco/api/MediaListing/Get"
+    "?language=en&ContentId=83367673-f49f-4ee6-ba1e-800b63601b1d"
+    "&filterBy=&search=Quarterly"
+)
+_QER_MONTHS = {"march": 1, "june": 2, "september": 3, "december": 4}
 
 # 期望值校验表：report 标签 -> (观察月 period, 员工覆盖 YoY %|None, 平均工资 YoY %)。
-# 逐期从 QER 原文人工核对，解析结果必须与此一致，防止正则漂移导致静默错数。
+# 已核对历史期次的回归值；新期次通过结构校验自动接入，防止正则漂移导致静默错数。
 EXPECTED = {
     "2024Q1": ("2024-04", 7.5, 9.4),
     "2024Q2": ("2024-06", None, 4.8),
@@ -213,15 +222,19 @@ def extract_qer_wps(path: Path) -> tuple[str, str, float | None, float | None, s
 def validate_observations(
     observations: dict[str, tuple[str, float | None, float | None, str]],
 ) -> list[tuple[str, str, float | None, float | None, str]]:
-    """与 EXPECTED 逐期核对解析结果；任何不一致立即抛错（fail loud）。"""
+    """核对历史回归值，同时允许结构正常的新 QER 期次自动入库。
+
+    已人工核对的期次仍要求完全相等；新期次只要能解析出观察月和至少一个
+    数值就入库。若正文结构变化导致两个指标都无法解析，则明确拒绝入库。
+    """
     verified: list[tuple[str, str, float | None, float | None, str]] = []
     for tag, (period, emp, wage, note) in sorted(observations.items()):
         expected = EXPECTED.get(tag)
         if expected is None:
-            # 新一期 QER 尚未人工核对：拒绝静默入库
-            raise ValueError(
-                f"{tag}: 新报告期未列入 EXPECTED 校验表，请人工核对后添加"
-            )
+            if not period or (emp is None and wage is None):
+                raise ValueError(f"{tag}: 新期次未解析出有效 WPS 数值，拒绝入库")
+            verified.append((tag, period, emp, wage, note))
+            continue
         exp_period, exp_emp, exp_wage = expected
         if (period, emp, wage) != (exp_period, exp_emp, exp_wage):
             raise ValueError(
@@ -252,6 +265,65 @@ def _dictionary_rows() -> list[dict]:
     ]
 
 
+def _discover_qer_files() -> list[tuple[str, str, Path]]:
+    """通过 CBUAE 出版物 API 发现最新 Quarterly Economic Review PDF。"""
+
+    payload = json.loads(
+        fetch_bytes(CBUAE_QER_API, referer="https://www.centralbank.ae/").decode(
+            "utf-8", errors="replace"
+        )
+    )
+    pages = payload.get("Data", {}).get("MediaListingPages", [])
+    discovered: dict[str, tuple[str, str, Path]] = {}
+    for page in pages:
+        title = str(page.get("Title") or "")
+        match = re.search(
+            r"Quarterly\s+Economic\s+Review\s*[-–]\s*"
+            r"(March|June|September|December)\s+(20\d{2})",
+            title,
+            re.I,
+        )
+        if match is None:
+            continue
+        month_name, year_text = match.groups()
+        quarter = _QER_MONTHS[month_name.casefold()]
+        tag = f"{year_text}Q{quarter}"
+        for item in page.get("MediaList") or []:
+            media_url = str(item.get("Url") or item.get("url") or "")
+            if not media_url.lower().split("?", 1)[0].endswith(".pdf"):
+                continue
+            discovered[tag] = (
+                tag,
+                urljoin("https://www.centralbank.ae", media_url),
+                RAW_DIR / f"{tag}.pdf",
+            )
+            break
+    return sorted(discovered.values())
+
+
+def _download_qer_files(*, force: bool) -> tuple[int, int, list[str]]:
+    downloaded = 0
+    existing = 0
+    errors: list[str] = []
+    for tag, url, target in _discover_qer_files():
+        try:
+            status = download_file(
+                url,
+                target,
+                force=force,
+                min_bytes=1024,
+                referer="https://www.centralbank.ae/en/news-and-publications/publications/",
+            )
+        except Exception as exc:  # noqa: BLE001 - keep using a good local cache
+            errors.append(f"{tag}: {exc}")
+            continue
+        if status == "downloaded":
+            downloaded += 1
+        else:
+            existing += 1
+    return downloaded, existing, errors
+
+
 def _long_rows(
     verified: list[tuple[str, str, float | None, float | None, str]],
 ) -> list[dict]:
@@ -272,12 +344,19 @@ def _long_rows(
 
 
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
-    """解析 raw/uaewps/qer/ 下各期 QER 的 WPS 段落 -> 入长表 uaewps_monthly。
+    """自动下载 CBUAE QER，再解析 WPS 段落并入长表。"""
 
-    本数据源无网络下载环节（QER 原始 PDF 由人工/浏览器下载后放入 raw 目录），
-    ``skip_download``/``force`` 仅作签名兼容。解析结果与 EXPECTED 校验表逐期
-    核对一致才入库。
-    """
+    download_note = ""
+    if not skip_download:
+        try:
+            downloaded, existing, download_errors = _download_qer_files(force=force)
+            download_note = f"官网缓存：新增 {downloaded}，复用 {existing}"
+            if download_errors:
+                download_note += f"；下载警告 {len(download_errors)} 条（{download_errors[0]}）"
+        except Exception as exc:  # noqa: BLE001 - cached QER files remain valid
+            if not any(RAW_DIR.glob("*.pdf")):
+                raise
+            download_note = f"官网发现失败，使用本地缓存：{exc}"
 
     sources = sorted(RAW_DIR.glob("*.pdf"))
     errors: list[str] = []
@@ -291,7 +370,12 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         if period is not None or tag in EXPECTED:
             parsed[tag] = (period, emp, wage, note)
 
-    verified = validate_observations(parsed)
+    validated = validate_observations(parsed)
+    # QER 的发布日期是季度，但 WPS 文字可能仍只覆盖上一季度末月份（例如
+    # June 2026 QER 的正文为“As of March 2026”）。同一观察月保留最新报告，
+    # 避免两个报告标签写入同一 (period, indicator) 主键。
+    by_period = {item[1]: item for item in validated}
+    verified = [by_period[key] for key in sorted(by_period)]
     rows = _long_rows(verified)
     con.begin()
     try:
@@ -307,6 +391,8 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         f"{len(verified)} 期 QER × {len(UAEWPS_INDICATORS)} 指标，"
         f"{periods[0]} 至 {periods[-1]}"
     )
+    if download_note:
+        note += f"；{download_note}"
     if errors:
         note += f"；源警告 {len(errors)} 条，首条：{errors[0]}"
     return {"status": "ok", "rows": len(rows), "note": note}

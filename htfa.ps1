@@ -1,10 +1,11 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("Run", "Watch")]
-    [string]$Mode = "Run",
+    [ValidateSet("Start", "Stop", "SetupRuntime", "Watch")]
+    [string]$Command = "Start",
     [string]$ProjectRoot,
     [string]$RuntimePython,
     [int]$Port = 8501,
+    [int]$WaitSeconds = 15,
     [ValidateSet("Auto", "Edge", "Chrome")]
     [string]$Browser = "Auto",
     [int]$LauncherPid = 0,
@@ -19,6 +20,14 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+if ([string]::IsNullOrWhiteSpace($ProjectRoot)) {
+    $ProjectRoot = Split-Path -Parent $PSCommandPath
+}
+$ProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
+if ([string]::IsNullOrWhiteSpace($RuntimePython)) {
+    $RuntimePython = Join-Path $ProjectRoot "runtime\python.exe"
+}
 
 function ConvertTo-ProcessArgument {
     param([AllowEmptyString()][string]$Value)
@@ -136,8 +145,6 @@ function Get-BrowserSessionProcessIds {
         }
     }
 
-    # The initial browser PID covers the short interval before WMI exposes the
-    # complete Chromium process tree.
     if (Test-ProcessAlive -ProcessId $BrowserPid) {
         [void]$ids.Add($BrowserPid)
     }
@@ -221,6 +228,87 @@ function Wait-BackendReady {
     throw "HTFA backend did not open port $Port within 30 seconds."
 }
 
+function Invoke-RepositoryUpdate {
+    $git = Get-Command git -ErrorAction SilentlyContinue
+    if ($null -eq $git) {
+        Write-Host "[WARN] Git was not found; keeping the current HTFA source."
+        return
+    }
+
+    $isRepository = (& $git.Source -C $ProjectRoot rev-parse --is-inside-work-tree 2>$null).Trim()
+    if ($isRepository -ne "true") {
+        Write-Host "[WARN] This folder is not a Git repository; keeping the current HTFA source."
+        return
+    }
+
+    $branch = (& $git.Source -C $ProjectRoot branch --show-current 2>$null).Trim()
+    if ($branch -ine "main") {
+        Write-Host "[WARN] Current branch is '$branch'; skipping the HTFA update."
+        return
+    }
+
+    $status = @(& $git.Source -C $ProjectRoot status --porcelain 2>$null)
+    if ($status.Count -gt 0) {
+        Write-Host "[WARN] Local HTFA changes were detected; skipping the HTFA update."
+        return
+    }
+
+    Write-Host "[INFO] Updating HTFA from origin/main..."
+    & $git.Source -C $ProjectRoot pull --ff-only origin main
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[WARN] HTFA update failed; continuing with the current source."
+    }
+    else {
+        Write-Host "[OK] HTFA source is up to date."
+    }
+}
+
+function Get-SystemPython {
+    foreach ($name in @("python", "py")) {
+        $command = Get-Command $name -ErrorAction SilentlyContinue |
+            Where-Object { $_.CommandType -eq "Application" } |
+            Select-Object -First 1
+        if ($null -ne $command) {
+            return $command.Source
+        }
+    }
+    return $null
+}
+
+function Ensure-Runtime {
+    if (Test-Path -LiteralPath $RuntimePython) {
+        return
+    }
+
+    $systemPython = Get-SystemPython
+    if ($null -eq $systemPython) {
+        throw "No system Python was found to build the first project runtime."
+    }
+    Write-Host "[INFO] Bundled runtime was not found. Building it now..."
+    & $systemPython -B (Join-Path $ProjectRoot "scripts\htfa.py") setup-runtime
+    if ($LASTEXITCODE -ne 0) {
+        throw "Project runtime setup failed."
+    }
+    if (-not (Test-Path -LiteralPath $RuntimePython)) {
+        throw "Runtime setup completed without creating $RuntimePython."
+    }
+}
+
+function Clear-PythonCaches {
+    foreach ($root in @(
+            (Join-Path $ProjectRoot "runtime"),
+            (Join-Path $ProjectRoot "htfa"),
+            $ProjectRoot
+        )) {
+        if (-not (Test-Path -LiteralPath $root)) {
+            continue
+        }
+        Get-ChildItem -LiteralPath $root -Directory -Filter "__pycache__" -Recurse -Force `
+            -ErrorAction SilentlyContinue |
+            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Invoke-Watch {
     if ([string]::IsNullOrWhiteSpace($BrowserPath) -or
         [string]::IsNullOrWhiteSpace($BrowserDataDirectory)) {
@@ -263,8 +351,6 @@ function Invoke-Watch {
 }
 
 function Invoke-Run {
-    $resolvedProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
-    $resolvedRuntimePython = (Resolve-Path -LiteralPath $RuntimePython).Path
     $selectedBrowser = Find-BrowserPath
     $sessionId = [Guid]::NewGuid().ToString("N")
     $sessionRoot = [IO.Path]::GetTempPath()
@@ -290,9 +376,9 @@ function Invoke-Run {
             "--server.headless=true"
         )
         Write-Host "[INFO] Starting HTFA backend on port $Port..."
-        $backend = Start-Process -FilePath $resolvedRuntimePython `
+        $backend = Start-Process -FilePath $RuntimePython `
             -ArgumentList (Join-ProcessArguments -Arguments $backendArguments) `
-            -WorkingDirectory $resolvedProjectRoot `
+            -WorkingDirectory $ProjectRoot `
             -NoNewWindow `
             -PassThru
         $script:BackendPid = $backend.Id
@@ -321,10 +407,10 @@ function Invoke-Run {
             "Bypass",
             "-File",
             $PSCommandPath,
-            "-Mode",
+            "-Command",
             "Watch",
             "-ProjectRoot",
-            $resolvedProjectRoot,
+            $ProjectRoot,
             "-Port",
             [string]$Port,
             "-LauncherPid",
@@ -376,7 +462,48 @@ function Invoke-Run {
     }
 }
 
-if ($Mode -eq "Watch") {
-    exit (Invoke-Watch)
+function Invoke-Stop {
+    if (-not (Test-Path -LiteralPath $RuntimePython)) {
+        throw "Bundled runtime was not found: $RuntimePython"
+    }
+    & $RuntimePython -B (Join-Path $ProjectRoot "scripts\htfa.py") stop `
+        --port $Port `
+        --wait-seconds $WaitSeconds
+    return [int]$LASTEXITCODE
 }
-exit (Invoke-Run)
+
+function Invoke-SetupRuntime {
+    $systemPython = Get-SystemPython
+    if ($null -eq $systemPython) {
+        throw "No system Python was found to build the project runtime."
+    }
+    & $systemPython -B (Join-Path $ProjectRoot "scripts\htfa.py") setup-runtime
+    return [int]$LASTEXITCODE
+}
+
+try {
+    switch ($Command) {
+        "Watch" { exit (Invoke-Watch) }
+        "Stop" { exit (Invoke-Stop) }
+        "SetupRuntime" { exit (Invoke-SetupRuntime) }
+        "Start" {
+            Write-Host "========================================"
+            Write-Host "HTFA Dashboard Startup"
+            Write-Host "========================================"
+            Write-Host ""
+            Invoke-RepositoryUpdate
+            Ensure-Runtime
+            Clear-PythonCaches
+            if ([string]::IsNullOrWhiteSpace($env:HTFA_DEBUG_MODE)) {
+                $env:HTFA_DEBUG_MODE = "true"
+            }
+            Write-Host "[INFO] Debug mode: $env:HTFA_DEBUG_MODE"
+            Write-Host "[INFO] Checking Ts main before launch; offline mode uses the local version."
+            exit (Invoke-Run)
+        }
+    }
+}
+catch {
+    Write-Host "[ERROR] $($_.Exception.Message)"
+    exit 1
+}

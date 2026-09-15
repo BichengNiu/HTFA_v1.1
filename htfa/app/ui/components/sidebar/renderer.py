@@ -37,7 +37,7 @@ def render_complete_sidebar(
             """
             <div style="text-align:center; font-size:2em; font-weight:600;
                         margin:0.5rem 0 0.75rem;">
-                经世
+                金轩监测
             </div>
             <hr style="width:70%; border:0; border-top:1px solid #fff;
                        margin:0 auto 2rem;">
@@ -90,17 +90,6 @@ def render_complete_sidebar(
             )
 
             render_model_library_sidebar(st)
-
-        st.markdown(
-            """
-            <div style="position:fixed; bottom:1rem; left:0.5rem; width:18rem;
-                        text-align:center; font-size:0.75rem; line-height:1.4;
-                        color:#fff;">
-                @版权所有：国家信息中心经济预测部政策仿真实验室 牛碧珵
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
 
 
 __all__ = ["render_complete_sidebar"]

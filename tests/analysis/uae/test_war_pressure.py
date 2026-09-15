@@ -101,6 +101,11 @@ def test_war_pressure_raw_chart_uses_three_series_on_one_left_axis() -> None:
     assert axis.get_title() == "袭击手段"
     assert axis.get_ylabel() == "数量（枚/架）"
     assert len(axis.patches) == 9
+    assert [label.get_text() for label in axis.get_xticklabels()] == [
+        "2月",
+        "3月",
+        "4月",
+    ]
     assert {
         text.get_text() for text in axis.get_legend().get_texts()
     } == {BALLISTIC_LABEL, CRUISE_LABEL, UAV_LABEL}
@@ -146,6 +151,11 @@ def test_war_pressure_index_chart_is_a_single_index_series() -> None:
     axis = figure.axes[0]
     assert axis.get_title() == "战争压力指数"
     assert axis.get_ylabel() == "指数"
+    assert [label.get_text() for label in axis.get_xticklabels()] == [
+        "2月",
+        "3月",
+        "4月",
+    ]
     assert [
         line.get_label()
         for line in axis.get_lines()
@@ -187,7 +197,8 @@ def test_war_pressure_section_renders_algorithm_and_interpretation(monkeypatch) 
     explanation = st_obj.markdown.call_args.args[0]
     assert "9×log1p(弹道导弹数量)" in explanation
     assert "min-max 归一化" in explanation
-    assert "不等同于实际经济损失" in explanation
+    assert "不等同于实际经济损失" not in explanation
+    assert "未分类、漏报和覆盖变化" not in explanation
 
 
 def test_oil_panel_places_war_pressure_before_revenue(monkeypatch) -> None:

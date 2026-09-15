@@ -58,6 +58,20 @@ def test_parse_csv_missing_column_raises(tmp_path) -> None:
         raise AssertionError("expected ValueError for missing column")
 
 
+def test_parse_google_trends_export(tmp_path) -> None:
+    """兼容 Google Trends 的空首列表头和 Mon-YY 月份格式。"""
+
+    src = tmp_path / "google-trends.csv"
+    src.write_text(
+        ",work in dubai,work in uae\nJan-04,0,3\nAug-26,83,69\n",
+        encoding="utf-8",
+    )
+    rows = se.parse_csv(src)
+    assert rows[0]["month"] == datetime(2004, 1, 1).date()
+    assert rows[-1]["month"] == datetime(2026, 8, 1).date()
+    assert rows[-1]["value"] == 69.0
+
+
 def test_update_and_export_roundtrip(tmp_path, monkeypatch) -> None:
     """update() 入库 → merge() 宽表导出：数值、日期、列名完全往返。"""
 

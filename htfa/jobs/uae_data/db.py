@@ -64,6 +64,21 @@ _BASE_DDL = (
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS eia_crude_production_monthly (
+        period        DATE PRIMARY KEY,
+        production_bpd DOUBLE NOT NULL,
+        source_period VARCHAR,
+        source_file   VARCHAR
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS eia_brent_spot_daily (
+        period        DATE PRIMARY KEY,
+        price_usd_bbl DOUBLE NOT NULL,
+        source_file   VARCHAR
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS cbuae_monthly (
         period        DATE           NOT NULL,
         indicator     VARCHAR        NOT NULL,

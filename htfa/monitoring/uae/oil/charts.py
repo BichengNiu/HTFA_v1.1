@@ -110,6 +110,7 @@ def build_war_pressure_raw_figure(
         ytitle="数量（枚/架）",
         ytitle_position="side",
         year_ruler=True,
+        monthly_ticks=True,
         grid=True,
         show_legend=True,
         legend_cols=3,
@@ -140,6 +141,7 @@ def build_war_pressure_index_figure(
         ytitle="指数",
         ytitle_position="side",
         year_ruler=True,
+        monthly_ticks=True,
         grid=True,
         show_legend=True,
         note=source_note(source_text),
@@ -211,6 +213,129 @@ def build_oil_market_figure(
     return figure
 
 
+def _build_oil_single_series_figure(
+    series: pd.Series,
+    *,
+    label: str,
+    title: str,
+    source_text: str,
+    unit: str,
+    bars: bool = False,
+    line_decimals: int = 1,
+    units: Mapping[str, str | None] | None = None,
+) -> Figure:
+    """Build one oil series with the shared Ts chart contract."""
+
+    clean = series.dropna().sort_index()
+    if clean.empty:
+        raise ValueError(f"{label} 没有有效观测，无法绘图")
+    last_month = common_latest_month([(label, clean)])
+    clean = through_month(clean, last_month)
+    frame = pd.DataFrame({label: clean})
+    axis_units: dict[str, str | None] = {label: unit}
+    if units is not None:
+        axis_units.update(units)
+
+    figure, returned_axis = plot_series(
+        frame,
+        facet=False,
+        title=title,
+        xtitle="",
+        ytitle_position="side",
+        year_ruler=True,
+        grid=True,
+        bar_series=[label] if bars else [],
+        bar_face_color=GRAY if bars else None,
+        vlines=WAR_START_DATE,
+        show_legend=True,
+        note=source_note(source_text),
+        note_loc="left",
+        figsize=(9.4, 6.2),
+        units=axis_units,
+    )
+    axis = normalize_ts_axis(returned_axis)
+    annotate_war(axis)
+    if bars:
+        _annotate_bar_values(axis, frame, (label,))
+    else:
+        _annotate_line_values_above(axis, label, decimals=line_decimals)
+    apply_htfa_fonts(figure)
+    return figure
+
+
+def build_oil_production_figure(
+    production: pd.Series,
+    source_text: str,
+    units: Mapping[str, str | None] | None = None,
+) -> Figure:
+    """构建单独的阿联酋原油产量月度柱状图。"""
+
+    return _build_oil_single_series_figure(
+        production,
+        label=MARKET_PRODUCTION_LABEL,
+        title="原油产量",
+        source_text=source_text,
+        unit="万桶/天",
+        bars=True,
+        units=units,
+    )
+
+
+def build_oil_rig_count_figure(
+    rig_count: pd.Series,
+    source_text: str,
+    units: Mapping[str, str | None] | None = None,
+) -> Figure:
+    """构建单独的阿联酋石油活跃钻井机数月度折线图。"""
+
+    return _build_oil_single_series_figure(
+        rig_count,
+        label=MARKET_RIG_COUNT_LABEL,
+        title="活动钻井机数",
+        source_text=source_text,
+        unit="台",
+        bars=False,
+        line_decimals=0,
+        units=units,
+    )
+
+
+def build_oil_price_figure(
+    revenue: pd.DataFrame,
+    source_text: str,
+    units: Mapping[str, str | None] | None = None,
+) -> Figure:
+    """构建单独的 Brent 原油现货月均价格折线图。"""
+
+    return _build_oil_single_series_figure(
+        revenue[PRICE_COLUMN].rename(REVENUE_PRICE_LABEL),
+        label=REVENUE_PRICE_LABEL,
+        title="石油价格",
+        source_text=source_text,
+        unit="美元/桶",
+        bars=False,
+        units=units,
+    )
+
+
+def build_oil_revenue_only_figure(
+    revenue: pd.DataFrame,
+    source_text: str,
+    units: Mapping[str, str | None] | None = None,
+) -> Figure:
+    """构建单独的月度石油收入估算柱状图。"""
+
+    return _build_oil_single_series_figure(
+        revenue[REVENUE_COLUMN],
+        label=REVENUE_LABEL,
+        title="石油收入",
+        source_text=source_text,
+        unit="亿美元",
+        bars=True,
+        units=units,
+    )
+
+
 def build_oil_revenue_figure(
     revenue: pd.DataFrame,
     source_text: str,
@@ -264,5 +389,9 @@ __all__ = [
     "build_war_pressure_index_figure",
     "build_war_pressure_raw_figure",
     "build_oil_market_figure",
+    "build_oil_production_figure",
+    "build_oil_rig_count_figure",
+    "build_oil_price_figure",
+    "build_oil_revenue_only_figure",
     "build_oil_revenue_figure",
 ]

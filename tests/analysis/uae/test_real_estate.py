@@ -11,6 +11,7 @@ from htfa.monitoring.uae.real_estate.charts import (
     AMOUNT_LABEL,
     COUNT_LABEL,
     MARKET_CONFIG,
+    PROPERTY_CONFIG,
     build_sales_figure,
 )
 from htfa.monitoring.uae.real_estate.data import (
@@ -206,6 +207,31 @@ def test_build_sales_figure_renders_bar_and_amount_line_for_both_markets() -> No
         assert any("迪拜土地局" in text.get_text() for text in figure.texts)
 
 
+def test_build_sales_figure_renders_each_property_segment() -> None:
+    data = load_real_estate_data(_workbook_bytes(), file_name="test.xlsx")
+    last_month = data.values.index.max().to_period("M")
+
+    assert data.raw_values is not None
+    for market, (count_col, amount_col) in PROPERTY_CONFIG.items():
+        figure = build_sales_figure(
+            data.raw_values,
+            market=market,
+            title=renderer.DEFAULT_TITLES[market],
+            source_text="Dubai Land Department",
+            last_month=last_month,
+        )
+
+        axis, amount_axis = figure.axes
+        assert axis.get_title() == renderer.DEFAULT_TITLES[market]
+        assert len(axis.patches) == 13
+        assert amount_axis.get_lines()[0].get_ydata()[-1] == pytest.approx(
+            data.raw_values.loc["2025-05-31", amount_col] / 100
+        )
+        assert axis.patches[-1].get_height() == pytest.approx(
+            data.raw_values.loc["2025-05-31", count_col]
+        )
+
+
 def test_sales_display_values_converts_amount_to_yi_aed() -> None:
     """展示表金额由百万 AED 折算为亿 AED，笔数不变。"""
 
@@ -221,7 +247,9 @@ def test_sales_display_values_converts_amount_to_yi_aed() -> None:
     assert frame.loc["2025-05-31", READY_AMOUNT] == pytest.approx(4_324 / 100)
 
 
-def test_section_renders_two_charts_and_explanation(monkeypatch) -> None:
+def test_section_renders_four_cross_segment_charts_and_explanation(
+    monkeypatch,
+) -> None:
     data = load_real_estate_data(_workbook_bytes(), file_name="test.xlsx")
     monkeypatch.setattr(
         renderer,
@@ -230,10 +258,18 @@ def test_section_renders_two_charts_and_explanation(monkeypatch) -> None:
     )
     st_obj = MagicMock()
     metric_columns = tuple(MagicMock() for _ in range(4))
-    left, right = MagicMock(), MagicMock()
+    first_row = (MagicMock(), MagicMock())
+    second_row = (MagicMock(), MagicMock())
+    chart_rows = [
+        first_row,
+        second_row,
+    ]
+    left, right = first_row
 
     def _columns(n, gap=None):
-        return metric_columns if n == 4 else (left, right)
+        if n == 4:
+            return metric_columns
+        return chart_rows.pop(0)
 
     st_obj.columns.side_effect = _columns
     markets = []
@@ -269,13 +305,23 @@ def test_section_renders_two_charts_and_explanation(monkeypatch) -> None:
         for call in st_obj.metric.call_args_list
     )
     assert st_obj.columns.call_args.kwargs["gap"] == "small"
-    assert st_obj.columns.call_count == 2
-    assert markets == [(left, "现房"), (right, "期房")]
-    # 两图分别渲染进左右两列
-    assert left.pyplot.call_count == 1
-    assert right.pyplot.call_count == 1
-    assert left.download_button.call_count == 1
-    assert right.download_button.call_count == 1
+    assert st_obj.columns.call_count == 3
+    assert markets == [
+        (left, "现房住宅"),
+        (right, "现房商业"),
+        (second_row[0], "期房住宅"),
+        (second_row[1], "期房商业"),
+    ]
+    assert all(
+        column.pyplot.call_count == 1
+        for row in (first_row, second_row)
+        for column in row
+    )
+    assert all(
+        column.download_button.call_count == 1
+        for row in (first_row, second_row)
+        for column in row
+    )
     assert st_obj.pyplot.call_count == 0
     assert st_obj.expander.call_count == 1
     # 说明正文渲染在 expander 的 with 体内（直接调用的 st_obj.markdown）
@@ -302,7 +348,7 @@ def test_section_loader_failure_shows_error_and_returns_error_status(
     assert st_obj.pyplot.call_count == 0
 
 
-def test_cell_failure_warns_cell_and_keeps_other_chart(monkeypatch) -> None:
+def test_cell_failure_warns_cell_and_keeps_other_charts(monkeypatch) -> None:
     data = load_real_estate_data(_workbook_bytes(), file_name="test.xlsx")
     monkeypatch.setattr(
         renderer,
@@ -311,17 +357,19 @@ def test_cell_failure_warns_cell_and_keeps_other_chart(monkeypatch) -> None:
     )
     st_obj = MagicMock()
     metric_columns = tuple(MagicMock() for _ in range(4))
-    left, right = MagicMock(), MagicMock()
+    first_row = (MagicMock(), MagicMock())
+    second_row = (MagicMock(), MagicMock())
+    chart_rows = [first_row, second_row]
 
     def _columns(n, gap=None):
-        return metric_columns if n == 4 else (left, right)
+        return metric_columns if n == 4 else chart_rows.pop(0)
 
     st_obj.columns.side_effect = _columns
 
     original_render = renderer._render_sales_chart
 
     def _fail_offplan(st_obj, data, last_month, market):
-        if market == "期房":
+        if market == "期房商业":
             raise KeyError("期房金额列缺失")
         return original_render(st_obj, data, last_month, market=market)
 
@@ -334,9 +382,12 @@ def test_cell_failure_warns_cell_and_keeps_other_chart(monkeypatch) -> None:
     )
 
     assert result["status"] == "success"
-    assert left.warning.call_count == 0
-    assert right.warning.call_count == 1
-    # 现房格走真实渲染路径
-    assert left.pyplot.call_count == 1
-    assert left.download_button.call_count == 1
+    assert second_row[1].warning.call_count == 1
+    rendered_columns = [first_row[0], first_row[1], second_row[0]]
+    assert all(column.pyplot.call_count == 1 for column in rendered_columns)
+    assert all(
+        column.download_button.call_count == 1
+        for column in rendered_columns
+    )
+    assert second_row[1].pyplot.call_count == 0
     assert st_obj.error.call_count == 0
