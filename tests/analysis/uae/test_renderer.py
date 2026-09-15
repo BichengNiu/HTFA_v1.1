@@ -75,3 +75,4 @@ def test_report_header_places_organization_and_data_month_on_meta_line() -> None
         html,
     )
     assert "2026年8月" in html
+    assert 'class="uae-print-page-number"' in html

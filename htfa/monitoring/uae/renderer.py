@@ -131,7 +131,8 @@ def _render_report_header(
         "</div>"
         f"<div class=\"uae-print-report-period\">{report_time}</div>"
         "</div>"
-        "</div>",
+        "</div>"
+        "<div class=\"uae-print-page-number\" aria-hidden=\"true\"></div>",
         unsafe_allow_html=True,
     )
 
