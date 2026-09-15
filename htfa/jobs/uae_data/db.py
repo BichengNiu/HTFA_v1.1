@@ -79,6 +79,13 @@ _BASE_DDL = (
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS imf_dubai_crude_monthly (
+        period        DATE PRIMARY KEY,
+        price_usd_bbl DOUBLE NOT NULL,
+        source_file   VARCHAR
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS cbuae_monthly (
         period        DATE           NOT NULL,
         indicator     VARCHAR        NOT NULL,

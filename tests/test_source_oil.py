@@ -5,6 +5,7 @@ from __future__ import annotations
 from io import BytesIO
 
 import pandas as pd
+from openpyxl import load_workbook
 
 from htfa.jobs.uae_data import db, source_oil
 from htfa.monitoring.uae.oil.data import load_oil_market_data
@@ -35,9 +36,25 @@ def _opec_payload() -> bytes:
     """
 
 
+def _dubai_payload() -> bytes:
+    return b"""<?xml version='1.0' encoding='UTF-8'?>
+<message:StructureSpecificData xmlns:message='http://www.sdmx.org/resources/sdmxml/schemas/v2_1/message'
+    xmlns:ss='http://www.sdmx.org/resources/sdmxml/schemas/v2_1/data/structurespecific'>
+  <message:DataSet>
+    <message:Series>
+      <message:Obs TIME_PERIOD='2026-M01' OBS_VALUE='62.72818181818182'/>
+      <message:Obs TIME_PERIOD='2026-M02' OBS_VALUE='68.5085'/>
+      <message:Obs TIME_PERIOD='2026-M03' OBS_VALUE='.'/>
+    </message:Series>
+  </message:DataSet>
+</message:StructureSpecificData>
+"""
+
+
 def test_parse_opec_and_eia_payloads_normalize_units() -> None:
     production = source_oil.parse_opec_latest_production(_opec_payload())
     prices = source_oil.parse_brent_xls(_price_payload())
+    dubai_prices = source_oil.parse_imf_dubai_xml(_dubai_payload())
 
     assert [(item.period, item.production_bpd) for item in production] == [
         (pd.Timestamp("2025-12-31").date(), 3_200_000.0),
@@ -49,6 +66,10 @@ def test_parse_opec_and_eia_payloads_normalize_units() -> None:
     assert [(item.period, item.price_usd_bbl) for item in prices] == [
         (pd.Timestamp("2026-01-02").date(), 70.5),
         (pd.Timestamp("2026-01-05").date(), 71.25),
+    ]
+    assert [(item.period, item.price_usd_bbl) for item in dubai_prices] == [
+        (pd.Timestamp("2026-01-31").date(), 62.72818181818182),
+        (pd.Timestamp("2026-02-28").date(), 68.5085),
     ]
 
 
@@ -73,8 +94,10 @@ def test_opec_archive_supports_legacy_table_number_and_newest_revision(tmp_path)
 
 def test_update_merge_and_oil_loader_use_duckdb_as_source_of_truth(tmp_path, monkeypatch) -> None:
     price_path = tmp_path / "brent_spot_daily.xls"
+    dubai_path = tmp_path / "imf_dubai_crude_monthly.xml"
     database_path = tmp_path / "uae.duckdb"
     monkeypatch.setattr(source_oil, "PRICE_RAW_PATH", price_path)
+    monkeypatch.setattr(source_oil, "DUBAI_RAW_PATH", dubai_path)
     opec_path = tmp_path / "momr_world_oil_supply.html"
     home_path = tmp_path / "momr_home.html"
     monkeypatch.setattr(source_oil, "OPEC_RAW_PATH", opec_path)
@@ -87,6 +110,8 @@ def test_update_merge_and_oil_loader_use_duckdb_as_source_of_truth(tmp_path, mon
         destination.write_bytes(
             _price_payload()
             if destination == price_path
+            else _dubai_payload()
+            if destination == dubai_path
             else b'<a href="/momr/chapter/1/2">World oil supply</a>'
             if destination == home_path
             else _opec_payload()
@@ -116,6 +141,12 @@ def test_update_merge_and_oil_loader_use_duckdb_as_source_of_truth(tmp_path, mon
         assert read_con.execute(
             f"SELECT count(*) FROM {source_oil.EIA_PRICE_TABLE}"
         ).fetchone()[0] == 2
+        assert read_con.execute(
+            f"SELECT period, price_usd_bbl FROM {source_oil.DUBAI_PRICE_TABLE}"
+        ).fetchall() == [
+            (pd.Timestamp("2026-01-31").date(), 62.72818181818182),
+            (pd.Timestamp("2026-02-28").date(), 68.5085),
+        ]
     finally:
         read_con.close()
 
@@ -131,4 +162,14 @@ def test_update_merge_and_oil_loader_use_duckdb_as_source_of_truth(tmp_path, mon
     assert data.prices.columns.tolist() == ["布伦特现货"]
     assert data.production.iloc[-1] == 3_835_000.0
     assert data.metadata["布伦特现货"].source == "U.S. EIA"
-    assert data.metadata["阿联酋原油产量"].source == "OPEC MOMR（secondary sources）"
+    assert data.metadata["阿联酋原油产量"].source == "OPEC MOMR"
+
+    merged_workbook = load_workbook(workbook_path, read_only=True, data_only=True)
+    try:
+        assert source_oil.DUBAI_PRICE_SHEET in merged_workbook.sheetnames
+        dubai_sheet = merged_workbook[source_oil.DUBAI_PRICE_SHEET]
+        assert dubai_sheet.cell(2, 2).value == source_oil.DUBAI_PRICE_INDICATOR
+        assert dubai_sheet.cell(7, 1).value == pd.Timestamp("2026-02-28").to_pydatetime()
+        assert dubai_sheet.cell(7, 2).value == 68.5085
+    finally:
+        merged_workbook.close()

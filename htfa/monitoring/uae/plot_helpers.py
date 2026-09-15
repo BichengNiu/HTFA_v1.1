@@ -60,8 +60,12 @@ UAE_COMPACT_Y_AXIS_RULES = {
 SOURCE_DISPLAY_NAMES = {
     "ICE": "洲际交易所",
     "OPEC": "欧佩克",
+    "OPEC MOMR": "欧佩克月度石油市场报告",
+    "OPEC MOMR（secondary sources）": "欧佩克月度石油市场报告",
     "Wind": "万得",
     "EIA": "美国能源信息署",
+    "U.S. EIA": "美国能源信息署（EIA）",
+    "IMF Primary Commodity Price System (PCPS)": "国际货币基金组织初级商品价格体系（PCPS）",
     "Baker Hughes": "贝克休斯",
     "CBUAE": "阿联酋央行",
     "CBUAE QER": "阿联酋央行季度经济报告",

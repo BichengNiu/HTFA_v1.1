@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, call
 import numpy as np
 import pandas as pd
 import pytest
+from matplotlib.text import Annotation
 
 from htfa.monitoring.uae.oil import renderer
 from htfa.monitoring.uae.periods import (
@@ -307,7 +308,15 @@ def test_oil_split_figures_are_single_series() -> None:
             False,
             data.rig_count.dropna().size,
         ),
-        (build_oil_price_figure(revenue, "U.S. EIA"), False, len(revenue)),
+        (
+            build_oil_price_figure(
+                revenue,
+                "U.S. EIA",
+                {"布伦特原油现货价": "百美元/桶"},
+            ),
+            False,
+            len(revenue),
+        ),
         (
             build_oil_revenue_only_figure(revenue, "OPEC MOMR、U.S. EIA"),
             True,
@@ -320,10 +329,51 @@ def test_oil_split_figures_are_single_series() -> None:
         assert len(figure.axes) == 1
         axis = figure.axes[0]
         assert axis.get_title() == title
+        extreme_labels = [
+            text
+            for text in axis.texts
+            if isinstance(text, Annotation)
+        ]
+        assert extreme_labels
+        assert not any(
+            text.get_text() in {"最高", "最低"}
+            for text in axis.texts
+        )
+        numeric_values = [
+            float(text.get_text().replace(",", ""))
+            for text in extreme_labels
+        ]
+        assert numeric_values
+        assert len(extreme_labels) <= 2
+        assert all(text.get_bbox_patch() is not None for text in extreme_labels)
         if bars:
             assert len(axis.patches) == expected_points
+            assert all(
+                text.get_zorder() > max(patch.get_zorder() for patch in axis.patches)
+                for text in extreme_labels
+            )
         else:
             assert len(axis.get_lines()) == 1
+            assert all(
+                text.get_zorder() > axis.get_lines()[0].get_zorder()
+                for text in extreme_labels
+            )
+
+    price_figure = figures[2][0]
+    assert price_figure.axes[0].get_ylabel() == "美元/桶"
+    assert "百美元/桶" not in price_figure.axes[0].get_ylabel()
+    assert any(
+        text.get_text() == "数据来源：欧佩克月度石油市场报告"
+        for text in figures[0][0].texts
+    )
+    assert any(
+        text.get_text() == "数据来源：美国能源信息署"
+        for text in price_figure.texts
+    )
+    assert any(
+        text.get_text() == "数据来源：欧佩克月度石油市场报告、美国能源信息署"
+        for text in figures[3][0].texts
+    )
 
 
 def test_render_charts_uses_requested_two_by_two_rows(monkeypatch) -> None:

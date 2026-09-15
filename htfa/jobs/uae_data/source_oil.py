@@ -1,8 +1,8 @@
-"""从 OPEC MOMR/EIA 抓取阿联酋原油产量与 Brent 油价。
+"""从 OPEC MOMR/EIA/IMF 抓取阿联酋原油产量与基准油价。
 
-数据链路为：OPEC MOMR + EIA XLS → ``data/UAE/raw/oil/`` → DuckDB 长表 →
-``月度_OPEC``/``日度_EIA`` 宽表。Excel 只由 ``merge()`` 重建，不在抓取阶段
-直接写入指标数据。
+数据链路为：OPEC MOMR + EIA XLS + IMF PCPS API → ``data/UAE/raw/oil/`` →
+DuckDB 长表 → ``月度_OPEC``/``日度_EIA``/``月度_Dubai`` 宽表。Excel 只由
+``merge()`` 重建，不在抓取阶段直接写入指标数据。
 """
 
 from __future__ import annotations
@@ -27,20 +27,29 @@ from .workbook_sheet_writer import write_indicator_sheets
 
 RAW_DIR = DATA_DIR / "raw" / "oil"
 PRICE_RAW_PATH = RAW_DIR / "brent_spot_daily.xls"
+DUBAI_RAW_PATH = RAW_DIR / "imf_dubai_crude_monthly.xml"
 OPEC_RAW_PATH = RAW_DIR / "momr_world_oil_supply.html"
 OPEC_HOME_RAW_PATH = RAW_DIR / "momr_home.html"
 
 EIA_BRENT_XLS_URL = "https://www.eia.gov/dnav/pet/hist_xls/RBRTEd.xls"
+IMF_DUBAI_API_URL = (
+    "https://api.imf.org/external/sdmx/2.1/data/"
+    "IMF.RES,PCPS/G001.POILDUB.USD.M?startPeriod=1992-01"
+)
 OPEC_MOMR_HOME_URL = "https://publications.opec.org/momr/"
 OPEC_PRODUCTION_TABLE = "opec_crude_production_monthly"
 EIA_PRICE_TABLE = "eia_brent_spot_daily"
+DUBAI_PRICE_TABLE = "imf_dubai_crude_monthly"
 
 PRODUCTION_SHEET = "月度_OPEC"
 PRICE_SHEET = "日度_EIA"
+DUBAI_PRICE_SHEET = "月度_Dubai"
 PRODUCTION_INDICATOR = "阿联酋原油产量"
 PRICE_INDICATOR = "布伦特现货"
-PRODUCTION_SOURCE = "OPEC MOMR（secondary sources）"
+DUBAI_PRICE_INDICATOR = "全球: 名义商品价格: 迪拜原油"
+PRODUCTION_SOURCE = "OPEC MOMR"
 PRICE_SOURCE = "U.S. EIA"
+DUBAI_PRICE_SOURCE = "IMF Primary Commodity Price System (PCPS)"
 
 @dataclass(frozen=True)
 class ProductionObservation:
@@ -55,6 +64,14 @@ class ProductionObservation:
 @dataclass(frozen=True)
 class PriceObservation:
     """一条 EIA Brent 日度现货价观测，单位为美元/桶。"""
+
+    period: date
+    price_usd_bbl: float
+
+
+@dataclass(frozen=True)
+class DubaiPriceObservation:
+    """一条 IMF PCPS 迪拜原油月度均价观测，单位为美元/桶。"""
 
     period: date
     price_usd_bbl: float
@@ -326,6 +343,59 @@ def parse_brent_xls(payload: bytes) -> list[PriceObservation]:
     return [observations[key] for key in sorted(observations)]
 
 
+def parse_imf_dubai_xml(payload: bytes | str) -> list[DubaiPriceObservation]:
+    """Parse IMF PCPS SDMX XML for the monthly Dubai/Fateh series.
+
+    The IMF API returns periods such as ``2026-M08``. The workbook's monthly
+    convention is month-end, so the parsed period is normalized to the last
+    calendar day of the observation month.
+    """
+
+    try:
+        from xml.etree import ElementTree
+
+        root = ElementTree.fromstring(
+            payload if isinstance(payload, bytes) else payload.encode("utf-8")
+        )
+    except Exception as exc:  # noqa: BLE001 - expose a source-specific error
+        raise ValueError("IMF 迪拜原油 API XML 无法读取") from exc
+
+    observations: dict[date, DubaiPriceObservation] = {}
+    for element in root.iter():
+        if element.tag.rsplit("}", 1)[-1] != "Obs":
+            continue
+        period_text = element.attrib.get("TIME_PERIOD", "")
+        match = re.fullmatch(r"(?P<year>\d{4})-M(?P<month>\d{2})", period_text)
+        if match is None:
+            raise ValueError(
+                f"IMF 迪拜原油 API 存在无效月份：{period_text!r}"
+            )
+        raw_price = element.attrib.get("OBS_VALUE")
+        if raw_price is None or raw_price.strip() in {"", "."}:
+            continue
+        year = int(match.group("year"))
+        month = int(match.group("month"))
+        if not 1 <= month <= 12:
+            raise ValueError(f"IMF 迪拜原油 API 存在无效月份：{period_text!r}")
+        month_end = date(
+            year,
+            month,
+            calendar.monthrange(year, month)[1],
+        )
+        observation = DubaiPriceObservation(
+            period=month_end,
+            price_usd_bbl=_positive_number(raw_price, field="迪拜原油价格"),
+        )
+        previous = observations.get(observation.period)
+        if previous is not None and previous != observation:
+            raise ValueError(f"IMF 迪拜原油存在重复月份：{observation.period}")
+        observations[observation.period] = observation
+
+    if not observations:
+        raise ValueError("IMF 迪拜原油 API 没有有效观测")
+    return [observations[key] for key in sorted(observations)]
+
+
 @contextmanager
 def _transaction(con):
     con.execute("BEGIN TRANSACTION")
@@ -357,6 +427,15 @@ def _dictionary_rows() -> list[dict[str, object]]:
             "industry": "能源",
             "updated_at": date.today(),
         },
+        {
+            "indicator_name": DUBAI_PRICE_INDICATOR,
+            "frequency": "月度",
+            "unit": "美元/桶",
+            "source": DUBAI_PRICE_SOURCE,
+            "type": "价格",
+            "industry": "能源",
+            "updated_at": date.today(),
+        },
     ]
 
 
@@ -364,6 +443,7 @@ def _download_inputs(*, force: bool) -> str:
     notes: list[str] = []
     downloads = (
         (EIA_BRENT_XLS_URL, PRICE_RAW_PATH, EIA_BRENT_XLS_URL),
+        (IMF_DUBAI_API_URL, DUBAI_RAW_PATH, IMF_DUBAI_API_URL),
     )
     for url, target, referer in downloads:
         try:
@@ -426,7 +506,7 @@ def _download_inputs(*, force: bool) -> str:
 
 
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict[str, object]:
-    """抓取并把 OPEC 原油产量、EIA Brent 价格写入 DuckDB。"""
+    """抓取并把 OPEC、Brent、迪拜原油数据写入 DuckDB。"""
 
     download_note = "" if skip_download else _download_inputs(force=force)
     opec_paths = [
@@ -439,6 +519,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict[str
     ]
     production = parse_opec_production_reports(opec_paths)
     prices = parse_brent_xls(PRICE_RAW_PATH.read_bytes())
+    dubai_prices = parse_imf_dubai_xml(DUBAI_RAW_PATH.read_bytes())
 
     production_rows = [
         {
@@ -457,19 +538,33 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict[str
         }
         for item in prices
     ]
+    dubai_price_rows = [
+        {
+            "period": item.period,
+            "price_usd_bbl": item.price_usd_bbl,
+            "source_file": DUBAI_RAW_PATH.name,
+        }
+        for item in dubai_prices
+    ]
     with _transaction(con):
         db.replace(con, OPEC_PRODUCTION_TABLE, production_rows)
         db.replace(con, EIA_PRICE_TABLE, price_rows)
+        db.replace(con, DUBAI_PRICE_TABLE, dubai_price_rows)
         db.upsert_dictionary_rows(con, _dictionary_rows())
 
     note = (
         f"产量 {len(production)} 月（{production[0].source_period} 至 "
         f"{production[-1].source_period}）；Brent 价格 {len(prices)} 日（"
-        f"{prices[0].period} 至 {prices[-1].period}）"
+        f"{prices[0].period} 至 {prices[-1].period}）；迪拜原油 {len(dubai_prices)} 月（"
+        f"{dubai_prices[0].period} 至 {dubai_prices[-1].period}）"
     )
     if download_note:
         note += f"；{download_note}"
-    return {"status": "ok", "rows": len(production) + len(prices), "note": note}
+    return {
+        "status": "ok",
+        "rows": len(production) + len(prices) + len(dubai_prices),
+        "note": note,
+    }
 
 
 def _metadata(name: str, *, frequency: str, unit: str, source: str) -> dict[str, str]:
@@ -481,7 +576,7 @@ def _metadata(name: str, *, frequency: str, unit: str, source: str) -> dict[str,
 
 
 def merge(workbook_path: Path) -> dict[str, object]:
-    """从 DuckDB 长表重建 ``月度_OPEC`` 与 ``日度_EIA``。"""
+    """从 DuckDB 长表重建油价与产量工作表。"""
 
     if not Path(workbook_path).is_file():
         raise FileNotFoundError(f"Destination workbook not found: {workbook_path}")
@@ -493,49 +588,76 @@ def merge(workbook_path: Path) -> dict[str, object]:
         price_rows = con.execute(
             f"SELECT period, price_usd_bbl FROM {EIA_PRICE_TABLE} ORDER BY period"
         ).fetchall()
+        dubai_rows = []
+        if db.table_exists(con, DUBAI_PRICE_TABLE):
+            dubai_rows = con.execute(
+                f"SELECT period, price_usd_bbl FROM {DUBAI_PRICE_TABLE} ORDER BY period"
+            ).fetchall()
     finally:
         con.close()
     if not production_rows or not price_rows:
         raise ValueError("OPEC 原油产量或 Brent 价格长表为空，无法合并")
 
+    sheet_specs = [
+        {
+            "name": PRODUCTION_SHEET,
+            "title": "阿联酋原油产量（OPEC MOMR）",
+            "indicators": [PRODUCTION_INDICATOR],
+            "metadata": {
+                PRODUCTION_INDICATOR: _metadata(
+                    PRODUCTION_INDICATOR,
+                    frequency="月度",
+                    unit="桶/天",
+                    source=PRODUCTION_SOURCE,
+                )
+            },
+            "rows": [
+                (period, {PRODUCTION_INDICATOR: value})
+                for period, value in production_rows
+            ],
+        },
+        {
+            "name": PRICE_SHEET,
+            "title": "Brent 原油现货价（EIA）",
+            "indicators": [PRICE_INDICATOR],
+            "metadata": {
+                PRICE_INDICATOR: _metadata(
+                    PRICE_INDICATOR,
+                    frequency="日度",
+                    unit="美元/桶",
+                    source=PRICE_SOURCE,
+                )
+            },
+            "rows": [
+                (period, {PRICE_INDICATOR: value})
+                for period, value in price_rows
+            ],
+        },
+    ]
+    if dubai_rows:
+        sheet_specs.append(
+            {
+                "name": DUBAI_PRICE_SHEET,
+                "title": "迪拜原油月度均价（IMF PCPS）",
+                "indicators": [DUBAI_PRICE_INDICATOR],
+                "metadata": {
+                    DUBAI_PRICE_INDICATOR: _metadata(
+                        DUBAI_PRICE_INDICATOR,
+                        frequency="月度",
+                        unit="美元/桶",
+                        source=DUBAI_PRICE_SOURCE,
+                    )
+                },
+                "rows": [
+                    (period, {DUBAI_PRICE_INDICATOR: value})
+                    for period, value in dubai_rows
+                ],
+            }
+        )
+
     counts = write_indicator_sheets(
         Path(workbook_path),
-        [
-            {
-                "name": PRODUCTION_SHEET,
-                "title": "阿联酋原油产量（OPEC MOMR）",
-                "indicators": [PRODUCTION_INDICATOR],
-                "metadata": {
-                    PRODUCTION_INDICATOR: _metadata(
-                        PRODUCTION_INDICATOR,
-                        frequency="月度",
-                        unit="桶/天",
-                        source=PRODUCTION_SOURCE,
-                    )
-                },
-                "rows": [
-                    (period, {PRODUCTION_INDICATOR: value})
-                    for period, value in production_rows
-                ],
-            },
-            {
-                "name": PRICE_SHEET,
-                "title": "Brent 原油现货价（EIA）",
-                "indicators": [PRICE_INDICATOR],
-                "metadata": {
-                    PRICE_INDICATOR: _metadata(
-                        PRICE_INDICATOR,
-                        frequency="日度",
-                        unit="美元/桶",
-                        source=PRICE_SOURCE,
-                    )
-                },
-                "rows": [
-                    (period, {PRICE_INDICATOR: value})
-                    for period, value in price_rows
-                ],
-            },
-        ],
+        sheet_specs,
     )
     return {
         "status": "ok",
@@ -543,6 +665,11 @@ def merge(workbook_path: Path) -> dict[str, object]:
         "note": (
             f"已重建 {PRODUCTION_SHEET} {counts[PRODUCTION_SHEET]} 行、"
             f"{PRICE_SHEET} {counts[PRICE_SHEET]} 行"
+            + (
+                f"、{DUBAI_PRICE_SHEET} {counts[DUBAI_PRICE_SHEET]} 行"
+                if DUBAI_PRICE_SHEET in counts
+                else ""
+            )
         ),
     }
 
@@ -550,6 +677,12 @@ def merge(workbook_path: Path) -> dict[str, object]:
 __all__ = [
     "EIA_BRENT_XLS_URL",
     "EIA_PRICE_TABLE",
+    "IMF_DUBAI_API_URL",
+    "DUBAI_PRICE_TABLE",
+    "DUBAI_PRICE_SHEET",
+    "DUBAI_PRICE_INDICATOR",
+    "DUBAI_PRICE_SOURCE",
+    "DUBAI_RAW_PATH",
     "OPEC_MOMR_HOME_URL",
     "OPEC_HOME_RAW_PATH",
     "OPEC_PRODUCTION_TABLE",
@@ -560,9 +693,11 @@ __all__ = [
     "PRODUCTION_INDICATOR",
     "PRODUCTION_SHEET",
     "PriceObservation",
+    "DubaiPriceObservation",
     "ProductionObservation",
     "merge",
     "parse_brent_xls",
+    "parse_imf_dubai_xml",
     "parse_opec_latest_production",
     "parse_opec_production_reports",
     "discover_opec_archive_links",

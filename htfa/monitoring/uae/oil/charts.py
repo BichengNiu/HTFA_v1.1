@@ -93,6 +93,63 @@ def _annotate_line_values_above(
         )
 
 
+def _annotate_extreme_values(
+    axis,
+    frame: pd.DataFrame,
+    label: str,
+    *,
+    bars: bool,
+    decimals: int = 1,
+) -> None:
+    """仅标注油品序列最高值和最低值的数值，不在图中铺开数字。"""
+
+    series = frame[label].dropna()
+    if series.empty:
+        return
+
+    extremes = [("最低", series.idxmin(), float(series.min()))]
+    if float(series.max()) != float(series.min()):
+        extremes.append(("最高", series.idxmax(), float(series.max())))
+
+    line = next(
+        (item for item in axis.get_lines() if item.get_label() == label),
+        None,
+    )
+    color = line.get_color() if line is not None else "#222222"
+    y_min, y_max = axis.get_ylim()
+    y_span = max(y_max - y_min, 1.0)
+
+    for _, x_value, value in extremes:
+        if bars:
+            # 柱顶上方留出间距；白底和更高 zorder 使文字不会被柱体遮挡。
+            offset = 4
+            va = "bottom"
+        else:
+            # 靠近上边界时放到 marker 下方，其余情况放到 marker 上方。
+            near_top = value >= y_max - y_span * 0.18
+            offset = -14 if near_top else 10
+            va = "top" if near_top else "bottom"
+
+        axis.annotate(
+            f"{value:.{decimals}f}",
+            xy=(x_value, value),
+            xytext=(0, offset),
+            textcoords="offset points",
+            ha="center",
+            va=va,
+            fontsize=8,
+            color=color,
+            bbox={
+                "facecolor": "white",
+                "edgecolor": "none",
+                "alpha": 0.9,
+                "pad": 1.5,
+            },
+            clip_on=False,
+            zorder=20,
+        )
+
+
 def build_war_pressure_raw_figure(
     values: pd.DataFrame,
     source_text: str,
@@ -221,7 +278,7 @@ def _build_oil_single_series_figure(
     source_text: str,
     unit: str,
     bars: bool = False,
-    line_decimals: int = 1,
+    value_decimals: int = 1,
     units: Mapping[str, str | None] | None = None,
 ) -> Figure:
     """Build one oil series with the shared Ts chart contract."""
@@ -255,10 +312,13 @@ def _build_oil_single_series_figure(
     )
     axis = normalize_ts_axis(returned_axis)
     annotate_war(axis)
-    if bars:
-        _annotate_bar_values(axis, frame, (label,))
-    else:
-        _annotate_line_values_above(axis, label, decimals=line_decimals)
+    _annotate_extreme_values(
+        axis,
+        frame,
+        label,
+        bars=bars,
+        decimals=value_decimals,
+    )
     apply_htfa_fonts(figure)
     return figure
 
@@ -295,7 +355,7 @@ def build_oil_rig_count_figure(
         source_text=source_text,
         unit="台",
         bars=False,
-        line_decimals=0,
+        value_decimals=0,
         units=units,
     )
 
@@ -307,6 +367,9 @@ def build_oil_price_figure(
 ) -> Figure:
     """构建单独的 Brent 原油现货月均价格折线图。"""
 
+    price_units = dict(units or {})
+    # 价格原始值就是美元/桶，不允许外部元数据把它缩放成“百美元/桶”。
+    price_units[REVENUE_PRICE_LABEL] = "美元/桶"
     return _build_oil_single_series_figure(
         revenue[PRICE_COLUMN].rename(REVENUE_PRICE_LABEL),
         label=REVENUE_PRICE_LABEL,
@@ -314,7 +377,8 @@ def build_oil_price_figure(
         source_text=source_text,
         unit="美元/桶",
         bars=False,
-        units=units,
+        value_decimals=2,
+        units=price_units,
     )
 
 
@@ -332,6 +396,7 @@ def build_oil_revenue_only_figure(
         source_text=source_text,
         unit="亿美元",
         bars=True,
+        value_decimals=2,
         units=units,
     )
 

@@ -15,8 +15,9 @@
 | 数据源 / 表 | 变量名或变量族 | 频率与时间范围 | 缺失情况 | 数据来源 |
 |---|---|---|---|---|
 | Baker Hughes / `baker_hughes_monthly` | `阿联酋石油活跃钻机数` | 月；2024-01—2026-07；31 期 | 31 期均有值，无 NULL、无区间缺月 | Baker Hughes WorldWide Rig Count Report；Oil 口径，阿布扎比、迪拜、沙迦合计 |
-| OPEC MOMR / `opec_crude_production_monthly` | `阿联酋原油产量` | 月；2023-06—2026-08；39 期 | 已入库值均非 NULL；最新观测为 2026-08；历史月份由 OPEC MOMR 历史归档的同一 Table 5-7/5-8 secondary sources 表读取 | OPEC Monthly Oil Market Report；单位由 tb/d 转为 b/d；最新月报优先覆盖历史月报中的同月修订值 |
-| EIA / `eia_brent_spot_daily` | `布伦特现货` | 日；1987-05-20—2026-09-09；9,973 期 | 缺失交易日按缺行表达，不补 0 | U.S. Energy Information Administration `RBRTEd.xls` 官方历史文件；美元/桶 |
+| 欧佩克月度石油市场报告 / `opec_crude_production_monthly` | `阿联酋原油产量` | 月；2023-06—2026-08；39 期 | 已入库值均非 NULL；最新观测为 2026-08；历史月份由欧佩克月度石油市场报告历史归档的同一 Table 5-7/5-8 读取 | 欧佩克月度石油市场报告；单位由 tb/d 转为 b/d；最新月报优先覆盖历史月报中的同月修订值 |
+| 美国能源信息署 / `eia_brent_spot_daily` | `布伦特现货` | 日；1987-05-20—2026-09-09；9,973 期 | 缺失交易日按缺行表达，不补 0 | 美国能源信息署 `RBRTEd.xls` 官方历史文件；美元/桶 |
+| IMF PCPS / `imf_dubai_crude_monthly` | `全球: 名义商品价格: 迪拜原油` | 月；1992-01—IMF 最新发布月；当前公开序列无缺失月 | IMF PCPS `G001.POILDUB.USD.M` 的月度观测按月末日期入库；数值单位为美元/桶；IMF 可能修订历史值，更新时整表替换 | IMF Primary Commodity Price System 官方 SDMX API |
 | CBUAE / `cbuae_monthly` | 23 项：FTS 国内资金转账 6 项；国内信贷 3 项；外币存款 1 项；支票清算 2 项；银行国外资产/负债 2 项；非居民存款 5 项；政府及政府控股企业信贷/存款 4 项 | 月；大部分 2020-03—2026-06；每项 76 期 | 前 19 项无缺月、无 NULL；政府/政府控股企业 4 项为 2020-01—2026-06，共 77 期，但缺 2020-02；空值以不插行表达 | 阿联酋中央银行 CBUAE 月度公报；新旧公报口径已在 `source_cbuae.py` 统一 |
 | WAM / `detail.wam_military_strike_daily`、`wam_military_strike_monthly` | 弹道导弹、巡航导弹、UAV；辅助未分类导弹、攻击天数、观测天数；月度原始战争压力为每日 `9×log1p(弹道)+3×log1p(巡航)+log1p(无人机)` 按月求和，再按战争窗口 min-max 归一化为 0–100 | 日度 2026-02-28—2026-08-22，共 176 天；月度 7 期；2026-08 为截至 8月22日的部分月份 | 日度 `strike_intensity_log` 保留原始加权值；月度 `strike_intensity_index` 为非累计 0–100 指数；未分类导弹不进入压力指标；月度 `observation_days` 显式标记部分月份 | 根据公开新闻整理；原始来源页归档于 `raw/wam/source_manifest.json`，处理逻辑见 `source_wam.py` |
 | Cloudflare Radar / `cloudflare_radar_daily` | `阿联酋:Cloudflare Radar网络流量(相对水平%)`、周度相对水平 | 日/周；共 142 条观测，2025-08-18—2026-08-18；日度 90 条、周度 52 条 | 已入库值无 NULL；指标为各自窗口内 min-max 归一化代理指标，不是绝对流量 | Cloudflare Radar UAE；原始 JSON/CSV 保存在 `data/UAE/raw/cloudflare_radar/` |
