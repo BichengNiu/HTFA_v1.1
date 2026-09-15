@@ -16,6 +16,7 @@ from htfa.monitoring.uae.periods import (
     within_month_window,
 )
 from htfa.monitoring.uae.oil.charts import (
+    DUBAI_PRICE_LABEL,
     build_oil_market_figure,
     build_oil_price_figure,
     build_oil_production_figure,
@@ -374,6 +375,43 @@ def test_oil_split_figures_are_single_series() -> None:
         text.get_text() == "数据来源：欧佩克月度石油市场报告、美国能源信息署"
         for text in figures[3][0].texts
     )
+
+
+def test_oil_price_figure_combines_brent_and_dubai_on_shared_usd_axis() -> None:
+    dates = pd.date_range("2024-01-31", periods=13, freq="ME")
+    revenue = pd.DataFrame(
+        {"月均油价": [80.0 + index for index in range(13)]},
+        index=dates,
+    )
+    dubai_price = pd.Series(
+        [78.0 + index for index in range(13)],
+        index=dates,
+        name="迪拜现货",
+    )
+
+    figure = build_oil_price_figure(
+        revenue,
+        "U.S. EIA、IMF Primary Commodity Price System (PCPS)",
+        units={"布伦特原油现货价": "百美元/桶"},
+        dubai_price=dubai_price,
+    )
+
+    assert len(figure.axes) == 1
+    axis = figure.axes[0]
+    assert [line.get_label() for line in axis.get_lines()] == [
+        "布伦特原油现货价",
+        DUBAI_PRICE_LABEL,
+    ]
+    assert axis.get_ylabel() == "美元/桶"
+    assert axis.get_title() == "石油价格"
+    assert {
+        text.get_text() for text in axis.get_legend().get_texts()
+    } == {"布伦特原油现货价", DUBAI_PRICE_LABEL}
+    assert axis.get_lines()[0].get_ydata()[-1] == pytest.approx(92.0)
+    assert axis.get_lines()[1].get_ydata()[-1] == pytest.approx(90.0)
+    assert len(
+        [text for text in axis.texts if isinstance(text, Annotation)]
+    ) <= 4
 
 
 def test_render_charts_uses_requested_two_by_two_rows(monkeypatch) -> None:

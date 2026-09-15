@@ -17,6 +17,7 @@ DAILY_SHEET = "日度_Wind"
 MONTHLY_SHEET = "月度_Wind"
 EIA_DAILY_SHEET = "日度_EIA"
 OPEC_MONTHLY_SHEET = "月度_OPEC"
+DUBAI_MONTHLY_SHEET = "月度_Dubai"
 RIG_COUNT_SHEET = "月度_贝克休斯"
 
 PRICE_INDICATORS: tuple[tuple[str, str], ...] = (
@@ -28,6 +29,7 @@ PRICE_INDICATORS: tuple[tuple[str, str], ...] = (
 PRODUCTION_INDICATOR = ("阿联酋原油产量", "阿联酋: 产量: 原油")
 RIG_COUNT_INDICATOR = ("阿联酋石油活跃钻机数", "阿联酋石油活跃钻机数")
 EIA_PRICE_INDICATORS = (("布伦特现货", "布伦特现货"),)
+DUBAI_PRICE_INDICATOR = ("迪拜现货", "全球: 名义商品价格: 迪拜原油")
 OPEC_PRODUCTION_INDICATOR = ("阿联酋原油产量", "阿联酋原油产量")
 _WORKBOOK_READER = EconomicWorkbookReader(
     "uae_monitoring",
@@ -65,6 +67,16 @@ def load_oil_market_data(
                 allowed_frequencies={"日", "日度", "周", "周度"},
                 expected_unit="美元/桶",
             )
+            dubai_metadata: dict[str, SheetSeriesMetadata] = {}
+            if DUBAI_MONTHLY_SHEET in excel_file.sheet_names:
+                dubai_prices, dubai_metadata = _WORKBOOK_READER.read_target_sheet(
+                    excel_file,
+                    sheet_name=DUBAI_MONTHLY_SHEET,
+                    targets=(DUBAI_PRICE_INDICATOR,),
+                    allowed_frequencies={"月", "月度"},
+                    expected_unit="美元/桶",
+                )
+                prices = prices.join(dubai_prices, how="outer")
             production_frame, production_metadata = _WORKBOOK_READER.read_target_sheet(
                 excel_file,
                 sheet_name=OPEC_MONTHLY_SHEET,
@@ -73,6 +85,7 @@ def load_oil_market_data(
                 expected_unit="桶/天",
             )
         else:
+            dubai_metadata = {}
             prices, price_metadata = _WORKBOOK_READER.read_target_sheet(
                 excel_file,
                 sheet_name=DAILY_SHEET,
@@ -115,6 +128,7 @@ def load_oil_market_data(
         rig_count=rig_count,
         metadata={
             **price_metadata,
+            **dubai_metadata,
             **production_metadata,
             **rig_count_metadata,
         },
@@ -126,7 +140,9 @@ __all__ = [
     "OilMarketData",
     "EIA_DAILY_SHEET",
     "OPEC_MONTHLY_SHEET",
+    "DUBAI_MONTHLY_SHEET",
     "EIA_PRICE_INDICATORS",
+    "DUBAI_PRICE_INDICATOR",
     "OPEC_PRODUCTION_INDICATOR",
     "PRICE_INDICATORS",
     "PRODUCTION_INDICATOR",

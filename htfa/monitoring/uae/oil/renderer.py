@@ -15,6 +15,7 @@ from htfa.monitoring.uae.periods import (
 from htfa.monitoring.uae.oil.charts import (
     MARKET_PRODUCTION_LABEL,
     MARKET_RIG_COUNT_LABEL,
+    DUBAI_PRICE_LABEL,
     REVENUE_LABEL,
     REVENUE_PRICE_LABEL,
     build_oil_market_figure,
@@ -26,7 +27,11 @@ from htfa.monitoring.uae.oil.charts import (
     build_war_pressure_index_figure,
     build_war_pressure_raw_figure,
 )
-from htfa.monitoring.uae.oil.data import OilMarketData, load_oil_market_data
+from htfa.monitoring.uae.oil.data import (
+    DUBAI_PRICE_INDICATOR,
+    OilMarketData,
+    load_oil_market_data,
+)
 from htfa.monitoring.uae.oil.revenue import (
     PRICE_BENCHMARK_COLUMN,
     PRICE_COLUMN,
@@ -54,10 +59,10 @@ from htfa.monitoring.uae.metrics import (
 from htfa.ui_shared.chart_legend import render_pyplot_figure
 
 OIL_FISCAL_EXPLANATION = """
-- **油价**：由美国能源信息署（EIA）发布 Brent 原油现货日度历史数据；原始数据单位为美元/桶，油价卡片按日度频率显示最新观测，反映国际原油价格。
+- **油价**：由美国能源信息署（EIA）发布 Brent 原油现货日度历史数据，并由国际货币基金组织初级商品价格系统（IMF PCPS）发布 Dubai 原油月度价格；原始数据单位均为美元/桶，油价卡片按日度频率显示最新 Brent 观测，价格图同时展示 Brent 与 Dubai。
 - **原油产量**：由欧佩克月度石油市场报告（MOMR）发布；当前报告为 Table 5-7，历史报告的同一表曾编号为 Table 5-8，单位为桶/天，反映原油生产规模。
 - **活跃钻机数**：由贝克休斯发布；原始数据按月份、地区及陆上/海上拆分，汇总为阿联酋月度活跃钻机数（台），反映石油勘探开发活动。
-- **月度石油收入（估算）**：由美国能源信息署 Brent 现货与欧佩克月度石油市场报告的阿联酋原油产量计算；价格按自然月取月均值；阿联酋原油产量为月度数据，按月取有效观测均值后按
+- **月度石油收入（估算）**：仍由美国能源信息署 Brent 现货与欧佩克月度石油市场报告的阿联酋原油产量计算，Dubai 仅用于区域价格对比，不替换收入估算基准；价格按自然月取月均值；阿联酋原油产量为月度数据，按月取有效观测均值后按
   `价格 × 产量 × 当月天数 ÷ 1亿` 计算（亿美元）；价格或产量缺失时不估算，作为销售收入规模代理。
 """.strip()
 
@@ -93,6 +98,19 @@ def _latest_change(
 
 def _metric_delta(label: str, change: float | None) -> str | None:
     return None if change is None else f"{label} {change:+.1f}%"
+
+
+def _monthly_mean_series(series: pd.Series) -> pd.Series:
+    """将价格序列按自然月取均值，并将索引规范为月末。"""
+
+    clean = series.dropna().sort_index()
+    if clean.empty:
+        return clean
+    periods = pd.DatetimeIndex(clean.index).to_period("M")
+    monthly = clean.groupby(periods).mean()
+    monthly.index = monthly.index.to_timestamp(how="end").normalize()
+    monthly.index.name = "月份"
+    return monthly
 
 
 def _render_oil_metrics(st_obj: Any, data: OilMarketData) -> None:
@@ -396,6 +414,16 @@ def _render_charts(
         else data.metadata[data.rig_count.name].source
     )
     price_source = data.metadata[REVENUE_PRICE_BENCHMARK].source
+    dubai_price = None
+    dubai_metadata = data.metadata.get(DUBAI_PRICE_INDICATOR[0])
+    if DUBAI_PRICE_INDICATOR[0] in data.prices.columns:
+        dubai_price = _monthly_mean_series(
+            data.prices[DUBAI_PRICE_INDICATOR[0]]
+        ).rename(DUBAI_PRICE_LABEL)
+    price_sources = [price_source]
+    if dubai_price is not None and not dubai_price.empty and dubai_metadata:
+        price_sources.append(dubai_metadata.source)
+    price_source_text = "、".join(dict.fromkeys(price_sources))
     revenue_sources = "、".join(
         dict.fromkeys((price_source, production_source))
     )
@@ -420,9 +448,10 @@ def _render_charts(
             last_month=rig_last_month,
         ).rename(MARKET_RIG_COUNT_LABEL)
 
-    revenue_last_month = common_latest_month(
-        [(REVENUE_COLUMN, revenue[REVENUE_COLUMN])]
-    )
+    price_cutoff_series = [(REVENUE_COLUMN, revenue[REVENUE_COLUMN])]
+    if dubai_price is not None and not dubai_price.empty:
+        price_cutoff_series.append((DUBAI_PRICE_LABEL, dubai_price))
+    revenue_last_month = common_latest_month(price_cutoff_series)
     revenue_window = within_month_window(
         revenue,
         first_month=revenue_last_month - 36,
@@ -431,6 +460,14 @@ def _render_charts(
     price_download = revenue_window[[PRICE_COLUMN]].rename(
         columns={PRICE_COLUMN: REVENUE_PRICE_LABEL}
     )
+    dubai_window = None
+    if dubai_price is not None and not dubai_price.empty:
+        dubai_window = within_month_window(
+            dubai_price,
+            first_month=revenue_last_month - 36,
+            last_month=revenue_last_month,
+        )
+        price_download = price_download.join(dubai_window, how="outer").sort_index()
     revenue_download = revenue_window[[REVENUE_COLUMN]]
 
     first_row = st_obj.columns(2, gap="small")
@@ -479,10 +516,11 @@ def _render_charts(
             st_obj,
             build_oil_price_figure(
                 revenue_window,
-                price_source,
+                price_source_text,
                 units={REVENUE_PRICE_LABEL: data.metadata[
                     REVENUE_PRICE_BENCHMARK
-                ].unit},
+                ].unit, DUBAI_PRICE_LABEL: "美元/桶"},
+                dubai_price=dubai_window,
             ),
             bbox_inches=None,
             place_legend_bottom=False,

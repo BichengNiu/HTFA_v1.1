@@ -159,9 +159,13 @@ def test_update_merge_and_oil_loader_use_duckdb_as_source_of_truth(tmp_path, mon
 
     assert merge_result["status"] == "ok"
     data = load_oil_market_data(workbook_path, file_name=workbook_path.name)
-    assert data.prices.columns.tolist() == ["布伦特现货"]
+    assert data.prices.columns.tolist() == ["布伦特现货", "迪拜现货"]
     assert data.production.iloc[-1] == 3_835_000.0
     assert data.metadata["布伦特现货"].source == "U.S. EIA"
+    assert data.metadata["迪拜现货"].source == (
+        "IMF Primary Commodity Price System (PCPS)"
+    )
+    assert data.metadata["迪拜现货"].unit == "美元/桶"
     assert data.metadata["阿联酋原油产量"].source == "OPEC MOMR"
 
     merged_workbook = load_workbook(workbook_path, read_only=True, data_only=True)

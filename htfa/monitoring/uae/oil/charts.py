@@ -40,6 +40,7 @@ MARKET_PRODUCTION_LABEL = "阿联酋原油产量"
 MARKET_RIG_COUNT_LABEL = "阿联酋石油活跃钻机数"
 REVENUE_LABEL = "石油收入"
 REVENUE_PRICE_LABEL = "布伦特原油现货价"
+DUBAI_PRICE_LABEL = "迪拜原油现货价"
 
 
 def _annotate_bar_values(
@@ -364,22 +365,71 @@ def build_oil_price_figure(
     revenue: pd.DataFrame,
     source_text: str,
     units: Mapping[str, str | None] | None = None,
+    dubai_price: pd.Series | None = None,
 ) -> Figure:
-    """构建单独的 Brent 原油现货月均价格折线图。"""
+    """构建 Brent 与 Dubai 原油现货月均价格共轴折线图。
 
-    price_units = dict(units or {})
+    ``revenue`` 提供 Brent 月均价；``dubai_price`` 为空时保留单序列
+    兼容行为。两条价格序列均以美元/桶展示，并共享同一 y 轴。
+    """
+
+    frame = pd.DataFrame(
+        {REVENUE_PRICE_LABEL: revenue[PRICE_COLUMN]}
+    )
+    if dubai_price is not None:
+        frame[DUBAI_PRICE_LABEL] = dubai_price.rename(DUBAI_PRICE_LABEL)
+    frame = frame.dropna(how="all").sort_index()
+    if frame.empty:
+        raise ValueError("原油价格没有有效观测，无法绘图")
+
+    last_month = common_latest_month(
+        [
+            (label, frame[label])
+            for label in frame.columns
+            if frame[label].notna().any()
+        ]
+    )
+    frame = through_month(frame, last_month)
+
+    price_units: dict[str, str | None] = {
+        label: "美元/桶" for label in frame.columns
+    }
+    if units is not None:
+        price_units.update(units)
     # 价格原始值就是美元/桶，不允许外部元数据把它缩放成“百美元/桶”。
-    price_units[REVENUE_PRICE_LABEL] = "美元/桶"
-    return _build_oil_single_series_figure(
-        revenue[PRICE_COLUMN].rename(REVENUE_PRICE_LABEL),
-        label=REVENUE_PRICE_LABEL,
+    price_units.update(
+        {label: "美元/桶" for label in frame.columns}
+    )
+    figure, returned_axis = plot_series(
+        frame,
+        facet=False,
+        colors=[DARK_BLUE, DARK_RED][: len(frame.columns)],
+        axis_groups={label: "price" for label in frame.columns},
         title="石油价格",
-        source_text=source_text,
-        unit="美元/桶",
-        bars=False,
-        value_decimals=2,
+        xtitle="",
+        ytitle_position="side",
+        year_ruler=True,
+        grid=True,
+        vlines=WAR_START_DATE,
+        show_legend=True,
+        legend_cols=len(frame.columns),
+        note=source_note(source_text),
+        note_loc="left",
+        figsize=(9.4, 6.2),
         units=price_units,
     )
+    axis = normalize_ts_axis(returned_axis)
+    annotate_war(axis)
+    for label in frame.columns:
+        _annotate_extreme_values(
+            axis,
+            frame,
+            label,
+            bars=False,
+            decimals=2,
+        )
+    apply_htfa_fonts(figure)
+    return figure
 
 
 def build_oil_revenue_only_figure(
@@ -457,6 +507,7 @@ __all__ = [
     "build_oil_production_figure",
     "build_oil_rig_count_figure",
     "build_oil_price_figure",
+    "DUBAI_PRICE_LABEL",
     "build_oil_revenue_only_figure",
     "build_oil_revenue_figure",
 ]
