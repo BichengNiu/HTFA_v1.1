@@ -102,6 +102,47 @@ def test_extract_workbook_returns_both_periods(tmp_path) -> None:
     assert observations[0].source_file == "2020-03.xlsx"
 
 
+def test_extract_bulletin_links_prefers_machine_readable_file() -> None:
+    page_url = (
+        "https://centralbank.ae/en/research-and-statistics/latest-statistics/"
+        "statistical-bulletin-banking-monetary-statistics/statistical-bulletin-july-2026/"
+    )
+    page = """
+    <a href="/media/example/statistical-bulletin-july-2026.pdf">PDF</a>
+    <a href="/media/example/statistical-bulletin-july-2026.xlsx">XLSX</a>
+    <a href="/media/example/other-report.xlsx">ignore</a>
+    """
+
+    links = source._extract_bulletin_links(page, page_url)
+
+    assert links[0].endswith("statistical-bulletin-july-2026.xlsx")
+    assert links[1].endswith("statistical-bulletin-july-2026.pdf")
+    assert len(links) == 2
+
+
+def test_download_latest_bulletin_discovers_and_refreshes_newest(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(source, "RAW_DIR", tmp_path)
+    monkeypatch.setattr(source, "_recent_bulletin_periods", lambda: [(2026, 8)])
+    page = b'<a href="/media/example/statistical-bulletin-august-2026.pdf">PDF</a>'
+    monkeypatch.setattr(source, "fetch_bytes", lambda *args, **kwargs: page)
+    calls = []
+
+    def fake_download(url, destination, *, force, min_bytes, referer):
+        calls.append((url, destination, force))
+        destination.write_bytes(b"x" * min_bytes)
+        return "downloaded"
+
+    monkeypatch.setattr(source, "download_file", fake_download)
+
+    note = source._download_latest_bulletins()
+
+    assert calls[0][2] is True
+    assert calls[0][1] == tmp_path / "2026-08.pdf"
+    assert "2026-08" in note
+
+
 def test_update_roundtrip_long_table_without_wind_dependency(
     tmp_path, monkeypatch
 ) -> None:
@@ -130,6 +171,26 @@ def test_update_roundtrip_long_table_without_wind_dependency(
     assert value == Decimal("200.000")
     assert source_file == "2020-03.xlsx"
     con.close()
+
+
+def test_update_falls_back_to_existing_cache_when_discovery_fails(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(source, "RAW_DIR", tmp_path)
+    _bulletin_workbook(tmp_path / "2020-03.xlsx")
+    monkeypatch.setattr(
+        source,
+        "_download_latest_bulletins",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("offline")),
+    )
+
+    con = db.connect(":memory:")
+    db.init_schema(con)
+    outcome = source.update(con)
+    con.close()
+
+    assert outcome["status"] == "ok"
+    assert "使用本地缓存" in outcome["note"]
 
 
 def test_update_writes_current_dictionary_rows(tmp_path, monkeypatch) -> None:

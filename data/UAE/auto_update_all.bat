@@ -8,12 +8,12 @@ if not exist "runtime\python.exe" (
     goto :failed
 )
 
-echo [1/5] update_data.py --source baker_hughes,oil,dubai_customs_air,comtrade_vehicles,scad,uaewps,salik,dot_t100 (official online refresh)
-"runtime\python.exe" -B -c "import sys; sys.path.insert(0, r'%CD%'); from htfa.jobs.uae_data.update_data import main; sys.argv[0] = 'update_data.py'; raise SystemExit(main())" --source baker_hughes,oil,dubai_customs_air,comtrade_vehicles,scad,uaewps,salik,dot_t100
+echo [1/5] update_data.py --source baker_hughes,oil,cbuae,gfs,dubai_customs_air,comtrade_vehicles,scad,uaewps,salik,dot_t100 (official online refresh)
+"runtime\python.exe" -B -c "import sys; sys.path.insert(0, r'%CD%'); from htfa.jobs.uae_data.update_data import main; sys.argv[0] = 'update_data.py'; raise SystemExit(main())" --source baker_hughes,oil,cbuae,gfs,dubai_customs_air,comtrade_vehicles,scad,uaewps,salik,dot_t100
 if errorlevel 1 goto :failed
 
-echo [2/5] update_data.py --source cbuae,cloudflare_radar,comtrade,ded,dld,emirates_post,employment,eurostat_air,foreign_labour,gfs,pmi,portwatch,rta,steel,tdra --skip-download
-"runtime\python.exe" -B -c "import sys; sys.path.insert(0, r'%CD%'); from htfa.jobs.uae_data.update_data import main; sys.argv[0] = 'update_data.py'; raise SystemExit(main())" --source cbuae,cloudflare_radar,comtrade,ded,dld,emirates_post,employment,eurostat_air,foreign_labour,gfs,pmi,portwatch,rta,steel,tdra --skip-download
+echo [2/5] update_data.py --source cloudflare_radar,comtrade,ded,dld,emirates_post,employment,eurostat_air,foreign_labour,pmi,portwatch,rta,steel,tdra --skip-download
+"runtime\python.exe" -B -c "import sys; sys.path.insert(0, r'%CD%'); from htfa.jobs.uae_data.update_data import main; sys.argv[0] = 'update_data.py'; raise SystemExit(main())" --source cloudflare_radar,comtrade,ded,dld,emirates_post,employment,eurostat_air,foreign_labour,pmi,portwatch,rta,steel,tdra --skip-download
 if errorlevel 1 goto :failed
 
 echo [3/5] update_data.py --source wam (discover and extract official WAM articles)

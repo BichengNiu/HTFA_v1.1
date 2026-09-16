@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import hashlib
+import html as html_lib
 import io
 import json
 import os
@@ -29,6 +30,7 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Iterable
+from urllib.parse import unquote, urljoin, urlparse
 from xml.etree import ElementTree as ET
 
 from openpyxl import load_workbook
@@ -36,6 +38,7 @@ from pypdf import PdfReader
 
 from .paths import DATA_DIR, SCRIPTS_DIR
 from ._excel_helpers import cleanup_excel_automation
+from ._official_download import download_file, fetch_bytes
 
 
 from .db import (  # noqa: E402
@@ -57,8 +60,91 @@ MARKUP_COMPAT_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006"
 XML_NS = "http://www.w3.org/XML/1998/namespace"
 
 RAW_GFS = DATA_DIR / "raw" / "gfs"
+GFS_INDEX_URL = (
+    "https://mof.gov.ae/en/public-finance/uae-federal-budget/"
+    "government-financial-statistics/"
+)
 QUARTERLY_TABLE = "gfs_quarterly"
 ANNUAL_TABLE = "gfs_annual"
+
+_HTML_HREF_PATTERN = re.compile(
+    r"(?:href|src)\s*=\s*[\"']([^\"']+)[\"']", re.IGNORECASE
+)
+
+
+def _discover_gfs_files(page_html: str | bytes) -> dict[int, str]:
+    """从财政部 GFS 页面发现按年份归档的官方 PDF/XLSX 直链。"""
+
+    if isinstance(page_html, bytes):
+        page_html = page_html.decode("utf-8", errors="replace")
+    discovered: dict[int, tuple[tuple[int, str], str]] = {}
+    for raw_href in _HTML_HREF_PATTERN.findall(page_html):
+        href = html_lib.unescape(raw_href).replace("\\/", "/")
+        url = urljoin(GFS_INDEX_URL, href)
+        parsed = urlparse(url)
+        filename = Path(unquote(parsed.path)).name
+        suffix = Path(filename).suffix.casefold()
+        if suffix not in {".xlsx", ".pdf"}:
+            continue
+        if not re.match(r"(?i)^gfs(?:[-_ ]|$)", filename):
+            continue
+        years = re.findall(r"20\d{2}", filename)
+        if not years:
+            continue
+        year = int(years[0])
+        # The current XLSX is the machine-readable choice when both formats
+        # are advertised for the same release year.
+        priority = 0 if suffix == ".xlsx" else 1
+        candidate = ((priority, url), url)
+        previous = discovered.get(year)
+        if previous is None or candidate[0] < previous[0]:
+            discovered[year] = candidate
+    return {year: value[1] for year, value in discovered.items()}
+
+
+def _remove_release_variant(year: int, keep_suffix: str) -> None:
+    """删除同一年已被新格式替代的精确缓存文件，避免解析重复年份。"""
+
+    for suffix in (".pdf", ".xlsx"):
+        if suffix == keep_suffix:
+            continue
+        path = RAW_GFS / f"GFS-{year}{suffix}"
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _download_releases(*, force: bool = False) -> str:
+    """从财政部公开目录刷新最新 GFS 发布文件并返回运行摘要。"""
+
+    page = fetch_bytes(GFS_INDEX_URL, referer=GFS_INDEX_URL)
+    discovered = _discover_gfs_files(page)
+    if not discovered:
+        raise RuntimeError("MOF GFS 页面未发现可识别的 PDF/XLSX 发布文件")
+
+    latest_year = max(discovered)
+    downloaded: list[int] = []
+    reused: list[int] = []
+    for year, url in sorted(discovered.items()):
+        suffix = Path(urlparse(url).path).suffix.casefold()
+        destination = RAW_GFS / f"GFS-{year}{suffix}"
+        status = download_file(
+            url,
+            destination,
+            force=force or year == latest_year,
+            min_bytes=1024,
+            referer=GFS_INDEX_URL,
+        )
+        _remove_release_variant(year, suffix)
+        (downloaded if status == "downloaded" else reused).append(year)
+
+    detail: list[str] = []
+    if downloaded:
+        detail.append("刷新 " + ", ".join(f"GFS-{year}" for year in downloaded))
+    if reused:
+        detail.append("缓存 " + ", ".join(f"GFS-{year}" for year in reused))
+    return "MOF GFS 官网：" + "；".join(detail)
 
 
 @dataclass(frozen=True)
@@ -1298,6 +1384,16 @@ def update(
     """
 
     source_dir = RAW_GFS
+    download_note = ""
+    if not skip_download:
+        try:
+            download_note = _download_releases(force=force)
+        except (OSError, RuntimeError) as exc:
+            # A temporary outage must not discard a previously validated local
+            # release. Parsing still runs and reports the fallback in the note.
+            if not any(source_dir.glob("GFS-*.*")):
+                raise
+            download_note = f"MOF GFS 官网发现失败，使用本地缓存（{exc}）"
     releases = extract_sources(source_dir)
     quarterly_rows, annual_rows = _records_to_db_rows(releases)
     with _transaction(con):
@@ -1310,13 +1406,16 @@ def update(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     total = len(quarterly_rows) + len(annual_rows)
+    note = (
+        f"GFS 2012-2026 提取入库：季度 {len(quarterly)} 期 × 29 科目，"
+        f"年度 {len(annual)} 期 × 29 科目，共 {total} 个有效值"
+    )
+    if download_note:
+        note += f"；{download_note}"
     return {
         "status": "ok",
         "rows": total,
-        "note": (
-            f"GFS 2012-2026 提取入库：季度 {len(quarterly)} 期 × 29 科目，"
-            f"年度 {len(annual)} 期 × 29 科目，共 {total} 个有效值"
-        ),
+        "note": note,
     }
 
 

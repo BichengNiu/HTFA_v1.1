@@ -183,6 +183,51 @@ def test_dictionary_rows_cover_both_frequencies() -> None:
     assert all(row["source"] == "UAE Ministry of Finance (MOF GFS)" for row in rows)
 
 
+def test_discover_gfs_files_prefers_xlsx_for_each_year() -> None:
+    page = """
+    <a href="/wp-content/uploads/2025/09/GFS-2025.pdf">2025 PDF</a>
+    <a href="/wp-content/uploads/2025/09/GFS-Data-2025-English-20250915.xlsx">2025 XLSX</a>
+    <a href="/wp-content/uploads/2026/09/GFS-Data-2026-English-20260915.xlsx">2026 XLSX</a>
+    <a href="/not-gfs-2026.xlsx">ignore</a>
+    """
+
+    discovered = sg._discover_gfs_files(page)
+
+    assert set(discovered) == {2025, 2026}
+    assert discovered[2025].endswith("GFS-Data-2025-English-20250915.xlsx")
+    assert discovered[2026].endswith("GFS-Data-2026-English-20260915.xlsx")
+
+
+def test_download_releases_refreshes_latest_and_removes_old_variant(
+    tmp_path, monkeypatch
+) -> None:
+    page = (
+        '<a href="/wp-content/uploads/2025/09/GFS-2025.pdf">2025</a>'
+        '<a href="/wp-content/uploads/2026/09/GFS-Data-2026-English-20260915.xlsx">2026</a>'
+    )
+    monkeypatch.setattr(sg, "RAW_GFS", tmp_path)
+    monkeypatch.setattr(sg, "fetch_bytes", lambda *args, **kwargs: page.encode())
+    calls = []
+
+    def fake_download(url, destination, *, force, min_bytes, referer):
+        calls.append((url, destination, force))
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(b"x" * min_bytes)
+        return "downloaded"
+
+    monkeypatch.setattr(sg, "download_file", fake_download)
+    old_variant = tmp_path / "GFS-2026.pdf"
+    old_variant.write_bytes(b"old")
+
+    note = sg._download_releases()
+
+    assert calls[0][2] is False
+    assert calls[1][2] is True
+    assert (tmp_path / "GFS-2026.xlsx").exists()
+    assert not old_variant.exists()
+    assert "GFS-2026" in note
+
+
 def test_update_locks_data_into_database(tmp_path, monkeypatch) -> None:
     """update() 全流程：解析→入库→报告（extract_sources 与原始目录被替换）。"""
 
@@ -194,7 +239,7 @@ def test_update_locks_data_into_database(tmp_path, monkeypatch) -> None:
 
     con = db.connect(":memory:")
     db.init_schema(con)
-    outcome = sg.update(con)
+    outcome = sg.update(con, skip_download=True)
     quarterly_count = con.execute("SELECT count(*) FROM gfs_quarterly").fetchone()[0]
     annual_count = con.execute("SELECT count(*) FROM gfs_annual").fetchone()[0]
     dictionary_count = con.execute("SELECT count(*) FROM meta_indicator_dictionary").fetchone()[0]

@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import calendar
+import html as html_lib
 import re
 import sys
 from collections import defaultdict
@@ -29,6 +30,7 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from typing import Iterable, Iterator
+from urllib.parse import unquote, urljoin, urlparse
 
 from openpyxl import load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
@@ -43,12 +45,21 @@ from ._excel_helpers import (  # noqa: E402
     records_latest_first,
     run_powershell_sheet_writer,
 )
+from ._official_download import download_file, fetch_bytes
 
 # ---------------------------------------------------------------------------
 # 常量（与旧脚本一致）
 # ---------------------------------------------------------------------------
 
 RAW_DIR = DATA_DIR / "raw" / "cbuae"
+CBUAE_BULLETIN_PAGE_TEMPLATES = (
+    "https://centralbank.ae/en/research-and-statistics/latest-statistics/"
+    "statistical-bulletin-banking-monetary-statistics/"
+    "statistical-bulletin-{month}-{year}/",
+    "https://www.centralbank.ae/en/research-and-statistics/latest-statistics/"
+    "statistical-bulletin-banking-monetary-statistics/"
+    "statistical-bulletin-{month}-{year}/",
+)
 TARGET_SHEET = "月度_CBUAE"
 DICTIONARY_SHEET = "指标字典"
 SOURCE_NAME = "CBUAE"
@@ -89,6 +100,103 @@ PERIOD_PATTERN = re.compile(
 )
 FILE_PERIOD_PATTERN = re.compile(r"^(20\d{2})-(0[1-9]|1[0-2])$")
 NUMBER_PATTERN = re.compile(r"-?\d[\d,]*(?:\.\d+)?")
+HTML_HREF_PATTERN = re.compile(
+    r"(?:href|src)\s*=\s*[\"']([^\"']+)[\"']", re.IGNORECASE
+)
+
+
+def _extract_bulletin_links(page_html: str | bytes, page_url: str) -> list[str]:
+    """提取 CBUAE 公报页中的官方 PDF/XLSX 直链，优先 XLSX。"""
+
+    if isinstance(page_html, bytes):
+        page_html = page_html.decode("utf-8", errors="replace")
+    candidates: dict[str, tuple[int, str]] = {}
+    for raw_href in HTML_HREF_PATTERN.findall(page_html):
+        href = html_lib.unescape(raw_href).replace("\\/", "/")
+        url = urljoin(page_url, href)
+        parsed = urlparse(url)
+        filename = Path(unquote(parsed.path)).name
+        suffix = Path(filename).suffix.casefold()
+        if suffix not in {".xlsx", ".xls", ".pdf"}:
+            continue
+        if "statistical-bulletin" not in filename.casefold():
+            continue
+        priority = 0 if suffix in {".xlsx", ".xls"} else 1
+        candidates[url] = (priority, filename.casefold())
+    return [url for url, _ in sorted(candidates.items(), key=lambda item: item[1])]
+
+
+def _recent_bulletin_periods(count: int = 6) -> list[tuple[int, int]]:
+    """返回从当前月份起向前的公报月份，用于发现最新发布页。"""
+
+    current = date.today()
+    year, month = current.year, current.month
+    periods: list[tuple[int, int]] = []
+    for _ in range(count):
+        periods.append((year, month))
+        month -= 1
+        if month == 0:
+            year -= 1
+            month = 12
+    return periods
+
+
+def _download_latest_bulletins(*, force: bool = False) -> str:
+    """从 CBUAE 最新统计公报页发现并缓存最近公报。"""
+
+    downloaded: list[str] = []
+    reused: list[str] = []
+    pages_found = 0
+    files_ready = 0
+    for year, month in _recent_bulletin_periods():
+        discovered: list[str] = []
+        page_url = ""
+        for template in CBUAE_BULLETIN_PAGE_TEMPLATES:
+            candidate_page = template.format(
+                month=calendar.month_name[month].lower(), year=year
+            )
+            try:
+                page = fetch_bytes(candidate_page, referer="https://centralbank.ae/en")
+            except (OSError, RuntimeError):
+                continue
+            discovered = _extract_bulletin_links(page, candidate_page)
+            if discovered:
+                page_url = candidate_page
+                break
+        if not discovered:
+            continue
+        pages_found += 1
+        for url in discovered:
+            suffix = Path(urlparse(url).path).suffix.casefold()
+            destination = RAW_DIR / f"{year}-{month:02d}{suffix}"
+            try:
+                status = download_file(
+                    url,
+                    destination,
+                    # The first discovered page is the newest available
+                    # bulletin; refresh it on every online run so revisions
+                    # are picked up without forcing the whole six-month cache.
+                    force=force or pages_found == 1,
+                    min_bytes=1024,
+                    referer=page_url,
+                )
+            except (OSError, RuntimeError):
+                continue
+            label = destination.stem
+            (downloaded if status == "downloaded" else reused).append(label)
+            files_ready += 1
+            break
+
+    if pages_found == 0:
+        raise RuntimeError("CBUAE 最新统计公报页未发现可下载文件")
+    if files_ready == 0:
+        raise RuntimeError("CBUAE 公报直链下载失败")
+    detail: list[str] = []
+    if downloaded:
+        detail.append("刷新 " + ", ".join(downloaded))
+    if reused:
+        detail.append("缓存 " + ", ".join(reused))
+    return "CBUAE 公报官网：" + "；".join(detail)
 
 CBUAE_CREDIT_INDICATORS = (
     ("阿联酋政府存款", "存款"),
@@ -901,10 +1009,19 @@ def _dictionary_rows() -> list[dict]:
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     """发现公报文件 -> 解析（xlsx 优先，pdf 回退）-> vintage 选择 -> 入库。
 
-    本数据源无网络下载环节（公报由外部环节放入 data/UAE/raw/cbuae/），因此
-    ``skip_download``/``force`` 仅作签名兼容。数据一律直接来自 CBUAE 公报，
-    不依赖任何 Wind 序列。
+    默认从 CBUAE 统计公报页发现最近公报并缓存；官网暂时不可访问时，若本地
+    已有有效公报则继续使用缓存。``skip_download`` 适合离线重算，``force``
+    会重新下载已发现的公报。数据一律直接来自 CBUAE 公报，不依赖 Wind 序列。
     """
+
+    download_note = ""
+    if not skip_download:
+        try:
+            download_note = _download_latest_bulletins(force=force)
+        except (OSError, RuntimeError) as exc:
+            if not any(RAW_DIR.glob("20??-??.*")):
+                raise
+            download_note = f"CBUAE 官网发现失败，使用本地缓存（{exc}）"
 
     observations: list[Observation] = []
     payment_rows: list[dict] = []
@@ -952,6 +1069,8 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     )
     if errors:
         note += f"；源警告 {len(errors)} 条，首条：{errors[0]}"
+    if download_note:
+        note += f"；{download_note}"
     return {"status": "ok", "rows": len(rows), "note": note}
 
 
