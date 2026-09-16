@@ -229,7 +229,9 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     download_note = ""
     if not skip_download:
         try:
-            download_note = _download_official_data(force=force)
+            # The raw helper uses stable yearly filenames. Force the online
+            # run so the current/revised Comtrade year is not silently reused.
+            download_note = _download_official_data(force=True)
         except Exception as exc:  # noqa: BLE001 - valid local JSON remains usable
             if not all(
                 folder.exists() and any(folder.glob("*.json"))

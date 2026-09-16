@@ -439,6 +439,30 @@ def _dictionary_rows() -> list[dict[str, object]]:
     ]
 
 
+def _download_with_cache(
+    url: str,
+    target: Path,
+    *,
+    force: bool,
+    min_bytes: int,
+    referer: str | None = None,
+) -> str:
+    """Refresh one raw input, preserving a valid cache on transport failure."""
+
+    try:
+        return download_file(
+            url,
+            target,
+            force=force,
+            min_bytes=min_bytes,
+            referer=referer,
+        )
+    except Exception as exc:  # noqa: BLE001 - cache fallback is intentional
+        if not target.is_file() or target.stat().st_size < min_bytes:
+            raise
+        return f"缓存({exc})"
+
+
 def _download_inputs(*, force: bool) -> str:
     notes: list[str] = []
     downloads = (
@@ -450,7 +474,9 @@ def _download_inputs(*, force: bool) -> str:
             status = download_file(
                 url,
                 target,
-                force=force,
+                # Both endpoints revise the latest observation behind a
+                # stable URL; normal online runs must check them every time.
+                force=True,
                 min_bytes=256,
                 referer=referer,
             )
@@ -460,7 +486,7 @@ def _download_inputs(*, force: bool) -> str:
             status = f"缓存（{exc}）"
         notes.append(f"{target.name}:{status}")
 
-    download_file(
+    _download_with_cache(
         OPEC_MOMR_HOME_URL,
         OPEC_HOME_RAW_PATH,
         # 首页链接会随月报切换，不能按固定文件名长期复用旧首页。
@@ -469,7 +495,7 @@ def _download_inputs(*, force: bool) -> str:
     )
     momr_home = OPEC_HOME_RAW_PATH.read_bytes()
     current_supply_url = discover_opec_supply_url(momr_home)
-    current_status = download_file(
+    current_status = _download_with_cache(
         current_supply_url,
         OPEC_RAW_PATH,
         # 当前月报的 World oil supply 页面会随新一期月报切换。
@@ -483,7 +509,7 @@ def _download_inputs(*, force: bool) -> str:
     for release_date, archive_url in archive_links:
         report_id = archive_url.rstrip("/").rsplit("/", 1)[-1]
         archive_path = RAW_DIR / f"momr_archive_{report_id}.html"
-        archive_status = download_file(
+        archive_status = _download_with_cache(
             archive_url,
             archive_path,
             force=force,
@@ -492,7 +518,7 @@ def _download_inputs(*, force: bool) -> str:
         )
         archive_supply_url = discover_opec_supply_url(archive_path.read_bytes())
         supply_path = RAW_DIR / f"momr_supply_{report_id}.html"
-        supply_status = download_file(
+        supply_status = _download_with_cache(
             archive_supply_url,
             supply_path,
             force=force,

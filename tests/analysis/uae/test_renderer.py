@@ -56,7 +56,7 @@ def test_latest_high_frequency_month_ignores_future_observations() -> None:
         today=pd.Timestamp("2026-08-31"),
     )
 
-    assert latest == pd.Period("2026-08", freq="M")
+    assert latest == pd.Period("2026-07", freq="M")
 
 
 def test_report_header_places_organization_and_data_month_on_meta_line() -> None:

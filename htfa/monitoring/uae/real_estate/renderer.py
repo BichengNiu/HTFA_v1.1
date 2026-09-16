@@ -166,8 +166,8 @@ def render_real_estate_section(
         except (KeyError, TypeError, ValueError) as exc:
             st_obj.warning(f"房地产指标卡未加载：{exc}")
         for row_markets in (
-            ("现房住宅", "现房商业"),
-            ("期房住宅", "期房商业"),
+            ("现房住宅", "期房住宅"),
+            ("现房商业", "期房商业"),
         ):
             columns = st_obj.columns(2, gap="small")
             for column, market in zip(columns, row_markets, strict=True):

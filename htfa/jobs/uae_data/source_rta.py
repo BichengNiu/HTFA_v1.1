@@ -41,6 +41,8 @@ from .paths import DATA_DIR, SCRIPTS_DIR
 
 import requests
 
+from htfa.data.temporal import last_complete_month_end
+
 from . import db  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -168,8 +170,13 @@ def _download_dataset(dataset_id: int, max_files: int | None, force: bool) -> li
     for f in entries:
         out = dest_dir / f"{f['folder']}.csv"
         if out.is_file() and not force:
-            paths.append(out)
-            continue
+            declared_size = int(f.get("file_size") or 0)
+            # Data Dubai publishes timestamped folders, but may also replace
+            # a file in place. The returned size is the stored CSV size (the
+            # endpoint may call it .gz although the body is plain CSV).
+            if not declared_size or out.stat().st_size == declared_size:
+                paths.append(out)
+                continue
         _download_to(f["file_url"], out)
         paths.append(out)
     return paths
@@ -379,6 +386,27 @@ def _rebuild_aggregates(
     )
 
 
+def _daily_display_cutoffs(
+    rows: list[tuple[date, str, int | float | None]],
+) -> dict[str, date]:
+    """返回各日度指标自己的完整月份截止日。"""
+
+    cutoffs: dict[str, date] = {}
+    for indicator, *_ in DAILY_INDICATORS:
+        observed_through = max(
+            (
+                period
+                for period, name, value in rows
+                if name == indicator and value is not None
+            ),
+            default=None,
+        )
+        cutoff = last_complete_month_end(observed_through)
+        if cutoff is not None:
+            cutoffs[indicator] = cutoff
+    return cutoffs
+
+
 def _dictionary_rows() -> list[dict]:
     rows = []
     today = date.today()
@@ -513,6 +541,15 @@ def merge(workbook_path: Path) -> dict:
         ).fetchall()
     finally:
         con.close()
+
+    daily_cutoffs = _daily_display_cutoffs(daily)
+    if daily_cutoffs:
+        # 每个日度指标独立截断，避免一个更新较慢的指标遮蔽其他指标的完整数据。
+        daily = [
+            row
+            for row in daily
+            if row[1] not in daily_cutoffs or row[0] <= daily_cutoffs[row[1]]
+        ]
 
     def wide(rows, indicators, fmt):
         order = {name: i for i, (name, *_rest) in enumerate(indicators)}

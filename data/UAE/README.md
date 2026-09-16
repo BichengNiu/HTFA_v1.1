@@ -18,10 +18,10 @@ WAM军事打击与战争压力）
 
 - `uae.duckdb`：唯一数据库（本地文件，不入 Git）；
 - `阿联酋.xlsx`：目标工作簿（HTFA 仪表盘读取；`工作搜索热度.csv` 也是其输入）；
-- `数据说明.md`：**完整数据说明文档**（表结构、各源口径、更新与合并方法、自动运行
-  配置、故障排查），使用前请先阅读；
+- `数据说明.md`：**完整数据说明文档**（表结构、各源口径、更新与合并方法、故障排查），
+  使用前请先阅读；
 - `raw/`：各源原始下载件与缓存（本地文件，不入 Git）；
-- `auto_update_all.bat`：定时自动运行入口（更新 + 合并一步完成，供任务计划程序调用）；
+- `auto_update_all.bat`：手动在线更新入口（更新 + 合并一步完成，不创建或依赖定时任务）；
 - `.env`：数据源密钥（如 `COMTRADE_API_KEY`，不入 Git）。
 
 ## 作业区（htfa/jobs/uae_data/）
@@ -41,10 +41,11 @@ WAM军事打击与战争压力）
 ```powershell
 .\htfa\jobs\uae_data\update_data.bat        # 更新数据到 uae.duckdb（离线用 --skip-download）
 .\htfa\jobs\uae_data\merge_workbook.bat     # 合并进 阿联酋.xlsx（务必先关闭 Excel）
+data\UAE\auto_update_all.bat                 # 手动在线更新全部来源并合并
 ```
 
 也可用 `runtime\python.exe -m htfa.jobs.uae_data.update_data --source cbuae --skip-download`
-只更新指定源或跳过网络下载；**如何定时自动运行见 `数据说明.md` 第 6 节**。
+只更新指定源或跳过网络下载；`auto_update_all.bat` 仅在手动运行时执行，不设置定时任务。
 
 ## 其他本地数据（data/ 根目录，与 UAE 管线无关）
 

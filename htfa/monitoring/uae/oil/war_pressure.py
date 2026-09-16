@@ -14,6 +14,8 @@ from htfa.data.economic_workbook import (
 
 
 WAM_SHEET = "月度_WAM"
+OBSERVATION_DAYS_LABEL = "观测天数"
+OBSERVATION_DAYS_INDICATOR = "阿联酋军事打击:观测天数(Observation Days)"
 
 BALLISTIC_LABEL = "弹道导弹"
 CRUISE_LABEL = "巡航导弹"
@@ -56,6 +58,7 @@ class WarPressureData:
     values: pd.DataFrame
     metadata: dict[str, SheetSeriesMetadata]
     source_name: str
+    observation_days: pd.Series | None = None
 
 
 def load_war_pressure_data(
@@ -91,12 +94,33 @@ def load_war_pressure_data(
             )
             frames.append(frame)
             metadata.update(group_metadata)
+        try:
+            observation_frame, observation_metadata = _WORKBOOK_READER.read_target_sheet(
+                excel_file,
+                sheet_name=WAM_SHEET,
+                targets=((OBSERVATION_DAYS_LABEL, OBSERVATION_DAYS_INDICATOR),),
+                allowed_frequencies={"月", "月度"},
+                expected_unit="天",
+                zero_is_missing=False,
+            )
+        except (KeyError, ValueError) as exc:
+            if (
+                OBSERVATION_DAYS_LABEL not in str(exc)
+                and OBSERVATION_DAYS_INDICATOR not in str(exc)
+            ):
+                raise
+            # 兼容尚未重建的旧工作簿；新写表必然包含观测天数。
+            observation_days = None
+        else:
+            observation_days = observation_frame[OBSERVATION_DAYS_LABEL]
+            metadata.update(observation_metadata)
 
     values = pd.concat(frames, axis=1, sort=False).sort_index()
     return WarPressureData(
         values=values,
         metadata=metadata,
         source_name=source_name,
+        observation_days=observation_days,
     )
 
 
@@ -104,6 +128,8 @@ __all__ = [
     "BALLISTIC_LABEL",
     "CRUISE_LABEL",
     "PRESSURE_LABEL",
+    "OBSERVATION_DAYS_INDICATOR",
+    "OBSERVATION_DAYS_LABEL",
     "RAW_LABELS",
     "UAV_LABEL",
     "WAM_INDICATORS",

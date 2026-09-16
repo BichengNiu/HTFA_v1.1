@@ -10,6 +10,7 @@ import streamlit as st
 from htfa.monitoring.uae.downloads import render_chart_download
 from htfa.monitoring.uae.periods import (
     common_latest_month,
+    through_last_complete_month,
     within_month_window,
 )
 from htfa.monitoring.uae.oil.charts import (
@@ -67,7 +68,7 @@ OIL_FISCAL_EXPLANATION = """
 """.strip()
 
 WAR_PRESSURE_EXPLANATION = """
-- **原始数据**：由“根据公开新闻整理”汇编；原始数据为日度弹道导弹、巡航导弹和无人机数量；月度武器数量为各日数量按月求和，反映公开登记的袭击活动。
+- **原始数据**：原始数据为日度弹道导弹、巡航导弹和无人机数量；月度武器数量为各日数量按月求和，反映公开登记的袭击活动。
 - **战争压力指数**：原始数据为上述日度数量；按 `9×log1p(弹道导弹数量)+3×log1p(巡航导弹数量)+log1p(无人机数量)` 加权后按月求和，
   再在战争观测窗口内做 min-max 归一化 `100×(当月值−最小值)÷(最大值−最小值)`。
   `log1p(x)=ln(1+x)` 用于压缩极端值；指数越高表示登记袭击强度相对越高，最高月为100、最低月为0。
@@ -100,10 +101,22 @@ def _metric_delta(label: str, change: float | None) -> str | None:
     return None if change is None else f"{label} {change:+.1f}%"
 
 
+def _complete_war_pressure_values(data: WarPressureData) -> pd.DataFrame:
+    """删除 WAM 中观测天数不足一个自然月的月度行。"""
+
+    values = data.values.loc[:, [*RAW_LABELS, PRESSURE_LABEL]].sort_index()
+    if data.observation_days is None:
+        return values
+    days = data.observation_days.reindex(values.index)
+    required_days = pd.PeriodIndex(values.index, freq="M").days_in_month
+    complete = days.ge(required_days).fillna(False)
+    return values.loc[complete]
+
+
 def _monthly_mean_series(series: pd.Series) -> pd.Series:
     """将价格序列按自然月取均值，并将索引规范为月末。"""
 
-    clean = series.dropna().sort_index()
+    clean = through_last_complete_month(series.dropna().sort_index())
     if clean.empty:
         return clean
     periods = pd.DatetimeIndex(clean.index).to_period("M")
@@ -121,7 +134,10 @@ def _render_oil_metrics(st_obj: Any, data: OilMarketData) -> None:
         if name in data.prices.columns
     )
     for column, name in zip(columns[:2], price_names):
-        value, as_of, change = _latest_change(data.prices[name], days=30)
+        price_series = through_last_complete_month(data.prices[name])
+        if price_series.empty:
+            continue
+        value, as_of, change = _latest_change(price_series, days=30)
         metadata = data.metadata[name]
         with column:
             st_obj.metric(
@@ -208,7 +224,7 @@ def _render_war_pressure_metrics(
 ) -> None:
     """展示最新完整月份的三类武器数量与战争压力指数。"""
 
-    latest_values = data.values.dropna(
+    latest_values = _complete_war_pressure_values(data).dropna(
         subset=[*RAW_LABELS, PRESSURE_LABEL]
     ).sort_index()
     if latest_values.empty:
@@ -261,7 +277,10 @@ def _render_war_pressure_section(
             metadata.source for metadata in data.metadata.values() if metadata.source
         )
     )
-    values = data.values.loc[:, [*RAW_LABELS, PRESSURE_LABEL]].sort_index()
+    values = _complete_war_pressure_values(data)
+    if values.empty:
+        st_obj.info("战争压力数据没有完整自然月，暂不绘图。")
+        return
     columns = st_obj.columns(2, gap="small")
     with columns[0]:
         render_pyplot_figure(

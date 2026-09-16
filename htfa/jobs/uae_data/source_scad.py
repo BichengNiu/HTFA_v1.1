@@ -327,7 +327,9 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     download_note = ""
     if not skip_download:
         try:
-            downloaded, existing, download_errors = _download_official_files(force=force)
+            # Publication files can be revised in place after the landing page
+            # has already exposed them; refresh discovered files online.
+            downloaded, existing, download_errors = _download_official_files(force=True)
             download_note = f"官网缓存：新增 {downloaded}，复用 {existing}"
             if download_errors:
                 download_note += f"；下载警告 {len(download_errors)} 条（{download_errors[0]}）"

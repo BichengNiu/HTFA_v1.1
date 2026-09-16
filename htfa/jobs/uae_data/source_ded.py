@@ -1058,6 +1058,8 @@ def merge(workbook_path: Path) -> dict[str, object]:
             f"无法写入 {target.name}：文件被占用。\n"
             "请先关闭 Excel 中打开的 阿联酋.xlsx，然后重新运行本模块。"
         ) from exc
+    finally:
+        wb.close()
     note = (
         f"sheet「{SHEET_NAME}」更新 {n} 行（{rows[0]['month']} ~ {rows[-1]['month']}）；"
         f"企业列有值 {sum(1 for r in rows if r['enterprises'] is not None)} 个月，"

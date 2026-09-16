@@ -9,6 +9,7 @@ import math
 import sys
 from pathlib import Path
 
+import duckdb
 import pytest
 
 from htfa.jobs.uae_data import source_dld as dld  # noqa: E402
@@ -287,6 +288,80 @@ def test_raw_weekly_sql_targets_unified_schema() -> None:
     assert dld.RAW_WEEKLY_SQL.count("detail.dld_transactions") >= 6
     assert "FROM transactions" not in dld.RAW_WEEKLY_SQL
     assert "FROM detail.dld_transactions" in dld.RAW_WEEKLY_SQL
+
+
+def test_build_sales_monthly_ignores_partial_latest_month() -> None:
+    con = duckdb.connect(":memory:")
+    try:
+        con.execute("CREATE SCHEMA detail")
+        con.execute(
+            """
+            CREATE TABLE detail.dld_transactions (
+                instance_date DATE,
+                property_usage_en VARCHAR,
+                reg_type_en VARCHAR,
+                trans_group_en VARCHAR,
+                actual_worth DOUBLE
+            )
+            """
+        )
+        con.executemany(
+            "INSERT INTO detail.dld_transactions VALUES (?, ?, ?, ?, ?)",
+            [
+                (
+                    date(2026, 7, 31),
+                    "Residential",
+                    "Existing Properties",
+                    "Sales",
+                    100.0,
+                ),
+                (
+                    date(2026, 8, 10),
+                    "Residential",
+                    "Existing Properties",
+                    "Sales",
+                    200.0,
+                ),
+            ],
+        )
+
+        rows = dld.build_sales_monthly(con)
+
+        assert {row["period"] for row in rows} == {date(2026, 7, 31)}
+        assert rows[0]["value_aed"] == 100.0
+    finally:
+        con.close()
+
+
+def test_online_snapshot_change_rebuilds_existing_dld_base(tmp_path, monkeypatch) -> None:
+    con = duckdb.connect(":memory:")
+    try:
+        con.execute("CREATE SCHEMA detail")
+        con.execute("CREATE SCHEMA dld")
+        con.execute("CREATE TABLE detail.dld_transactions (instance_date DATE)")
+        txn_csv = tmp_path / "DLD_Transactions_ALL.csv"
+        txn_csv.write_text("placeholder", encoding="utf-8")
+        manifest = tmp_path / "DLD_download_manifest.json"
+        manifest.write_text(
+            '{"transaction_source_files": [{"file_name": "old.csv.gz"}]}',
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(dld, "RAW_DLD_DIR", tmp_path)
+        monkeypatch.setattr(
+            dld,
+            "_get_bulk_csv_files",
+            lambda *_args: [{"file_name": "new.csv.gz"}],
+        )
+        monkeypatch.setattr(dld, "_build_base_from_csv", lambda _con: "rebuilt")
+        downloaded = []
+        monkeypatch.setattr(dld, "_download_all", lambda: downloaded.append(True))
+
+        note = dld._ensure_base_tables(con, force=False, skip_download=False)
+
+        assert downloaded == [True]
+        assert "rebuilt" in note
+    finally:
+        con.close()
 
 
 def test_indicator_dictionary_contract() -> None:

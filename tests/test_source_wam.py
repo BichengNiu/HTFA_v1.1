@@ -5,12 +5,40 @@ from __future__ import annotations
 import csv
 import shutil
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
 
 from htfa.jobs.uae_data import db  # noqa: E402
 from htfa.jobs.uae_data import source_wam as source  # noqa: E402
+
+
+def test_monthly_aggregation_ignores_partial_latest_month() -> None:
+    def row(day: date) -> dict:
+        return {
+            "date": day,
+            "ballistic_missiles": 0,
+            "cruise_missiles": 0,
+            "uavs": 0,
+            "unclassified_missiles": 0,
+            "strike_intensity_log": 0.0,
+            "attack_any": False,
+            "uae_asset_attack": False,
+            "external_threat_alert": False,
+        }
+
+    daily = [
+        row(date(2026, 7, 1) + timedelta(days=index))
+        for index in range(31)
+    ] + [
+        row(date(2026, 8, 1) + timedelta(days=index))
+        for index in range(10)
+    ]
+
+    monthly = source.build_monthly_observations(daily)
+
+    assert [item.period for item in monthly] == [date(2026, 7, 31)]
 
 
 def test_daily_registry_and_monthly_pressure() -> None:
@@ -43,7 +71,10 @@ def test_update_roundtrip_creates_daily_monthly_and_dictionary_tables() -> None:
     ).fetchone()[0] == expected_daily
     assert con.execute(
         "SELECT COUNT(*) FROM wam_military_strike_monthly"
-    ).fetchone()[0] == 7
+    ).fetchone()[0] == 6
+    assert con.execute(
+        "SELECT MAX(period) FROM wam_military_strike_monthly"
+    ).fetchone()[0].isoformat() == "2026-08-31"
     assert con.execute(
         "SELECT MIN(strike_intensity_index), MAX(strike_intensity_index) "
         "FROM wam_military_strike_monthly"

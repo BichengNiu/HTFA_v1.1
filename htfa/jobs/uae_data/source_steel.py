@@ -353,13 +353,22 @@ def _atomic_json(path: Path, payload: Any) -> None:
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     """下载（按需）→ 清洗 → 事务内入库 mesteel_monthly。"""
 
+    download_note = ""
     if skip_download:
         if not RAW_PATH.is_file():
             raise FileNotFoundError(
                 f"--skip-download 但缺少缓存: {RAW_PATH}"
             )
-    elif force or not RAW_PATH.is_file():
-        download()
+    else:
+        try:
+            # The public endpoint keeps a stable URL but revises the current
+            # month in place, so fetch it on every online run.
+            download()
+            download_note = "已在线刷新 MEsteel JSON"
+        except Exception as exc:  # noqa: BLE001 - valid cache remains usable
+            if not RAW_PATH.is_file():
+                raise
+            download_note = f"MEsteel 在线刷新失败，沿用有效缓存：{exc}"
 
     payload = load_payload(RAW_PATH)
     long_rows, wide_rows, quality = clean_payload(payload)
@@ -385,6 +394,8 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         f"{len(rows)} 条报价（{quality['first_month']} 至 {quality['last_month']}），"
         f"{quality['product_count']} 个产品"
     )
+    if download_note:
+        note += f"；{download_note}"
     return {"status": "ok", "rows": len(rows), "note": note}
 
 

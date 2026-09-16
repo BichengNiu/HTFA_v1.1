@@ -10,6 +10,7 @@ import pandas as pd
 import streamlit as st
 
 from htfa.data.economic_workbook import EconomicWorkbookReader
+from htfa.data.temporal import last_complete_month_end
 from htfa.monitoring.uae.charts import (
     build_growth_and_sector_pull_figure,
     build_industry_breadth_figure,
@@ -66,7 +67,7 @@ def _latest_high_frequency_month(
         if today is None
         else pd.Timestamp(today).normalize()
     )
-    latest_date: pd.Timestamp | None = None
+    latest_months: list[pd.Period] = []
     try:
         content, file_name = payload
         with _REPORT_WORKBOOK_READER.open_workbook(
@@ -102,12 +103,28 @@ def _latest_high_frequency_month(
                 if not valid.any():
                     continue
                 candidate = pd.Timestamp(dates[valid].max())
-                if latest_date is None or candidate > latest_date:
-                    latest_date = candidate
+                candidate_month = candidate.to_period("M")
+                if frequencies & {"日", "日度", "周", "周度", "旬", "旬度"}:
+                    cutoff = last_complete_month_end(
+                        candidate.date(),
+                        today=observation_cutoff.date(),
+                    )
+                    if cutoff is None:
+                        continue
+                    complete_month = pd.Timestamp(cutoff).to_period("M")
+                    latest_months.append(complete_month)
+                else:
+                    # 月度源若仍落在当前自然月，也必须等到下月再作为
+                    # 完整月份展示；历史月份的日期可能统一记为月初。
+                    if candidate_month == observation_cutoff.to_period("M"):
+                        candidate_month -= 1
+                    latest_months.append(candidate_month)
     except Exception:  # noqa: BLE001 - 日期仅用于打印头，不能阻断报告渲染
         return None
 
-    return latest_date.to_period("M") if latest_date is not None else None
+    if not latest_months:
+        return None
+    return max(latest_months)
 
 
 def _render_report_header(

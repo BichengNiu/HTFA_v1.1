@@ -147,8 +147,6 @@ def download(force: bool = False) -> Path:
     """下载最新 xlsx 到 raw/emirates_post/（force=False 且已存在时复用）。"""
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     target = RAW_DIR / RAW_FILE_NAME
-    if target.is_file() and not force:
-        return target
     resource_id, file_name = _discover_resource()
     url = f"{DOWNLOAD_API}?resourceID={resource_id}&fileName={quote(file_name)}"
     payload = _fetch_bytes(url)
@@ -157,7 +155,9 @@ def download(force: bool = False) -> Path:
             f"bayanat 下载响应不是 xlsx 文件（{len(payload)} 字节，"
             f"开头 {payload[:8]!r}）"
         )
-    target.write_bytes(payload)
+    temporary = target.with_suffix(target.suffix + ".tmp")
+    temporary.write_bytes(payload)
+    temporary.replace(target)
     return target
 
 
@@ -348,7 +348,20 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         raise ValueError(
             f"--skip-download 模式下缺少原始文件: {RAW_DIR / RAW_FILE_NAME}"
         )
-    path = download(force=force) if not skip_download else RAW_DIR / RAW_FILE_NAME
+    download_note = ""
+    if skip_download:
+        path = RAW_DIR / RAW_FILE_NAME
+    else:
+        try:
+            # bayanat keeps a stable resource name while revising the workbook
+            # in place; discover and fetch it on every online run.
+            path = download(force=force)
+            download_note = "已在线刷新 bayanat 数据集"
+        except Exception as exc:  # noqa: BLE001 - valid cache remains usable
+            if not (RAW_DIR / RAW_FILE_NAME).is_file():
+                raise
+            path = RAW_DIR / RAW_FILE_NAME
+            download_note = f"bayanat 在线刷新失败，沿用有效缓存：{exc}"
     rows, metadata, duplicate_stats = parse_workbook(path)
 
     con.begin()
@@ -373,6 +386,8 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
             f"；⚠ 源文件 {duplicate_stats['dup_groups']} 组同键重复"
             f"（如 {sample}），已按同键求和入库并记 raw_rows"
         )
+    if download_note:
+        note += f"；{download_note}"
     return {"status": "ok", "rows": len(rows), "note": note}
 
 

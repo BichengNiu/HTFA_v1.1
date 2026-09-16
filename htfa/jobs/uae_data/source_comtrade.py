@@ -190,7 +190,8 @@ def months_for_year(year: int) -> list[str]:
 
 def download_monthly(client: ComtradeClient, force: bool) -> None:
     codes = ",".join(all_equipment_codes())
-    for year in range(START_YEAR, date.today().year + 1):
+    current_year = date.today().year
+    for year in range(START_YEAR, current_year + 1):
         periods = ",".join(months_for_year(year))
         queries = {
             "equipment_uae_reported": {
@@ -209,7 +210,11 @@ def download_monthly(client: ComtradeClient, force: bool) -> None:
         }
         for source, parameters in queries.items():
             path = RAW_DIR / source / f"{source}_{year}.json"
-            payload = client.get("M", parameters, path, force)
+            # Comtrade revises the current calendar year behind the same
+            # endpoint/file name. Historical years remain cache candidates.
+            payload = client.get(
+                "M", parameters, path, force or year == current_year
+            )
 
 
 def write_scope_file() -> None:

@@ -55,6 +55,8 @@ import urllib.request
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+from htfa.data.temporal import last_complete_month_end
+
 from .paths import DATA_DIR, SCRIPTS_DIR
 from ._excel_helpers import run_powershell_command
 
@@ -111,6 +113,18 @@ bounds AS (
                 THEN CAST(date_trunc('week', max(instance_date)) AS DATE)
             ELSE CAST(date_trunc('week', max(instance_date)) AS DATE) - 7
         END AS last_complete_week,
+        CASE
+            WHEN max(instance_date) IS NULL THEN NULL
+            WHEN max(instance_date) >= CAST(
+                date_trunc('month', max(instance_date))
+                + INTERVAL 1 MONTH - INTERVAL 1 DAY AS DATE
+            )
+                THEN CAST(
+                    date_trunc('month', max(instance_date))
+                    + INTERVAL 1 MONTH - INTERVAL 1 DAY AS DATE
+                )
+            ELSE CAST(date_trunc('month', max(instance_date)) AS DATE) - 1
+        END AS last_complete_month_end,
         max(instance_date) AS source_data_through
     FROM detail.dld_transactions
 ),
@@ -121,6 +135,7 @@ calendar AS (
         bounds.source_data_through
     FROM bounds,
          generate_series(bounds.first_week, bounds.last_complete_week, INTERVAL 7 DAY) AS t(gs)
+    WHERE CAST(gs AS DATE) + 6 <= bounds.last_complete_month_end
 ),
 offplan_sales AS (
     SELECT
@@ -130,9 +145,11 @@ offplan_sales AS (
         project_number,
         actual_worth
     FROM detail.dld_transactions
+    CROSS JOIN bounds
     WHERE trans_group_en = 'Sales'
       AND reg_type_en = 'Off-Plan Properties'
       AND instance_date >= DATE '2009-01-05' - INTERVAL 27 DAY
+      AND instance_date <= bounds.last_complete_month_end
 ),
 offplan_week AS (
     SELECT
@@ -186,9 +203,11 @@ project_launch AS (
         project_number,
         min(instance_date) AS first_offplan_sale_date
     FROM detail.dld_transactions
+    CROSS JOIN bounds
     WHERE trans_group_en = 'Sales'
       AND reg_type_en = 'Off-Plan Properties'
       AND project_number IS NOT NULL
+      AND instance_date <= bounds.last_complete_month_end
     GROUP BY project_number
 ),
 project_launch_confirmed AS (
@@ -197,12 +216,14 @@ project_launch_confirmed AS (
         p.first_offplan_sale_date,
         count(t.transaction_id) AS sales_first_28d
     FROM project_launch p
+    CROSS JOIN bounds
     LEFT JOIN detail.dld_transactions t
       ON t.project_number = p.project_number
      AND t.trans_group_en = 'Sales'
      AND t.reg_type_en = 'Off-Plan Properties'
      AND t.instance_date BETWEEN p.first_offplan_sale_date
                              AND p.first_offplan_sale_date + 27
+     AND t.instance_date <= bounds.last_complete_month_end
     GROUP BY p.project_number, p.first_offplan_sale_date
 ),
 initial_launch_week AS (
@@ -232,8 +253,10 @@ project_dates AS (
             WHERE reg_type_en = 'Existing Properties'
         ) AS first_existing_sale
     FROM detail.dld_transactions
+    CROSS JOIN bounds
     WHERE trans_group_en = 'Sales'
       AND project_number IS NOT NULL
+      AND instance_date <= bounds.last_complete_month_end
     GROUP BY project_number
 ),
 project_transition AS (
@@ -243,11 +266,13 @@ project_transition AS (
         p.first_existing_sale,
         count(t.transaction_id) AS offplan_sales_before_existing
     FROM project_dates p
+    CROSS JOIN bounds
     LEFT JOIN detail.dld_transactions t
       ON t.project_number = p.project_number
      AND t.trans_group_en = 'Sales'
      AND t.reg_type_en = 'Off-Plan Properties'
      AND t.instance_date < p.first_existing_sale
+     AND t.instance_date <= bounds.last_complete_month_end
     WHERE p.first_offplan_sale IS NOT NULL
       AND p.first_existing_sale >= p.first_offplan_sale + 180
     GROUP BY p.project_number, p.first_offplan_sale, p.first_existing_sale
@@ -873,6 +898,13 @@ def build_sales_monthly(con) -> list[dict]:
     period 为月末日期（datum 约定），金额单位 AED 原值（写表时折算百万 AED）。
     """
 
+    source_data_through = con.execute(
+        "SELECT max(instance_date) FROM detail.dld_transactions"
+    ).fetchone()[0]
+    cutoff = last_complete_month_end(source_data_through)
+    if cutoff is None:
+        return []
+
     rows = con.execute(
         """
         SELECT
@@ -887,9 +919,11 @@ def build_sales_monthly(con) -> list[dict]:
           AND property_usage_en IN ('Residential', 'Commercial')
           AND reg_type_en IN ('Off-Plan Properties', 'Existing Properties')
           AND instance_date >= DATE '1975-01-01'
+          AND instance_date <= ?
         GROUP BY 1, 2, 3
         ORDER BY 1, 2, 3
-        """
+        """,
+        [cutoff],
     ).fetchall()
     out = []
     for period, usage, reg, cnt, val in rows:
@@ -1088,14 +1122,25 @@ def _discover_moasher_urls() -> list[str]:
         if not re.findall(r"insightshub/moasher/\d{4}-monthly-[a-z]+-\d+", html):
             break
     urls = sorted(found)
-    MOASHER_URLS_FILE.write_text("\n".join(urls), encoding="utf-8")
+    if urls:
+        MOASHER_URLS_FILE.write_text("\n".join(urls), encoding="utf-8")
     return urls
+
+
+def _cached_moasher_urls() -> list[str]:
+    """从已缓存的 Mo'asher HTML 恢复页面清单，支持离线重建。"""
+
+    cached_dir = RAW_DLD_DIR / "moasher"
+    return sorted(
+        MOASHER_BASE + path.stem
+        for path in cached_dir.glob("*.html")
+    )
 
 
 def _moasher_urls(con, *, force: bool, skip_download: bool) -> list[str]:
     """取得 Mo'asher 月度页 URL 清单：读缓存文件，缺失/强制时在线发现。"""
 
-    if MOASHER_URLS_FILE.exists() and not force:
+    if skip_download and MOASHER_URLS_FILE.exists():
         urls = [
             line.strip("\ufeff \t\r\n")
             for line in MOASHER_URLS_FILE.read_text(encoding="utf-8-sig").splitlines()
@@ -1103,11 +1148,24 @@ def _moasher_urls(con, *, force: bool, skip_download: bool) -> list[str]:
         ]
         if urls:
             return urls
+    cached_urls = _cached_moasher_urls()
+    if skip_download and cached_urls:
+        return cached_urls
     if skip_download:
         raise RuntimeError(
             "缺少 Mo'asher 页面清单（raw/dld/moasher_page_urls.txt）且 skip_download=True"
         )
-    return _discover_moasher_urls()
+    try:
+        discovered = _discover_moasher_urls()
+    except Exception as exc:  # noqa: BLE001 - cached pages remain auditable
+        if cached_urls:
+            print(
+                f"[source_dld] Mo'asher 在线发现失败，沿用缓存：{exc}",
+                flush=True,
+            )
+            return cached_urls
+        raise
+    return discovered or cached_urls
 
 
 def build_lease_monthly(con, *, force: bool = False, skip_download: bool = False) -> list[dict]:
@@ -1125,7 +1183,11 @@ def build_lease_monthly(con, *, force: bool = False, skip_download: bool = False
     for url in urls:
         slug = url.rstrip("/").rsplit("/", 1)[-1]
         try:
-            html = _fetch_moasher_page(url, cached_dir, force=force)
+            # Rental pages can be revised at the same URL; online mode must
+            # refresh them, while skip_download explicitly reuses HTML cache.
+            html = _fetch_moasher_page(
+                url, cached_dir, force=force or not skip_download
+            )
         except Exception as exc:  # noqa: BLE001 - 单页失败不阻断整批
             print(f"[source_dld] Mo'asher 页面抓取失败 {slug}: {exc}", flush=True)
             continue
@@ -1215,22 +1277,61 @@ def _ensure_base_tables(con, *, force: bool, skip_download: bool) -> str:
     csv_ready = txn_csv.exists()
 
     downloaded = False
-    if ((not txn_ready and not csv_ready) or force) and not skip_download:
-        _download_all()
-        downloaded = True
+    refresh_note = ""
+    if not skip_download:
+        should_download = force or not txn_ready or not csv_ready
+        if not should_download:
+            try:
+                remote_files = _get_bulk_csv_files(
+                    TRANSACTIONS_DATASET_ID, TRANSACTIONS_DATASET_PAGE
+                )
+                manifest_path = RAW_DLD_DIR / "DLD_download_manifest.json"
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                cached_names = {
+                    str(item.get("file_name") or "")
+                    for item in manifest.get("transaction_source_files", [])
+                }
+                remote_names = {
+                    str(item.get("file_name") or "") for item in remote_files
+                }
+                should_download = remote_names != cached_names
+                refresh_note = (
+                    "检测到 Data Dubai 新版交易快照"
+                    if should_download
+                    else "已在线核验 Data Dubai 交易快照"
+                )
+            except Exception as exc:  # noqa: BLE001 - preserve valid cache
+                refresh_note = f"交易快照在线核验失败，沿用有效缓存：{exc}"
+        if should_download:
+            _download_all()
+            downloaded = True
+            refresh_note = "已下载并重建 Data Dubai 交易快照"
 
     if txn_ready:
         if downloaded:
-            return "基表已存在（本次已强制重新下载原始 CSV；基表保持原快照，重建需删表后重跑）"
+            # 强制下载后，CSV 已经是新的官方快照；不能继续沿用旧的
+            # DuckDB 基表，否则会出现“下载成功但汇总仍是旧数据”。
+            for view in (
+                "dld.transactions",
+                "dld.land_transactions",
+                "dld.transaction_year_summary",
+                "dld.transaction_date_quality_issues",
+            ):
+                con.execute(f"DROP VIEW IF EXISTS {view}")
+            con.execute("DROP TABLE detail.dld_transactions")
+            rebuilt = _build_base_from_csv(con)
+            return "; ".join(item for item in (refresh_note, rebuilt) if item)
         upgraded = _upgrade_transactions_columns(con)
         if upgraded:
             return "基表已存在（缺 property_usage_en 列，已从旧库/CSV 重建为 9 列）"
         return "基表已存在"
 
-    if old_db.exists() and not downloaded:
-        return _migrate_from_old_db(con)
     if csv_ready:
-        return _build_base_from_csv(con)
+        rebuilt = _build_base_from_csv(con)
+        return "; ".join(item for item in (refresh_note, rebuilt) if item)
+    if old_db.exists() and not downloaded:
+        migrated = _migrate_from_old_db(con)
+        return "; ".join(item for item in (refresh_note, migrated) if item)
     if downloaded:
         raise RuntimeError(
             "下载已完成但 data/UAE/raw/dld/ 下仍缺少 DLD_Transactions_ALL.csv，"

@@ -68,18 +68,12 @@ def test_rates_loader_resamples_daily_to_monthly_mean() -> None:
     ]
     assert list(data.values.index) == [
         pd.Timestamp("2026-07-31"),
-        pd.Timestamp("2026-08-31"),
     ]
     # 7 月：阿联酋隔夜=(3+4+5)/3=4，1年=(2+3+4)/3=3；美国隔夜/SOFR=(3+3.5)/2、(2+2.5)/2
     assert data.values.loc["2026-07-31", EIBOR_OVERNIGHT_DISPLAY] == pytest.approx(4.0)
     assert data.values.loc["2026-07-31", EIBOR_ONEYEAR_DISPLAY] == pytest.approx(3.0)
     assert data.values.loc["2026-07-31", US_OVERNIGHT_DISPLAY] == pytest.approx(3.25)
     assert data.values.loc["2026-07-31", US_SOFR_12M_DISPLAY] == pytest.approx(2.25)
-    # 8 月：隔夜=(6+8)/2=7，1年=(5+7)/2=6；美国隔夜/SOFR=(4+5)/2、(3+4)/2
-    assert data.values.loc["2026-08-31", EIBOR_OVERNIGHT_DISPLAY] == pytest.approx(7.0)
-    assert data.values.loc["2026-08-31", EIBOR_ONEYEAR_DISPLAY] == pytest.approx(6.0)
-    assert data.values.loc["2026-08-31", US_OVERNIGHT_DISPLAY] == pytest.approx(4.5)
-    assert data.values.loc["2026-08-31", US_SOFR_12M_DISPLAY] == pytest.approx(3.5)
 
 
 def test_rates_figure_renders_four_monthly_mean_lines() -> None:
@@ -110,7 +104,7 @@ def test_rates_figure_renders_four_monthly_mean_lines() -> None:
     ]
     assert axis.get_ylabel() == "%"
     assert axis.get_title() == "阿联酋与美国市场利率（隔夜、1年期）"
-    assert lines[0].get_ydata()[-1] == pytest.approx(7.0)
+    assert lines[0].get_ydata()[-1] == pytest.approx(4.0)
     assert any(text.get_text() == "数据来源：阿联酋央行" for text in figure.texts)
     # 模板图例挂在参考轴上，图例线型与数据线一一对应
     legend_handles = axis.get_legend().get_lines()

@@ -40,6 +40,8 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
+from htfa.data.temporal import last_complete_month_end
+
 from .paths import DATA_DIR, SCRIPTS_DIR
 
 
@@ -334,10 +336,23 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         chokepoint_url = resolve_resource_url(
             CHOKEPOINT_PACKAGE_ID, CHOKEPOINT_FALLBACK_URL
         )
-        uae_state = _download_to(uae_url, UAE_FILE, force=force)
-        chokepoint_state = _download_to(
-            chokepoint_url, CHOKEPOINT_FILE, force=force
-        )
+        # HDX resource URLs are stable and the CSV content is revised in
+        # place. Online mode therefore always re-fetches both files;
+        # --skip-download remains the explicit offline mode.
+        try:
+            uae_state = _download_to(uae_url, UAE_FILE, force=True)
+        except Exception as exc:  # noqa: BLE001 - valid cache remains usable
+            if not UAE_FILE.is_file():
+                raise
+            uae_state = f"reused_after_error:{exc}"
+        try:
+            chokepoint_state = _download_to(
+                chokepoint_url, CHOKEPOINT_FILE, force=True
+            )
+        except Exception as exc:  # noqa: BLE001 - valid cache remains usable
+            if not CHOKEPOINT_FILE.is_file():
+                raise
+            chokepoint_state = f"reused_after_error:{exc}"
 
     uae_rows = parse_portwatch_csv(
         UAE_FILE,
@@ -385,6 +400,32 @@ def _monthly_observations(con) -> list["Observation"]:
     油轮过境次数、油轮载货容量；按月份与 UAE 合并（缺失月份补 None）。
     """
 
+    max_dates = [
+        row[0]
+        for row in con.execute(
+            """
+            SELECT max(date) FROM detail.portwatch_uae_daily
+            UNION ALL
+            SELECT max(date) FROM detail.portwatch_chokepoint_daily
+            WHERE portid = 'chokepoint6'
+            """
+        ).fetchall()
+        if row[0] is not None
+    ]
+    cutoffs = [
+        cutoff
+        for cutoff in (
+            last_complete_month_end(observed_through)
+            for observed_through in max_dates
+        )
+        if cutoff is not None
+    ]
+    if not cutoffs:
+        return []
+    # UAE 港口与霍尔木兹必须使用共同完整月份，避免一行月度数据混入
+    # 两个不同的覆盖边界。
+    cutoff = min(cutoffs)
+
     uae_rows = con.execute(
         """
         SELECT strftime(date_trunc('month', date), '%Y-%m') AS month,
@@ -398,9 +439,11 @@ def _monthly_observations(con) -> list["Observation"]:
                SUM(export_container) AS v7,
                SUM(export_tanker) AS v8
         FROM detail.portwatch_uae_daily
+        WHERE date <= ?
         GROUP BY month
         ORDER BY month
-        """
+        """,
+        [cutoff],
     ).fetchall()
     hormuz_rows = con.execute(
         """
@@ -411,9 +454,11 @@ def _monthly_observations(con) -> list["Observation"]:
                SUM(capacity_tanker) AS v3
         FROM detail.portwatch_chokepoint_daily
         WHERE portid = 'chokepoint6'
+          AND date <= ?
         GROUP BY month
         ORDER BY month
-        """
+        """,
+        [cutoff],
     ).fetchall()
     hormuz_by_month = {row[0]: tuple(row[1:]) for row in hormuz_rows}
     return [

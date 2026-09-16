@@ -1,6 +1,6 @@
 ﻿@echo off
-rem 自动运行：更新 DuckDB + 合并回 阿联酋.xlsx（供“任务计划程序”定时调用，详见 数据说明.md 第 6 节）
-rem 用法: 直接把本 .bat 填进“任务计划程序”的“程序或脚本”即可（幂等，可重复运行）。
+rem Manual online refresh: update DuckDB, then merge into the workbook.
+rem Run this batch manually from the project; no scheduled task is created or required.
 cd /d "%~dp0..\.."
 if errorlevel 1 goto :failed
 if not exist "runtime\python.exe" (
@@ -12,8 +12,8 @@ echo [1/5] update_data.py --source baker_hughes,oil,cbuae,gfs,dubai_customs_air,
 "runtime\python.exe" -B -c "import sys; sys.path.insert(0, r'%CD%'); from htfa.jobs.uae_data.update_data import main; sys.argv[0] = 'update_data.py'; raise SystemExit(main())" --source baker_hughes,oil,cbuae,gfs,dubai_customs_air,comtrade_vehicles,scad,uaewps,salik,dot_t100
 if errorlevel 1 goto :failed
 
-echo [2/5] update_data.py --source cloudflare_radar,comtrade,ded,dld,emirates_post,employment,eurostat_air,foreign_labour,pmi,portwatch,rta,steel,tdra --skip-download
-"runtime\python.exe" -B -c "import sys; sys.path.insert(0, r'%CD%'); from htfa.jobs.uae_data.update_data import main; sys.argv[0] = 'update_data.py'; raise SystemExit(main())" --source cloudflare_radar,comtrade,ded,dld,emirates_post,employment,eurostat_air,foreign_labour,pmi,portwatch,rta,steel,tdra --skip-download
+echo [2/5] update_data.py --source cloudflare_radar,comtrade,ded,dld,emirates_post,employment,eurostat_air,foreign_labour,pmi,portwatch,rta,steel,tdra (official online refresh)
+"runtime\python.exe" -B -c "import sys; sys.path.insert(0, r'%CD%'); from htfa.jobs.uae_data.update_data import main; sys.argv[0] = 'update_data.py'; raise SystemExit(main())" --source cloudflare_radar,comtrade,ded,dld,emirates_post,employment,eurostat_air,foreign_labour,pmi,portwatch,rta,steel,tdra
 if errorlevel 1 goto :failed
 
 echo [3/5] update_data.py --source wam (discover and extract official WAM articles)

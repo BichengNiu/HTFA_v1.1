@@ -283,7 +283,9 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     download_note = ""
     if not skip_download:
         try:
-            downloaded, existing, download_errors = _download_presentations(force=force)
+            # Refresh the latest discovered presentation even when its URL is
+            # unchanged; investor decks may be corrected after publication.
+            downloaded, existing, download_errors = _download_presentations(force=True)
             download_note = f"官网缓存：新增 {downloaded}，复用 {existing}"
             if download_errors:
                 download_note += f"；下载警告 {len(download_errors)} 条（{download_errors[0]}）"

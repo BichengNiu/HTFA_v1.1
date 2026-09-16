@@ -349,7 +349,9 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     download_note = ""
     if not skip_download:
         try:
-            downloaded, existing, download_errors = _download_qer_files(force=force)
+            # QER PDFs can be replaced at the same URL; refresh discovered
+            # files in online mode and keep the local cache on download error.
+            downloaded, existing, download_errors = _download_qer_files(force=True)
             download_note = f"官网缓存：新增 {downloaded}，复用 {existing}"
             if download_errors:
                 download_note += f"；下载警告 {len(download_errors)} 条（{download_errors[0]}）"
@@ -370,12 +372,22 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         if period is not None or tag in EXPECTED:
             parsed[tag] = (period, emp, wage, note)
 
-    validated = validate_observations(parsed)
+    valid: dict[str, tuple[str, str, float | None, float | None, str]] = {}
+    validation_errors: list[str] = []
+    for tag, item in sorted(parsed.items()):
+        try:
+            checked = validate_observations({tag: item})
+        except ValueError as exc:
+            validation_errors.append(str(exc))
+            continue
+        valid[tag] = checked[0]
     # QER 的发布日期是季度，但 WPS 文字可能仍只覆盖上一季度末月份（例如
     # June 2026 QER 的正文为“As of March 2026”）。同一观察月保留最新报告，
     # 避免两个报告标签写入同一 (period, indicator) 主键。
-    by_period = {item[1]: item for item in validated}
-    verified = [by_period[key] for key in sorted(by_period)]
+    verified = [valid[tag] for tag in sorted(valid)]
+    if not verified:
+        detail = validation_errors[0] if validation_errors else "no valid QER observations"
+        raise ValueError(f"UAEWPS validation rejected all observations: {detail}")
     rows = _long_rows(verified)
     con.begin()
     try:
@@ -395,6 +407,11 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         note += f"；{download_note}"
     if errors:
         note += f"；源警告 {len(errors)} 条，首条：{errors[0]}"
+    if validation_errors:
+        note += (
+            f"；解析校验警告 {len(validation_errors)} 条，首条："
+            f"{validation_errors[0]}"
+        )
     return {"status": "ok", "rows": len(rows), "note": note}
 
 

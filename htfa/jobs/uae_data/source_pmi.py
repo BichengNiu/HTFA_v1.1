@@ -650,14 +650,23 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
       （与旧 process_uae_pmi.py 行为一致）。
     """
 
+    download_note = ""
     if skip_download:
         if not CHART_PATH.is_file() or not METADATA_PATH.is_file():
             raise FileNotFoundError(
                 f"--skip-download 但缺少缓存文件: "
                 f"{CHART_PATH.name if not CHART_PATH.is_file() else METADATA_PATH.name}"
             )
-    elif force or not (CHART_PATH.is_file() and METADATA_PATH.is_file()):
-        download(RAW_DIR)
+    else:
+        try:
+            # The chart URL is stable while the payload changes when a new
+            # S&P Global observation is published. Refresh it online every run.
+            download(RAW_DIR)
+            download_note = "已在线刷新图表与元数据"
+        except Exception as exc:  # noqa: BLE001 - valid cache remains usable
+            if not (CHART_PATH.is_file() and METADATA_PATH.is_file()):
+                raise
+            download_note = f"官网刷新失败，沿用有效缓存：{exc}"
 
     metadata = json.loads(METADATA_PATH.read_text(encoding="utf-8"))
     observations = load_observations(CHART_PATH)
@@ -684,6 +693,8 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         f"{len(rows)} 个月（{observations[0].period} 至 {observations[-1].period}），"
         f"最新 {observations[-1].value:.1f}"
     )
+    if download_note:
+        note += f"；{download_note}"
     return {"status": "ok", "rows": len(rows), "note": note}
 
 

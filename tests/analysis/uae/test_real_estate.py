@@ -211,6 +211,18 @@ def test_build_sales_figure_renders_each_property_segment() -> None:
     data = load_real_estate_data(_workbook_bytes(), file_name="test.xlsx")
     last_month = data.values.index.max().to_period("M")
 
+    assert {
+        "现房住宅": renderer.DEFAULT_TITLES["现房住宅"],
+        "期房住宅": renderer.DEFAULT_TITLES["期房住宅"],
+        "现房商业": renderer.DEFAULT_TITLES["现房商业"],
+        "期房商业": renderer.DEFAULT_TITLES["期房商业"],
+    } == {
+        "现房住宅": "迪拜住宅现房",
+        "期房住宅": "迪拜住宅期房",
+        "现房商业": "迪拜商业地产现房",
+        "期房商业": "迪拜商业地产期房",
+    }
+
     assert data.raw_values is not None
     for market, (count_col, amount_col) in PROPERTY_CONFIG.items():
         figure = build_sales_figure(
@@ -308,8 +320,8 @@ def test_section_renders_four_cross_segment_charts_and_explanation(
     assert st_obj.columns.call_count == 3
     assert markets == [
         (left, "现房住宅"),
-        (right, "现房商业"),
-        (second_row[0], "期房住宅"),
+        (right, "期房住宅"),
+        (second_row[0], "现房商业"),
         (second_row[1], "期房商业"),
     ]
     assert all(

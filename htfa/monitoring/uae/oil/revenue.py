@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pandas as pd
 
+from htfa.monitoring.uae.periods import through_last_complete_month
+
 
 REVENUE_PRICE_BENCHMARK = "布伦特现货"
 
@@ -39,8 +41,13 @@ def estimate_monthly_oil_revenue(
     if clean_production.empty:
         raise ValueError("原油产量没有有效观测，无法估算石油收入")
 
-    price_periods = prices.index.to_period("M")
-    monthly_price = prices[REVENUE_PRICE_BENCHMARK].groupby(price_periods).mean()
+    benchmark_prices = through_last_complete_month(
+        prices[REVENUE_PRICE_BENCHMARK].dropna().sort_index()
+    )
+    if benchmark_prices.empty:
+        raise ValueError("Brent 日度价格没有完整自然月，无法估算石油收入")
+    price_periods = benchmark_prices.index.to_period("M")
+    monthly_price = benchmark_prices.groupby(price_periods).mean()
     production_periods = clean_production.index.to_period("M")
     monthly_production = clean_production.groupby(production_periods).mean()
 

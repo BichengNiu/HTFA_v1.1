@@ -402,13 +402,22 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     ]
     cached = all((RAW_DIR / filename).is_file() for filename in needed) \
         and METADATA_PATH.is_file()
+    download_note = ""
     if skip_download:
         if not cached:
             raise FileNotFoundError(
                 f"--skip-download 但缺少缓存文件: {RAW_DIR}（缺失 .json）"
             )
-    elif force or not cached:
-        download(RAW_DIR)
+    else:
+        try:
+            # The dissemination API URL is stable while observations are
+            # revised/extended in place. Do not treat the JSON as immutable.
+            download(RAW_DIR)
+            download_note = "已在线刷新 Eurostat API 数据"
+        except Exception as exc:  # noqa: BLE001 - valid cache remains usable
+            if not cached:
+                raise
+            download_note = f"Eurostat 在线刷新失败，沿用有效缓存：{exc}"
 
     rows: list[dict[str, Any]] = []
     coverage: dict[str, Any] = {}
@@ -505,6 +514,8 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
             f"({member_cov['start_period'] or '-'} 至 {member_cov['end_period'] or '-'})"
         )
     note = "；".join(parts) + f"；成员国求和=聚合校验通过({cross_check['common_months']} 月)"
+    if download_note:
+        note += f"；{download_note}"
     return {"status": "ok", "rows": len(rows), "note": note}
 
 

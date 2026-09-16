@@ -29,6 +29,8 @@ from pathlib import Path
 from typing import Iterator
 from urllib.parse import urlparse
 
+from htfa.data.temporal import last_complete_month_end
+
 from .paths import DATA_DIR, SCRIPTS_DIR
 
 RAW_DIR = DATA_DIR / "raw" / "wam"
@@ -521,7 +523,16 @@ def load_effective_daily_observations() -> list[dict]:
 
 
 def build_monthly_observations(daily: list[dict]) -> list[MonthlyObservation]:
-    """Aggregate daily observations and normalize monthly pressure to 0-100."""
+    """聚合日度观测；未完整的最新自然月不进入月度结果。"""
+
+    if not daily:
+        return []
+    cutoff = last_complete_month_end(max(row["date"] for row in daily))
+    if cutoff is None:
+        return []
+    daily = [row for row in daily if row["date"] <= cutoff]
+    if not daily:
+        return []
 
     grouped: dict[tuple[int, int], dict[str, float | int]] = {}
     for row in daily:
@@ -555,6 +566,12 @@ def build_monthly_observations(daily: list[dict]) -> list[MonthlyObservation]:
             strike_intensity_index=0.0,
         )
         for (year, month), item in sorted(grouped.items())
+    ]
+    monthly = [
+        row
+        for row in monthly
+        if row.observation_days
+        >= calendar.monthrange(row.period.year, row.period.month)[1]
     ]
     raw_values = [row.strike_intensity_log for row in monthly]
     minimum = min(raw_values)
@@ -604,8 +621,11 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     fetch_note = ""
     base_daily = load_daily_observations()
     if not skip_download:
-        archive_counts = fetch_wam.refresh_source_manifest(force=force)
-        auto_counts = fetch_wam.refresh_auto_articles(force=force)
+        # WAM source pages and article bodies may be revised behind stable
+        # URLs.  Online runs must re-fetch them; ``--skip-download`` remains
+        # the explicit offline/cache-only mode.
+        archive_counts = fetch_wam.refresh_source_manifest(force=True)
+        auto_counts = fetch_wam.refresh_auto_articles(force=True)
         if auto_counts["failed"]:
             raise RuntimeError(
                 f"WAM 自动文章抓取/解析失败 {auto_counts['failed']} 篇；"
@@ -704,6 +724,8 @@ def merge(workbook_path: Path) -> dict:
             index,
             attack_days,
         ) in rows
+        if int(observation_days)
+        >= calendar.monthrange(period.year, period.month)[1]
     ]
     if not observations:
         raise ValueError("wam_military_strike_monthly is empty; nothing to merge")

@@ -516,7 +516,7 @@ def test_oil_figures_accept_ts_ndarray_axes(monkeypatch) -> None:
 
 
 def test_monthly_revenue_uses_only_brent_spot_and_calendar_days() -> None:
-    dates = pd.to_datetime(["2024-01-15", "2024-02-15"])
+    dates = pd.to_datetime(["2024-01-31", "2024-02-29"])
     prices = pd.DataFrame(
         {
             "穆尔班现货": [None, 110.0],

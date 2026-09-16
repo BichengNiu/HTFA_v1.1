@@ -331,7 +331,19 @@ def _transaction(con) -> Iterator[None]:
 
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     """下载 -> 解析 -> 整表替换入 tdra_telecom_monthly。"""
-    _download_all(force=force, skip_download=skip_download)
+    download_note = ""
+    if skip_download:
+        _download_all(force=False, skip_download=True)
+    else:
+        try:
+            # TDRA keeps stable workbook names while updating the latest
+            # observations in place; refresh all discovered files online.
+            _download_all(force=True, skip_download=False)
+            download_note = "已在线刷新 TDRA 工作簿"
+        except Exception as exc:  # noqa: BLE001 - valid local files remain usable
+            if not all((RAW_DIR / f"{slug}.xlsx").is_file() for slug in ITEMS):
+                raise
+            download_note = f"TDRA 在线刷新失败，沿用有效缓存：{exc}"
     rows = _read_rows()
     if not rows:
         raise ValueError("tdra_telecom_monthly 输入为空，拒绝入库")
@@ -350,6 +362,8 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         f"（{periods[0].isoformat()} 至 {periods[-1].isoformat()}），"
         f"共 {len(rows)} 行"
     )
+    if download_note:
+        note += f"；{download_note}"
     return {"status": "ok", "rows": len(rows), "note": note}
 
 

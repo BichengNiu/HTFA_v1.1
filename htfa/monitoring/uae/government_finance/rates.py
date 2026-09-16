@@ -22,6 +22,7 @@ from htfa.monitoring.uae.plot_helpers import (
     normalize_ts_axis,
     source_note,
 )
+from htfa.monitoring.uae.periods import through_last_complete_month
 from htfa.data.economic_workbook import (
     EconomicWorkbookReader,
     SheetSeriesMetadata,
@@ -88,6 +89,7 @@ def load_rates_data(
             allowed_frequencies=ALLOWED_FREQUENCIES,
             expected_unit="%",
         )
+    frame = through_last_complete_month(frame)
     monthly = frame.resample("ME").mean()
     monthly = monthly.dropna(how="all").sort_index()
     if monthly.empty:
@@ -108,7 +110,7 @@ def build_rates_figure(
 ) -> Figure:
     """绘制阿联酋与美国隔夜/1年期利率的月度均值四线图（单位 %），内部取最近 36 个月。"""
 
-    selected = values.dropna(how="all").sort_index()
+    selected = through_last_complete_month(values).dropna(how="all").sort_index()
     if selected.empty:
         raise ValueError(f"{title}没有可绘制的有效数据")
 

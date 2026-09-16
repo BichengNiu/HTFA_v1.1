@@ -3,13 +3,35 @@
 import pandas as pd
 import pytest
 
+from htfa.data.temporal import last_complete_month_end
 from htfa.monitoring.uae.periods import (
     anchor_last_month,
     common_latest_month,
     latest_complete_month,
+    through_last_complete_month,
     through_month,
     within_month_window,
 )
+
+
+def test_partial_latest_daily_month_rolls_back_to_previous_month() -> None:
+    values = pd.DataFrame(
+        {"value": [10.0, 20.0]},
+        index=pd.to_datetime(["2026-07-31", "2026-08-12"]),
+    )
+
+    assert last_complete_month_end(
+        "2026-08-12",
+        today="2026-09-16",
+    ) == pd.Timestamp("2026-07-31").date()
+    assert latest_complete_month(
+        values,
+        today=pd.Timestamp("2026-09-16"),
+    ) == pd.Timestamp("2026-07-31")
+    assert through_last_complete_month(
+        values,
+        today=pd.Timestamp("2026-09-16"),
+    ).index.tolist() == [pd.Timestamp("2026-07-31")]
 
 
 def test_latest_complete_month_requires_all_columns() -> None:

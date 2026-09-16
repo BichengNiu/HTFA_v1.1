@@ -24,9 +24,11 @@ import json
 import os
 import sys
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Iterator
+
+from htfa.data.temporal import last_complete_month_end
 
 from .paths import DATA_DIR, SCRIPTS_DIR
 
@@ -448,6 +450,22 @@ def merge(workbook_path: Path) -> dict:
         ).fetchall()
     finally:
         con.close()
+
+    daily_cutoff = last_complete_month_end(
+        max((row[0] for row in daily_rows), default=None)
+    )
+    weekly_cutoff = last_complete_month_end(
+        max((row[0] for row in weekly_rows), default=None)
+    )
+    if daily_cutoff is not None:
+        daily_rows = [row for row in daily_rows if row[0] <= daily_cutoff]
+    if weekly_cutoff is not None:
+        # Radar 的 1w 时间戳是周一周初；只有整周落在完整自然月内才展示。
+        weekly_rows = [
+            row
+            for row in weekly_rows
+            if row[0] + timedelta(days=6) <= weekly_cutoff
+        ]
 
     class _Obs:
         def __init__(self, period, values):

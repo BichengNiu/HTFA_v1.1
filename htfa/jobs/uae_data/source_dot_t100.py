@@ -387,7 +387,9 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     download_note = ""
     if not skip_download:
         try:
-            download_note = _download_recent_years(force=force)
+            # TranStats keeps the same yearly ZIP name while revising recent
+            # months. The online path always refreshes the recent-year window.
+            download_note = _download_recent_years(force=True)
         except Exception as exc:  # noqa: BLE001 - a valid local cache remains usable
             if not any(CSV_DIR.glob("uae_*.zip")):
                 raise

@@ -321,7 +321,9 @@ def _download_latest_worldwide_report(*, force: bool) -> str:
     status = download_file(
         url,
         target,
-        force=force,
+        # The landing page discovers the current report, but the newest
+        # report file can also be revised in place.
+        force=True,
         min_bytes=10_000,
         referer=BAKER_WORLDWIDE_URL,
         user_agent=BAKER_USER_AGENT,

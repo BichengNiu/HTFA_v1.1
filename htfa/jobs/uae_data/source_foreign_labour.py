@@ -707,7 +707,9 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     """下载（按需）→ 解析 → 事务内入库 foreign_labour_monthly。"""
 
     if not skip_download:
-        download_all(refresh=force)
+        # Monthly files and API responses may be revised behind stable names;
+        # online mode must refresh them, while skip_download stays offline.
+        download_all(refresh=True)
     rows = build_rows()
     long_rows = _rows_to_long(rows)
     with _transaction(con):
@@ -887,13 +889,16 @@ def validate(rows: list[dict[str, Any]], workbook_path: Path | None) -> None:
             raise RuntimeError(f"Proxy emitted with partial coverage: {row}")
     if workbook_path is not None:
         workbook = load_workbook(workbook_path, read_only=True, data_only=True)
-        if SHEET_NAME not in workbook.sheetnames:
-            raise RuntimeError(f"Missing sheet {SHEET_NAME}")
-        worksheet = workbook[SHEET_NAME]
-        if worksheet.max_row != len(rows) + 6 or worksheet.max_column != 8:
-            raise RuntimeError(
-                f"Unexpected sheet shape: {worksheet.max_row}x{worksheet.max_column}"
-            )
+        try:
+            if SHEET_NAME not in workbook.sheetnames:
+                raise RuntimeError(f"Missing sheet {SHEET_NAME}")
+            worksheet = workbook[SHEET_NAME]
+            if worksheet.max_row != len(rows) + 6 or worksheet.max_column != 8:
+                raise RuntimeError(
+                    f"Unexpected sheet shape: {worksheet.max_row}x{worksheet.max_column}"
+                )
+        finally:
+            workbook.close()
 
 
 def merge(workbook_path: Path) -> dict:
