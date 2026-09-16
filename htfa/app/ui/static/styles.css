@@ -570,6 +570,13 @@ div[data-testid="stFullScreenFrame"] div[data-testid="stImageContainer"] img {
     @page {
         size: A4 portrait;
         margin: 10mm 10mm 15mm;
+
+        @bottom-center {
+            content: "第 " counter(page) " 页";
+            color: #64748b;
+            font-size: 0.72rem;
+            line-height: 1;
+        }
     }
 
     html,
@@ -670,26 +677,6 @@ div[data-testid="stFullScreenFrame"] div[data-testid="stImageContainer"] img {
     .uae-print-report-period {
         padding-left: 0.65rem !important;
         text-align: right !important;
-    }
-
-    /* 固定定位元素在分页打印时会重复出现在每一页；用页面计数器让页码
-       居中显示，避免依赖浏览器默认的右下角页码。 */
-    .uae-print-page-number {
-        display: block !important;
-        position: fixed !important;
-        left: 0 !important;
-        right: 0 !important;
-        bottom: 3mm !important;
-        z-index: 1000 !important;
-        color: #64748b !important;
-        font-size: 0.72rem !important;
-        line-height: 1 !important;
-        text-align: center !important;
-        pointer-events: none !important;
-    }
-
-    .uae-print-page-number::after {
-        content: "第 " counter(page) " 页";
     }
 
     /* 隐藏三个 Tab 的文字、按钮和重复分隔线。 */
