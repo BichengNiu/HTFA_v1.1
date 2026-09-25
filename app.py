@@ -12,13 +12,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-from htfa.app.ui.components.content_router import render_main_content
-from htfa.app.ui.components.sidebar import render_complete_sidebar
 from htfa.app.ui.style_loader import inject_cached_styles
-from htfa.exploration.ui.standalone_data_overview import (
-    is_standalone_data_overview_request,
-    render_standalone_data_overview,
-)
 from htfa.app.navigation.config import MODULE_CONFIG as NAV_MODULE_CONFIG
 
 
@@ -37,9 +31,16 @@ def main() -> None:
 
         render_standalone_sarimax_model()
         return
-    if is_standalone_data_overview_request():
+    if st.query_params.get("view") == "univariate-overview":
+        from htfa.exploration.ui.standalone_data_overview import (
+            render_standalone_data_overview,
+        )
+
         render_standalone_data_overview()
         return
+
+    from htfa.app.ui.components.content_router import render_main_content
+    from htfa.app.ui.components.sidebar import render_complete_sidebar
 
     render_complete_sidebar(MODULE_CONFIG, key_prefix="sidebar")
     render_main_content()

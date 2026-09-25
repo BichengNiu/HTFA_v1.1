@@ -54,3 +54,16 @@ def test_root_mouse_launcher_delegates_to_unified_control_script():
     assert 'if /I "%~1"=="setup-runtime" goto :setup_runtime' in source
     assert '"%CD%\\htfa.ps1" -Command Start' in source
     assert '"%CD%\\htfa.ps1" -Command Stop' in source
+
+
+def test_normal_start_keeps_python_bytecode_cache():
+    source = CONTROL_SCRIPT.read_text(encoding="utf-8")
+
+    start_block = source[source.index('"Start" {') :]
+    backend_block = source[
+        source.index("$backendArguments = @(") : source.index(
+            'Write-Host "[INFO] Starting HTFA backend',
+        )
+    ]
+    assert "Clear-PythonCaches" not in start_block
+    assert '"-B",' not in backend_block

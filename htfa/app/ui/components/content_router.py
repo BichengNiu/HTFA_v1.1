@@ -8,10 +8,6 @@ from collections.abc import Callable
 import streamlit as st
 
 from htfa.app import get_current_main_module, get_current_sub_module
-from htfa.exploration.ui.bivariate_page import render_bivariate_analysis_page
-from htfa.exploration.ui.pages import render_data_exploration_welcome_page
-from htfa.exploration.ui.univariate_page import render_univariate_analysis_page
-
 logger = logging.getLogger(__name__)
 
 PREVIEW_MODULE_MAPPING = {
@@ -33,6 +29,10 @@ def render_main_content() -> None:
         navigation_level = detect_navigation_level(main_module, sub_module)
         if navigation_level == "MAIN_MODULE_ONLY":
             if main_module == "数据探索":
+                from htfa.exploration.ui.pages import (
+                    render_data_exploration_welcome_page,
+                )
+
                 render_data_exploration_welcome_page(st)
             else:
                 render_module_selection_guide(main_module)
@@ -153,8 +153,16 @@ def _render_model_submodule_tabs(
 def render_data_exploration_content(sub_module: str | None) -> None:
     """渲染数据探索页面。"""
     if sub_module == "单变量分析":
+        from htfa.exploration.ui.univariate_page import (
+            render_univariate_analysis_page,
+        )
+
         render_univariate_analysis_page()
     elif sub_module == "多变量分析":
+        from htfa.exploration.ui.bivariate_page import (
+            render_bivariate_analysis_page,
+        )
+
         render_bivariate_analysis_page()
     else:
         st.warning(f"未知的数据探索子模块: {sub_module}")

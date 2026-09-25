@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from typing import Any
 
 import pandas as pd
+import streamlit as st
 
 from htfa.monitoring.uae.downloads import render_chart_download
 from htfa.monitoring.uae.transport.charts import (
@@ -57,6 +58,16 @@ TRANSPORT_EXPLANATION = """
 - **美国—阿联酋航空运输**：由美国交通部统计局 BTS T-100 国际航段发布；原始数据为承运商、机场对、机型及舱等层级的月度航段记录，按月份和方向汇总为双边旅客人次和货运磅数，
   反映两国航空客运与货运联系规模。
 """.strip()
+
+
+@st.cache_data(show_spinner=False, max_entries=4)
+def _load_transport_cached(
+    content: bytes,
+    file_name: str,
+) -> TransportData:
+    """按上传文件缓存交通物流解析结果。"""
+
+    return load_transport_data(content, file_name=file_name)
 
 
 def _render_chart(
@@ -221,7 +232,7 @@ def render_transport_section(
     st_obj.subheader("交通物流")
     try:
         with st_obj.spinner("正在读取交通物流数据..."):
-            data = load_transport_data(content, file_name=file_name)
+            data = _load_transport_cached(content, file_name)
         last_month = anchor_last_month(data.values)
         try:
             _render_transport_metrics(st_obj, data, last_month)

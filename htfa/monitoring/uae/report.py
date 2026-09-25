@@ -64,9 +64,17 @@ def render_high_frequency_topics(
     """独立渲染高频主题；单主题失败不阻断其他主题。"""
 
     results: dict[str, TopicResult] = {}
-    for topic, label, renderer in TOPIC_RENDERERS:
+    topic_tabs = st_obj.tabs(
+        [label for _, label, _ in TOPIC_RENDERERS],
+        key="analysis.uae.high_frequency.active_topic",
+        on_change="rerun",
+    )
+    for tab, (topic, label, renderer) in zip(topic_tabs, TOPIC_RENDERERS):
+        if not tab.open:
+            continue
         try:
-            rendered = renderer(st_obj, payload)
+            with tab:
+                rendered = renderer(st_obj, payload)
         except Exception as exc:  # noqa: BLE001 - 主题隔离边界
             message = f"{label}主题渲染失败：{exc}"
             st_obj.error(message)

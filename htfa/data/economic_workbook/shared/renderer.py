@@ -142,23 +142,29 @@ class EconomicWorkbookRenderer:
         # 检查是否有数据
         has_data = self._has_any_data()
 
-        # 始终创建Tab页（无论是否有数据）
-        tab_objects = st.tabs(self.tab_names)
+        # 跟踪当前标签，避免隐藏频率页仍计算摘要、生成下载文件和绘图。
+        tab_objects = st.tabs(
+            self.tab_names,
+            key=f"{self.state_namespace}.active_tab",
+            on_change="rerun",
+        )
 
         # 数据概览Tab
-        with tab_objects[0]:
-            if has_data:
-                self._render_overview_tab()
-            else:
-                st.info("请在左侧上传数据文件")
+        if tab_objects[0].open:
+            with tab_objects[0]:
+                if has_data:
+                    self._render_overview_tab()
+                else:
+                    st.info("请在左侧上传数据文件")
 
         # 时间序列Tab
         for idx, (_, freq) in enumerate(self.frequency_tabs.items(), start=1):
-            with tab_objects[idx]:
-                if has_data:
-                    self._render_time_series_tab(freq)
-                else:
-                    st.info("请在左侧上传数据文件")
+            if tab_objects[idx].open:
+                with tab_objects[idx]:
+                    if has_data:
+                        self._render_time_series_tab(freq)
+                    else:
+                        st.info("请在左侧上传数据文件")
 
     def _should_reprocess_file(self, uploaded_file) -> bool:
         """判断是否需要重新处理数据

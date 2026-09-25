@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +54,18 @@ _REPORT_WORKBOOK_READER = EconomicWorkbookReader(
     "uae_monitoring_report",
     "monitoring.uae.report",
 )
+
+
+@st.cache_data(show_spinner=False, max_entries=4)
+def _build_monitoring_dashboard_cached(
+    content: bytes,
+    file_name: str,
+):
+    """按文件内容缓存监测计算，避免交互重跑时重新解析整个工作簿。"""
+
+    file_input = BytesIO(content)
+    file_input.name = file_name
+    return build_monitoring_dashboard(file_input)
 
 
 def _latest_high_frequency_month(
@@ -416,7 +429,7 @@ def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
 
     try:
         with st_obj.spinner("正在构建宏观监测页面..."):
-            dashboard = build_monitoring_dashboard(file_input)
+            dashboard = _build_monitoring_dashboard_cached(*payload)
     except Exception as exc:  # noqa: BLE001 - 页面边界需展示工作簿解析错误
         for key in list(st.session_state):
             if str(key).startswith("analysis.uae."):
@@ -428,8 +441,15 @@ def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
             "source": source_name,
         }
 
-    tab_objects = st_obj.tabs([label for label, _ in TAB_CONFIG])
+    topic_results: dict[str, Any] = {}
+    tab_objects = st_obj.tabs(
+        [label for label, _ in TAB_CONFIG],
+        key="analysis.uae.active_tab",
+        on_change="rerun",
+    )
     for tab, (_, view_key) in zip(tab_objects, TAB_CONFIG):
+        if not tab.open:
+            continue
         with tab:
             if view_key == "growth_overview":
                 _render_growth_tab(

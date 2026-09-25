@@ -368,7 +368,6 @@ function Invoke-Run {
     $watcher = $null
     try {
         $backendArguments = @(
-            "-B",
             "scripts\htfa.py",
             "start"
         ) + @($StreamlitArguments) + @(
@@ -493,7 +492,6 @@ try {
             Write-Host ""
             Invoke-RepositoryUpdate
             Ensure-Runtime
-            Clear-PythonCaches
             if ([string]::IsNullOrWhiteSpace($env:HTFA_DEBUG_MODE)) {
                 $env:HTFA_DEBUG_MODE = "true"
             }

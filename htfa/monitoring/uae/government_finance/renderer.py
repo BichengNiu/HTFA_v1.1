@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import pandas as pd
+import streamlit as st
 
 from htfa.monitoring.uae.downloads import render_chart_download
 from htfa.monitoring.uae.foreign_labor import (
@@ -125,6 +126,7 @@ LABOR_EMPLOYMENT_EXPLANATION = """
 """.strip()
 
 
+@st.cache_data(show_spinner=False, max_entries=4)
 def _load_government_finance_cached(
     content: bytes,
     file_name: str,
@@ -132,6 +134,7 @@ def _load_government_finance_cached(
     return load_government_finance_data(content, file_name=file_name)
 
 
+@st.cache_data(show_spinner=False, max_entries=4)
 def _load_foreign_labor_cached(
     content: bytes,
     file_name: str,
@@ -139,30 +142,37 @@ def _load_foreign_labor_cached(
     return load_foreign_labor_data(content, file_name=file_name)
 
 
+@st.cache_data(show_spinner=False, max_entries=4)
 def _load_rates_cached(content: bytes, file_name: str) -> RatesData:
     return load_rates_data(content, file_name=file_name)
 
 
+@st.cache_data(show_spinner=False, max_entries=4)
 def _load_foreign_inflow_cached(content: bytes, file_name: str) -> CbuaeSeriesData:
     return load_foreign_inflow_data(content, file_name=file_name)
 
 
+@st.cache_data(show_spinner=False, max_entries=4)
 def _load_private_credit_cached(content: bytes, file_name: str) -> CbuaeSeriesData:
     return load_private_credit_data(content, file_name=file_name)
 
 
+@st.cache_data(show_spinner=False, max_entries=4)
 def _load_ded_cached(content: bytes, file_name: str) -> DedData:
     return load_ded_data(content, file_name=file_name)
 
 
+@st.cache_data(show_spinner=False, max_entries=4)
 def _load_pmi_cached(content: bytes, file_name: str) -> PmiData:
     return load_pmi_data(content, file_name=file_name)
 
 
+@st.cache_data(show_spinner=False, max_entries=4)
 def _load_payment_cached(content: bytes, file_name: str) -> PaymentData:
     return load_payment_data(content, file_name=file_name)
 
 
+@st.cache_data(show_spinner=False, max_entries=4)
 def _load_search_index_cached(content: bytes, file_name: str) -> pd.DataFrame:
     return load_search_index_data(content, file_name=file_name)
 

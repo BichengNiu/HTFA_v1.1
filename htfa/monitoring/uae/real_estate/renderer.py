@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import pandas as pd
+import streamlit as st
 
 from htfa.monitoring.uae.downloads import render_chart_download
 from htfa.monitoring.uae.real_estate.charts import (
@@ -42,6 +43,7 @@ REAL_ESTATE_EXPLANATION = """
 """.strip()
 
 
+@st.cache_data(show_spinner=False, max_entries=4)
 def _load_real_estate_cached(
     content: bytes,
     file_name: str,

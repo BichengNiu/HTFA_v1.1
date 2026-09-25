@@ -411,9 +411,29 @@ def display_time_series_tab(
         namespace=state_namespace,
     )
 
+    # 图表是页面最重的部分。摘要始终保留完整指标，首屏只绘制有限数量，
+    # 用户可显式选择全部图表以保持原有查看能力。
+    max_initial_charts = min(12, len(filtered_indicators))
+    show_all_charts = st_module.checkbox(
+        "显示全部指标图表",
+        value=False,
+        key=f"{state_namespace}.{config.english_name}.show_all_charts",
+        help="全部图表会显著增加页面加载时间。",
+    )
+    chart_indicators = (
+        filtered_indicators
+        if show_all_charts
+        else filtered_indicators[:max_initial_charts]
+    )
+    if len(chart_indicators) < len(filtered_indicators):
+        st_module.caption(
+            f"当前展示前 {len(chart_indicators)} 项，共 {len(filtered_indicators)} 项；"
+            "如需全部图表，请勾选上方选项。"
+        )
+
     # 按行业和类型分组指标
     grouped = _group_indicators_by_industry_and_type(
-        filtered_indicators,
+        chart_indicators,
         indicator_industry_map,
         indicator_type_map
     )

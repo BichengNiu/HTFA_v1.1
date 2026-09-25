@@ -74,6 +74,7 @@ WAR_PRESSURE_EXPLANATION = """
 """.strip()
 
 
+@st.cache_data(show_spinner=False, max_entries=4)
 def _load_oil_market_cached(content: bytes, file_name: str) -> OilMarketData:
     return load_oil_market_data(content, file_name=file_name)
 
