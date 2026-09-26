@@ -1,6 +1,6 @@
 """阿联酋交通物流监测（海运与航空货运）。
 
-数据来自工作簿中的以下 sheet（先入 duckdb 再写 Excel 的聚合表）：
+页面运行时只读 DuckDB；以下聚合表由数据更新任务维护：
 - 「月度_PortWatch」：
 - UAE 港口进口/出口总量及油轮进口/出口量（吨）；
 - 霍尔木兹过境总次数及油轮过境次数（艘次）。
@@ -240,7 +240,7 @@ def load_transport_data(
 
 
 def load_transport_from_duckdb() -> TransportData:
-    """从 PortWatch 原始日表聚合交通物流核心序列。"""
+    """从 DuckDB 读取 PortWatch 港口与航空货运月度指标。"""
 
     port = read_query(
         """
@@ -280,9 +280,65 @@ def load_transport_from_duckdb() -> TransportData:
         )
         for name in values.columns
     }
-    # 扩展航空序列仍由各自的 DuckDB 月表提供；核心港口图不依赖它们。
     monthly_values = values.copy()
     load_errors: dict[str, str] = {}
+
+    def _read_air_targets(
+        *,
+        table: str,
+        targets: tuple[tuple[str, str], ...],
+        units: dict[str, str],
+        error_key: str,
+        source: str,
+    ) -> pd.DataFrame:
+        try:
+            frame = read_long_indicators(
+                table=table,
+                period_column="period",
+                indicator_column="indicator",
+                value_column="value",
+                targets=dict(targets),
+            )
+        except Exception as exc:  # noqa: BLE001 - 可选航空表独立失败
+            load_errors[error_key] = f"DuckDB 表 {table} 读取失败：{exc}"
+            return pd.DataFrame()
+        metadata.update(
+            {
+                name: SheetSeriesMetadata(
+                    name, indicator, "月度", units[name], source, "DuckDB", table
+                )
+                for name, indicator in targets
+            }
+        )
+        return frame
+
+    customs_awbs = _read_air_targets(
+        table="dubai_airway_bill_monthly",
+        targets=DUBAI_CUSTOMS_AIR_AWB_TARGETS,
+        units={DUBAI_AIR_IMPORT_AWBS: "张", DUBAI_AIR_EXPORT_AWBS: "张"},
+        error_key=DUBAI_CUSTOMS_AIR_AWB_ERROR_KEY,
+        source="Dubai Customs",
+    )
+    customs_totals = _read_air_targets(
+        table="dubai_airway_bill_monthly",
+        targets=DUBAI_CUSTOMS_AIR_TOTAL_TARGETS,
+        units={DUBAI_AIR_IMPORT_TOTAL: "吨", DUBAI_AIR_EXPORT_TOTAL: "吨"},
+        error_key=DUBAI_CUSTOMS_AIR_TOTAL_ERROR_KEY,
+        source="Dubai Customs",
+    )
+    dot_targets = DOTT100_PASSENGER_TARGETS + DOTT100_FREIGHT_TARGETS
+    dot_values = _read_air_targets(
+        table="dot_t100_monthly",
+        targets=dot_targets,
+        units={US_UAE_AIR_PASSENGERS: "人次", US_UAE_AIR_FREIGHT: "磅"},
+        error_key=DOTT100_ERROR_KEY,
+        source="US DOT BTS T-100",
+    )
+    monthly_values = pd.concat(
+        [monthly_values, customs_awbs, customs_totals, dot_values],
+        axis=1,
+        sort=False,
+    ).sort_index()
     return TransportData(
         values=values,
         metadata=metadata,

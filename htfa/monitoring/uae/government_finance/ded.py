@@ -18,6 +18,7 @@ from matplotlib.figure import Figure
 from Ts.TsPlots import plot_series
 
 from htfa.monitoring.uae.periods import within_month_window
+from htfa.monitoring.uae.duckdb_reader import read_long_indicators
 from htfa.monitoring.uae.plot_helpers import (
     WAR_START_DATE,
     annotate_war,
@@ -81,6 +82,57 @@ def load_ded_data(
         metadata=metadata,
         source_name=source_name,
     )
+
+
+def load_ded_from_duckdb(
+    *,
+    through: pd.Timestamp | pd.Period | str | None = None,
+) -> DedData:
+    """从 ded_monthly 长表读取企业活动与新发执照指标。
+
+    DuckDB 的快照历史含异常的 1906 和未来日期；按财政金融面板最新月份
+    截止，避免异常未来记录进入指标卡和图表。
+    """
+
+    targets = {
+        ENTERPRISES_DISPLAY: "enterprises",
+        LICENCES_DISPLAY: "licences",
+    }
+    values = read_long_indicators(
+        table="ded_monthly",
+        period_column="month",
+        indicator_column="series",
+        value_column="value",
+        targets=targets,
+    )
+    if through is not None:
+        cutoff = pd.Period(through, freq="M")
+        values = values.loc[
+            pd.PeriodIndex(values.index, freq="M") <= cutoff
+        ]
+    if values.empty:
+        raise ValueError("DuckDB 表 ded_monthly 在所选月份前没有有效观测")
+    metadata = {
+        ENTERPRISES_DISPLAY: SheetSeriesMetadata(
+            ENTERPRISES_DISPLAY,
+            ENTERPRISES_INDICATOR,
+            "月度",
+            "家",
+            "Dubai Department of Economy and Tourism",
+            "DuckDB",
+            "ded_monthly",
+        ),
+        LICENCES_DISPLAY: SheetSeriesMetadata(
+            LICENCES_DISPLAY,
+            LICENCES_INDICATOR,
+            "月度",
+            "张",
+            "Dubai Department of Economy and Tourism",
+            "DuckDB",
+            "ded_monthly",
+        ),
+    }
+    return DedData(values=values, metadata=metadata, source_name="uae.duckdb")
 
 
 def _clean_source(value: str) -> str:
@@ -247,4 +299,5 @@ __all__ = [
     "LICENCES_INDICATOR",
     "build_ded_figure",
     "load_ded_data",
+    "load_ded_from_duckdb",
 ]

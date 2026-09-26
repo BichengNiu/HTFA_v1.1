@@ -77,7 +77,7 @@ WAR_PRESSURE_EXPLANATION = """
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
-def _load_oil_market_cached(_database_snapshot: str) -> OilMarketData:
+def _load_oil_market_cached(database_snapshot: str) -> OilMarketData:
     """按数据库快照缓存石油数据，不接受页面上传的 Excel。"""
 
     return load_oil_market_from_duckdb()
@@ -573,11 +573,8 @@ def _render_charts(
         )
 
 
-def render_oil_fiscal_panel(
-    st_obj: Any,
-    payload: tuple[bytes, str],
-) -> dict[str, Any]:
-    """从 DuckDB 读取石油数据并估算收入；载荷仅为兼容旧调用方。"""
+def render_oil_fiscal_panel(st_obj: Any) -> dict[str, Any]:
+    """从 DuckDB 读取石油数据并估算收入。"""
 
     war_pressure_available = False
     try:

@@ -29,13 +29,13 @@ class _TabsHost:
         self.errors.append(message)
 
 
-def test_high_frequency_topics_only_calls_the_open_topic(monkeypatch) -> None:
+def test_high_frequency_topics_render_all_sections_in_order(monkeypatch) -> None:
     from htfa.monitoring.uae import report
 
     called: list[str] = []
 
     def renderer(name):
-        def _render(_st_obj, _payload):
+        def _render(_st_obj):
             called.append(name)
             return {"status": "success"}
 
@@ -52,14 +52,11 @@ def test_high_frequency_topics_only_calls_the_open_topic(monkeypatch) -> None:
     )
     host = _TabsHost(open_index=1)
 
-    result = report.render_high_frequency_topics(host, (b"workbook", "uae.xlsx"))
+    result = report.render_high_frequency_topics(host)
 
-    assert called == ["finance"]
-    assert set(result) == {"finance"}
-    assert host.calls[0][1] == {
-        "key": "analysis.uae.high_frequency.active_topic",
-        "on_change": "rerun",
-    }
+    assert called == ["oil", "finance", "property"]
+    assert set(result) == {"oil", "finance", "property"}
+    assert host.calls == []
 
 
 def test_preview_renderer_only_renders_the_open_tab(monkeypatch) -> None:
@@ -112,7 +109,6 @@ def test_uae_monitoring_only_renders_the_open_top_level_tab(monkeypatch) -> None
     rendered: list[tuple[str, ...]] = []
     monkeypatch.setattr(renderer, "get_shared_dataset_file", lambda: upload)
     monkeypatch.setattr(renderer, "_render_report_header", lambda *_args: None)
-    monkeypatch.setattr(renderer, "_latest_high_frequency_month", lambda *_args: None)
     monkeypatch.setattr(
         renderer,
         "_build_monitoring_dashboard_cached",
@@ -153,3 +149,43 @@ def test_government_finance_loader_is_cached_by_database_snapshot(monkeypatch) -
 
     assert first == second
     assert calls == ["loaded"]
+
+
+def test_high_frequency_tab_never_reads_shared_workbook(monkeypatch) -> None:
+    from htfa.monitoring.uae import renderer
+
+    class _MonitoringHost(_TabsHost):
+        def spinner(self, _label):
+            return nullcontext()
+
+        def container(self, **_kwargs):
+            return nullcontext()
+
+        def info(self, _message: str) -> None:
+            return None
+
+    host = _MonitoringHost(open_index=2)
+    monkeypatch.setattr(
+        renderer,
+        "get_shared_dataset_file",
+        lambda: (_ for _ in ()).throw(AssertionError("shared workbook accessed")),
+    )
+    monkeypatch.setattr(renderer, "_render_report_header", lambda *_args: None)
+    monkeypatch.setattr(
+        renderer,
+        "_source_payload",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("Excel payload read")),
+    )
+    monkeypatch.setattr(
+        renderer,
+        "_build_monitoring_dashboard_cached",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("workbook parsed")),
+    )
+
+    def render_topics(_st_obj):
+        return {"oil": object()}
+
+    monkeypatch.setattr(renderer, "render_high_frequency_topics", render_topics)
+    result = renderer.render_uae_monitoring(host)
+
+    assert result["source"] == "uae.duckdb"

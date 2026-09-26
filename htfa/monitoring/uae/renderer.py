@@ -10,8 +10,6 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from htfa.data.economic_workbook import EconomicWorkbookReader
-from htfa.data.temporal import last_complete_month_end
 from htfa.monitoring.uae.charts import (
     build_growth_and_sector_pull_figure,
     build_industry_breadth_figure,
@@ -38,24 +36,6 @@ TAB_CONFIG = (
 )
 
 
-_HIGH_FREQUENCY_LABELS = frozenset(
-    {
-        "日",
-        "日度",
-        "周",
-        "周度",
-        "旬",
-        "旬度",
-        "月",
-        "月度",
-    }
-)
-_REPORT_WORKBOOK_READER = EconomicWorkbookReader(
-    "uae_monitoring_report",
-    "monitoring.uae.report",
-)
-
-
 @st.cache_data(show_spinner=False, max_entries=4)
 def _build_monitoring_dashboard_cached(
     content: bytes,
@@ -66,78 +46,6 @@ def _build_monitoring_dashboard_cached(
     file_input = BytesIO(content)
     file_input.name = file_name
     return build_monitoring_dashboard(file_input)
-
-
-def _latest_high_frequency_month(
-    payload: tuple[bytes, str],
-    *,
-    today: pd.Timestamp | None = None,
-) -> pd.Period | None:
-    """返回工作簿中最新的高频数据观测月份。"""
-
-    observation_cutoff = (
-        pd.Timestamp.today().normalize()
-        if today is None
-        else pd.Timestamp(today).normalize()
-    )
-    latest_months: list[pd.Period] = []
-    try:
-        content, file_name = payload
-        with _REPORT_WORKBOOK_READER.open_workbook(
-            content,
-            file_name=file_name,
-        ) as (excel_file, _):
-            for sheet_name in excel_file.sheet_names[1:]:
-                raw = _REPORT_WORKBOOK_READER.read_raw_sheet(
-                    excel_file,
-                    sheet_name=sheet_name,
-                )
-                if raw.shape[0] < 7 or raw.shape[1] < 2:
-                    continue
-
-                frequencies = {
-                    str(value).strip()
-                    for value in raw.iloc[2, 1:].tolist()
-                    if pd.notna(value)
-                }
-                if not frequencies & _HIGH_FREQUENCY_LABELS:
-                    continue
-
-                dates = pd.to_datetime(raw.iloc[6:, 0], errors="coerce")
-                values = raw.iloc[6:, 1:].apply(
-                    pd.to_numeric,
-                    errors="coerce",
-                )
-                valid = (
-                    dates.notna()
-                    & dates.le(observation_cutoff)
-                    & values.notna().any(axis=1)
-                )
-                if not valid.any():
-                    continue
-                candidate = pd.Timestamp(dates[valid].max())
-                candidate_month = candidate.to_period("M")
-                if frequencies & {"日", "日度", "周", "周度", "旬", "旬度"}:
-                    cutoff = last_complete_month_end(
-                        candidate.date(),
-                        today=observation_cutoff.date(),
-                    )
-                    if cutoff is None:
-                        continue
-                    complete_month = pd.Timestamp(cutoff).to_period("M")
-                    latest_months.append(complete_month)
-                else:
-                    # 月度源若仍落在当前自然月，也必须等到下月再作为
-                    # 完整月份展示；历史月份的日期可能统一记为月初。
-                    if candidate_month == observation_cutoff.to_period("M"):
-                        candidate_month -= 1
-                    latest_months.append(candidate_month)
-    except Exception:  # noqa: BLE001 - 日期仅用于打印头，不能阻断报告渲染
-        return None
-
-    if not latest_months:
-        return None
-    return max(latest_months)
 
 
 def _render_report_header(
@@ -407,65 +315,58 @@ def _render_growth_tab(
 
 
 def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
-    """渲染阿联酋监测；不写入或生成任何工作簿。"""
+    """渲染原有阿联酋三页布局；高频数据只从 DuckDB 读取。"""
 
-    file_input = get_shared_dataset_file()
-    if file_input is None:
-        _render_report_header(st_obj)
-        message = "宏观概览和行业分析暂未迁移到 DuckDB。"
-        tab_objects = st_obj.tabs(
-            [label for label, _ in TAB_CONFIG],
-            key="analysis.uae.active_tab",
-            on_change="rerun",
-        )
-        topic_results: dict[str, Any] = {}
-        for tab, (_, view_key) in zip(tab_objects, TAB_CONFIG):
-            if not tab.open:
-                continue
-            with tab:
-                if view_key == "oil_fiscal":
-                    with st_obj.container(key="uae-high-frequency-print"):
-                        topic_results = render_high_frequency_topics(
-                            st_obj,
-                            (None, "uae.duckdb"),
-                        )
-                else:
-                    st_obj.info(message)
-        return {
-            "status": "duckdb_only",
-            "message": message,
-            "panel_count": 0,
-            "high_frequency": topic_results,
-        }
-
-    source_name = _source_name(file_input)
-    payload = _source_payload(file_input, source_name)
-    _render_report_header(st_obj, _latest_high_frequency_month(payload))
-
-    try:
-        with st_obj.spinner("正在构建宏观监测页面..."):
-            dashboard = _build_monitoring_dashboard_cached(*payload)
-    except Exception as exc:  # noqa: BLE001 - 页面边界需展示工作簿解析错误
-        for key in list(st.session_state):
-            if str(key).startswith("analysis.uae."):
-                del st.session_state[key]
-        st_obj.error(f"阿联酋监测数据加载失败：{exc}")
-        return {
-            "status": "error",
-            "message": str(exc),
-            "source": source_name,
-        }
-
-    topic_results: dict[str, Any] = {}
+    file_input = None
+    file_input_checked = False
+    _render_report_header(st_obj)
+    message = "宏观概览和行业分析暂未迁移到 DuckDB。"
     tab_objects = st_obj.tabs(
         [label for label, _ in TAB_CONFIG],
         key="analysis.uae.active_tab",
         on_change="rerun",
     )
+
+    dashboard = None
+    dashboard_error: str | None = None
+    source_name = "uae.duckdb"
+    payload: tuple[bytes, str] | None = None
+    topic_results: dict[str, Any] = {}
+
     for tab, (_, view_key) in zip(tab_objects, TAB_CONFIG):
         if not tab.open:
             continue
+
         with tab:
+            if view_key == "oil_fiscal":
+                with st_obj.container(key="uae-high-frequency-print"):
+                    topic_results = render_high_frequency_topics(st_obj)
+                continue
+
+            if not file_input_checked:
+                file_input = get_shared_dataset_file()
+                file_input_checked = True
+
+            if file_input is None:
+                st_obj.info(message)
+                continue
+
+            if dashboard is None and dashboard_error is None:
+                try:
+                    source_name = _source_name(file_input)
+                    payload = _source_payload(file_input, source_name)
+                    with st_obj.spinner("正在构建宏观监测页面..."):
+                        dashboard = _build_monitoring_dashboard_cached(*payload)
+                except Exception as exc:  # noqa: BLE001 - 工作簿仅供宏观/行业页
+                    for key in list(st.session_state):
+                        if str(key).startswith("analysis.uae."):
+                            del st.session_state[key]
+                    dashboard_error = str(exc)
+                    st_obj.error(f"阿联酋监测数据加载失败：{exc}")
+                    continue
+
+            if dashboard is None:
+                continue
             if view_key == "growth_overview":
                 _render_growth_tab(
                     st_obj,
@@ -478,15 +379,22 @@ def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
                     dashboard,
                     GROWTH_INDUSTRY_GROUPS,
                 )
-            else:
-                with st_obj.container(key="uae-high-frequency-print"):
-                    topic_results = render_high_frequency_topics(
-                        st_obj,
-                        payload,
-                    )
-    return {
-        "status": "success",
-        "source": source_name,
-        "panel_count": len(dashboard.panels),
+
+    status = (
+        "error"
+        if dashboard_error is not None
+        else ("duckdb_only" if file_input is None else "success")
+    )
+    result: dict[str, Any] = {
+        "status": status,
+        "panel_count": len(dashboard.panels) if dashboard is not None else 0,
         "high_frequency": topic_results,
     }
+    if dashboard_error is not None:
+        result["message"] = dashboard_error
+    elif file_input is None:
+        result["message"] = message
+        result["source"] = "uae.duckdb"
+    else:
+        result["source"] = source_name
+    return result

@@ -11,6 +11,7 @@ from matplotlib.figure import Figure
 from Ts.TsPlots import plot_series
 
 from htfa.monitoring.uae.periods import within_month_window
+from htfa.monitoring.uae.duckdb_reader import read_long_indicators
 from htfa.monitoring.uae.plot_helpers import (
     WAR_START_DATE,
     annotate_war,
@@ -73,6 +74,47 @@ def load_foreign_labor_data(
         values=values,
         metadata=metadata,
         source_name=source_name,
+    )
+
+
+def load_foreign_labor_from_duckdb() -> ForeignLaborData:
+    """从 foreign_labour_monthly 长表读取尼泊尔和孟加拉劳工序列。"""
+
+    targets = {
+        NEPAL_APPROVALS: "nepal_with_reentry",
+        BANGLADESH_CLEARANCES: "bangladesh_clearance",
+    }
+    values = read_long_indicators(
+        table="foreign_labour_monthly",
+        period_column="period",
+        indicator_column="series",
+        value_column="value",
+        targets=targets,
+    )
+    metadata = {
+        NEPAL_APPROVALS: SheetSeriesMetadata(
+            NEPAL_APPROVALS,
+            "nepal_with_reentry",
+            "月度",
+            "人",
+            "Nepal Department of Foreign Employment",
+            "DuckDB",
+            "foreign_labour_monthly",
+        ),
+        BANGLADESH_CLEARANCES: SheetSeriesMetadata(
+            BANGLADESH_CLEARANCES,
+            "bangladesh_clearance",
+            "月度",
+            "人",
+            "Bangladesh BMET/OEP",
+            "DuckDB",
+            "foreign_labour_monthly",
+        ),
+    }
+    return ForeignLaborData(
+        values=values.sort_index(),
+        metadata=metadata,
+        source_name="uae.duckdb",
     )
 
 
@@ -277,4 +319,5 @@ __all__ = [
     "common_observations",
     "latest_common_month",
     "load_foreign_labor_data",
+    "load_foreign_labor_from_duckdb",
 ]

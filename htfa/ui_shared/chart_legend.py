@@ -6,11 +6,29 @@ import math
 from typing import Any
 
 import matplotlib.pyplot as plt
+from matplotlib.text import Text
 from matplotlib.figure import Figure as MatplotlibFigure
 from plotly.graph_objects import Figure as PlotlyFigure
 
 
 PLOTLY_LEGEND_Y = -0.14
+
+# The Linux Streamlit runtime has no Microsoft YaHei/SimHei by default. The
+# deployment installs Noto CJK, then this renderer applies it to all text artists.
+MATPLOTLIB_CJK_FONTS = [
+    "Noto Sans CJK SC",
+    "Noto Sans CJK TC",
+    "Microsoft YaHei",
+    "SimHei",
+    "DejaVu Sans",
+]
+
+
+def _apply_cjk_fonts(figure: MatplotlibFigure) -> None:
+    plt.rcParams["font.family"] = MATPLOTLIB_CJK_FONTS
+    plt.rcParams["axes.unicode_minus"] = False
+    for text_artist in figure.findobj(match=Text):
+        text_artist.set_fontfamily(MATPLOTLIB_CJK_FONTS)
 
 # 图例顶部在时间轴（参考轴 x 轴）下方的轴分数偏移。锚定在轴坐标系里，
 # 跟随轴移动：year_ruler 年份标尺文字约在轴下方 -0.18（轴分数）处，
@@ -188,6 +206,7 @@ def render_pyplot_figure(
                 legend_title=legend_title,
                 legend_cols=legend_cols,
             )
+        _apply_cjk_fonts(figure)
         st_obj.pyplot(figure, **kwargs)
     finally:
         plt.close(figure)

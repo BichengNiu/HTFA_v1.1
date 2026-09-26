@@ -293,11 +293,7 @@ def test_section_renders_four_cross_segment_charts_and_explanation(
 
     monkeypatch.setattr(renderer, "_render_sales_chart", _record_market)
 
-    result = renderer.render_real_estate_section(
-        st_obj,
-        b"workbook",
-        "test.xlsx",
-    )
+    result = renderer.render_real_estate_section(st_obj)
 
     assert result["status"] == "success"
     assert result["as_of"] == "2025-05"
@@ -349,11 +345,7 @@ def test_section_loader_failure_shows_error_and_returns_error_status(
     monkeypatch.setattr(renderer, "_load_real_estate_cached", _explode)
     st_obj = MagicMock()
 
-    result = renderer.render_real_estate_section(
-        st_obj,
-        b"workbook",
-        "test.xlsx",
-    )
+    result = renderer.render_real_estate_section(st_obj)
 
     assert result["status"] == "error"
     assert st_obj.error.call_count == 1
@@ -387,11 +379,7 @@ def test_cell_failure_warns_cell_and_keeps_other_charts(monkeypatch) -> None:
 
     monkeypatch.setattr(renderer, "_render_sales_chart", _fail_offplan)
 
-    result = renderer.render_real_estate_section(
-        st_obj,
-        b"workbook",
-        "test.xlsx",
-    )
+    result = renderer.render_real_estate_section(st_obj)
 
     assert result["status"] == "success"
     assert second_row[1].warning.call_count == 1

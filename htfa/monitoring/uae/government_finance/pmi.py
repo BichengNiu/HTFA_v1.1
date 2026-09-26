@@ -11,6 +11,7 @@ from matplotlib.figure import Figure
 from Ts.TsPlots import plot_series
 
 from htfa.monitoring.uae.periods import within_month_window
+from htfa.monitoring.uae.duckdb_reader import read_query
 from htfa.monitoring.uae.plot_helpers import (
     WAR_START_DATE,
     annotate_war,
@@ -68,6 +69,36 @@ def load_pmi_data(
         values=values,
         metadata=metadata,
         source_name=source_name,
+    )
+
+
+def load_pmi_from_duckdb() -> PmiData:
+    """从 DuckDB 的 pmi_monthly 表读取 PMI，不依赖工作簿。"""
+
+    raw = read_query(
+        "SELECT period, value FROM pmi_monthly ORDER BY period"
+    )
+    if raw.empty or raw["value"].dropna().empty:
+        raise ValueError("DuckDB 表 pmi_monthly 没有 PMI 观测")
+    raw["period"] = pd.to_datetime(raw["period"])
+    values = raw.set_index("period")[["value"]].rename(
+        columns={"value": PMI_LABEL}
+    )
+    metadata = {
+        PMI_LABEL: SheetSeriesMetadata(
+            PMI_LABEL,
+            PMI_INDICATOR,
+            "月度",
+            "点",
+            "S&P Global / Trading Economics",
+            "DuckDB",
+            "pmi_monthly",
+        )
+    }
+    return PmiData(
+        values=values.sort_index(),
+        metadata=metadata,
+        source_name="uae.duckdb",
     )
 
 
@@ -129,4 +160,5 @@ __all__ = [
     "build_pmi_figure",
     "display_pmi_values",
     "load_pmi_data",
+    "load_pmi_from_duckdb",
 ]
