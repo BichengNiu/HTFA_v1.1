@@ -9,6 +9,7 @@ from matplotlib.figure import Figure
 from Ts.TsPlots import plot_series
 from scipy.signal import savgol_filter
 
+from htfa.monitoring.uae.duckdb_reader import read_long_indicators
 from htfa.monitoring.uae.plot_helpers import (
     WAR_START_DATE,
     annotate_war,
@@ -17,7 +18,6 @@ from htfa.monitoring.uae.plot_helpers import (
     source_note,
 )
 from htfa.data.economic_workbook import EconomicWorkbookReader
-from htfa.monitoring.uae.duckdb_reader import read_query
 
 
 _WORKBOOK_READER = EconomicWorkbookReader(
@@ -75,20 +75,20 @@ def load_search_index_data(
 
 
 def load_search_index_from_duckdb() -> pd.DataFrame:
-    """从 DuckDB 读取两个工作搜索关键词的月度指数。"""
+    """从 employment_search_index 长表读取两组工作搜索热度。"""
 
-    frame = read_query(
-        "SELECT month, keyword, value FROM employment_search_index "
-        "WHERE keyword IN (?, ?) ORDER BY month",
-        (WORK_DUBAI_COLUMN, WORK_UAE_COLUMN),
+    values = read_long_indicators(
+        table="employment_search_index",
+        period_column="month",
+        indicator_column="keyword",
+        value_column="value",
+        targets={
+            WORK_DUBAI_COLUMN: "work in dubai",
+            WORK_UAE_COLUMN: "work in uae",
+        },
     )
-    if frame.empty:
-        raise ValueError("DuckDB 的工作搜索热度表没有可用观测")
-    values = frame.pivot(index="month", columns="keyword", values="value").reindex(
-        columns=[WORK_DUBAI_COLUMN, WORK_UAE_COLUMN]
-    ).sort_index()
-    values.index = pd.DatetimeIndex(pd.to_datetime(values.index)).normalize()
-    return values
+    values.index = pd.DatetimeIndex(values.index).normalize()
+    return values.sort_index()
 
 
 def display_search_index_values(values: pd.DataFrame) -> pd.DataFrame:

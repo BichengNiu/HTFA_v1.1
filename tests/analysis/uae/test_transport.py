@@ -497,8 +497,8 @@ def test_section_renders_two_charts_and_explanation(monkeypatch) -> None:
     data = load_transport_data(_workbook_bytes(), file_name="test.xlsx")
     monkeypatch.setattr(
         renderer,
-        "load_transport_data",
-        lambda content, file_name, **kwargs: data,
+        "load_transport_from_duckdb",
+        lambda: data,
     )
     st_obj = MagicMock()
     metric_columns = tuple(MagicMock() for _ in range(4))
@@ -517,11 +517,7 @@ def test_section_renders_two_charts_and_explanation(monkeypatch) -> None:
 
     monkeypatch.setattr(renderer, "_render_chart", _capture_render)
 
-    result = renderer.render_transport_section(
-        st_obj,
-        b"workbook",
-        "test.xlsx",
-    )
+    result = renderer.render_transport_section(st_obj)
 
     assert result["status"] == "success"
     assert result["as_of"] == "2025-05"
@@ -572,14 +568,10 @@ def test_section_loader_failure_shows_error_and_returns_error_status(
     def _explode(*args, **kwargs):
         raise ValueError("月度_PortWatch 缺少霍尔木兹指标")
 
-    monkeypatch.setattr(renderer, "load_transport_data", _explode)
+    monkeypatch.setattr(renderer, "load_transport_from_duckdb", _explode)
     st_obj = MagicMock()
 
-    result = renderer.render_transport_section(
-        st_obj,
-        b"workbook",
-        "test.xlsx",
-    )
+    result = renderer.render_transport_section(st_obj)
 
     assert result["status"] == "error"
     assert st_obj.error.call_count == 1
@@ -590,8 +582,8 @@ def test_cell_failure_warns_cell_and_keeps_other_chart(monkeypatch) -> None:
     data = load_transport_data(_workbook_bytes(), file_name="test.xlsx")
     monkeypatch.setattr(
         renderer,
-        "load_transport_data",
-        lambda content, file_name, **kwargs: data,
+        "load_transport_from_duckdb",
+        lambda: data,
     )
     st_obj = MagicMock()
     metric_columns = tuple(MagicMock() for _ in range(4))
@@ -627,11 +619,7 @@ def test_cell_failure_warns_cell_and_keeps_other_chart(monkeypatch) -> None:
 
     monkeypatch.setattr(renderer, "_render_chart", _fail_left)
 
-    result = renderer.render_transport_section(
-        st_obj,
-        b"workbook",
-        "test.xlsx",
-    )
+    result = renderer.render_transport_section(st_obj)
 
     assert result["status"] == "success"
     assert left.warning.call_count == 1

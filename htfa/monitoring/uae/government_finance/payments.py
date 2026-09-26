@@ -11,6 +11,7 @@ from matplotlib.figure import Figure
 from Ts.TsPlots import plot_series
 
 from htfa.monitoring.uae.periods import within_month_window
+from htfa.monitoring.uae.duckdb_reader import read_long_indicators
 from htfa.monitoring.uae.plot_helpers import (
     WAR_START_DATE,
     annotate_war,
@@ -25,7 +26,6 @@ from htfa.data.economic_workbook import (
     normalize_indicator_name,
     optional_text,
 )
-from htfa.monitoring.uae.duckdb_reader import read_long_indicators
 
 
 PAYMENT_SHEET = "月度_CBUAE"
@@ -87,12 +87,9 @@ def load_payment_data(
 
 
 def load_payment_from_duckdb() -> PaymentData:
-    """从 DuckDB 读取客户转账与支票清算的累计月度序列。"""
+    """从 CBUAE DuckDB 长表读取客户转账和支票清算指标。"""
 
-    targets = {
-        display_name: indicator_name
-        for display_name, indicator_name, _ in PAYMENT_INDICATORS
-    }
+    targets = {display: indicator for display, indicator, _ in PAYMENT_INDICATORS}
     values = read_long_indicators(
         table="cbuae_monthly",
         period_column="period",
@@ -101,13 +98,22 @@ def load_payment_from_duckdb() -> PaymentData:
         targets=targets,
     )
     metadata = {
-        display_name: SheetSeriesMetadata(
-            display_name, indicator_name, "月度", unit, "CBUAE", "DuckDB",
+        display: SheetSeriesMetadata(
+            display,
+            indicator,
+            "月度",
+            unit,
+            "CBUAE",
+            "DuckDB",
             "cbuae_monthly",
         )
-        for display_name, indicator_name, unit in PAYMENT_INDICATORS
+        for display, indicator, unit in PAYMENT_INDICATORS
     }
-    return PaymentData(values, metadata, "uae.duckdb")
+    return PaymentData(
+        values=values.sort_index(),
+        metadata=metadata,
+        source_name="uae.duckdb",
+    )
 
 
 def _parse_payment_sheet(

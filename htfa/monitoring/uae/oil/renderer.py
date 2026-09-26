@@ -77,17 +77,10 @@ WAR_PRESSURE_EXPLANATION = """
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
-def _load_oil_market_cached(_database_snapshot: str) -> OilMarketData:
+def _load_oil_market_cached(database_snapshot: str) -> OilMarketData:
     """按数据库快照缓存石油数据，不接受页面上传的 Excel。"""
 
     return load_oil_market_from_duckdb()
-
-
-@st.cache_data(show_spinner=False, max_entries=4)
-def _load_war_pressure_cached(_database_snapshot: str) -> WarPressureData:
-    """按数据库快照缓存战争压力数据，避免每次重跑重复查询。"""
-
-    return load_war_pressure_from_duckdb()
 
 
 def _latest_change(
@@ -580,11 +573,8 @@ def _render_charts(
         )
 
 
-def render_oil_fiscal_panel(
-    st_obj: Any,
-    _payload: tuple[bytes | None, str],
-) -> dict[str, Any]:
-    """从 DuckDB 读取石油数据并估算收入；载荷仅为兼容旧调用方。"""
+def render_oil_fiscal_panel(st_obj: Any) -> dict[str, Any]:
+    """从 DuckDB 读取石油数据并估算收入。"""
 
     war_pressure_available = False
     try:
@@ -594,7 +584,7 @@ def render_oil_fiscal_panel(
         with st_obj.spinner("正在读取日度油价与月度原油产量..."):
             data = _load_oil_market_cached(snapshot)
         try:
-            war_pressure = _load_war_pressure_cached(snapshot)
+            war_pressure = load_war_pressure_from_duckdb()
         except (KeyError, TypeError, ValueError) as exc:
             st_obj.subheader("战争压力")
             st_obj.warning(f"战争压力数据暂不可用：{exc}")

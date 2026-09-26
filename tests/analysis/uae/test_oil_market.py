@@ -39,11 +39,12 @@ from htfa.monitoring.uae.oil.revenue import (
 )
 
 
-def test_oil_panel_requires_explicit_workbook_payload() -> None:
-    st_obj = MagicMock()
+def test_oil_panel_has_no_workbook_payload_parameter() -> None:
+    from inspect import signature
 
-    with pytest.raises(TypeError):
-        renderer.render_oil_fiscal_panel(st_obj)
+    assert tuple(signature(renderer.render_oil_fiscal_panel).parameters) == (
+        "st_obj",
+    )
 
 
 def test_common_latest_month_uses_the_earliest_indicator_cutoff() -> None:

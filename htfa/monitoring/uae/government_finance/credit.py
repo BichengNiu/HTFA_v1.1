@@ -20,6 +20,7 @@ from matplotlib.figure import Figure
 from Ts.TsPlots import plot_series
 
 from htfa.monitoring.uae.government_finance.data import calculate_calendar_yoy
+from htfa.monitoring.uae.duckdb_reader import read_long_indicators
 from htfa.monitoring.uae.plot_helpers import (
     WAR_START_DATE,
     annotate_war,
@@ -31,7 +32,6 @@ from htfa.data.economic_workbook import (
     EconomicWorkbookReader,
     SheetSeriesMetadata,
 )
-from htfa.monitoring.uae.duckdb_reader import read_long_indicators
 
 
 CBUAE_SHEET = "月度_CBUAE"
@@ -72,6 +72,24 @@ PRIVATE_CREDIT_INDICATORS: tuple[tuple[str, str], ...] = (
     (INDIVIDUAL_DISPLAY, INDIVIDUAL),
     (BUSINESS_INDUSTRIAL_DISPLAY, BUSINESS_INDUSTRIAL),
 )
+
+
+def _cbuae_metadata(
+    targets: tuple[tuple[str, str], ...],
+) -> dict[str, SheetSeriesMetadata]:
+    return {
+        display_name: SheetSeriesMetadata(
+            display_name,
+            indicator_name,
+            "月度",
+            "百万迪拉姆",
+            "CBUAE",
+            "DuckDB",
+            "cbuae_monthly",
+        )
+        for display_name, indicator_name in targets
+    }
+
 
 FOREIGN_SERIES = (
     f"{FOREIGN_LIABILITIES_DISPLAY}同比",
@@ -147,20 +165,8 @@ def load_private_credit_data(
     )
 
 
-def _duckdb_metadata(
-    indicators: tuple[tuple[str, str], ...],
-) -> dict[str, SheetSeriesMetadata]:
-    return {
-        display: SheetSeriesMetadata(
-            display, indicator, "月度", "百万迪拉姆", "CBUAE", "DuckDB",
-            "cbuae_monthly",
-        )
-        for display, indicator in indicators
-    }
-
-
 def load_foreign_inflow_from_duckdb() -> CbuaeSeriesData:
-    """从 DuckDB 读取银行外债、外币及非居民存款序列。"""
+    """从 CBUAE DuckDB 长表读取银行外债、外币及非居民存款。"""
 
     frame = read_long_indicators(
         table="cbuae_monthly",
@@ -169,32 +175,37 @@ def load_foreign_inflow_from_duckdb() -> CbuaeSeriesData:
         value_column="value",
         targets=dict(FOREIGN_INFLOW_INDICATORS),
     )
-    nonresident = frame[
-        [
-            NONRESIDENT_CORPORATE_DISPLAY,
-            NONRESIDENT_INDIVIDUALS_DISPLAY,
-            NONRESIDENT_GOVERNMENT_DISPLAY,
-        ]
-    ].sum(axis=1, min_count=3)
-    values = frame[[FOREIGN_LIABILITIES_DISPLAY, FOREIGN_CURRENCIES_DISPLAY]].copy()
+    component_columns = [
+        NONRESIDENT_CORPORATE_DISPLAY,
+        NONRESIDENT_INDIVIDUALS_DISPLAY,
+        NONRESIDENT_GOVERNMENT_DISPLAY,
+    ]
+    nonresident = frame[component_columns].sum(axis=1, min_count=3)
+    values = frame[
+        [FOREIGN_LIABILITIES_DISPLAY, FOREIGN_CURRENCIES_DISPLAY]
+    ].copy()
     values[NONRESIDENT_DEPOSITS] = nonresident
-    metadata = _duckdb_metadata(FOREIGN_INFLOW_INDICATORS)
+    metadata = _cbuae_metadata(FOREIGN_INFLOW_INDICATORS)
     metadata[NONRESIDENT_DEPOSITS] = SheetSeriesMetadata(
         NONRESIDENT_DEPOSITS,
-        "非居民私人企业、个人、政府及非商业实体存款之和",
+        NONRESIDENT_DEPOSITS,
         "月度",
         "百万迪拉姆",
         "CBUAE",
         "DuckDB",
         "cbuae_monthly",
     )
-    return CbuaeSeriesData(values.sort_index(), metadata, "uae.duckdb")
+    return CbuaeSeriesData(
+        values=values.sort_index(),
+        metadata=metadata,
+        source_name="uae.duckdb",
+    )
 
 
 def load_private_credit_from_duckdb() -> CbuaeSeriesData:
-    """从 DuckDB 读取私人企业、个人及工商业信贷序列。"""
+    """从 CBUAE DuckDB 长表读取私人企业、个人及工商业信贷。"""
 
-    values = read_long_indicators(
+    frame = read_long_indicators(
         table="cbuae_monthly",
         period_column="period",
         indicator_column="indicator",
@@ -202,9 +213,9 @@ def load_private_credit_from_duckdb() -> CbuaeSeriesData:
         targets=dict(PRIVATE_CREDIT_INDICATORS),
     )
     return CbuaeSeriesData(
-        values.sort_index(),
-        _duckdb_metadata(PRIVATE_CREDIT_INDICATORS),
-        "uae.duckdb",
+        values=frame.sort_index(),
+        metadata=_cbuae_metadata(PRIVATE_CREDIT_INDICATORS),
+        source_name="uae.duckdb",
     )
 
 

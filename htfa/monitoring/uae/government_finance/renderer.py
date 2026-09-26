@@ -151,8 +151,11 @@ def _load_private_credit_cached(_database_snapshot: str) -> CbuaeSeriesData:
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
-def _load_ded_cached(_database_snapshot: str) -> DedData:
-    return load_ded_from_duckdb()
+def _load_ded_cached(
+    _database_snapshot: str,
+    through_month: str | None = None,
+) -> DedData:
+    return load_ded_from_duckdb(through=through_month)
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
@@ -316,9 +319,9 @@ def _render_business_metrics(
                 ),
             )
         )
-        ded = _load_ded_cached(database_snapshot)
-        # 与 DED 柱图同规则：锚定 latest_date，避开尾部欠计噪声月
         last_period = latest_date.to_period("M")
+        # 与 DED 柱图同规则：锚定 latest_date，避开尾部欠计噪声月
+        ded = _load_ded_cached(database_snapshot, last_period.strftime("%Y-%m"))
         ded_series = ded.values.loc[
             pd.PeriodIndex(ded.values.index, freq="M") <= last_period
         ]
@@ -755,8 +758,8 @@ def _render_cheques_chart(
 
 def render_government_finance_section(
     st_obj: Any,
-    _content: bytes | None,
-    _file_name: str | None,
+    _content: bytes | None = None,
+    _file_name: str | None = None,
 ) -> dict[str, Any]:
     """从 DuckDB 渲染财政金融主题；Excel 载荷只保留调用兼容性。"""
 
@@ -816,7 +819,8 @@ def _render_business_activity_charts(
     ded_column, pmi_column = st_obj.columns(2, gap="small")
     try:
         with st_obj.spinner("正在读取迪拜企业发证与新发执照数据..."):
-            ded = _load_ded_cached(database_snapshot)
+            through_month = latest_date.to_period("M").strftime("%Y-%m")
+            ded = _load_ded_cached(database_snapshot, through_month)
         _render_ded_chart(ded_column, ded, latest_date)
     except (KeyError, TypeError, ValueError) as exc:
         ded_column.warning(f"企业发证活动柱图未加载：{exc}")

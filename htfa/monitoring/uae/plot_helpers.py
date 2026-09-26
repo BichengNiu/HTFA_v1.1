@@ -17,7 +17,13 @@ import numpy as np
 from Ts.TsPlots.style import format_compact_y_axis as ts_format_compact_y_axis
 
 
-CHINESE_FONT_FAMILY = ["Microsoft YaHei", "SimHei"]
+CHINESE_FONT_FAMILY = [
+    "Noto Sans CJK SC",
+    "Noto Sans CJK TC",
+    "Microsoft YaHei",
+    "SimHei",
+    "DejaVu Sans",
+]
 WAR_START_DATE = pd.Timestamp("2026-03-01")
 WAR_LINE_COLOR = "#C0392B"
 

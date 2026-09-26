@@ -409,7 +409,7 @@ def _render_growth_tab(
 def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
     """渲染阿联酋监测；不写入或生成任何工作簿。"""
 
-    file_input = get_shared_dataset_file()
+    file_input = None
     tab_objects = st_obj.tabs(
         [label for label, _ in TAB_CONFIG],
         key="analysis.uae.active_tab",
@@ -435,14 +435,17 @@ def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
             with st_obj.container(key="uae-high-frequency-print"):
                 topic_results = render_high_frequency_topics(
                     st_obj,
-                    (None, "uae.duckdb"),
                 )
         return {
             "status": "duckdb_only",
+            "source": "uae.duckdb",
             "panel_count": 0,
             "high_frequency": topic_results,
         }
 
+    # 只有宏观概览/行业分析需要共享工作簿；高频页在上方已直接返回，
+    # 因此不会因上传 Excel 而触发读取或解析。
+    file_input = get_shared_dataset_file()
     if file_input is None:
         _render_report_header(st_obj)
         message = "宏观概览和行业分析暂未迁移到 DuckDB。"

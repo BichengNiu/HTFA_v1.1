@@ -18,6 +18,7 @@ from matplotlib.figure import Figure
 from Ts.TsPlots import plot_series
 
 from htfa.monitoring.uae.periods import within_month_window
+from htfa.monitoring.uae.duckdb_reader import read_long_indicators
 from htfa.monitoring.uae.plot_helpers import (
     WAR_START_DATE,
     annotate_war,
@@ -33,7 +34,6 @@ from htfa.data.economic_workbook import (
     optional_text,
     normalize_indicator_name,
 )
-from htfa.monitoring.uae.duckdb_reader import read_query
 from Ts.TsPlots.style import GRAY
 
 
@@ -84,33 +84,55 @@ def load_ded_data(
     )
 
 
-def load_ded_from_duckdb() -> DedData:
-    """从 DuckDB 读取迪拜企业发证与新发执照月度序列。"""
+def load_ded_from_duckdb(
+    *,
+    through: pd.Timestamp | pd.Period | str | None = None,
+) -> DedData:
+    """从 ded_monthly 长表读取企业活动与新发执照指标。
 
-    frame = read_query(
-        "SELECT month, series, value FROM ded_monthly "
-        "WHERE series IN ('enterprises', 'licences') ORDER BY month"
+    DuckDB 的快照历史含异常的 1906 和未来日期；按财政金融面板最新月份
+    截止，避免异常未来记录进入指标卡和图表。
+    """
+
+    targets = {
+        ENTERPRISES_DISPLAY: "enterprises",
+        LICENCES_DISPLAY: "licences",
+    }
+    values = read_long_indicators(
+        table="ded_monthly",
+        period_column="month",
+        indicator_column="series",
+        value_column="value",
+        targets=targets,
     )
-    if frame.empty:
-        raise ValueError("DuckDB 的 DED 月度表没有可用观测")
-    labels = {"enterprises": ENTERPRISES_DISPLAY, "licences": LICENCES_DISPLAY}
-    values = frame.assign(display=frame["series"].map(labels)).pivot(
-        index="month", columns="display", values="value"
-    ).reindex(columns=[ENTERPRISES_DISPLAY, LICENCES_DISPLAY]).sort_index()
-    values.index = pd.DatetimeIndex(pd.to_datetime(values.index))
-    if values.dropna(how="all").empty:
-        raise ValueError("DuckDB 的 DED 月度表没有可用观测")
+    if through is not None:
+        cutoff = pd.Period(through, freq="M")
+        values = values.loc[
+            pd.PeriodIndex(values.index, freq="M") <= cutoff
+        ]
+    if values.empty:
+        raise ValueError("DuckDB 表 ded_monthly 在所选月份前没有有效观测")
     metadata = {
         ENTERPRISES_DISPLAY: SheetSeriesMetadata(
-            ENTERPRISES_DISPLAY, ENTERPRISES_INDICATOR, "月度", "家",
-            "Dubai Department of Economy and Tourism", "DuckDB", "ded_monthly",
+            ENTERPRISES_DISPLAY,
+            ENTERPRISES_INDICATOR,
+            "月度",
+            "家",
+            "Dubai Department of Economy and Tourism",
+            "DuckDB",
+            "ded_monthly",
         ),
         LICENCES_DISPLAY: SheetSeriesMetadata(
-            LICENCES_DISPLAY, LICENCES_INDICATOR, "月度", "张",
-            "Dubai Department of Economy and Tourism", "DuckDB", "ded_monthly",
+            LICENCES_DISPLAY,
+            LICENCES_INDICATOR,
+            "月度",
+            "张",
+            "Dubai Department of Economy and Tourism",
+            "DuckDB",
+            "ded_monthly",
         ),
     }
-    return DedData(values, metadata, "uae.duckdb")
+    return DedData(values=values, metadata=metadata, source_name="uae.duckdb")
 
 
 def _clean_source(value: str) -> str:

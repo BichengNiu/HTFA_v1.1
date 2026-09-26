@@ -62,7 +62,7 @@ TRANSPORT_EXPLANATION = """
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
-def _load_transport_cached(_database_snapshot: str) -> TransportData:
+def _load_transport_cached(database_snapshot: str) -> TransportData:
     """按数据库快照缓存交通物流查询结果。"""
 
     return load_transport_from_duckdb()
@@ -219,11 +219,7 @@ def _render_transport_metrics(
     render_metric_cards(st_obj, air_cards, n=4)
 
 
-def render_transport_section(
-    st_obj: Any,
-    _content: bytes,
-    _file_name: str,
-) -> dict[str, Any]:
+def render_transport_section(st_obj: Any) -> dict[str, Any]:
     """渲染「交通物流」板块的两张海运图和两张航空运输图。"""
 
     st_obj.divider()

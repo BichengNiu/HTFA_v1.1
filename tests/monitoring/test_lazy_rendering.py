@@ -29,13 +29,13 @@ class _TabsHost:
         self.errors.append(message)
 
 
-def test_high_frequency_topics_only_calls_the_open_topic(monkeypatch) -> None:
+def test_high_frequency_topics_render_all_sections_in_order(monkeypatch) -> None:
     from htfa.monitoring.uae import report
 
     called: list[str] = []
 
     def renderer(name):
-        def _render(_st_obj, _payload):
+        def _render(_st_obj):
             called.append(name)
             return {"status": "success"}
 
@@ -52,14 +52,11 @@ def test_high_frequency_topics_only_calls_the_open_topic(monkeypatch) -> None:
     )
     host = _TabsHost(open_index=1)
 
-    result = report.render_high_frequency_topics(host, (b"workbook", "uae.xlsx"))
+    result = report.render_high_frequency_topics(host)
 
-    assert called == ["finance"]
-    assert set(result) == {"finance"}
-    assert host.calls[0][1] == {
-        "key": "analysis.uae.high_frequency.active_topic",
-        "on_change": "rerun",
-    }
+    assert called == ["oil", "finance", "property"]
+    assert set(result) == {"oil", "finance", "property"}
+    assert host.calls == []
 
 
 def test_preview_renderer_only_renders_the_open_tab(monkeypatch) -> None:
@@ -112,7 +109,6 @@ def test_uae_monitoring_only_renders_the_open_top_level_tab(monkeypatch) -> None
     rendered: list[tuple[str, ...]] = []
     monkeypatch.setattr(renderer, "get_shared_dataset_file", lambda: upload)
     monkeypatch.setattr(renderer, "_render_report_header", lambda *_args: None)
-    monkeypatch.setattr(renderer, "_latest_high_frequency_month", lambda *_args: None)
     monkeypatch.setattr(
         renderer,
         "_build_monitoring_dashboard_cached",
@@ -136,43 +132,6 @@ def test_uae_monitoring_only_renders_the_open_top_level_tab(monkeypatch) -> None
     assert host.calls[0][1]["on_change"] == "rerun"
 
 
-def test_uploaded_excel_never_enters_high_frequency_data_path(monkeypatch) -> None:
-    """高频标签页始终只读 DuckDB，不能因共享上传文件而解析工作簿。"""
-
-    from htfa.monitoring.uae import renderer
-
-    class _MonitoringHost(_TabsHost):
-        def spinner(self, _label):
-            return nullcontext()
-
-        def container(self, **_kwargs):
-            return nullcontext()
-
-    upload = BytesIO(b"workbook")
-    upload.name = "uae.xlsx"
-    host = _MonitoringHost(open_index=2)
-    payloads: list[tuple[bytes | None, str]] = []
-    monkeypatch.setattr(renderer, "get_shared_dataset_file", lambda: upload)
-    monkeypatch.setattr(renderer, "_render_report_header", lambda *_args: None)
-    monkeypatch.setattr(
-        renderer,
-        "_build_monitoring_dashboard_cached",
-        lambda *_args: (_ for _ in ()).throw(
-            AssertionError("high-frequency view parsed Excel")
-        ),
-    )
-    monkeypatch.setattr(
-        renderer,
-        "render_high_frequency_topics",
-        lambda _st, payload: payloads.append(payload) or {},
-    )
-
-    result = renderer.render_uae_monitoring(host)
-
-    assert result["status"] == "duckdb_only"
-    assert payloads == [(None, "uae.duckdb")]
-
-
 def test_government_finance_loader_is_cached_by_database_snapshot(monkeypatch) -> None:
     from htfa.monitoring.uae.government_finance import renderer
 
@@ -192,40 +151,41 @@ def test_government_finance_loader_is_cached_by_database_snapshot(monkeypatch) -
     assert calls == ["loaded"]
 
 
-def test_government_finance_defers_extended_charts_by_default(monkeypatch) -> None:
-    from types import SimpleNamespace
-    from unittest.mock import MagicMock
+def test_high_frequency_tab_never_reads_shared_workbook(monkeypatch) -> None:
+    from htfa.monitoring.uae import renderer
 
-    import pandas as pd
+    class _MonitoringHost(_TabsHost):
+        def spinner(self, _label):
+            return nullcontext()
 
-    from htfa.monitoring.uae.government_finance import renderer
+        def container(self, **_kwargs):
+            return nullcontext()
 
-    host = MagicMock()
-    host.spinner.return_value = nullcontext()
-    host.container.return_value = nullcontext()
-    host.expander.return_value = nullcontext()
-    host.toggle.return_value = False
-    data = SimpleNamespace(values=pd.DataFrame({"value": [1.0]}))
-    monkeypatch.setattr(
-        "htfa.monitoring.uae.duckdb_reader.database_snapshot_key",
-        lambda: "db-snapshot",
-    )
-    monkeypatch.setattr(renderer, "latest_complete_month", lambda _: pd.Timestamp("2026-08-31"))
-    monkeypatch.setattr(renderer, "_load_government_finance_cached", lambda _: data)
-    monkeypatch.setattr(renderer, "_render_finance_metrics", lambda *_args: None)
-    monkeypatch.setattr(renderer, "_render_quad_finance_charts", lambda *_args: None)
+        def info(self, _message: str) -> None:
+            return None
+
+    host = _MonitoringHost(open_index=2)
     monkeypatch.setattr(
         renderer,
-        "_render_business_activity_charts",
-        lambda *_args: (_ for _ in ()).throw(AssertionError("extended charts rendered")),
+        "get_shared_dataset_file",
+        lambda: (_ for _ in ()).throw(AssertionError("shared workbook accessed")),
+    )
+    monkeypatch.setattr(renderer, "_render_report_header", lambda *_args: None)
+    monkeypatch.setattr(
+        renderer,
+        "_source_payload",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("Excel payload read")),
     )
     monkeypatch.setattr(
         renderer,
-        "_render_labor_employment_charts",
-        lambda *_args: (_ for _ in ()).throw(AssertionError("extended charts rendered")),
+        "_build_monitoring_dashboard_cached",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("workbook parsed")),
     )
 
-    result = renderer.render_government_finance_section(host, None, None)
+    def render_topics(_st_obj):
+        return {"oil": object()}
 
-    assert result["status"] == "success"
-    host.toggle.assert_called_once()
+    monkeypatch.setattr(renderer, "render_high_frequency_topics", render_topics)
+    result = renderer.render_uae_monitoring(host)
+
+    assert result["source"] == "uae.duckdb"

@@ -11,6 +11,7 @@ from matplotlib.figure import Figure
 from Ts.TsPlots import plot_series
 
 from htfa.monitoring.uae.periods import within_month_window
+from htfa.monitoring.uae.duckdb_reader import read_long_indicators
 from htfa.monitoring.uae.plot_helpers import (
     WAR_START_DATE,
     annotate_war,
@@ -25,7 +26,6 @@ from htfa.data.economic_workbook import (
     normalize_indicator_name,
     optional_text,
 )
-from htfa.monitoring.uae.duckdb_reader import read_query
 
 
 FOREIGN_LABOR_SHEET = "月度_外籍劳动力"
@@ -40,11 +40,6 @@ SERIES_SPECS = (
     (NEPAL_APPROVALS, NEPAL_LABEL),
     (BANGLADESH_CLEARANCES, BANGLADESH_LABEL),
 )
-
-_DUCKDB_SERIES = {
-    NEPAL_APPROVALS: "nepal_with_reentry",
-    BANGLADESH_CLEARANCES: "bangladesh_clearance",
-}
 
 DISPLAY_MONTHS = 37
 _WORKBOOK_READER = EconomicWorkbookReader(
@@ -83,29 +78,44 @@ def load_foreign_labor_data(
 
 
 def load_foreign_labor_from_duckdb() -> ForeignLaborData:
-    """从 DuckDB 读取尼泊尔与孟加拉国外籍劳工月度序列。"""
+    """从 foreign_labour_monthly 长表读取尼泊尔和孟加拉劳工序列。"""
 
-    frame = read_query(
-        "SELECT period, series, value FROM foreign_labour_monthly "
-        "WHERE series IN (?, ?) ORDER BY period",
-        tuple(_DUCKDB_SERIES.values()),
-    )
-    if frame.empty:
-        raise ValueError("DuckDB 的外籍劳动力月度表没有可用观测")
-    values = frame.assign(display=frame["series"].map({
-        value: key for key, value in _DUCKDB_SERIES.items()
-    })).pivot(index="period", columns="display", values="value").reindex(
-        columns=[NEPAL_APPROVALS, BANGLADESH_CLEARANCES]
-    ).sort_index()
-    values.index = pd.DatetimeIndex(pd.to_datetime(values.index))
-    metadata = {
-        indicator: SheetSeriesMetadata(
-            indicator, indicator, "月度", "人", "官方劳工主管部门", "DuckDB",
-            "foreign_labour_monthly",
-        )
-        for indicator in (NEPAL_APPROVALS, BANGLADESH_CLEARANCES)
+    targets = {
+        NEPAL_APPROVALS: "nepal_with_reentry",
+        BANGLADESH_CLEARANCES: "bangladesh_clearance",
     }
-    return ForeignLaborData(values, metadata, "uae.duckdb")
+    values = read_long_indicators(
+        table="foreign_labour_monthly",
+        period_column="period",
+        indicator_column="series",
+        value_column="value",
+        targets=targets,
+    )
+    metadata = {
+        NEPAL_APPROVALS: SheetSeriesMetadata(
+            NEPAL_APPROVALS,
+            "nepal_with_reentry",
+            "月度",
+            "人",
+            "Nepal Department of Foreign Employment",
+            "DuckDB",
+            "foreign_labour_monthly",
+        ),
+        BANGLADESH_CLEARANCES: SheetSeriesMetadata(
+            BANGLADESH_CLEARANCES,
+            "bangladesh_clearance",
+            "月度",
+            "人",
+            "Bangladesh BMET/OEP",
+            "DuckDB",
+            "foreign_labour_monthly",
+        ),
+    }
+    return ForeignLaborData(
+        values=values.sort_index(),
+        metadata=metadata,
+        source_name="uae.duckdb",
+    )
 
 
 def _parse_foreign_labor_sheet(

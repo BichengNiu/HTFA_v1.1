@@ -45,7 +45,7 @@ REAL_ESTATE_EXPLANATION = """
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
-def _load_real_estate_cached(_database_snapshot: str) -> RealEstateData:
+def _load_real_estate_cached(database_snapshot: str) -> RealEstateData:
     """按数据库快照缓存房地产数据。"""
 
     return load_real_estate_from_duckdb()
@@ -149,11 +149,7 @@ def _render_sales_chart(
     )
 
 
-def render_real_estate_section(
-    st_obj: Any,
-    _content: bytes,
-    _file_name: str,
-) -> dict[str, Any]:
+def render_real_estate_section(st_obj: Any) -> dict[str, Any]:
     """渲染「房地产」板块：交易类型×用途四张笔数+金额双轴图。"""
 
     st_obj.divider()

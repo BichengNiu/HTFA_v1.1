@@ -11,6 +11,7 @@ from matplotlib.figure import Figure
 from Ts.TsPlots import plot_series
 
 from htfa.monitoring.uae.periods import within_month_window
+from htfa.monitoring.uae.duckdb_reader import read_query
 from htfa.monitoring.uae.plot_helpers import (
     WAR_START_DATE,
     annotate_war,
@@ -22,7 +23,6 @@ from htfa.data.economic_workbook import (
     EconomicWorkbookReader,
     SheetSeriesMetadata,
 )
-from htfa.monitoring.uae.duckdb_reader import read_query
 
 
 PMI_SHEET = "月度_LSEG"
@@ -73,22 +73,33 @@ def load_pmi_data(
 
 
 def load_pmi_from_duckdb() -> PmiData:
-    """从 DuckDB 读取阿联酋非油私营部门 PMI。"""
+    """从 DuckDB 的 pmi_monthly 表读取 PMI，不依赖工作簿。"""
 
-    frame = read_query("SELECT period, value FROM pmi_monthly ORDER BY period")
-    if frame.empty or frame["value"].dropna().empty:
-        raise ValueError("DuckDB 的 PMI 月度表没有可用观测")
-    values = pd.DataFrame(
-        {PMI_LABEL: frame["value"].to_numpy()},
-        index=pd.DatetimeIndex(pd.to_datetime(frame["period"])),
+    raw = read_query(
+        "SELECT period, value FROM pmi_monthly ORDER BY period"
+    )
+    if raw.empty or raw["value"].dropna().empty:
+        raise ValueError("DuckDB 表 pmi_monthly 没有 PMI 观测")
+    raw["period"] = pd.to_datetime(raw["period"])
+    values = raw.set_index("period")[["value"]].rename(
+        columns={"value": PMI_LABEL}
     )
     metadata = {
         PMI_LABEL: SheetSeriesMetadata(
-            PMI_LABEL, PMI_INDICATOR, "月度", "点", "S&P Global", "DuckDB",
+            PMI_LABEL,
+            PMI_INDICATOR,
+            "月度",
+            "点",
+            "S&P Global / Trading Economics",
+            "DuckDB",
             "pmi_monthly",
         )
     }
-    return PmiData(values, metadata, "uae.duckdb")
+    return PmiData(
+        values=values.sort_index(),
+        metadata=metadata,
+        source_name="uae.duckdb",
+    )
 
 
 def display_pmi_values(values: pd.DataFrame) -> pd.DataFrame:

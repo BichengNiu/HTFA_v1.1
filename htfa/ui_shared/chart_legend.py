@@ -3,14 +3,58 @@
 from __future__ import annotations
 
 import math
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 import matplotlib.pyplot as plt
+from matplotlib import font_manager
+from matplotlib.font_manager import FontProperties
+from matplotlib.text import Text
 from matplotlib.figure import Figure as MatplotlibFigure
 from plotly.graph_objects import Figure as PlotlyFigure
 
 
 PLOTLY_LEGEND_Y = -0.14
+
+# The Linux Streamlit runtime has no Microsoft YaHei/SimHei by default. The
+# deployment installs Noto CJK, then this renderer applies it to all text artists.
+MATPLOTLIB_CJK_FONTS = [
+    "Noto Sans CJK SC",
+    "Noto Sans CJK TC",
+    "Microsoft YaHei",
+    "SimHei",
+    "DejaVu Sans",
+]
+
+
+@lru_cache(maxsize=1)
+def _resolve_matplotlib_cjk_fonts() -> list[str]:
+    """优先注册系统安装的 Noto 字体，避免 Matplotlib 使用过期字体缓存。"""
+
+    font_paths = (
+        Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
+        Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"),
+    )
+    for font_path in font_paths:
+        if not font_path.is_file():
+            continue
+        try:
+            font_manager.fontManager.addfont(str(font_path))
+            family = FontProperties(fname=str(font_path)).get_name()
+        except (OSError, RuntimeError, ValueError):
+            continue
+        if family:
+            return [family, *MATPLOTLIB_CJK_FONTS]
+    return MATPLOTLIB_CJK_FONTS
+
+
+def _apply_cjk_fonts(figure: MatplotlibFigure) -> None:
+    font_families = _resolve_matplotlib_cjk_fonts()
+    plt.rcParams["font.family"] = font_families
+    plt.rcParams["axes.unicode_minus"] = False
+    for text_artist in figure.findobj(match=Text):
+        text_artist.set_fontfamily(font_families)
 
 # 图例顶部在时间轴（参考轴 x 轴）下方的轴分数偏移。锚定在轴坐标系里，
 # 跟随轴移动：year_ruler 年份标尺文字约在轴下方 -0.18（轴分数）处，
@@ -188,6 +232,7 @@ def render_pyplot_figure(
                 legend_title=legend_title,
                 legend_cols=legend_cols,
             )
+        _apply_cjk_fonts(figure)
         st_obj.pyplot(figure, **kwargs)
     finally:
         plt.close(figure)
