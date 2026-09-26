@@ -36,6 +36,7 @@ from htfa.monitoring.uae.transport.data import (
     TransportData,
     anchor_last_month,
     load_transport_data,
+    load_transport_from_duckdb,
 )
 from htfa.monitoring.uae.metrics import (
     _source_note_from_metadata,
@@ -61,13 +62,10 @@ TRANSPORT_EXPLANATION = """
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
-def _load_transport_cached(
-    content: bytes,
-    file_name: str,
-) -> TransportData:
-    """按上传文件缓存交通物流解析结果。"""
+def _load_transport_cached(_database_snapshot: str) -> TransportData:
+    """按数据库快照缓存交通物流查询结果。"""
 
-    return load_transport_data(content, file_name=file_name)
+    return load_transport_from_duckdb()
 
 
 def _render_chart(
@@ -223,8 +221,8 @@ def _render_transport_metrics(
 
 def render_transport_section(
     st_obj: Any,
-    content: bytes,
-    file_name: str,
+    _content: bytes,
+    _file_name: str,
 ) -> dict[str, Any]:
     """渲染「交通物流」板块的两张海运图和两张航空运输图。"""
 
@@ -232,7 +230,9 @@ def render_transport_section(
     st_obj.subheader("交通物流")
     try:
         with st_obj.spinner("正在读取交通物流数据..."):
-            data = _load_transport_cached(content, file_name)
+            from htfa.monitoring.uae.duckdb_reader import database_snapshot_key
+
+            data = _load_transport_cached(database_snapshot_key())
         last_month = anchor_last_month(data.values)
         try:
             _render_transport_metrics(st_obj, data, last_month)
@@ -378,7 +378,7 @@ def render_transport_section(
         return {"status": "error", "message": str(exc)}
     return {
         "status": "success",
-        "source": file_name,
+        "source": "uae.duckdb",
         "as_of": last_month.strftime("%Y-%m"),
     }
 

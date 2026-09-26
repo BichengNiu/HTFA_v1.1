@@ -104,6 +104,37 @@ def test_government_finance_reads_cbuae_long_table(monkeypatch, tmp_path) -> Non
     assert result.values.iloc[0, 3] == 4
 
 
+def test_transport_aggregates_portwatch_daily_tables(monkeypatch, tmp_path) -> None:
+    from htfa.monitoring.uae.transport import data
+
+    database_path = tmp_path / "uae.duckdb"
+    with duckdb.connect(str(database_path)) as connection:
+        connection.execute(
+            "CREATE SCHEMA detail; "
+            "CREATE TABLE detail.portwatch_uae_daily "
+            "(date DATE, import BIGINT, export BIGINT, import_tanker BIGINT, export_tanker BIGINT)"
+        )
+        connection.execute(
+            "INSERT INTO detail.portwatch_uae_daily VALUES "
+            "('2026-08-01', 10, 20, 3, 4), ('2026-08-02', 11, 21, 5, 6)"
+        )
+        connection.execute(
+            "CREATE TABLE detail.portwatch_chokepoint_daily "
+            "(date DATE, portid VARCHAR, n_total BIGINT, n_tanker BIGINT)"
+        )
+        connection.execute(
+            "INSERT INTO detail.portwatch_chokepoint_daily VALUES "
+            "('2026-08-01', 'chokepoint6', 7, 2), ('2026-08-02', 'chokepoint6', 8, 3)"
+        )
+    monkeypatch.setattr(data, "read_query", lambda sql: _read(sql, database_path))
+
+    result = data.load_transport_from_duckdb()
+
+    assert result.source_name == "uae.duckdb"
+    assert result.values.iloc[0][data.UAE_PORT_IMPORT_TOTAL] == 21
+    assert result.values.iloc[0][data.HORMUZ_TANKER_CALLS] == 5
+
+
 def _read_long(database_path, **kwargs):
     from htfa.monitoring.uae.duckdb_reader import read_long_indicators
     from htfa.monitoring.uae import duckdb_reader
