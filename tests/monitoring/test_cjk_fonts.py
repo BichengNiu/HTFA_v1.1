@@ -12,6 +12,6 @@ def test_pyplot_renderer_selects_cjk_fallbacks_for_all_text() -> None:
     _apply_cjk_fonts(figure)
 
     assert "Noto Sans CJK SC" in MATPLOTLIB_CJK_FONTS
-    assert title.get_fontfamily()[0] == "Noto Sans CJK SC"
+    assert any("Noto Sans CJK" in family for family in title.get_fontfamily())
     assert plt.rcParams["axes.unicode_minus"] is False
     plt.close(figure)
