@@ -1,0 +1,13 @@
+# Runtime dependencies for Streamlit Community Cloud (Python 3.13).
+streamlit==1.64.0
+duckdb==1.5.5
+openpyxl==3.1.5
+plotly==7.1.0
+dtaidistance>=2.3.12,<3
+scikit-learn>=1.7,<2
+pypdf>=6,<7
+requests>=2.32,<3
+tensorflow>=2.20,<3
+
+# HTFA's internal time-series toolkit, pinned to a tested public commit.
+git+https://github.com/BichengNiu/Ts.git@60af781e2f7df66da9f08d0a5d1c37cd3a9ef23d#egg=Ts
