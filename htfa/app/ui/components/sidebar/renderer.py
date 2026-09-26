@@ -73,7 +73,15 @@ def render_complete_sidebar(
             st.info("请先选择一个主模块")
 
         st.markdown("---")
-        if selected_main in {"数据探索", "监测分析"}:
+        # UAE 高频监测直接读取 DuckDB；Excel 仅用于数据核验，不再作为运行输入。
+        should_render_shared_uploader = (
+            selected_main == "数据探索"
+            or (
+                selected_main == "监测分析"
+                and get_current_sub_module() != "阿联酋"
+            )
+        )
+        if should_render_shared_uploader:
             render_shared_dataset_uploader(
                 st,
                 protocol=(

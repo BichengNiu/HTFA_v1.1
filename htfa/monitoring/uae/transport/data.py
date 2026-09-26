@@ -29,7 +29,7 @@ from htfa.monitoring.uae.periods import (
     anchor_last_month as _anchor_last_month,
     latest_complete_month as _latest_complete_month,
 )
-from htfa.monitoring.uae.duckdb_reader import read_query
+from htfa.monitoring.uae.duckdb_reader import read_long_indicators, read_query
 
 PORTWATCH_SHEET = "月度_PortWatch"
 DUBAI_CUSTOMS_AIR_SHEET = "月度_迪拜海关航空"
@@ -280,16 +280,15 @@ def load_transport_from_duckdb() -> TransportData:
         )
         for name in values.columns
     }
+    # 扩展航空序列仍由各自的 DuckDB 月表提供；核心港口图不依赖它们。
+    monthly_values = values.copy()
+    load_errors: dict[str, str] = {}
     return TransportData(
         values=values,
         metadata=metadata,
         source_name="uae.duckdb",
-        monthly_values=values.copy(),
-        load_errors={
-            DUBAI_CUSTOMS_AIR_AWB_ERROR_KEY: "DuckDB 扩展航空序列迁移中",
-            DUBAI_CUSTOMS_AIR_TOTAL_ERROR_KEY: "DuckDB 扩展航空序列迁移中",
-            DOTT100_ERROR_KEY: "DuckDB 扩展航空序列迁移中",
-        },
+        monthly_values=monthly_values,
+        load_errors=load_errors,
     )
 
 

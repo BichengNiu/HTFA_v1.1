@@ -412,15 +412,30 @@ def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
     file_input = get_shared_dataset_file()
     if file_input is None:
         _render_report_header(st_obj)
-        message = (
-            "请先在侧边栏“共享数据集”上传阿联酋工作簿。"
-            "只有上传并通过工作簿协议校验后，才会读取数据并显示图表。"
+        message = "宏观概览和行业分析暂未迁移到 DuckDB。"
+        tab_objects = st_obj.tabs(
+            [label for label, _ in TAB_CONFIG],
+            key="analysis.uae.active_tab",
+            on_change="rerun",
         )
-        st_obj.info(message)
+        topic_results: dict[str, Any] = {}
+        for tab, (_, view_key) in zip(tab_objects, TAB_CONFIG):
+            if not tab.open:
+                continue
+            with tab:
+                if view_key == "oil_fiscal":
+                    with st_obj.container(key="uae-high-frequency-print"):
+                        topic_results = render_high_frequency_topics(
+                            st_obj,
+                            (None, "uae.duckdb"),
+                        )
+                else:
+                    st_obj.info(message)
         return {
-            "status": "no_data",
+            "status": "duckdb_only",
             "message": message,
             "panel_count": 0,
+            "high_frequency": topic_results,
         }
 
     source_name = _source_name(file_input)

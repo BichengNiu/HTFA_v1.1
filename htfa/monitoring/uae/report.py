@@ -15,7 +15,7 @@ from htfa.monitoring.uae.transport.renderer import render_transport_section
 
 
 TopicStatus = Literal["ok", "empty", "failed"]
-TopicRenderer = Callable[[Any, tuple[bytes, str]], Mapping[str, Any]]
+TopicRenderer = Callable[[Any, tuple[bytes | None, str]], Mapping[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -30,21 +30,21 @@ class TopicResult:
 
 def _render_government_finance(
     st_obj: Any,
-    payload: tuple[bytes, str],
+    payload: tuple[bytes | None, str],
 ) -> Mapping[str, Any]:
     return render_government_finance_section(st_obj, *payload)
 
 
 def _render_real_estate(
     st_obj: Any,
-    payload: tuple[bytes, str],
+    payload: tuple[bytes | None, str],
 ) -> Mapping[str, Any]:
     return render_real_estate_section(st_obj, *payload)
 
 
 def _render_transport(
     st_obj: Any,
-    payload: tuple[bytes, str],
+    payload: tuple[bytes | None, str],
 ) -> Mapping[str, Any]:
     return render_transport_section(st_obj, *payload)
 
@@ -59,7 +59,7 @@ TOPIC_RENDERERS: tuple[tuple[str, str, TopicRenderer], ...] = (
 
 def render_high_frequency_topics(
     st_obj: Any,
-    payload: tuple[bytes, str],
+    payload: tuple[bytes | None, str],
 ) -> dict[str, TopicResult]:
     """独立渲染高频主题；单主题失败不阻断其他主题。"""
 

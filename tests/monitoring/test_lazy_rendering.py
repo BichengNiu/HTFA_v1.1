@@ -136,20 +136,20 @@ def test_uae_monitoring_only_renders_the_open_top_level_tab(monkeypatch) -> None
     assert host.calls[0][1]["on_change"] == "rerun"
 
 
-def test_government_finance_loader_is_cached_by_uploaded_content(monkeypatch) -> None:
+def test_government_finance_loader_is_cached_by_database_snapshot(monkeypatch) -> None:
     from htfa.monitoring.uae.government_finance import renderer
 
-    calls: list[tuple[bytes, str]] = []
+    calls: list[str] = []
 
-    def load(content: bytes, *, file_name: str):
-        calls.append((content, file_name))
-        return {"content": content, "file_name": file_name}
+    def load():
+        calls.append("loaded")
+        return {"source": "uae.duckdb"}
 
     renderer._load_government_finance_cached.clear()
-    monkeypatch.setattr(renderer, "load_government_finance_data", load)
+    monkeypatch.setattr(renderer, "load_government_finance_from_duckdb", load)
 
-    first = renderer._load_government_finance_cached(b"workbook", "uae.xlsx")
-    second = renderer._load_government_finance_cached(b"workbook", "uae.xlsx")
+    first = renderer._load_government_finance_cached("db-snapshot")
+    second = renderer._load_government_finance_cached("db-snapshot")
 
     assert first == second
-    assert calls == [(b"workbook", "uae.xlsx")]
+    assert calls == ["loaded"]
