@@ -42,6 +42,7 @@ from htfa.monitoring.uae.government_finance.data import (
     calculate_calendar_yoy,
     latest_complete_month,
     load_government_finance_data,
+    load_government_finance_from_duckdb,
 )
 from htfa.monitoring.uae.government_finance.ded import (
     ENTERPRISES_DISPLAY,
@@ -127,11 +128,8 @@ LABOR_EMPLOYMENT_EXPLANATION = """
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
-def _load_government_finance_cached(
-    content: bytes,
-    file_name: str,
-) -> GovernmentFinanceData:
-    return load_government_finance_data(content, file_name=file_name)
+def _load_government_finance_cached(_database_snapshot: str) -> GovernmentFinanceData:
+    return load_government_finance_from_duckdb()
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
@@ -763,16 +761,18 @@ def _render_cheques_chart(
 
 def render_government_finance_section(
     st_obj: Any,
-    content: bytes,
-    file_name: str,
+    content: bytes | None,
+    file_name: str | None,
 ) -> dict[str, Any]:
     """Render the CBUAE / Wind rates, credit, DED and labour comparisons."""
 
     st_obj.divider()
     st_obj.subheader("财政金融")
     try:
+        from htfa.monitoring.uae.duckdb_reader import database_snapshot_key
+
         with st_obj.spinner("正在读取 CBUAE 月度存款与信贷数据..."):
-            data = _load_government_finance_cached(content, file_name)
+            data = _load_government_finance_cached(database_snapshot_key())
         latest_date = latest_complete_month(data.values)
         # 设定稳定的容器 key，供打印媒体查询只压缩财政金融的图表，
         # 不改变企业活动、劳动就业和网页端的图表尺寸。
@@ -799,7 +799,7 @@ def render_government_finance_section(
         return {"status": "error", "message": str(exc)}
     return {
         "status": "success",
-        "source": file_name,
+        "source": "uae.duckdb",
         "as_of": latest_date.strftime("%Y-%m"),
     }
 

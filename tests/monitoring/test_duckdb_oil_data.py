@@ -43,10 +43,10 @@ def test_oil_market_data_reads_native_duckdb_tables(monkeypatch, tmp_path) -> No
     assert result.rig_count is not None and result.rig_count.iloc[0] == 45
 
 
-def _read(sql: str, database_path):
+def _read(sql: str, database_path, parameters=()):
     from htfa.monitoring.uae.duckdb_reader import read_query
 
-    return read_query(sql, database_path=database_path)
+    return read_query(sql, parameters, database_path=database_path)
 
 
 def test_real_estate_data_reads_dld_monthly_aggregate(monkeypatch, tmp_path) -> None:
@@ -74,3 +74,45 @@ def test_real_estate_data_reads_dld_monthly_aggregate(monkeypatch, tmp_path) -> 
     assert result.source_name == "uae.duckdb"
     assert result.values.loc["2026-08-31", "期房销售笔数"] == 13
     assert result.values.loc["2026-08-31", "现房销售金额"] == 2.8
+
+
+def test_government_finance_reads_cbuae_long_table(monkeypatch, tmp_path) -> None:
+    from htfa.monitoring.uae.government_finance import data
+
+    database_path = tmp_path / "uae.duckdb"
+    with duckdb.connect(str(database_path)) as connection:
+        connection.execute(
+            "CREATE TABLE cbuae_monthly (period DATE, indicator VARCHAR, value DOUBLE)"
+        )
+        connection.executemany(
+            "INSERT INTO cbuae_monthly VALUES (?, ?, ?)",
+            [
+                ("2026-08-31", indicator, position)
+                for position, (_, indicator) in enumerate(data.CBUAE_INDICATORS, 1)
+            ],
+        )
+    monkeypatch.setattr(
+        data,
+        "read_long_indicators",
+        lambda **kwargs: _read_long(database_path, **kwargs),
+    )
+
+    result = data.load_government_finance_from_duckdb()
+
+    assert result.source_name == "uae.duckdb"
+    assert list(result.values.columns) == [name for name, _ in data.CBUAE_INDICATORS]
+    assert result.values.iloc[0, 3] == 4
+
+
+def _read_long(database_path, **kwargs):
+    from htfa.monitoring.uae.duckdb_reader import read_long_indicators
+    from htfa.monitoring.uae import duckdb_reader
+
+    original = duckdb_reader.read_query
+    duckdb_reader.read_query = lambda sql, parameters=(): original(
+        sql, parameters, database_path=database_path
+    )
+    try:
+        return read_long_indicators(**kwargs)
+    finally:
+        duckdb_reader.read_query = original

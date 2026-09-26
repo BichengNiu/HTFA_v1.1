@@ -12,6 +12,7 @@ from htfa.data.economic_workbook import (
     SheetSeriesMetadata,
 )
 from htfa.monitoring.uae.periods import latest_complete_month as _latest_complete_month
+from htfa.monitoring.uae.duckdb_reader import read_long_indicators
 
 
 CBUAE_SHEET = "月度_CBUAE"
@@ -67,6 +68,26 @@ def load_government_finance_data(
     )
 
 
+def load_government_finance_from_duckdb() -> GovernmentFinanceData:
+    """从 CBUAE 原始长表读取政府及政府控股企业存款、信贷。"""
+
+    values = read_long_indicators(
+        table="cbuae_monthly",
+        period_column="period",
+        indicator_column="indicator",
+        value_column="value",
+        targets=dict(CBUAE_INDICATORS),
+    )
+    metadata = {
+        name: SheetSeriesMetadata(
+            name, indicator, "月度", "百万迪拉姆", "CBUAE", "DuckDB",
+            "cbuae_monthly",
+        )
+        for name, indicator in CBUAE_INDICATORS
+    }
+    return GovernmentFinanceData(values, metadata, "uae.duckdb")
+
+
 def calculate_calendar_yoy(values: pd.DataFrame) -> pd.DataFrame:
     """按完整月历计算同比，缺月时不误用相邻的第 12 条观测。"""
 
@@ -104,4 +125,5 @@ __all__ = [
     "calculate_calendar_yoy",
     "latest_complete_month",
     "load_government_finance_data",
+    "load_government_finance_from_duckdb",
 ]
