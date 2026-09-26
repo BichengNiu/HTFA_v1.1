@@ -32,6 +32,7 @@ from htfa.monitoring.uae.oil.data import (
     DUBAI_PRICE_INDICATOR,
     OilMarketData,
     load_oil_market_data,
+    load_oil_market_from_duckdb,
 )
 from htfa.monitoring.uae.oil.revenue import (
     PRICE_BENCHMARK_COLUMN,
@@ -51,6 +52,7 @@ from htfa.monitoring.uae.oil.war_pressure import (
     UAV_LABEL,
     WarPressureData,
     load_war_pressure_data,
+    load_war_pressure_from_duckdb,
 )
 from htfa.monitoring.uae.plot_helpers import translate_source_text
 from htfa.monitoring.uae.metrics import (
@@ -75,8 +77,10 @@ WAR_PRESSURE_EXPLANATION = """
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
-def _load_oil_market_cached(content: bytes, file_name: str) -> OilMarketData:
-    return load_oil_market_data(content, file_name=file_name)
+def _load_oil_market_cached(_database_snapshot: str) -> OilMarketData:
+    """按数据库快照缓存石油数据，不接受页面上传的 Excel。"""
+
+    return load_oil_market_from_duckdb()
 
 
 def _latest_change(
@@ -573,15 +577,17 @@ def render_oil_fiscal_panel(
     st_obj: Any,
     payload: tuple[bytes, str],
 ) -> dict[str, Any]:
-    """用显式工作簿载荷估算石油收入，不生成占位渠道。"""
+    """从 DuckDB 读取石油数据并估算收入；载荷仅为兼容旧调用方。"""
 
     war_pressure_available = False
     try:
-        content, file_name = payload
+        from htfa.monitoring.uae.duckdb_reader import database_snapshot_key
+
+        snapshot = database_snapshot_key()
         with st_obj.spinner("正在读取日度油价与月度原油产量..."):
-            data = _load_oil_market_cached(content, file_name)
+            data = _load_oil_market_cached(snapshot)
         try:
-            war_pressure = load_war_pressure_data(content, file_name=file_name)
+            war_pressure = load_war_pressure_from_duckdb()
         except (KeyError, TypeError, ValueError) as exc:
             st_obj.subheader("战争压力")
             st_obj.warning(f"战争压力数据暂不可用：{exc}")
@@ -602,7 +608,7 @@ def render_oil_fiscal_panel(
         return {"status": "error", "message": str(exc)}
     return {
         "status": "success",
-        "source": file_name,
+        "source": "uae.duckdb",
         "war_pressure": war_pressure_available,
     }
 
