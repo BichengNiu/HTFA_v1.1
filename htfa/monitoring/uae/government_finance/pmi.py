@@ -22,6 +22,7 @@ from htfa.data.economic_workbook import (
     EconomicWorkbookReader,
     SheetSeriesMetadata,
 )
+from htfa.monitoring.uae.duckdb_reader import read_query
 
 
 PMI_SHEET = "月度_LSEG"
@@ -69,6 +70,25 @@ def load_pmi_data(
         metadata=metadata,
         source_name=source_name,
     )
+
+
+def load_pmi_from_duckdb() -> PmiData:
+    """从 DuckDB 读取阿联酋非油私营部门 PMI。"""
+
+    frame = read_query("SELECT period, value FROM pmi_monthly ORDER BY period")
+    if frame.empty or frame["value"].dropna().empty:
+        raise ValueError("DuckDB 的 PMI 月度表没有可用观测")
+    values = pd.DataFrame(
+        {PMI_LABEL: frame["value"].to_numpy()},
+        index=pd.DatetimeIndex(pd.to_datetime(frame["period"])),
+    )
+    metadata = {
+        PMI_LABEL: SheetSeriesMetadata(
+            PMI_LABEL, PMI_INDICATOR, "月度", "点", "S&P Global", "DuckDB",
+            "pmi_monthly",
+        )
+    }
+    return PmiData(values, metadata, "uae.duckdb")
 
 
 def display_pmi_values(values: pd.DataFrame) -> pd.DataFrame:
@@ -129,4 +149,5 @@ __all__ = [
     "build_pmi_figure",
     "display_pmi_values",
     "load_pmi_data",
+    "load_pmi_from_duckdb",
 ]

@@ -33,6 +33,7 @@ from htfa.data.economic_workbook import (
     optional_text,
     normalize_indicator_name,
 )
+from htfa.monitoring.uae.duckdb_reader import read_query
 from Ts.TsPlots.style import GRAY
 
 
@@ -81,6 +82,35 @@ def load_ded_data(
         metadata=metadata,
         source_name=source_name,
     )
+
+
+def load_ded_from_duckdb() -> DedData:
+    """从 DuckDB 读取迪拜企业发证与新发执照月度序列。"""
+
+    frame = read_query(
+        "SELECT month, series, value FROM ded_monthly "
+        "WHERE series IN ('enterprises', 'licences') ORDER BY month"
+    )
+    if frame.empty:
+        raise ValueError("DuckDB 的 DED 月度表没有可用观测")
+    labels = {"enterprises": ENTERPRISES_DISPLAY, "licences": LICENCES_DISPLAY}
+    values = frame.assign(display=frame["series"].map(labels)).pivot(
+        index="month", columns="display", values="value"
+    ).reindex(columns=[ENTERPRISES_DISPLAY, LICENCES_DISPLAY]).sort_index()
+    values.index = pd.DatetimeIndex(pd.to_datetime(values.index))
+    if values.dropna(how="all").empty:
+        raise ValueError("DuckDB 的 DED 月度表没有可用观测")
+    metadata = {
+        ENTERPRISES_DISPLAY: SheetSeriesMetadata(
+            ENTERPRISES_DISPLAY, ENTERPRISES_INDICATOR, "月度", "家",
+            "Dubai Department of Economy and Tourism", "DuckDB", "ded_monthly",
+        ),
+        LICENCES_DISPLAY: SheetSeriesMetadata(
+            LICENCES_DISPLAY, LICENCES_INDICATOR, "月度", "张",
+            "Dubai Department of Economy and Tourism", "DuckDB", "ded_monthly",
+        ),
+    }
+    return DedData(values, metadata, "uae.duckdb")
 
 
 def _clean_source(value: str) -> str:
@@ -247,4 +277,5 @@ __all__ = [
     "LICENCES_INDICATOR",
     "build_ded_figure",
     "load_ded_data",
+    "load_ded_from_duckdb",
 ]

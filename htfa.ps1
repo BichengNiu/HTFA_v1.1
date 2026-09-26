@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("Start", "Stop", "SetupRuntime", "Watch")]
+    [ValidateSet("Start", "Stop", "SetupRuntime", "Watch", "Update")]
     [string]$Command = "Start",
     [string]$ProjectRoot,
     [string]$RuntimePython,
@@ -294,21 +294,6 @@ function Ensure-Runtime {
     }
 }
 
-function Clear-PythonCaches {
-    foreach ($root in @(
-            (Join-Path $ProjectRoot "runtime"),
-            (Join-Path $ProjectRoot "htfa"),
-            $ProjectRoot
-        )) {
-        if (-not (Test-Path -LiteralPath $root)) {
-            continue
-        }
-        Get-ChildItem -LiteralPath $root -Directory -Filter "__pycache__" -Recurse -Force `
-            -ErrorAction SilentlyContinue |
-            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-    }
-}
-
 function Invoke-Watch {
     if ([string]::IsNullOrWhiteSpace($BrowserPath) -or
         [string]::IsNullOrWhiteSpace($BrowserDataDirectory)) {
@@ -485,18 +470,18 @@ try {
         "Watch" { exit (Invoke-Watch) }
         "Stop" { exit (Invoke-Stop) }
         "SetupRuntime" { exit (Invoke-SetupRuntime) }
+        "Update" { exit (Invoke-RepositoryUpdate) }
         "Start" {
             Write-Host "========================================"
             Write-Host "HTFA Dashboard Startup"
             Write-Host "========================================"
             Write-Host ""
-            Invoke-RepositoryUpdate
             Ensure-Runtime
             if ([string]::IsNullOrWhiteSpace($env:HTFA_DEBUG_MODE)) {
                 $env:HTFA_DEBUG_MODE = "true"
             }
             Write-Host "[INFO] Debug mode: $env:HTFA_DEBUG_MODE"
-            Write-Host "[INFO] Checking Ts main before launch; offline mode uses the local version."
+            Write-Host "[INFO] To update source code, run: htfa.bat update"
             exit (Invoke-Run)
         }
     }

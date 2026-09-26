@@ -17,6 +17,7 @@ from htfa.monitoring.uae.plot_helpers import (
     source_note,
 )
 from htfa.data.economic_workbook import EconomicWorkbookReader
+from htfa.monitoring.uae.duckdb_reader import read_query
 
 
 _WORKBOOK_READER = EconomicWorkbookReader(
@@ -70,6 +71,23 @@ def load_search_index_data(
         )
     values = values.sort_index()
     values.index = pd.DatetimeIndex(values.index).normalize()
+    return values
+
+
+def load_search_index_from_duckdb() -> pd.DataFrame:
+    """从 DuckDB 读取两个工作搜索关键词的月度指数。"""
+
+    frame = read_query(
+        "SELECT month, keyword, value FROM employment_search_index "
+        "WHERE keyword IN (?, ?) ORDER BY month",
+        (WORK_DUBAI_COLUMN, WORK_UAE_COLUMN),
+    )
+    if frame.empty:
+        raise ValueError("DuckDB 的工作搜索热度表没有可用观测")
+    values = frame.pivot(index="month", columns="keyword", values="value").reindex(
+        columns=[WORK_DUBAI_COLUMN, WORK_UAE_COLUMN]
+    ).sort_index()
+    values.index = pd.DatetimeIndex(pd.to_datetime(values.index)).normalize()
     return values
 
 
@@ -158,4 +176,5 @@ __all__ = [
     "build_search_index_figure",
     "display_search_index_values",
     "load_search_index_data",
+    "load_search_index_from_duckdb",
 ]

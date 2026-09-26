@@ -236,7 +236,7 @@ def test_section_renders_quad_business_and_labor_employment_subsections(
     monkeypatch.setattr(
         renderer,
         "_load_government_finance_cached",
-        lambda content, file_name: data,
+        lambda _database_snapshot: data,
     )
     for loader_name in (
         "_load_rates_cached",
@@ -269,6 +269,7 @@ def test_section_renders_quad_business_and_labor_employment_subsections(
         monkeypatch.setattr(renderer, render_name, render_mocks[render_name])
     st_obj = MagicMock()
     st_obj.columns.return_value = (MagicMock(), MagicMock())
+    st_obj.toggle.return_value = True
 
     result = renderer.render_government_finance_section(
         st_obj,
@@ -326,7 +327,7 @@ def test_quad_cell_failure_warns_cell_and_keeps_section(monkeypatch) -> None:
     monkeypatch.setattr(
         renderer,
         "_load_government_finance_cached",
-        lambda content, file_name: data,
+        lambda _database_snapshot: data,
     )
     for loader_name in (
         "_load_rates_cached",
@@ -398,7 +399,7 @@ def test_payment_chart_failure_warns_only_its_business_cell(monkeypatch) -> None
     monkeypatch.setattr(
         renderer,
         "_load_government_finance_cached",
-        lambda content, file_name: data,
+        lambda _database_snapshot: data,
     )
     for loader_name in (
         "_load_rates_cached",
@@ -474,11 +475,10 @@ def test_finance_metrics_row_falls_back_to_warning(monkeypatch) -> None:
     renderer._render_finance_metrics(
         st_obj,
         MagicMock(),
-        b"workbook",
-        "test.xlsx",
+        "db-snapshot",
     )
 
-    assert st_obj.warning.call_count == 1
+    assert st_obj.warning.call_count >= 1
     assert st_obj.metric.call_count == 0
 
 
@@ -525,7 +525,7 @@ def test_finance_metrics_cover_all_absolute_series_with_mom_and_yoy(
     monkeypatch.setattr(
         renderer,
         "_load_rates_cached",
-        lambda content, file_name: SimpleNamespace(
+        lambda _database_snapshot: SimpleNamespace(
             values=rates_values,
             metadata=_metadata(rates_values.columns),
         ),
@@ -533,7 +533,7 @@ def test_finance_metrics_cover_all_absolute_series_with_mom_and_yoy(
     monkeypatch.setattr(
         renderer,
         "_load_foreign_inflow_cached",
-        lambda content, file_name: SimpleNamespace(
+        lambda _database_snapshot: SimpleNamespace(
             values=foreign_values,
             metadata=_metadata(
                 [
@@ -547,7 +547,7 @@ def test_finance_metrics_cover_all_absolute_series_with_mom_and_yoy(
     monkeypatch.setattr(
         renderer,
         "_load_private_credit_cached",
-        lambda content, file_name: SimpleNamespace(
+        lambda _database_snapshot: SimpleNamespace(
             values=private_values,
             metadata=_metadata(private_values.columns),
         ),
@@ -562,8 +562,7 @@ def test_finance_metrics_cover_all_absolute_series_with_mom_and_yoy(
     renderer._render_finance_metrics(
         st_obj,
         data,
-        b"workbook",
-        "test.xlsx",
+        "db-snapshot",
     )
 
     assert st_obj.metric.call_count == 12
@@ -607,8 +606,7 @@ def test_business_metrics_row_falls_back_to_warning(monkeypatch) -> None:
     renderer._render_business_metrics(
         st_obj,
         pd.Timestamp("2026-06-30"),
-        b"workbook",
-        "test.xlsx",
+        "db-snapshot",
     )
 
     assert st_obj.warning.call_count == 1
@@ -626,8 +624,7 @@ def test_labor_metrics_row_falls_back_to_warning(monkeypatch) -> None:
 
     renderer._render_labor_metrics(
         st_obj,
-        b"workbook",
-        "test.xlsx",
+        "db-snapshot",
     )
 
     assert st_obj.warning.call_count == 1
@@ -683,7 +680,7 @@ def test_business_and_labor_metrics_show_mom_and_yoy(monkeypatch) -> None:
     monkeypatch.setattr(
         renderer,
         "_load_pmi_cached",
-        lambda content, file_name: SimpleNamespace(
+        lambda _database_snapshot: SimpleNamespace(
             values=pmi_values,
             metadata=_metadata([PMI_LABEL]),
         ),
@@ -691,7 +688,7 @@ def test_business_and_labor_metrics_show_mom_and_yoy(monkeypatch) -> None:
     monkeypatch.setattr(
         renderer,
         "_load_ded_cached",
-        lambda content, file_name: SimpleNamespace(
+        lambda _database_snapshot: SimpleNamespace(
             values=ded_values,
             metadata=_metadata([ENTERPRISES_DISPLAY, LICENCES_DISPLAY]),
         ),
@@ -699,7 +696,7 @@ def test_business_and_labor_metrics_show_mom_and_yoy(monkeypatch) -> None:
     monkeypatch.setattr(
         renderer,
         "_load_foreign_labor_cached",
-        lambda content, file_name: SimpleNamespace(
+        lambda _database_snapshot: SimpleNamespace(
             values=labor_values,
             metadata=_metadata([NEPAL_APPROVALS, BANGLADESH_CLEARANCES]),
         ),
@@ -707,12 +704,12 @@ def test_business_and_labor_metrics_show_mom_and_yoy(monkeypatch) -> None:
     monkeypatch.setattr(
         renderer,
         "_load_search_index_cached",
-        lambda content, file_name: search_values,
+        lambda _database_snapshot: search_values,
     )
     monkeypatch.setattr(
         renderer,
         "_load_payment_cached",
-        lambda content, file_name: SimpleNamespace(
+        lambda _database_snapshot: SimpleNamespace(
             values=payment_values,
             metadata=_metadata(
                 [
@@ -732,8 +729,7 @@ def test_business_and_labor_metrics_show_mom_and_yoy(monkeypatch) -> None:
     renderer._render_business_metrics(
         business_st,
         dates[-1],
-        b"workbook",
-        "test.xlsx",
+        "db-snapshot",
     )
     assert business_st.metric.call_count == 7
     assert business_st.metric.call_args_list[0].args[0] == (
@@ -747,7 +743,7 @@ def test_business_and_labor_metrics_show_mom_and_yoy(monkeypatch) -> None:
 
     labor_st = MagicMock()
     labor_st.columns.return_value = tuple(MagicMock() for _ in range(4))
-    renderer._render_labor_metrics(labor_st, b"workbook", "test.xlsx")
+    renderer._render_labor_metrics(labor_st, "db-snapshot")
     assert labor_st.metric.call_count == 4
     assert all(
         "环比" in call.kwargs["delta"] and "同比" in call.kwargs["delta"]

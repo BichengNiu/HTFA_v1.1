@@ -6,6 +6,7 @@ if errorlevel 1 goto :failed
 
 if /I "%~1"=="stop" goto :stop
 if /I "%~1"=="setup-runtime" goto :setup_runtime
+if /I "%~1"=="update" goto :update
 
 echo ========================================
 echo HTFA Dashboard Startup
@@ -22,6 +23,11 @@ exit /b 0
 
 :setup_runtime
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%CD%\htfa.ps1" -Command SetupRuntime
+if errorlevel 1 goto :failed
+exit /b 0
+
+:update
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%CD%\htfa.ps1" -Command Update
 if errorlevel 1 goto :failed
 exit /b 0
 

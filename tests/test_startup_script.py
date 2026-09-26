@@ -6,15 +6,13 @@ CONTROL_SCRIPT = PROJECT_ROOT / "htfa.ps1"
 MOUSE_LAUNCHER = PROJECT_ROOT / "htfa.bat"
 
 
-def test_startup_updates_clean_main_before_launching_htfa():
+def test_manual_update_checks_clean_main_before_pulling_htfa():
     source = CONTROL_SCRIPT.read_text(encoding="utf-8")
 
     assert "branch --show-current" in source
     assert "status --porcelain" in source
     assert "pull --ff-only origin main" in source
-    assert source.index("pull --ff-only origin main") < source.index(
-        'Start-Process -FilePath $RuntimePython'
-    )
+    assert '"Update" { exit (Invoke-RepositoryUpdate) }' in source
 
 
 def test_startup_does_not_pull_when_worktree_is_dirty_or_branch_is_not_main():
@@ -39,9 +37,10 @@ def test_startup_uses_the_linked_browser_orchestrator():
 def test_root_control_script_exposes_start_stop_and_runtime_setup():
     source = CONTROL_SCRIPT.read_text(encoding="utf-8")
 
-    assert 'ValidateSet("Start", "Stop", "SetupRuntime", "Watch")' in source
+    assert 'ValidateSet("Start", "Stop", "SetupRuntime", "Watch", "Update")' in source
     assert '"Stop" { exit (Invoke-Stop) }' in source
     assert '"SetupRuntime" { exit (Invoke-SetupRuntime) }' in source
+    assert '"Update" { exit (Invoke-RepositoryUpdate) }' in source
     assert not (PROJECT_ROOT / "scripts" / "start.bat").exists()
     assert not (PROJECT_ROOT / "scripts" / "stop.bat").exists()
     assert not (PROJECT_ROOT / "scripts" / "run_htfa.ps1").exists()
@@ -52,6 +51,7 @@ def test_root_mouse_launcher_delegates_to_unified_control_script():
 
     assert 'if /I "%~1"=="stop" goto :stop' in source
     assert 'if /I "%~1"=="setup-runtime" goto :setup_runtime' in source
+    assert 'if /I "%~1"=="update" goto :update' in source
     assert '"%CD%\\htfa.ps1" -Command Start' in source
     assert '"%CD%\\htfa.ps1" -Command Stop' in source
 
@@ -67,3 +67,4 @@ def test_normal_start_keeps_python_bytecode_cache():
     ]
     assert "Clear-PythonCaches" not in start_block
     assert '"-B",' not in backend_block
+    assert "Invoke-RepositoryUpdate" not in start_block

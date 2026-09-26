@@ -31,6 +31,7 @@ from htfa.data.economic_workbook import (
     EconomicWorkbookReader,
     SheetSeriesMetadata,
 )
+from htfa.monitoring.uae.duckdb_reader import read_long_indicators
 
 
 CBUAE_SHEET = "月度_CBUAE"
@@ -143,6 +144,67 @@ def load_private_credit_data(
         file_input,
         targets=PRIVATE_CREDIT_INDICATORS,
         file_name=file_name,
+    )
+
+
+def _duckdb_metadata(
+    indicators: tuple[tuple[str, str], ...],
+) -> dict[str, SheetSeriesMetadata]:
+    return {
+        display: SheetSeriesMetadata(
+            display, indicator, "月度", "百万迪拉姆", "CBUAE", "DuckDB",
+            "cbuae_monthly",
+        )
+        for display, indicator in indicators
+    }
+
+
+def load_foreign_inflow_from_duckdb() -> CbuaeSeriesData:
+    """从 DuckDB 读取银行外债、外币及非居民存款序列。"""
+
+    frame = read_long_indicators(
+        table="cbuae_monthly",
+        period_column="period",
+        indicator_column="indicator",
+        value_column="value",
+        targets=dict(FOREIGN_INFLOW_INDICATORS),
+    )
+    nonresident = frame[
+        [
+            NONRESIDENT_CORPORATE_DISPLAY,
+            NONRESIDENT_INDIVIDUALS_DISPLAY,
+            NONRESIDENT_GOVERNMENT_DISPLAY,
+        ]
+    ].sum(axis=1, min_count=3)
+    values = frame[[FOREIGN_LIABILITIES_DISPLAY, FOREIGN_CURRENCIES_DISPLAY]].copy()
+    values[NONRESIDENT_DEPOSITS] = nonresident
+    metadata = _duckdb_metadata(FOREIGN_INFLOW_INDICATORS)
+    metadata[NONRESIDENT_DEPOSITS] = SheetSeriesMetadata(
+        NONRESIDENT_DEPOSITS,
+        "非居民私人企业、个人、政府及非商业实体存款之和",
+        "月度",
+        "百万迪拉姆",
+        "CBUAE",
+        "DuckDB",
+        "cbuae_monthly",
+    )
+    return CbuaeSeriesData(values.sort_index(), metadata, "uae.duckdb")
+
+
+def load_private_credit_from_duckdb() -> CbuaeSeriesData:
+    """从 DuckDB 读取私人企业、个人及工商业信贷序列。"""
+
+    values = read_long_indicators(
+        table="cbuae_monthly",
+        period_column="period",
+        indicator_column="indicator",
+        value_column="value",
+        targets=dict(PRIVATE_CREDIT_INDICATORS),
+    )
+    return CbuaeSeriesData(
+        values.sort_index(),
+        _duckdb_metadata(PRIVATE_CREDIT_INDICATORS),
+        "uae.duckdb",
     )
 
 
@@ -311,5 +373,7 @@ __all__ = [
     "build_foreign_inflow_figure",
     "build_private_credit_yoy_figure",
     "load_foreign_inflow_data",
+    "load_foreign_inflow_from_duckdb",
     "load_private_credit_data",
+    "load_private_credit_from_duckdb",
 ]

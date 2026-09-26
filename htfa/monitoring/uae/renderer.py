@@ -410,32 +410,49 @@ def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
     """渲染阿联酋监测；不写入或生成任何工作簿。"""
 
     file_input = get_shared_dataset_file()
+    tab_objects = st_obj.tabs(
+        [label for label, _ in TAB_CONFIG],
+        key="analysis.uae.active_tab",
+        on_change="rerun",
+    )
+    active_tab = next(
+        (
+            (tab, view_key)
+            for tab, (_, view_key) in zip(tab_objects, TAB_CONFIG)
+            if tab.open
+        ),
+        None,
+    )
+    if active_tab is None:
+        return {"status": "idle", "panel_count": 0, "high_frequency": {}}
+    active_container, active_view = active_tab
+
+    # 高频主题完全由 DuckDB 驱动。即使用户在其他页面上传或查看 Excel，打开
+    # 「高频数据」也不能触发工作簿读取、月度扫描或宏观仪表板计算。
+    if active_view == "oil_fiscal":
+        _render_report_header(st_obj)
+        with active_container:
+            with st_obj.container(key="uae-high-frequency-print"):
+                topic_results = render_high_frequency_topics(
+                    st_obj,
+                    (None, "uae.duckdb"),
+                )
+        return {
+            "status": "duckdb_only",
+            "panel_count": 0,
+            "high_frequency": topic_results,
+        }
+
     if file_input is None:
         _render_report_header(st_obj)
         message = "宏观概览和行业分析暂未迁移到 DuckDB。"
-        tab_objects = st_obj.tabs(
-            [label for label, _ in TAB_CONFIG],
-            key="analysis.uae.active_tab",
-            on_change="rerun",
-        )
-        topic_results: dict[str, Any] = {}
-        for tab, (_, view_key) in zip(tab_objects, TAB_CONFIG):
-            if not tab.open:
-                continue
-            with tab:
-                if view_key == "oil_fiscal":
-                    with st_obj.container(key="uae-high-frequency-print"):
-                        topic_results = render_high_frequency_topics(
-                            st_obj,
-                            (None, "uae.duckdb"),
-                        )
-                else:
-                    st_obj.info(message)
+        with active_container:
+            st_obj.info(message)
         return {
             "status": "duckdb_only",
             "message": message,
             "panel_count": 0,
-            "high_frequency": topic_results,
+            "high_frequency": {},
         }
 
     source_name = _source_name(file_input)
@@ -456,37 +473,22 @@ def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
             "source": source_name,
         }
 
-    topic_results: dict[str, Any] = {}
-    tab_objects = st_obj.tabs(
-        [label for label, _ in TAB_CONFIG],
-        key="analysis.uae.active_tab",
-        on_change="rerun",
-    )
-    for tab, (_, view_key) in zip(tab_objects, TAB_CONFIG):
-        if not tab.open:
-            continue
-        with tab:
-            if view_key == "growth_overview":
-                _render_growth_tab(
-                    st_obj,
-                    dashboard,
-                    GROWTH_OVERVIEW_GROUPS,
-                )
-            elif view_key == "growth_industry":
-                _render_growth_tab(
-                    st_obj,
-                    dashboard,
-                    GROWTH_INDUSTRY_GROUPS,
-                )
-            else:
-                with st_obj.container(key="uae-high-frequency-print"):
-                    topic_results = render_high_frequency_topics(
-                        st_obj,
-                        payload,
-                    )
+    with active_container:
+        if active_view == "growth_overview":
+            _render_growth_tab(
+                st_obj,
+                dashboard,
+                GROWTH_OVERVIEW_GROUPS,
+            )
+        else:
+            _render_growth_tab(
+                st_obj,
+                dashboard,
+                GROWTH_INDUSTRY_GROUPS,
+            )
     return {
         "status": "success",
         "source": source_name,
         "panel_count": len(dashboard.panels),
-        "high_frequency": topic_results,
+        "high_frequency": {},
     }

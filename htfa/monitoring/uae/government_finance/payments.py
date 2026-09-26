@@ -25,6 +25,7 @@ from htfa.data.economic_workbook import (
     normalize_indicator_name,
     optional_text,
 )
+from htfa.monitoring.uae.duckdb_reader import read_long_indicators
 
 
 PAYMENT_SHEET = "月度_CBUAE"
@@ -83,6 +84,30 @@ def load_payment_data(
     ):
         values, metadata = _parse_payment_sheet(excel_file)
     return PaymentData(values=values, metadata=metadata, source_name=source_name)
+
+
+def load_payment_from_duckdb() -> PaymentData:
+    """从 DuckDB 读取客户转账与支票清算的累计月度序列。"""
+
+    targets = {
+        display_name: indicator_name
+        for display_name, indicator_name, _ in PAYMENT_INDICATORS
+    }
+    values = read_long_indicators(
+        table="cbuae_monthly",
+        period_column="period",
+        indicator_column="indicator",
+        value_column="value",
+        targets=targets,
+    )
+    metadata = {
+        display_name: SheetSeriesMetadata(
+            display_name, indicator_name, "月度", unit, "CBUAE", "DuckDB",
+            "cbuae_monthly",
+        )
+        for display_name, indicator_name, unit in PAYMENT_INDICATORS
+    }
+    return PaymentData(values, metadata, "uae.duckdb")
 
 
 def _parse_payment_sheet(
@@ -314,4 +339,5 @@ __all__ = [
     "build_customer_transfers_figure",
     "cumulative_to_monthly",
     "load_payment_data",
+    "load_payment_from_duckdb",
 ]

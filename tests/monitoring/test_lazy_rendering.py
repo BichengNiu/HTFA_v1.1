@@ -136,6 +136,43 @@ def test_uae_monitoring_only_renders_the_open_top_level_tab(monkeypatch) -> None
     assert host.calls[0][1]["on_change"] == "rerun"
 
 
+def test_uploaded_excel_never_enters_high_frequency_data_path(monkeypatch) -> None:
+    """高频标签页始终只读 DuckDB，不能因共享上传文件而解析工作簿。"""
+
+    from htfa.monitoring.uae import renderer
+
+    class _MonitoringHost(_TabsHost):
+        def spinner(self, _label):
+            return nullcontext()
+
+        def container(self, **_kwargs):
+            return nullcontext()
+
+    upload = BytesIO(b"workbook")
+    upload.name = "uae.xlsx"
+    host = _MonitoringHost(open_index=2)
+    payloads: list[tuple[bytes | None, str]] = []
+    monkeypatch.setattr(renderer, "get_shared_dataset_file", lambda: upload)
+    monkeypatch.setattr(renderer, "_render_report_header", lambda *_args: None)
+    monkeypatch.setattr(
+        renderer,
+        "_build_monitoring_dashboard_cached",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("high-frequency view parsed Excel")
+        ),
+    )
+    monkeypatch.setattr(
+        renderer,
+        "render_high_frequency_topics",
+        lambda _st, payload: payloads.append(payload) or {},
+    )
+
+    result = renderer.render_uae_monitoring(host)
+
+    assert result["status"] == "duckdb_only"
+    assert payloads == [(None, "uae.duckdb")]
+
+
 def test_government_finance_loader_is_cached_by_database_snapshot(monkeypatch) -> None:
     from htfa.monitoring.uae.government_finance import renderer
 
@@ -153,3 +190,42 @@ def test_government_finance_loader_is_cached_by_database_snapshot(monkeypatch) -
 
     assert first == second
     assert calls == ["loaded"]
+
+
+def test_government_finance_defers_extended_charts_by_default(monkeypatch) -> None:
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    import pandas as pd
+
+    from htfa.monitoring.uae.government_finance import renderer
+
+    host = MagicMock()
+    host.spinner.return_value = nullcontext()
+    host.container.return_value = nullcontext()
+    host.expander.return_value = nullcontext()
+    host.toggle.return_value = False
+    data = SimpleNamespace(values=pd.DataFrame({"value": [1.0]}))
+    monkeypatch.setattr(
+        "htfa.monitoring.uae.duckdb_reader.database_snapshot_key",
+        lambda: "db-snapshot",
+    )
+    monkeypatch.setattr(renderer, "latest_complete_month", lambda _: pd.Timestamp("2026-08-31"))
+    monkeypatch.setattr(renderer, "_load_government_finance_cached", lambda _: data)
+    monkeypatch.setattr(renderer, "_render_finance_metrics", lambda *_args: None)
+    monkeypatch.setattr(renderer, "_render_quad_finance_charts", lambda *_args: None)
+    monkeypatch.setattr(
+        renderer,
+        "_render_business_activity_charts",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("extended charts rendered")),
+    )
+    monkeypatch.setattr(
+        renderer,
+        "_render_labor_employment_charts",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("extended charts rendered")),
+    )
+
+    result = renderer.render_government_finance_section(host, None, None)
+
+    assert result["status"] == "success"
+    host.toggle.assert_called_once()
