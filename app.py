@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import streamlit as st
 
+from htfa.ui_shared.fonts import configure_matplotlib_fonts
+
 
 st.set_page_config(
     page_title="金轩监测",
@@ -11,6 +13,10 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# Must run before HTFA imports any chart module so TsPlots also sees the
+# platform font selected for Streamlit Cloud.
+configure_matplotlib_fonts()
 
 from htfa.app.ui.components.content_router import render_main_content
 from htfa.app.ui.components.sidebar import render_complete_sidebar
