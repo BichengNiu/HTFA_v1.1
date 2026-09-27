@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+import subprocess
 
 from matplotlib import font_manager
 
@@ -31,9 +32,47 @@ CJK_FONT_CANDIDATES = (
 )
 
 
+@lru_cache(maxsize=1)
+def _register_fontconfig_cjk_fonts() -> None:
+    """Register CJK fonts installed as TrueType collections.
+
+    Debian's fonts-noto-cjk package commonly installs .ttc files. Matplotlib's
+    default font scan filters those files out, while fontconfig can still find
+    them. Register the fontconfig paths explicitly before resolving a family.
+    """
+
+    try:
+        result = subprocess.run(
+            ["fc-list", ":lang=zh", "file"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return
+
+    paths = {
+        line.split(":", 1)[0].strip()
+        for line in result.stdout.splitlines()
+        if line.strip()
+    }
+    for raw_path in paths:
+        path = Path(raw_path)
+        if not path.exists():
+            continue
+        try:
+            font_manager.fontManager.addfont(path)
+        except (OSError, RuntimeError, ValueError):
+            # Some fontconfig entries point to collections that this
+            # Matplotlib build cannot load; other entries may still work.
+            continue
+
+
 def _font_is_available(family: str) -> bool:
     """Return whether Matplotlib can resolve a family without fallback."""
 
+    _register_fontconfig_cjk_fonts()
     try:
         path = font_manager.findfont(family, fallback_to_default=False)
     except (OSError, ValueError):
