@@ -2,6 +2,6 @@
 gatherUsageStats = false
 
 [server]
-headless = false
+headless = true
 runOnSave = true
-fileWatcherType = "poll"
+fileWatcherType = "auto"
