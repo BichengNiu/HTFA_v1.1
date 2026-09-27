@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 
+import matplotlib
 import pandas as pd
 from matplotlib.axes import Axes
 from matplotlib.dates import date2num
@@ -15,9 +16,10 @@ from matplotlib.figure import Figure
 from matplotlib.transforms import blended_transform_factory
 import numpy as np
 from Ts.TsPlots.style import format_compact_y_axis as ts_format_compact_y_axis
+from htfa.ui_shared.fonts import matplotlib_font_family
 
 
-CHINESE_FONT_FAMILY = ["Microsoft YaHei", "SimHei"]
+CHINESE_FONT_FAMILY = matplotlib_font_family()
 WAR_START_DATE = pd.Timestamp("2026-03-01")
 WAR_LINE_COLOR = "#C0392B"
 
@@ -176,12 +178,18 @@ def annotate_war(axis: Axes) -> None:
 
 
 def apply_htfa_fonts(figure: Figure) -> None:
-    """把 Ts 模板默认字体（Times New Roman + 仿宋）统一覆盖为微软雅黑。
+    """把 Ts 模板默认字体统一覆盖为当前平台可用的 CJK 字体。
 
     模板在 ``plot_series`` 内部通过 ``apply_fonts`` 配置 rcParams；本项目
-    豁免项要求全图使用微软雅黑，此函数在图完成后把坐标轴标题、刻度、
+    此函数在图完成后把坐标轴标题、刻度、
     轴内文字、图例与图注一并改为 ``CHINESE_FONT_FAMILY``。
     """
+
+    # Ts 可能已经把 rcParams 指向 Windows 字体；覆盖全局设置，确保后续
+    # 新建的 Matplotlib Text artist 也使用云端已安装的 Noto CJK。
+    matplotlib.rcParams["font.family"] = list(CHINESE_FONT_FAMILY)
+    matplotlib.rcParams["font.sans-serif"] = list(CHINESE_FONT_FAMILY)
+    matplotlib.rcParams["axes.unicode_minus"] = False
 
     for axis in figure.axes:
         format_compact_y_axis(axis)
