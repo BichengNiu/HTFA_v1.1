@@ -58,6 +58,35 @@ def matplotlib_font_family() -> list[str]:
     return [resolve_cjk_font()]
 
 
+def configure_matplotlib_fonts() -> str:
+    """Configure Matplotlib and TsPlots with the resolved CJK family.
+
+    TsPlots exposes its CJK candidates as module constants. Updating those
+    candidates before the first chart is created keeps the shared plotting
+    package and HTFA's post-processing on the same cloud-compatible font.
+    """
+
+    import matplotlib
+
+    selected = resolve_cjk_font()
+    matplotlib.rcParams["font.family"] = [selected]
+    matplotlib.rcParams["font.sans-serif"] = [selected]
+    matplotlib.rcParams["axes.unicode_minus"] = False
+
+    try:
+        from Ts.TsPlots import style as ts_style
+    except ImportError:
+        return selected
+
+    candidates = [selected, *CJK_FONT_CANDIDATES]
+    ts_style.CHINESE_FONT_CANDIDATES = candidates
+    ts_style.HEITI_FONT_CANDIDATES = candidates
+    ts_style.SELECTED_CHINESE_FONT = selected
+    ts_style.SELECTED_HEITI_FONT = selected
+    ts_style._fonts_initialized = False
+    return selected
+
+
 def plotly_font_family() -> str:
     """Return a CSS font-family value using the resolved CJK family."""
 
@@ -66,6 +95,7 @@ def plotly_font_family() -> str:
 
 __all__ = [
     "CJK_FONT_CANDIDATES",
+    "configure_matplotlib_fonts",
     "matplotlib_font_family",
     "plotly_font_family",
     "resolve_cjk_font",
