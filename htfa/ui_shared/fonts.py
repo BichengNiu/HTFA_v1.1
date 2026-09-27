@@ -69,7 +69,8 @@ def configure_matplotlib_fonts() -> str:
     import matplotlib
 
     selected = resolve_cjk_font()
-    matplotlib.rcParams["font.family"] = [selected]
+    latin = "Times New Roman" if _font_is_available("Times New Roman") else "DejaVu Sans"
+    matplotlib.rcParams["font.family"] = [latin, selected]
     matplotlib.rcParams["font.sans-serif"] = [selected]
     matplotlib.rcParams["axes.unicode_minus"] = False
 
@@ -79,10 +80,21 @@ def configure_matplotlib_fonts() -> str:
         return selected
 
     candidates = [selected, *CJK_FONT_CANDIDATES]
-    ts_style.CHINESE_FONT_CANDIDATES = candidates
+    # Mutate the original list in place: TsPlots.apply_fonts binds its
+    # candidate list as a default argument when the module is imported.
+    original_candidates = getattr(ts_style, "CHINESE_FONT_CANDIDATES", None)
+    if isinstance(original_candidates, list):
+        original_candidates[:] = candidates
+        candidates = original_candidates
+    else:
+        ts_style.CHINESE_FONT_CANDIDATES = candidates
     ts_style.HEITI_FONT_CANDIDATES = candidates
+    ts_style.LATIN_FONT = latin
     ts_style.SELECTED_CHINESE_FONT = selected
     ts_style.SELECTED_HEITI_FONT = selected
+    defaults = getattr(ts_style.apply_fonts, "__defaults__", None)
+    if defaults and len(defaults) >= 2:
+        ts_style.apply_fonts.__defaults__ = (latin, candidates, *defaults[2:])
     ts_style._fonts_initialized = False
     return selected
 
