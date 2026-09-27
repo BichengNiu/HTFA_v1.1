@@ -109,7 +109,9 @@ def configure_matplotlib_fonts() -> str:
 
     selected = resolve_cjk_font()
     latin = "Times New Roman" if _font_is_available("Times New Roman") else "DejaVu Sans"
-    matplotlib.rcParams["font.family"] = [latin, selected]
+    # Put the resolved CJK family first so Matplotlib does not select a
+    # Latin-only font for Chinese text before considering the fallback.
+    matplotlib.rcParams["font.family"] = [selected, latin]
     matplotlib.rcParams["font.sans-serif"] = [selected]
     matplotlib.rcParams["axes.unicode_minus"] = False
 
