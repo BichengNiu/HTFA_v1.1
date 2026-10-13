@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import csv
-import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -179,17 +178,28 @@ def test_update_writes_files_and_db(tmp_path, monkeypatch) -> None:
     raw_dir.mkdir()
     _write_fixture(raw_dir / "commerce_registry_sample.csv")
     out_dir = tmp_path / "DED_data"
-    official_path = tmp_path / "official_ded_monthly.csv"
-    official_path.write_text(
-        "month,official_new_licenses,note,source_url\n2024-01,12345,test,\n",
-        encoding="utf-8",
-    )
     monkeypatch.setattr(sd, "RAW", raw_dir)
     monkeypatch.setattr(sd, "OUT", out_dir)
-    monkeypatch.setattr(sd, "OFFICIAL_CSV", official_path)
 
     con = db.connect(":memory:")
     db.init_schema(con)
+    sd._ensure_official_news_tables(con)
+    sd._store_official_news_candidates(
+        con,
+        [
+            {
+                "source_url": "https://mediaoffice.ae/en/news/example",
+                "published_at": datetime(2024, 2, 1).date(),
+                "period": "January",
+                "year": 2024,
+                "month": "2024-01",
+                "period_kind": "month",
+                "value": 12345,
+                "headline": "New business licences",
+                "snippet": "12,345 new business licences in January 2024",
+            }
+        ],
+    )
     outcome = sd.update(con, skip_download=True)
     assert outcome["status"] == "ok"
     assert (out_dir / "monthly_counts.csv").exists()

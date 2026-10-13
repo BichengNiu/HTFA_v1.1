@@ -1,38 +1,8 @@
-"""Dubai Land Department（DLD）数据源模块。
+"""Dubai Land Department sales and lease indicators.
 
-职责（对应 ``update()`` 一个入口）：
-1. 建库：确保 ``detail.dld_transactions`` 细粒度派生表（优先从
-   ``data/UAE/raw/dld/DLD.duckdb`` 旧库迁移，否则按 ``build_dld_database.sql``
-   的 TRY_CAST 逻辑从 CSV 建表）、三个只读视图、唯一索引，以及
-   ``meta_column_dictionary`` / ``meta_indicator_dictionary``。
-2. 下载：仅当缺失原始数据或 ``force=True`` 且 ``skip_download=False`` 时，
-   按 ``download_dld_all.py`` 的流程从 Data Dubai 官方 bulk 数据抓取并合并
-   原始 CSV 到 ``data/UAE/raw/dld/`` 下。
-3. 周度指标：移植 ``generate_dld_investment_indices.py`` 的全部分析逻辑
-   （RAW_WEEKLY_SQL + build_rows），结果事务内写入 ``dld_investment_pipeline_weekly``。
-4. 月度指标：
-   a) 销售指标（``dld_sales_monthly``）：从 detail.dld_transactions 按月聚合
-      Sales × (Off-Plan/Existing) × (Residential/Commercial) 的笔数与金额
-      （4 个指标 × 笔数+金额，2009 起全历史，本地精确）；
-   b) 租赁合同指标（``dld_lease_monthly``）：抓取 Property Finder 镜像的
-      DLD Mo'asher「Official Rental Performance Index」月度页面（2022-01 起），
-      解析官方边缘口径：租赁合同总数、新签占比、续签占比、住宅占比、商业占比。
-      官方从不发布「住宅×新签」等交叉绝对数，故只入边缘口径；缺报月份留空。
-
-表结构分层（2026-08）：``detail.dld_transactions`` 只保留被周度/月度指标与三个视图
-消费的列（``KEEP_COLUMNS``，47 → 9，2026-08+1 回补 property_usage_en 供月度
-销售指标分市场）；``dld.land_registry`` 仓库内零消费，不再建表入库（原始
-CSV / 旧库仍保留在 ``data/UAE/raw/dld/``，需要时可单独重建）。
-
-回调写表（对应 ``merge()`` 一个入口）：
-1. 从库中查询周度指标 → 导出 7 列临时 CSV（列名与旧
-   ``merge_dld_indices_into_uae_workbook.ps1`` 完全一致）→ 调用
-   ``data/merge_dld_indices_into_uae_workbook.ps1`` 写回工作簿（周度_迪拜房地产）。
-2. 从库中查询月度指标 → 以 openpyxl 直写「月度_DLD」sheet（新建，头部元信息
-   6 行 + 数据行按月降序；约定同 source_ded 的 update_sheet）。
-
-只许使用标准库 + duckdb + openpyxl（月度 sheet 写表，与 source_ded 一致）。
-"""
+Online runs refresh the official Data Dubai snapshot before rebuilding the
+current detail table. Offline reconstruction is available only when the
+caller explicitly sets skip_download=True and the current raw CSV exists."""
 
 from __future__ import annotations
 
@@ -46,13 +16,13 @@ import math
 import os
 import re
 import statistics
-import sys
 import tempfile
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 
 from htfa.data.temporal import last_complete_month_end
@@ -64,16 +34,15 @@ from ._excel_helpers import run_powershell_command
 from . import db  # noqa: E402
 
 # ---------------------------------------------------------------------------
-# 常量：计算窗口与发布起点（与旧 generate 脚本一致）
+# 常量：计算窗口与发布起点
 # ---------------------------------------------------------------------------
 
-CALCULATION_START = date(2009, 1, 5)
 PUBLICATION_START = date(2015, 1, 5)
 YOY_WEEKS = 52
 BASELINE_WEEKS = 156
 MIN_BASELINE_OBSERVATIONS = 104
 
-# 原始 CSV / 旧库所在目录（与 data/UAE/raw/dld/ 一致）
+# Raw Data Dubai CSV directory
 RAW_DLD_DIR = DATA_DIR / "raw" / "dld"
 
 # detail.dld_transactions 仅保留被周度/月度指标与三个视图消费的列（47 → 9）。
@@ -99,8 +68,7 @@ WORKSHEET_NAME = "周度_迪拜房地产"
 WORKBOOK_MERGER = SCRIPTS_DIR / "merge_dld_indices_into_uae_workbook.ps1"
 
 # ---------------------------------------------------------------------------
-# 周度原始口径 SQL：移植自 generate_dld_investment_indices.py 的 RAW_WEEKLY_SQL，
-# 唯一差异是数据库引用改为统一库的 detail.dld_transactions（原为裸表名）。
+# 周度原始口径 SQL：查询 detail.dld_transactions 统一长表。
 # ---------------------------------------------------------------------------
 
 RAW_WEEKLY_SQL = r"""
@@ -366,8 +334,7 @@ COLUMN_DICTIONARY = (
 
 # ---------------------------------------------------------------------------
 # 指标字典：6 个周度指标（即 ps1 的 7 列 headers 去掉「截止日期」）。
-# type/industry 沿用旧 ps1 写入工作簿「指标字典」时的口径
-# （项目数/交易笔数/…、房地产），来源与频率为统一口径。
+# type/industry 对应工作簿「指标字典」中的当前指标分类。
 # ---------------------------------------------------------------------------
 
 INDICATOR_DICTIONARY = (
@@ -379,7 +346,7 @@ INDICATOR_DICTIONARY = (
     ("项目商业转化指数", "周", "指数", "Dubai Land Department", "指数", "房地产"),
 )
 
-# merge() 导出 CSV 的 7 列名（与旧 merge_dld_indices_into_uae_workbook.ps1 完全一致）
+# merge() 导出 CSV 的 7 列名，供当前 DLD 工作表写入脚本使用。
 WEEKLY_CSV_HEADERS = (
     "截止日期",
     "经确认新期房项目数_近28天",
@@ -439,8 +406,7 @@ MONTHLY_SHEET_HEADERS = (
     "迪拜:租赁合同-商业占比(%)",
 )
 
-# 指标字典补录（与 MONTHLY_SHEET_HEADERS[1:] 一一对应；type/industry 沿用
-# 旧 ps1 口径：交易笔数/金额/占比，房地产；来源为 DLD / Mo'asher 官方镜像）。
+# 指标字典补录（与 MONTHLY_SHEET_HEADERS[1:] 一一对应）。
 MONTHLY_INDICATOR_DICTIONARY = (
     ("迪拜:期房销售-住宅笔数", "月", "笔", "Dubai Land Department", "交易笔数", "房地产"),
     ("迪拜:期房销售-住宅金额(百万AED)", "月", "百万AED", "Dubai Land Department", "交易金额", "房地产"),
@@ -481,14 +447,19 @@ _CHUNK_SIZE = 1024 * 1024
 
 
 # ---------------------------------------------------------------------------
-# 数值与指数计算的纯函数（移植自 generate_dld_investment_indices.py）
+# 数值与指数计算
 # ---------------------------------------------------------------------------
 
-def parse_float(value):
-    """把字符串/数值转成 float；空值与 None 保持 None。"""
+def _numeric_value(value, *, column: str) -> float | None:
+    """Validate a DuckDB numeric observation and normalize it for calculations."""
 
-    if value is None or value == "":
+    if value is None:
         return None
+    if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
+        raise TypeError(
+            f"DuckDB column {column!r} must contain a numeric value; "
+            f"got {type(value).__name__}"
+        )
     return float(value)
 
 
@@ -535,7 +506,7 @@ def score_from_z(value):
 
 
 def formatted(value, digits=6):
-    """旧 generate 脚本的数值格式化：整数原样，浮点保留 digits 位小数。"""
+    """格式化指标值：整数原样，浮点保留 digits 位小数。"""
 
     if value is None:
         return ""
@@ -545,10 +516,10 @@ def formatted(value, digits=6):
 
 
 def build_rows(raw_rows):
-    """由 RAW_WEEKLY_SQL 的原始行计算全部派生指标（与旧脚本逐行等价）。
+    """由 RAW_WEEKLY_SQL 的原始行计算全部派生指标。
 
     ``raw_rows`` 每行是一个 dict，键为 RAW_WEEKLY_SQL 的 13 个输出列；
-    数值列既接受字符串（旧 CSV 流程）也接受 float/int（统一库直查流程）。
+    数值列必须是 DuckDB 返回的数值类型。
     返回行数不变，每行在原字段基础上追加动量/稳健 z/指数等派生字段。
     """
 
@@ -566,7 +537,7 @@ def build_rows(raw_rows):
     )
     for row in raw_rows:
         for column in numeric_columns:
-            row[column] = parse_float(row[column])
+            row[column] = _numeric_value(row[column], column=column)
 
     launch_momentum = []
     absorption_count_momentum = []
@@ -662,40 +633,32 @@ def build_rows(raw_rows):
     return output
 
 
-def _as_date(value):
-    """把 DATE 值或 'yyyy-mm-dd' 字符串统一成 datetime.date。"""
-
-    if isinstance(value, str):
-        return date.fromisoformat(value)
-    return value
-
-
 def _rounded_count(value):
-    """计数列入库值：None 保持 None，否则四舍五入为整数（与旧 CSV 一致）。"""
+    """计数列入库值：None 保持 None，否则四舍五入为整数。"""
 
     return None if value is None else int(round(value))
 
 
 def _rounded_score(value):
-    """指数列入库值：None 保持 None，否则保留 6 位小数（与旧 formatted() 一致）。"""
+    """指数列入库值：None 保持 None，否则保留 6 位小数。"""
 
-    return None if value is None else round(float(value), 6)
+    return None if value is None else round(value, 6)
 
 
 def to_weekly_table_rows(built_rows):
     """把 build_rows 的结果映射成 dld_investment_pipeline_weekly 的入库行。
 
     仅保留 week_start >= PUBLICATION_START 的发布周；week_end 转为 DATE，
-    数值列按旧脚本口径（整数计数 / 6 位小数指数）格式化，None 原样保留。
+    数值列使用整数计数、6 位小数指数，None 原样保留。
     """
 
     rows = []
     for row in built_rows:
-        if _as_date(row["week_start"]) < PUBLICATION_START:
+        if row["week_start"] < PUBLICATION_START:
             continue
         rows.append(
             {
-                "week_end": _as_date(row["week_end"]),
+                "week_end": row["week_end"],
                 "confirmed_new_projects_28d": _rounded_count(
                     row["confirmed_new_projects_28d"]
                 ),
@@ -718,7 +681,7 @@ def to_weekly_table_rows(built_rows):
 
 
 # ---------------------------------------------------------------------------
-# 建库：迁移 / CSV 建表 / 视图 / 字典
+# Build current table, views, and dictionary
 # ---------------------------------------------------------------------------
 
 def _transactions_ddl(csv_path: Path) -> str:
@@ -765,37 +728,8 @@ def _assert_transaction_id_unique(con) -> None:
         )
 
 
-def _migrate_from_old_db(con) -> str:
-    """从 data/UAE/raw/dld/DLD.duckdb 迁移 detail.dld_transactions（只保留必需列）。"""
-
-    old_db = RAW_DLD_DIR / "DLD.duckdb"
-    attach = old_db.resolve().as_posix()
-    con.execute(f"ATTACH '{attach}' AS old_dld (READ_ONLY)")
-    try:
-        if not db.table_exists(con, "detail.dld_transactions"):
-            con.execute(
-                "CREATE TABLE detail.dld_transactions AS "
-                "SELECT " + ", ".join(KEEP_COLUMNS) + " FROM old_dld.transactions"
-            )
-            _assert_transaction_id_unique(con)
-        dictionary = con.execute(
-            "SELECT object_name, column_name, data_type, group_cn, meaning_cn, "
-            "relates_to, caveat_cn FROM old_dld.metadata.column_dictionary "
-            "WHERE object_name = 'transactions'"
-        ).fetchall()
-    finally:
-        try:
-            con.execute("DETACH old_dld")
-        except Exception:  # noqa: BLE001 - 已分离时忽略
-            pass
-    for row in dictionary:
-        if row[1] in KEEP_COLUMNS:
-            _upsert_column_dictionary_row(con, ("detail.dld_transactions", *row[1:]))
-    return f"迁移旧库 {old_db.name}"
-
-
 def _build_base_from_csv(con) -> str:
-    """旧库缺失时按 build_dld_database.sql 的 TRY_CAST 逻辑从 CSV 建表（只保留必需列）。"""
+    """Build the current detail table from the current Data Dubai CSV."""
 
     txn_csv = RAW_DLD_DIR / "DLD_Transactions_ALL.csv"
     if not txn_csv.exists():
@@ -1089,21 +1023,26 @@ def _parse_moasher_rental(html: str, slug: str | None = None) -> dict | None:
     }
 
 
-def _fetch_moasher_page(url: str, cached_dir: Path, *, force: bool) -> str:
-    """抓取单个 Mo'asher 页面；缓存到 raw/dld/moasher/ 供离线重跑。"""
+def _fetch_moasher_page(
+    url: str, cached_dir: Path, *, force: bool, skip_download: bool
+) -> str:
+    """Fetch one Mo'asher page or require its exact cache in offline mode."""
 
     cached_dir.mkdir(parents=True, exist_ok=True)
     slug = url.rstrip("/").rsplit("/", 1)[-1]
     cache_path = cached_dir / f"{slug}.html"
-    if cache_path.exists() and not force:
-        return cache_path.read_text(encoding="utf-8", errors="replace")
+    if skip_download:
+        if not cache_path.is_file():
+            raise FileNotFoundError(f"Mo'asher offline page cache not found: {cache_path}")
+        return cache_path.read_text(encoding="utf-8")
+    if cache_path.is_file() and not force:
+        return cache_path.read_text(encoding="utf-8")
     request = urllib.request.Request(
         url, headers={"User-Agent": _USER_AGENT, "Accept-Language": "en-US,en;q=0.9"}
     )
     html = _http_read(request, timeout=60, retries=3)
     cache_path.write_text(html, encoding="utf-8")
     return html
-
 
 def _discover_moasher_urls() -> list[str]:
     """从 Property Finder Insights Hub 分页发现全部 Mo'asher 月度页 URL 并落盘。"""
@@ -1127,46 +1066,26 @@ def _discover_moasher_urls() -> list[str]:
     return urls
 
 
-def _cached_moasher_urls() -> list[str]:
-    """从已缓存的 Mo'asher HTML 恢复页面清单，支持离线重建。"""
+def _moasher_urls(con, *, skip_download: bool) -> list[str]:
+    """Read the explicit offline URL list or discover current online pages."""
 
-    cached_dir = RAW_DLD_DIR / "moasher"
-    return sorted(
-        MOASHER_BASE + path.stem
-        for path in cached_dir.glob("*.html")
-    )
-
-
-def _moasher_urls(con, *, force: bool, skip_download: bool) -> list[str]:
-    """取得 Mo'asher 月度页 URL 清单：读缓存文件，缺失/强制时在线发现。"""
-
-    if skip_download and MOASHER_URLS_FILE.exists():
+    if skip_download:
+        if not MOASHER_URLS_FILE.is_file():
+            raise FileNotFoundError(
+                f"Mo'asher offline URL list not found: {MOASHER_URLS_FILE}"
+            )
         urls = [
             line.strip("\ufeff \t\r\n")
             for line in MOASHER_URLS_FILE.read_text(encoding="utf-8-sig").splitlines()
             if line.strip()
         ]
-        if urls:
-            return urls
-    cached_urls = _cached_moasher_urls()
-    if skip_download and cached_urls:
-        return cached_urls
-    if skip_download:
-        raise RuntimeError(
-            "缺少 Mo'asher 页面清单（raw/dld/moasher_page_urls.txt）且 skip_download=True"
-        )
-    try:
-        discovered = _discover_moasher_urls()
-    except Exception as exc:  # noqa: BLE001 - cached pages remain auditable
-        if cached_urls:
-            print(
-                f"[source_dld] Mo'asher 在线发现失败，沿用缓存：{exc}",
-                flush=True,
-            )
-            return cached_urls
-        raise
-    return discovered or cached_urls
-
+        if not urls:
+            raise ValueError(f"Mo'asher offline URL list is empty: {MOASHER_URLS_FILE}")
+        return urls
+    discovered = _discover_moasher_urls()
+    if not discovered:
+        raise ValueError("Mo'asher online discovery returned no monthly pages")
+    return discovered
 
 def build_lease_monthly(con, *, force: bool = False, skip_download: bool = False) -> list[dict]:
     """抓取/解析 Mo'asher 租赁指数页面，输出 dld_lease_monthly 入库行。
@@ -1176,28 +1095,26 @@ def build_lease_monthly(con, *, force: bool = False, skip_download: bool = False
     在 source_url 以便追溯。
     """
 
-    urls = _moasher_urls(con, force=force, skip_download=skip_download)
+    urls = _moasher_urls(con, skip_download=skip_download)
     cached_dir = RAW_DLD_DIR / "moasher"
     rows: list[dict] = []
     seen: set[date] = set()
     for url in urls:
         slug = url.rstrip("/").rsplit("/", 1)[-1]
-        try:
-            # Rental pages can be revised at the same URL; online mode must
-            # refresh them, while skip_download explicitly reuses HTML cache.
-            html = _fetch_moasher_page(
-                url, cached_dir, force=force or not skip_download
-            )
-        except Exception as exc:  # noqa: BLE001 - 单页失败不阻断整批
-            print(f"[source_dld] Mo'asher 页面抓取失败 {slug}: {exc}", flush=True)
-            continue
+        # Rental pages can be revised at the same URL; online mode must
+        # refresh them, while skip_download explicitly reuses HTML cache.
+        html = _fetch_moasher_page(
+            url,
+            cached_dir,
+            force=force or not skip_download,
+            skip_download=skip_download,
+        )
         parsed = _parse_moasher_rental(html, slug=slug)
         if parsed is None:
             continue
         period = _moasher_month_from_slug(slug)
         if period is None:
-            print(f"[source_dld] Mo'asher 页面月份无法解析: {slug}", flush=True)
-            continue
+            raise ValueError(f"Mo'asher 页面月份无法解析: {slug}")
         if period in seen:
             continue  # 同月有两个变体 URL（EN 镜像重复）；取首个
         seen.add(period)
@@ -1213,106 +1130,45 @@ def build_lease_monthly(con, *, force: bool = False, skip_download: bool = False
     return rows
 
 
-def _upgrade_transactions_columns(con) -> bool:
-    """把 detail.dld_transactions 升级到当前 KEEP_COLUMNS（缺列时重建）。
-
-    2026-08 瘦身到 8 列后，月度销售指标需要回补 property_usage_en（第 9 列）。
-    列缺失时从旧库（优先）或原始 CSV 整表重建（先删视图→删表→重建，update()
-    随后会重建成视图），返回是否发生了重建。无缺失时不动表。
-    """
-
-    missing = [
-        column
-        for column in KEEP_COLUMNS
-        if not db.table_exists(con, "detail.dld_transactions")
-        or column
-        not in {
-            row[0]
-            for row in con.execute(
-                "SELECT column_name FROM information_schema.columns "
-                "WHERE table_schema='detail' AND table_name='dld_transactions'"
-            ).fetchall()
-        }
-    ]
-    if not missing:
-        return False
-    if db.table_exists(con, "detail.dld_transactions"):
-        for view in (
-            "dld.transactions",
-            "dld.land_transactions",
-            "dld.transaction_year_summary",
-            "dld.transaction_date_quality_issues",
-        ):
-            con.execute(f"DROP VIEW IF EXISTS {view}")
-        con.execute("DROP TABLE detail.dld_transactions")
-    old_db = RAW_DLD_DIR / "DLD.duckdb"
-    txn_csv = RAW_DLD_DIR / "DLD_Transactions_ALL.csv"
-    if old_db.exists():
-        _migrate_from_old_db(con)
-    elif txn_csv.exists():
-        _build_base_from_csv(con)
-    else:
-        raise RuntimeError(
-            "detail.dld_transactions 需要重建（缺列："
-            + ", ".join(missing)
-            + "），但旧库与原始 CSV 均缺失"
-        )
-    return True
-
-
 def _ensure_base_tables(con, *, force: bool, skip_download: bool) -> str:
-    """确保 detail.dld_transactions 存在，必要时触发下载。
-
-    land_registry 自 2026-08 起不再入库（仓库内零消费，瘦身）；原始 CSV / 旧库
-    仍保留在 data/UAE/raw/dld/ 供需要时单独重建。
-
-    下载触发条件：基表缺失且 raw 目录无 CSV（首次安装）、或 force=True ——
-    两者都必须 not skip_download。下载输出的 CSV 覆盖到 data/UAE/raw/dld/ 后，
-    自动进入「CSV 全量建表」路径。
-    """
+    """Require the current detail schema and refresh it from Data Dubai."""
 
     txn_csv = RAW_DLD_DIR / "DLD_Transactions_ALL.csv"
-    old_db = RAW_DLD_DIR / "DLD.duckdb"
     txn_ready = db.table_exists(con, "detail.dld_transactions")
-    csv_ready = txn_csv.exists()
-
+    csv_ready = txn_csv.is_file()
     downloaded = False
     refresh_note = ""
+
     if not skip_download:
         should_download = force or not txn_ready or not csv_ready
         if not should_download:
-            try:
-                remote_files = _get_bulk_csv_files(
-                    TRANSACTIONS_DATASET_ID, TRANSACTIONS_DATASET_PAGE
-                )
-                manifest_path = RAW_DLD_DIR / "DLD_download_manifest.json"
-                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-                cached_names = {
-                    str(item.get("file_name") or "")
-                    for item in manifest.get("transaction_source_files", [])
-                }
-                remote_names = {
-                    str(item.get("file_name") or "") for item in remote_files
-                }
-                should_download = remote_names != cached_names
-                refresh_note = (
-                    "检测到 Data Dubai 新版交易快照"
-                    if should_download
-                    else "已在线核验 Data Dubai 交易快照"
-                )
-            except Exception as exc:  # noqa: BLE001 - preserve valid cache
-                refresh_note = f"交易快照在线核验失败，沿用有效缓存：{exc}"
+            remote_files = _get_bulk_csv_files(
+                TRANSACTIONS_DATASET_ID, TRANSACTIONS_DATASET_PAGE
+            )
+            manifest_path = RAW_DLD_DIR / "DLD_download_manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            cached_names = {
+                str(item.get("file_name") or "")
+                for item in manifest.get("transaction_source_files", [])
+            }
+            remote_names = {
+                str(item.get("file_name") or "") for item in remote_files
+            }
+            should_download = remote_names != cached_names
+            refresh_note = (
+                "Data Dubai has a new transaction snapshot"
+                if should_download
+                else "Data Dubai transaction snapshot checked online"
+            )
         if should_download:
             _download_all()
             downloaded = True
-            refresh_note = "已下载并重建 Data Dubai 交易快照"
+            csv_ready = txn_csv.is_file()
+            refresh_note = "Downloaded and rebuilt Data Dubai transaction snapshot"
 
     if txn_ready:
         if downloaded:
-            # 强制下载后，CSV 已经是新的官方快照；不能继续沿用旧的
-            # DuckDB 基表，否则会出现“下载成功但汇总仍是旧数据”。
             for view in (
-                "dld.transactions",
                 "dld.land_transactions",
                 "dld.transaction_year_summary",
                 "dld.transaction_date_quality_issues",
@@ -1321,35 +1177,39 @@ def _ensure_base_tables(con, *, force: bool, skip_download: bool) -> str:
             con.execute("DROP TABLE detail.dld_transactions")
             rebuilt = _build_base_from_csv(con)
             return "; ".join(item for item in (refresh_note, rebuilt) if item)
-        upgraded = _upgrade_transactions_columns(con)
-        if upgraded:
-            return "基表已存在（缺 property_usage_en 列，已从旧库/CSV 重建为 9 列）"
-        return "基表已存在"
+
+        actual_columns = [
+            row[0]
+            for row in con.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_schema = 'detail' "
+                "AND table_name = 'dld_transactions' "
+                "ORDER BY ordinal_position"
+            ).fetchall()
+        ]
+        if actual_columns != list(KEEP_COLUMNS):
+            raise ValueError(
+                "detail.dld_transactions schema mismatch: "
+                f"expected {KEEP_COLUMNS!r}, got {actual_columns!r}"
+            )
+        return refresh_note or "Current detail table checked online"
 
     if csv_ready:
         rebuilt = _build_base_from_csv(con)
         return "; ".join(item for item in (refresh_note, rebuilt) if item)
-    if old_db.exists() and not downloaded:
-        migrated = _migrate_from_old_db(con)
-        return "; ".join(item for item in (refresh_note, migrated) if item)
     if downloaded:
         raise RuntimeError(
-            "下载已完成但 data/UAE/raw/dld/ 下仍缺少 DLD_Transactions_ALL.csv，"
-            "请检查下载日志"
+            "Data Dubai download completed without DLD_Transactions_ALL.csv "
+            f"under {RAW_DLD_DIR}"
         )
     raise RuntimeError(
-        "detail.dld_transactions 不存在，且 data/UAE/raw/dld/ 下"
-        "既无旧库（DLD.duckdb）也无原始 CSV；请先去下载（不带 --skip-download）"
+        "detail.dld_transactions is missing and no current raw CSV is available; "
+        "run an online update or explicitly provide the current raw CSV "
+        "for skip_download mode"
     )
 
-
-# ---------------------------------------------------------------------------
-# 下载器：移植 download_dld_all.py（Data Dubai 官方 bulk 开放数据）
-# ---------------------------------------------------------------------------
-
 def _format_bytes(size):
-    size = int(size or 0)
-    value = float(size)
+    value = float(int(size or 0))
     for unit in ("B", "KB", "MB", "GB", "TB"):
         if value < 1024 or unit == "TB":
             return f"{value:.1f} {unit}"
@@ -1359,35 +1219,27 @@ def _format_bytes(size):
 def _sha256_file(path):
     digest = hashlib.sha256()
     with open(path, "rb") as source:
-        while True:
-            block = source.read(_CHUNK_SIZE)
-            if not block:
-                break
+        for block in iter(lambda: source.read(_CHUNK_SIZE), b""):
             digest.update(block)
     return digest.hexdigest()
 
 
 def _http_read(req, opener=None, timeout=90, retries=4):
     opener = opener or urllib.request.build_opener()
-    last = None
     for attempt in range(retries + 1):
         try:
             with opener.open(req, timeout=timeout) as response:
                 return response.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
-            last = exc
-            if exc.code in (429, 500, 502, 503, 504) and attempt < retries:
-                retry_after = int(exc.headers.get("Retry-After", 0) or 0)
-                time.sleep(max(retry_after or 2**attempt, 1))
-                continue
-            raise
-        except (urllib.error.URLError, TimeoutError) as exc:
-            last = exc
-            if attempt < retries:
-                time.sleep(2**attempt)
-                continue
-            raise
-    raise last
+            if exc.code not in (429, 500, 502, 503, 504) or attempt == retries:
+                raise
+            retry_after = int(exc.headers.get("Retry-After", 0) or 0)
+            time.sleep(max(retry_after or 2**attempt, 1))
+        except (urllib.error.URLError, TimeoutError):
+            if attempt == retries:
+                raise
+            time.sleep(2**attempt)
+    raise RuntimeError("Data Dubai request retries exhausted")
 
 
 def _data_dubai_opener():
@@ -1804,10 +1656,9 @@ def _download_all() -> None:
 # ---------------------------------------------------------------------------
 
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
-    """建库/迁移 → 周度指标 → 月度指标 → 事务内入库。
+    """Refresh the detail table, build indicators, and load transactionally.
 
-    返回 {"status": "ok", "rows": 周度+月度入库行数, "note": 路径简述}；
-    异常直接抛出，由总控（update_data.py）捕获记入 meta_source_runs。
+    Errors propagate. Offline CSV reconstruction requires skip_download=True.
     """
 
     db.init_schema(con)
@@ -1977,7 +1828,7 @@ def _write_weekly_csv(handle, rows) -> None:
     for week_end, confirmed, sales, active, launch, absorption, transition in rows:
         writer.writerow(
             [
-                f"{_as_date(week_end):%Y-%m-%d}",
+                f"{week_end:%Y-%m-%d}",
                 "" if confirmed is None else str(int(round(confirmed))),
                 "" if sales is None else str(int(round(sales))),
                 "" if active is None else str(int(round(active))),
@@ -2041,7 +1892,7 @@ def merge(workbook_path: Path) -> dict:
                 "-WorkbookPath",
                 str(workbook_path),
                 "-SourceDataThrough",
-                f"{_as_date(rows[-1][0]):%Y-%m-%d}",
+                f"{rows[-1][0]:%Y-%m-%d}",
                 "-SheetName",
                 WORKSHEET_NAME,
             )
@@ -2061,7 +1912,7 @@ def merge(workbook_path: Path) -> dict:
             )
         raise
 
-    latest = f"{_as_date(rows[-1][0]):%Y-%m-%d}"
+    latest = f"{rows[-1][0]:%Y-%m-%d}"
     monthly_rows = _write_monthly_sheet(workbook_path)
     return {
         "status": "ok",
@@ -2077,9 +1928,8 @@ def merge(workbook_path: Path) -> dict:
 def self_check() -> str:
     """不触碰真实库/网络/工作簿的自检：纯函数冒烟 + 常量完整性。"""
 
-    assert parse_float(None) is None
-    assert parse_float("") is None
-    assert parse_float("12.5") == 12.5
+    assert _numeric_value(None, column="value") is None
+    assert _numeric_value(12.5, column="value") == 12.5
     assert log_momentum(9.0, 2.0) == math.log1p(9.0) - math.log1p(2.0)
     assert log_momentum(-1.0, 2.0) is None
     assert log_momentum(5.0, None) is None
@@ -2238,7 +2088,7 @@ if __name__ == "__main__":
     print(self_check())
     print()
     print("用法提示：")
-    print("  1) 全量更新（含库迁移/建表与周度指标）:")
+    print("  1) Full update (refresh the Data Dubai snapshot and rebuild indicators):")
     print("     from htfa.jobs.uae_data import db, source_dld; con = db.connect(); source_dld.update(con)")
     print("  2) 跳过下载仅本地重建: update(con, skip_download=True)")
     print("  3) 强制重新下载原始快照: update(con, force=True)")

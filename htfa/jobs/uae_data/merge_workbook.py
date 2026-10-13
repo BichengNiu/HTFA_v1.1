@@ -27,11 +27,10 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-from .paths import DATA_DIR, SCRIPTS_DIR
+from .paths import DATA_DIR
 from ._excel_helpers import cleanup_excel_automation
 
 
-from . import db  # noqa: E402
 from .uae_metadata import sync_workbook_dictionary  # noqa: E402
 
 WORKBOOK_PATH = DATA_DIR / "阿联酋.xlsx"

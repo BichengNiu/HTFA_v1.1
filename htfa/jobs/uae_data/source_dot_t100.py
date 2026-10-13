@@ -26,7 +26,6 @@ import csv
 import io
 import os
 import shutil
-import sys
 import subprocess
 import zipfile
 from contextlib import contextmanager
@@ -34,7 +33,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Iterator, TextIO
 
-from .paths import DATA_DIR, SCRIPTS_DIR
+from .paths import DATA_DIR
 
 
 from . import db  # noqa: E402
@@ -83,7 +82,7 @@ def _open_csv_from_zip(zip_path: Path) -> TextIO | None:
         names = [n for n in zf.namelist() if n.lower().endswith((".csv", ".txt", ".asc"))]
         if not names:
             return None
-        raw = zf.read(names[0]).decode("utf-8-sig", errors="replace")
+        raw = zf.read(names[0]).decode("utf-8-sig")
         return io.StringIO(raw)
 
 
@@ -386,14 +385,9 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
 
     download_note = ""
     if not skip_download:
-        try:
-            # TranStats keeps the same yearly ZIP name while revising recent
-            # months. The online path always refreshes the recent-year window.
-            download_note = _download_recent_years(force=True)
-        except Exception as exc:  # noqa: BLE001 - a valid local cache remains usable
-            if not any(CSV_DIR.glob("uae_*.zip")):
-                raise
-            download_note = f"官网下载未完成，使用本地缓存：{exc}"
+        # TranStats keeps the same yearly ZIP name while revising recent
+        # months. The online path always refreshes the recent-year window.
+        download_note = _download_recent_years(force=True)
 
     zips = sorted(CSV_DIR.glob("uae_*.zip"))
     if not zips:

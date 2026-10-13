@@ -1,8 +1,10 @@
 """Unified fetch → clean → load pipeline for every ``data/`` source.
 
 Runs each ``source_*.py`` module against the single ``data/UAE/uae.duckdb``
-database.  One source failing never stops the others; the exit code only
-reflects whether every requested source finished successfully.
+database, then merges the requested sources from DuckDB into the workbook.
+All requested source updates run so the command reports every failure. Any
+update failure stops the workbook merge, preventing old DuckDB rows from being
+written back as if they were freshly downloaded.
 
 Examples::
 
@@ -19,16 +21,12 @@ import importlib
 import sys
 import traceback
 from datetime import datetime
-from pathlib import Path
 
 # 控制台默认按 GBK 输出，含中文/特殊字符的路径与错误详情会崩溃
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-
-from .paths import DATA_DIR, SCRIPTS_DIR
-
 
 from . import db  # noqa: E402
 from .uae_metadata import complete_metadata  # noqa: E402
@@ -58,6 +56,19 @@ SOURCES = (
     "tdra",
     "uaewps",
     "wam",
+)
+
+EXTENDED_MERGE_SOURCES = frozenset(
+    {
+        "comtrade",
+        "comtrade_vehicles",
+        "ded",
+        "dot_t100",
+        "dubai_customs_air",
+        "employment",
+        "eurostat_air",
+        "salik",
+    }
 )
 
 
@@ -164,6 +175,16 @@ def run_sources(
     return results
 
 
+def workbook_merge_sources(source_names: list[str]) -> list[str]:
+    """Map update-source names to the corresponding workbook merge modules."""
+
+    merge_module = importlib.import_module(".merge_workbook", package=__package__)
+    requested = set(source_names)
+    if requested & EXTENDED_MERGE_SOURCES:
+        requested.add("extended")
+    return [name for name in merge_module.SOURCES if name in requested]
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     names = resolve_source_names(args.source)
@@ -197,8 +218,62 @@ def main(argv: list[str] | None = None) -> int:
         )
         if metadata_outcome["status"] != "ok":
             failures += 1
+
+    if failures:
+        total_steps = len(names) + (metadata_outcome is not None)
+        print(
+            f"[update_data] stopped before workbook merge: "
+            f"{total_steps - failures} ok, {failures} failed; database: {db.DB_PATH}",
+            flush=True,
+        )
+        raise RuntimeError(
+            f"UAE data refresh failed in {failures} step(s); workbook merge was skipped."
+        )
+
+    merge_resolution_error = ""
+    try:
+        merge_names = workbook_merge_sources(names)
+    except Exception as exc:  # noqa: BLE001 - report final workbook stage
+        merge_names = []
+        merge_resolution_error = "".join(
+            traceback.format_exception_only(type(exc), exc)
+        ).strip()
+    merge_step = bool(merge_names) or bool(merge_resolution_error)
+    if merge_resolution_error:
+        failures += 1
+        print(
+            f"[update_data] workbook_merge   FAIL {merge_resolution_error}",
+            flush=True,
+        )
+    elif merge_names:
+        print(
+            f"[update_data] workbook merge: {', '.join(merge_names)}",
+            flush=True,
+        )
+        merge_detail = ""
+        try:
+            merge_module = importlib.import_module(
+                ".merge_workbook", package=__package__
+            )
+            merge_status = merge_module.main(["--source", ",".join(merge_names)])
+        except Exception as exc:  # noqa: BLE001 - report final workbook stage
+            detail = "".join(
+                traceback.format_exception_only(type(exc), exc)
+            ).strip()
+            merge_detail = detail
+            merge_status = 1
+        if merge_status:
+            failures += 1
+            suffix = f" {merge_detail}" if merge_detail else ""
+            print(f"[update_data] workbook_merge   FAIL{suffix}", flush=True)
+        else:
+            print("[update_data] workbook_merge   OK", flush=True)
+    else:
+        print("[update_data] workbook_merge   SKIP (no matching sheet)", flush=True)
+
+    total_steps = len(names) + (metadata_outcome is not None) + merge_step
     print(
-        f"[update_data] done: {len(names) - failures} ok, {failures} failed; "
+        f"[update_data] done: {total_steps - failures} ok, {failures} failed; "
         f"database: {db.DB_PATH}",
         flush=True,
     )

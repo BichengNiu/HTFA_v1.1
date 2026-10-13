@@ -28,7 +28,7 @@ from calendar import monthrange
 from datetime import date
 from pathlib import Path
 
-from .paths import DATA_DIR, SCRIPTS_DIR
+from .paths import DATA_DIR
 
 
 from . import db  # noqa: E402
@@ -71,7 +71,6 @@ TWO_CATEGORIES = (
     ("商用车进口量", ("8702", "8704")),
 )
 CATEGORY_ORDER = {name: i for i, (name, _codes) in enumerate(TWO_CATEGORIES)}
-LEGACY_SHEETS: tuple[str, ...] = ()
 DICTIONARY_SHEET = "指标字典"
 
 _TABLE_DDL = f"""
@@ -228,17 +227,9 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
 
     download_note = ""
     if not skip_download:
-        try:
-            # The raw helper uses stable yearly filenames. Force the online
-            # run so the current/revised Comtrade year is not silently reused.
-            download_note = _download_official_data(force=True)
-        except Exception as exc:  # noqa: BLE001 - valid local JSON remains usable
-            if not all(
-                folder.exists() and any(folder.glob("*.json"))
-                for folder in (RAW_DIR / "all_mirror", RAW_DIR / "uae_reported")
-            ):
-                raise
-            download_note = f"API 下载未完成，使用本地缓存：{exc}"
+        # The raw helper uses stable yearly filenames. Force the online
+        # run so the current/revised Comtrade year is not silently reused.
+        download_note = _download_official_data(force=True)
 
     missing = [
         folder
@@ -341,7 +332,6 @@ def merge(workbook_path: Path) -> dict:
 
     payload = {
         "source_label": SOURCE_NAME,
-        "legacy_sheet_names": list(LEGACY_SHEETS),
         "dictionary_sheet_name": DICTIONARY_SHEET,
         "metadata_labels": ["指标名称", "频率", "单位", "来源", "更新时间"],
         "frequency": FREQUENCY,

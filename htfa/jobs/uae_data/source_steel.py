@@ -13,7 +13,6 @@ import hashlib
 import json
 import os
 import re
-import sys
 import tempfile
 from calendar import monthrange
 from collections import Counter, defaultdict
@@ -360,15 +359,10 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
                 f"--skip-download 但缺少缓存: {RAW_PATH}"
             )
     else:
-        try:
-            # The public endpoint keeps a stable URL but revises the current
-            # month in place, so fetch it on every online run.
-            download()
-            download_note = "已在线刷新 MEsteel JSON"
-        except Exception as exc:  # noqa: BLE001 - valid cache remains usable
-            if not RAW_PATH.is_file():
-                raise
-            download_note = f"MEsteel 在线刷新失败，沿用有效缓存：{exc}"
+        # The public endpoint keeps a stable URL but revises the current
+        # month in place, so fetch it on every online run.
+        download()
+        download_note = "已在线刷新 MEsteel JSON"
 
     payload = load_payload(RAW_PATH)
     long_rows, wide_rows, quality = clean_payload(payload)

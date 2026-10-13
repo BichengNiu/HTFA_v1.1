@@ -58,7 +58,7 @@ class WarPressureData:
     values: pd.DataFrame
     metadata: dict[str, SheetSeriesMetadata]
     source_name: str
-    observation_days: pd.Series | None = None
+    observation_days: pd.Series
 
 
 def load_war_pressure_data(
@@ -66,7 +66,7 @@ def load_war_pressure_data(
     *,
     file_name: str | None = None,
 ) -> WarPressureData:
-    """读取 ``月度_WAM``，并保留武器数量中的零值观测。"""
+    """读取 WAM 军事打击及观测天数序列。"""
 
     with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
         excel_file,
@@ -88,39 +88,29 @@ def load_war_pressure_data(
                 excel_file,
                 sheet_name=WAM_SHEET,
                 targets=targets,
-                allowed_frequencies={"月", "月度"},
+                allowed_frequencies={"月"},
                 expected_unit=expected_unit,
                 zero_is_missing=False,
             )
             frames.append(frame)
             metadata.update(group_metadata)
-        try:
-            observation_frame, observation_metadata = _WORKBOOK_READER.read_target_sheet(
-                excel_file,
-                sheet_name=WAM_SHEET,
-                targets=((OBSERVATION_DAYS_LABEL, OBSERVATION_DAYS_INDICATOR),),
-                allowed_frequencies={"月", "月度"},
-                expected_unit="天",
-                zero_is_missing=False,
-            )
-        except (KeyError, ValueError) as exc:
-            if (
-                OBSERVATION_DAYS_LABEL not in str(exc)
-                and OBSERVATION_DAYS_INDICATOR not in str(exc)
-            ):
-                raise
-            # 兼容尚未重建的旧工作簿；新写表必然包含观测天数。
-            observation_days = None
-        else:
-            observation_days = observation_frame[OBSERVATION_DAYS_LABEL]
-            metadata.update(observation_metadata)
+
+        observation_frame, observation_metadata = _WORKBOOK_READER.read_target_sheet(
+            excel_file,
+            sheet_name=WAM_SHEET,
+            targets=((OBSERVATION_DAYS_LABEL, OBSERVATION_DAYS_INDICATOR),),
+            allowed_frequencies={"月"},
+            expected_unit="天",
+            zero_is_missing=False,
+        )
+        metadata.update(observation_metadata)
 
     values = pd.concat(frames, axis=1, sort=False).sort_index()
     return WarPressureData(
         values=values,
         metadata=metadata,
         source_name=source_name,
-        observation_days=observation_days,
+        observation_days=observation_frame[OBSERVATION_DAYS_LABEL],
     )
 
 

@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import calendar
-import sys
 from collections import defaultdict
 from datetime import date
 from pathlib import Path
 from typing import Any
 
-from .paths import DATA_DIR, SCRIPTS_DIR
+from .paths import DATA_DIR
 
 
 from . import db  # noqa: E402

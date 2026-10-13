@@ -9,13 +9,11 @@ process_data.py 解析/质检/写表）。原始文件写入 ``data/UAE/raw/fore
 from __future__ import annotations
 
 import calendar
-import csv
 import html
 import json
 import os
 import re
 import shutil
-import sys
 import time
 from collections import defaultdict
 from contextlib import contextmanager
@@ -33,7 +31,7 @@ from pypdf import PdfReader
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from .paths import DATA_DIR, SCRIPTS_DIR
+from .paths import DATA_DIR
 
 
 from . import db  # noqa: E402

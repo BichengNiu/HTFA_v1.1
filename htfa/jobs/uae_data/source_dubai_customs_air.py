@@ -45,9 +45,9 @@ from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Iterable, Iterator
+from typing import Any, Iterator
 
-from .paths import DATA_DIR, SCRIPTS_DIR
+from .paths import DATA_DIR
 
 
 from . import db  # noqa: E402
@@ -99,7 +99,6 @@ VOLUME_UNIT_MULT = {
     "CUBIC CENTIMETRES": CM3_TO_M3,
 }
 
-DIRECTIONS = ("import", "export", "transit", "domestic")
 
 INDICATOR_TPL = {
     # (方向, 度量) -> 指标中文名
@@ -169,7 +168,7 @@ def collect_rows(shard_paths: list[Path]) -> tuple[list[dict[str, Any]], dict[st
 
     for path in sorted(shard_paths):
         seen_rows = 0
-        with gzip.open(path, "rt", encoding="utf-8-sig", errors="replace", newline="") as fh:
+        with gzip.open(path, "rt", encoding="utf-8-sig", newline="") as fh:
             reader = csv.DictReader(fh)
             missing = [c for c in COLUMNS if c not in (reader.fieldnames or [])]
             if missing:
@@ -327,24 +326,26 @@ def _distinct_awb_counts(
 
 
 def _current_shards() -> list[Path]:
-    """Use only the files named by the newest manifest, not old snapshots."""
+    """Return exactly the CSV shards listed in the current manifest."""
 
     manifest_path = CSV_DIR / "manifest.json"
-    if manifest_path.is_file():
-        try:
-            entries = json.loads(manifest_path.read_text(encoding="utf-8"))
-            names = [
-                item["file_name"]
-                for item in entries
-                if item.get("file_extension") == "csv" and item.get("file_name")
-            ]
-            paths = [CSV_DIR / name for name in names]
-            if paths and all(path.is_file() for path in paths):
-                return sorted(paths)
-        except (OSError, json.JSONDecodeError, KeyError, TypeError):
-            pass
-    return sorted(CSV_DIR.glob("*.csv.gz"))
-
+    if not manifest_path.is_file():
+        raise FileNotFoundError(f"Dubai Customs shard manifest not found: {manifest_path}")
+    entries = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(entries, list):
+        raise ValueError("Dubai Customs shard manifest must be a list")
+    names = [
+        item["file_name"]
+        for item in entries
+        if item.get("file_extension") == "csv" and item.get("file_name")
+    ]
+    if not names:
+        raise ValueError("Dubai Customs shard manifest contains no CSV files")
+    paths = [CSV_DIR / name for name in names]
+    missing = [path for path in paths if not path.is_file()]
+    if missing:
+        raise FileNotFoundError("Dubai Customs shards missing: " + ", ".join(map(str, missing)))
+    return sorted(paths)
 
 def _bump(agg: dict, key: tuple[tuple[int, int], str, str], value: float) -> None:
     agg[key] = agg.get(key, 0.0) + value
@@ -497,16 +498,16 @@ def _download_official_shards(*, force: bool) -> str:
         check=False,
     )
     report_path = CSV_DIR / "download_report.json"
-    failed = []
-    if report_path.is_file():
-        try:
-            report = json.loads(report_path.read_text(encoding="utf-8"))
-            failed = [
-                item for item in report.get("files", [])
-                if item.get("status") not in {"ok", "skipped"}
-            ]
-        except (OSError, json.JSONDecodeError):
-            failed = ["download_report.json 无法读取"]
+    if not report_path.is_file():
+        raise FileNotFoundError(f"Data Dubai downloader did not write {report_path}")
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    files = report.get("files")
+    if not isinstance(files, list):
+        raise ValueError("Data Dubai download report must contain a files list")
+    failed = [
+        item for item in files
+        if item.get("status") not in {"ok", "skipped"}
+    ]
     if result.returncode != 0 or failed:
         detail = "\n".join(part for part in (result.stdout, result.stderr) if part)
         raise RuntimeError(
@@ -521,12 +522,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
 
     download_note = ""
     if not skip_download:
-        try:
-            download_note = _download_official_shards(force=force)
-        except Exception as exc:  # noqa: BLE001 - valid local shards remain usable
-            if not any(CSV_DIR.glob("*.csv.gz")):
-                raise
-            download_note = f"官网分片下载未完成，使用本地缓存：{exc}"
+        download_note = _download_official_shards(force=force)
     shards = _current_shards()
     if not shards:
         raise FileNotFoundError(

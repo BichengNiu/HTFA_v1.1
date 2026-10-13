@@ -6,8 +6,6 @@
 
 from datetime import date, timedelta
 import math
-import sys
-from pathlib import Path
 
 import duckdb
 import pytest
@@ -57,13 +55,12 @@ def _series(count: int, offset_start: int = 0, **overrides) -> list[dict]:
 # 纯函数基础
 # ---------------------------------------------------------------------------
 
-def test_parse_float_handles_strings_none_and_numbers() -> None:
-    assert dld.parse_float(None) is None
-    assert dld.parse_float("") is None
-    assert dld.parse_float("12.5") == 12.5
-    assert dld.parse_float("0") == 0.0
-    assert dld.parse_float(7) == 7.0
-    assert dld.parse_float(2.25) == 2.25
+def test_numeric_value_requires_duckdb_numeric_type() -> None:
+    assert dld._numeric_value(None, column="value") is None
+    assert dld._numeric_value(7, column="value") == 7.0
+    assert dld._numeric_value(2.25, column="value") == 2.25
+    with pytest.raises(TypeError, match="DuckDB column 'value'"):
+        dld._numeric_value("12.5", column="value")
 
 
 def test_log_momentum_formula_and_guards() -> None:
@@ -112,7 +109,7 @@ def test_score_from_z_mapping_and_clamps() -> None:
     assert dld.score_from_z(-20.0) == 0.0
 
 
-def test_formatted_matches_legacy_csv_formatting() -> None:
+def test_formatted_preserves_export_format() -> None:
     assert dld.formatted(None) == ""
     assert dld.formatted(5) == "5"
     assert dld.formatted(5.0) == "5.000000"
@@ -166,13 +163,11 @@ def test_build_rows_momentum_window_none_before_yoy_weeks() -> None:
         assert built[index]["confirmed_launch_score"] is None
 
 
-def test_build_rows_numeric_parsing_converts_strings() -> None:
-    # 模拟旧 CSV 流程：数值带字符串类型
+def test_build_rows_rejects_string_numeric_values() -> None:
     plain = _raw_row(0)
     string_row = {key: str(value) for key, value in plain.items()}
-    built = dld.build_rows([string_row])
-    assert built[0]["confirmed_new_projects_28d"] == 200.0
-    assert built[0]["active_projects_28d"] == 100.0
+    with pytest.raises(TypeError, match="DuckDB column"):
+        dld.build_rows([string_row])
 
 
 def test_build_rows_z_becomes_available_after_104_observations() -> None:
@@ -372,7 +367,7 @@ def test_indicator_dictionary_contract() -> None:
     assert all(row[1] == "周" for row in dld.INDICATOR_DICTIONARY)
     assert all(row[3] == "Dubai Land Department" for row in dld.INDICATOR_DICTIONARY)
     assert all(row[5] == "房地产" for row in dld.INDICATOR_DICTIONARY)
-    # 7 列表头与旧 ps1 的期望完全一致
+    # 7 列表头与当前写表脚本的输入契约一致
     assert dld.WEEKLY_CSV_HEADERS == (
         "截止日期",
         "经确认新期房项目数_近28天",
@@ -417,9 +412,8 @@ def test_column_dictionary_contract() -> None:
     assert {row[1] for row in dld.COLUMN_DICTIONARY} == set(dld.KEEP_COLUMNS)
 
 
-def test_column_dictionary_matches_legacy_metadata_rows() -> None:
-    # 迁移旧库后，meta_column_dictionary 应只含与内置常量一致的保留列
-    # （旧库的完整 79 行列字典在真实迁移验证中人工比对）
+def test_column_dictionary_matches_current_metadata_rows() -> None:
+    # meta_column_dictionary 应只含与内置常量一致的保留列。
     by_object: dict[str, dict[str, tuple]] = {}
     for row in dld.COLUMN_DICTIONARY:
         by_object.setdefault(row[0], {})[row[1]] = row

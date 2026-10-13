@@ -8,11 +8,8 @@ check; source-specific discovery and parsing stay in their own modules.
 from __future__ import annotations
 
 import os
-import shutil
-import subprocess
 import tempfile
 from pathlib import Path
-from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
@@ -35,36 +32,8 @@ def fetch_bytes(
     if referer:
         headers["Referer"] = referer
     request = Request(url, headers=headers)
-    try:
-        with urlopen(request, timeout=timeout) as response:
-            return response.read()
-    except (HTTPError, URLError, TimeoutError) as exc:
-        # A few official sites reject Python's urllib TLS fingerprint while
-        # allowing the system curl client. Use curl only as a transport
-        # fallback; parsing and validation still happen in the source module.
-        curl = shutil.which("curl.exe") or shutil.which("curl")
-        if curl:
-            command = [
-                curl,
-                "-L",
-                "--fail",
-                "--silent",
-                "--show-error",
-                "-A",
-                user_agent,
-            ]
-            if referer:
-                command.extend(["-H", f"Referer: {referer}"])
-            command.append(url)
-            result = subprocess.run(
-                command,
-                capture_output=True,
-                timeout=timeout,
-                check=False,
-            )
-            if result.returncode == 0 and result.stdout:
-                return result.stdout
-        raise RuntimeError(f"官方地址访问失败: {url} ({exc})") from exc
+    with urlopen(request, timeout=timeout) as response:
+        return response.read()
 
 
 def download_file(

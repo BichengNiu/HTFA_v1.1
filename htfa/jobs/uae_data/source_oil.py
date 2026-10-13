@@ -90,7 +90,7 @@ def _positive_number(value: object, *, field: str) -> float:
 def discover_opec_supply_url(payload: bytes | str) -> str:
     """从 OPEC MOMR 首页发现当前报告的 World oil supply 页面。"""
 
-    html = payload.decode("utf-8", errors="replace") if isinstance(payload, bytes) else payload
+    html = payload.decode("utf-8") if isinstance(payload, bytes) else payload
     candidates: list[str] = []
     for anchor in re.finditer(
         r"<a\b(?P<attrs>[^>]*)>(?P<body>.*?)</a>",
@@ -121,7 +121,7 @@ def discover_opec_supply_url(payload: bytes | str) -> str:
 def discover_opec_archive_links(payload: bytes | str) -> list[tuple[date, str]]:
     """发现 OPEC MOMR 首页列出的历史月报，按发布日期倒序返回。"""
 
-    html = payload.decode("utf-8", errors="replace") if isinstance(payload, bytes) else payload
+    html = payload.decode("utf-8") if isinstance(payload, bytes) else payload
     month_numbers = {
         name: number
         for number, name in enumerate(
@@ -200,7 +200,7 @@ def parse_opec_latest_production(payload: bytes | str) -> list[ProductionObserva
     Historical reports are parsed with the same table and methodology.
     """
 
-    html = payload.decode("utf-8", errors="replace") if isinstance(payload, bytes) else payload
+    html = payload.decode("utf-8") if isinstance(payload, bytes) else payload
     headings = re.finditer(
         r"<h4\b[^>]*>\s*Table\s+5\s*-\s*\d+\s*</h4>",
         html,
@@ -439,30 +439,6 @@ def _dictionary_rows() -> list[dict[str, object]]:
     ]
 
 
-def _download_with_cache(
-    url: str,
-    target: Path,
-    *,
-    force: bool,
-    min_bytes: int,
-    referer: str | None = None,
-) -> str:
-    """Refresh one raw input, preserving a valid cache on transport failure."""
-
-    try:
-        return download_file(
-            url,
-            target,
-            force=force,
-            min_bytes=min_bytes,
-            referer=referer,
-        )
-    except Exception as exc:  # noqa: BLE001 - cache fallback is intentional
-        if not target.is_file() or target.stat().st_size < min_bytes:
-            raise
-        return f"缓存({exc})"
-
-
 def _download_inputs(*, force: bool) -> str:
     notes: list[str] = []
     downloads = (
@@ -470,23 +446,18 @@ def _download_inputs(*, force: bool) -> str:
         (IMF_DUBAI_API_URL, DUBAI_RAW_PATH, IMF_DUBAI_API_URL),
     )
     for url, target, referer in downloads:
-        try:
-            status = download_file(
-                url,
-                target,
-                # Both endpoints revise the latest observation behind a
-                # stable URL; normal online runs must check them every time.
-                force=True,
-                min_bytes=256,
-                referer=referer,
-            )
-        except Exception as exc:  # noqa: BLE001 - valid raw cache remains usable
-            if not target.is_file() or target.stat().st_size < 256:
-                raise
-            status = f"缓存（{exc}）"
+        status = download_file(
+            url,
+            target,
+            # Both endpoints revise the latest observation behind a
+            # stable URL; normal online runs must check them every time.
+            force=True,
+            min_bytes=256,
+            referer=referer,
+        )
         notes.append(f"{target.name}:{status}")
 
-    _download_with_cache(
+    download_file(
         OPEC_MOMR_HOME_URL,
         OPEC_HOME_RAW_PATH,
         # 首页链接会随月报切换，不能按固定文件名长期复用旧首页。
@@ -495,7 +466,7 @@ def _download_inputs(*, force: bool) -> str:
     )
     momr_home = OPEC_HOME_RAW_PATH.read_bytes()
     current_supply_url = discover_opec_supply_url(momr_home)
-    current_status = _download_with_cache(
+    current_status = download_file(
         current_supply_url,
         OPEC_RAW_PATH,
         # 当前月报的 World oil supply 页面会随新一期月报切换。
@@ -509,7 +480,7 @@ def _download_inputs(*, force: bool) -> str:
     for release_date, archive_url in archive_links:
         report_id = archive_url.rstrip("/").rsplit("/", 1)[-1]
         archive_path = RAW_DIR / f"momr_archive_{report_id}.html"
-        archive_status = _download_with_cache(
+        archive_status = download_file(
             archive_url,
             archive_path,
             force=force,
@@ -518,7 +489,7 @@ def _download_inputs(*, force: bool) -> str:
         )
         archive_supply_url = discover_opec_supply_url(archive_path.read_bytes())
         supply_path = RAW_DIR / f"momr_supply_{report_id}.html"
-        supply_status = _download_with_cache(
+        supply_status = download_file(
             archive_supply_url,
             supply_path,
             force=force,
@@ -546,6 +517,10 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict[str
     production = parse_opec_production_reports(opec_paths)
     prices = parse_brent_xls(PRICE_RAW_PATH.read_bytes())
     dubai_prices = parse_imf_dubai_xml(DUBAI_RAW_PATH.read_bytes())
+    if not production or not prices or not dubai_prices:
+        raise ValueError(
+            "OPEC 产量、Brent 价格和迪拜原油价格都必须解析出观测值，拒绝写入空表"
+        )
 
     production_rows = [
         {
@@ -593,7 +568,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict[str
     }
 
 
-def _metadata(name: str, *, frequency: str, unit: str, source: str) -> dict[str, str]:
+def _metadata(*, frequency: str, unit: str, source: str) -> dict[str, str]:
     return {
         "frequency": frequency,
         "unit": unit,
@@ -614,15 +589,15 @@ def merge(workbook_path: Path) -> dict[str, object]:
         price_rows = con.execute(
             f"SELECT period, price_usd_bbl FROM {EIA_PRICE_TABLE} ORDER BY period"
         ).fetchall()
-        dubai_rows = []
-        if db.table_exists(con, DUBAI_PRICE_TABLE):
-            dubai_rows = con.execute(
-                f"SELECT period, price_usd_bbl FROM {DUBAI_PRICE_TABLE} ORDER BY period"
-            ).fetchall()
+        dubai_rows = con.execute(
+            f"SELECT period, price_usd_bbl FROM {DUBAI_PRICE_TABLE} ORDER BY period"
+        ).fetchall()
     finally:
         con.close()
-    if not production_rows or not price_rows:
-        raise ValueError("OPEC 原油产量或 Brent 价格长表为空，无法合并")
+    if not production_rows or not price_rows or not dubai_rows:
+        raise ValueError(
+            "OPEC 产量、Brent 价格和迪拜原油价格长表都必须有观测值，无法合并"
+        )
 
     sheet_specs = [
         {
@@ -631,7 +606,6 @@ def merge(workbook_path: Path) -> dict[str, object]:
             "indicators": [PRODUCTION_INDICATOR],
             "metadata": {
                 PRODUCTION_INDICATOR: _metadata(
-                    PRODUCTION_INDICATOR,
                     frequency="月度",
                     unit="桶/天",
                     source=PRODUCTION_SOURCE,
@@ -648,7 +622,6 @@ def merge(workbook_path: Path) -> dict[str, object]:
             "indicators": [PRICE_INDICATOR],
             "metadata": {
                 PRICE_INDICATOR: _metadata(
-                    PRICE_INDICATOR,
                     frequency="日度",
                     unit="美元/桶",
                     source=PRICE_SOURCE,
@@ -660,26 +633,24 @@ def merge(workbook_path: Path) -> dict[str, object]:
             ],
         },
     ]
-    if dubai_rows:
-        sheet_specs.append(
-            {
-                "name": DUBAI_PRICE_SHEET,
-                "title": "迪拜原油月度均价（IMF PCPS）",
-                "indicators": [DUBAI_PRICE_INDICATOR],
-                "metadata": {
-                    DUBAI_PRICE_INDICATOR: _metadata(
-                        DUBAI_PRICE_INDICATOR,
-                        frequency="月度",
-                        unit="美元/桶",
-                        source=DUBAI_PRICE_SOURCE,
-                    )
-                },
-                "rows": [
-                    (period, {DUBAI_PRICE_INDICATOR: value})
-                    for period, value in dubai_rows
-                ],
-            }
-        )
+    sheet_specs.append(
+        {
+            "name": DUBAI_PRICE_SHEET,
+            "title": "迪拜原油月度均价（IMF PCPS）",
+            "indicators": [DUBAI_PRICE_INDICATOR],
+            "metadata": {
+                DUBAI_PRICE_INDICATOR: _metadata(
+                    frequency="月度",
+                    unit="美元/桶",
+                    source=DUBAI_PRICE_SOURCE,
+                )
+            },
+            "rows": [
+                (period, {DUBAI_PRICE_INDICATOR: value})
+                for period, value in dubai_rows
+            ],
+        }
+    )
 
     counts = write_indicator_sheets(
         Path(workbook_path),
@@ -690,12 +661,8 @@ def merge(workbook_path: Path) -> dict[str, object]:
         "rows": sum(counts.values()),
         "note": (
             f"已重建 {PRODUCTION_SHEET} {counts[PRODUCTION_SHEET]} 行、"
-            f"{PRICE_SHEET} {counts[PRICE_SHEET]} 行"
-            + (
-                f"、{DUBAI_PRICE_SHEET} {counts[DUBAI_PRICE_SHEET]} 行"
-                if DUBAI_PRICE_SHEET in counts
-                else ""
-            )
+            f"{PRICE_SHEET} {counts[PRICE_SHEET]} 行、"
+            f"{DUBAI_PRICE_SHEET} {counts[DUBAI_PRICE_SHEET]} 行"
         ),
     }
 

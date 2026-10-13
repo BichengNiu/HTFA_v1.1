@@ -16,15 +16,13 @@
 
 from __future__ import annotations
 
-import io
 import re
-import sys
 from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
 from typing import Iterator
 
-from .paths import DATA_DIR, SCRIPTS_DIR
+from .paths import DATA_DIR
 
 
 import requests
@@ -99,45 +97,6 @@ ITEMS: dict[str, tuple[str, str, str, str]] = {
         "阿联酋:TDRA每百人移动订阅数",
         "户/百人",
         "存量",
-    ),
-}
-
-# 目录页已知的直链（作为发现失败时的回退；slug → media 路径尾段）
-_FALLBACK_MEDIA = {
-    "active-mobile-subscriptions": (
-        "Phone-and-internet-subscriptions/Phone-and-Internet-Subscriptions-2025/"
-        "Active-Mobile-Subscriptions-Dec-2025.ashx"
-    ),
-    "post-paid-subscriptions": (
-        "Phone-and-internet-subscriptions/Phone-and-Internet-Subscriptions-2025/"
-        "Post-paid-Subscriptions-En--Dec-2025.ashx"
-    ),
-    "pre-paid-subscriptions": (
-        "Phone-and-internet-subscriptions/Phone-and-Internet-Subscriptions-2025/"
-        "Pre-paid-Subsriptions-En-Dec-2025.ashx"
-    ),
-    "broadband-subscriptions": (
-        "Dec-2024/English/Broadband-Subscriptions-En-Dec-2024.ashx"
-    ),
-    "broadband-per-100": (
-        "Phone-and-internet-subscriptions/Phone-and-Internet-Subscriptions-2025/"
-        "Broadband-Internet-Subscriptions-per-100-inhabitants-En-Dec-2025.ashx"
-    ),
-    "number-of-fixed-lines": (
-        "Phone-and-internet-subscriptions/Phone-and-Internet-Subscriptions-2025/"
-        "Number-of--Fixed-Lines-En-Dec-2025.ashx"
-    ),
-    "fixed-lines-per-100": (
-        "Phone-and-internet-subscriptions/Phone-and-Internet-Subscriptions-2025/"
-        "Fixed-lines-per-100-inhabitants-En-Dec-2025.ashx"
-    ),
-    "internet-subscriptions": (
-        "Phone-and-internet-subscriptions/Phone-and-Internet-Subscriptions-2025/"
-        "Internet-Subscriptions-En-Dec-2025.ashx"
-    ),
-    "mobile-per-100": (
-        "Phone-and-internet-subscriptions/Phone-and-Internet-Subscriptions-2025/"
-        "Mobile-Subscriptions-per-100-inhabitants-En-Dec-2025.ashx"
     ),
 }
 
@@ -223,7 +182,9 @@ def _download_all(
         session = _session()
         discovered = _discover_downloads(session)
         for slug in missing:
-            suffix = discovered.get(slug) or _FALLBACK_MEDIA[slug]
+            suffix = discovered.get(slug)
+            if suffix is None:
+                raise ValueError(f"TDRA 目录页未发现数据集: {slug}")
             url = MEDIA_PREFIX + suffix
             response = session.get(url, timeout=120)
             response.raise_for_status()
@@ -335,15 +296,10 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     if skip_download:
         _download_all(force=False, skip_download=True)
     else:
-        try:
-            # TDRA keeps stable workbook names while updating the latest
-            # observations in place; refresh all discovered files online.
-            _download_all(force=True, skip_download=False)
-            download_note = "已在线刷新 TDRA 工作簿"
-        except Exception as exc:  # noqa: BLE001 - valid local files remain usable
-            if not all((RAW_DIR / f"{slug}.xlsx").is_file() for slug in ITEMS):
-                raise
-            download_note = f"TDRA 在线刷新失败，沿用有效缓存：{exc}"
+        # TDRA keeps stable workbook names while updating the latest
+        # observations in place; refresh all discovered files online.
+        _download_all(force=True, skip_download=False)
+        download_note = "已在线刷新 TDRA 工作簿"
     rows = _read_rows()
     if not rows:
         raise ValueError("tdra_telecom_monthly 输入为空，拒绝入库")

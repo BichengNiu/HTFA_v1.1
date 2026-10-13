@@ -30,13 +30,12 @@ from __future__ import annotations
 import calendar
 import csv
 import gzip
-import sys
 from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
 from typing import Iterator
 
-from .paths import DATA_DIR, SCRIPTS_DIR
+from .paths import DATA_DIR
 
 
 import requests
@@ -95,16 +94,6 @@ _MONTH_ABBR = {
     "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
     "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
 }
-
-_LEGACY_TABLES = (
-    "rta_bus_trips_route_monthly",
-    "rta_marine_trips_station_monthly",
-    "rta_taxi_trips_monthly",
-    "rta_bus_speed_daily_detail",
-    "rta_marine_ridership_raw",
-    "rta_bus_ridership_raw",
-)
-
 
 # ---------------------------------------------------------------------------
 # 下载
@@ -219,7 +208,7 @@ def _month_from_label(month_text: str, year_text: str) -> date | None:
 
 
 def _iter_rows(path: Path):
-    with path.open("r", encoding="utf-8", errors="replace", newline="") as handle:
+    with path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.reader(handle)
         next(reader, None)
         yield from reader
@@ -314,7 +303,7 @@ def _aggregate_bus_speed(con, paths: list[Path]) -> dict[date, float]:
             "SELECT try_cast(date AS DATE) AS day, "
             "SUM(try_cast(average_speed AS DOUBLE)) AS total_speed, "
             "COUNT(try_cast(average_speed AS DOUBLE)) AS speed_count "
-            "FROM read_csv(?, header=true, columns=?, ignore_errors=true) "
+            "FROM read_csv(?, header=true, columns=?) "
             "WHERE try_cast(date AS DATE) IS NOT NULL "
             "GROUP BY day",
             [str(path), {"average_speed": "VARCHAR", "date": "VARCHAR",
@@ -340,7 +329,7 @@ def _aggregate_marine_daily(con, paths: list[Path]) -> dict[date, int]:
     for path in paths:
         rows = con.execute(
             "SELECT try_cast(txn_date AS DATE) AS day, COUNT(*) AS records "
-            "FROM read_csv(?, header=true, columns=?, ignore_errors=true) "
+            "FROM read_csv(?, header=true, columns=?) "
             "WHERE try_cast(txn_date AS DATE) IS NOT NULL "
             "GROUP BY day",
             [str(path), {"line_name": "VARCHAR", "location": "VARCHAR",
@@ -469,8 +458,6 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         got[dataset_id] = _download_dataset(dataset_id, max_files, force)
 
     with _transaction(con):
-        for table in _LEGACY_TABLES:
-            con.execute(f"DROP TABLE IF EXISTS {table}")
         for table in _TABLE_DDL:
             db.ensure(con, table, _TABLE_DDL[table])
             con.execute(f"DELETE FROM {table}")

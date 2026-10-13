@@ -1,14 +1,8 @@
 """Fetch and archive WAM source material used by the war-statistics pipeline.
 
-The WAM site exposes an official monthly news sitemap.  Its article pages are
-rendered by Angular for normal HTTP clients, but the rendered page contains a
-standard ``NewsArticle`` JSON-LD block.  This module discovers relevant UAE
-air-defence articles from the sitemap, renders them with the locally installed
-Chrome browser, and stores the extracted JSON-LD as an auditable raw cache.
-
-Numerical interpretation is intentionally kept in :mod:`source_wam`; this
-module only discovers, downloads, renders, and archives source material.
-"""
+This module discovers relevant articles from the official monthly sitemap,
+downloads each article directly, and requires a valid NewsArticle JSON-LD
+record before it is accepted. Retrieval or parsing errors propagate."""
 
 from __future__ import annotations
 
@@ -18,13 +12,10 @@ import html
 import json
 import os
 import re
-import shutil
-import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
@@ -46,8 +37,7 @@ USER_AGENT = (
 SITEMAP_NAMESPACE = "http://www.sitemaps.org/schemas/sitemap/0.9"
 NEWS_NAMESPACE = "http://www.google.com/schemas/sitemap-news/0.9"
 AUTO_LOOKBACK_DAYS = 7
-AUTO_RENDER_TIMEOUT_SECONDS = 90
-AUTO_VIRTUAL_TIME_BUDGET_MS = 10000
+AUTO_START_DATE = date(2026, 2, 28)
 
 _AUTO_TITLE_TERMS = (
     "uae air",
@@ -83,12 +73,13 @@ def _source_urls() -> list[str]:
     """Return unique HTTP(S) URLs from the daily and supplementary registries."""
 
     urls: set[str] = set()
-    with DAILY_PATH.open("r", encoding="utf-8-sig", newline="") as handle:
-        for row in csv.DictReader(handle):
-            for field in ("source_url", "source_url_2"):
-                value = (row.get(field) or "").strip()
-                if value:
-                    urls.add(value)
+    if DAILY_PATH.is_file():
+        with DAILY_PATH.open("r", encoding="utf-8-sig", newline="") as handle:
+            for row in csv.DictReader(handle):
+                for field in ("source_url", "source_url_2"):
+                    value = (row.get(field) or "").strip()
+                    if value:
+                        urls.add(value)
     if ASSET_PATH.is_file():
         with ASSET_PATH.open("r", encoding="utf-8-sig", newline="") as handle:
             for row in csv.DictReader(handle):
@@ -106,27 +97,16 @@ def _archive_name(url: str) -> str:
     return f"{host}_{digest}.html"
 
 
-def _fetch(url: str) -> tuple[int | None, str, bytes | None, str | None]:
+def _fetch(url: str) -> tuple[int, str, bytes]:
     request = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/html,*/*"})
-    try:
-        with urlopen(request, timeout=45) as response:
-            body = response.read()
-            return response.status, response.headers.get("Content-Type", ""), body, None
-    except HTTPError as exc:
-        return exc.code, "", None, f"HTTP {exc.code}: {exc.reason}"
-    except (OSError, URLError) as exc:
-        return None, "", None, str(exc)
-
+    with urlopen(request, timeout=45) as response:
+        return response.status, response.headers.get("Content-Type", ""), response.read()
 
 def _read_json(path: Path) -> dict:
-    if not path.is_file():
-        return {}
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return payload if isinstance(payload, dict) else {}
-
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"Expected a JSON object in {path}")
+    return payload
 
 def _latest_registry_date() -> date:
     """Return the last date already covered by reviewed or auto rows."""
@@ -142,8 +122,20 @@ def _latest_registry_date() -> date:
                 if (row.get("date") or "").strip()
             )
     if not dates:
-        raise ValueError(f"WAM daily registry is empty: {DAILY_PATH}")
+        return AUTO_START_DATE - timedelta(days=1)
     return max(dates)
+
+
+def uae_today() -> date:
+    """Return the calendar date in the UAE's fixed UTC+4 timezone."""
+
+    return (datetime.now(timezone.utc) + timedelta(hours=4)).date()
+
+
+def last_complete_uae_date() -> date:
+    """Return yesterday in the UAE, the latest complete daily period."""
+
+    return uae_today() - timedelta(days=1)
 
 
 def _is_auto_candidate(title: str, url: str) -> bool:
@@ -154,9 +146,9 @@ def _is_auto_candidate(title: str, url: str) -> bool:
 
 
 def _sitemap_month_urls(start: date, end: date) -> list[str]:
-    status, _, body, error = _fetch(SITEMAP_INDEX_URL)
+    status, _, body = _fetch(SITEMAP_INDEX_URL)
     if body is None or status != 200:
-        raise RuntimeError(f"WAM sitemap index failed: {error or status}")
+        raise RuntimeError(f"WAM sitemap index returned HTTP {status}")
     try:
         root = ET.fromstring(body)
     except ET.ParseError as exc:
@@ -184,13 +176,16 @@ def discover_auto_articles(
 ) -> list[dict]:
     """Discover relevant English WAM articles from official monthly sitemaps."""
 
-    end = end or datetime.now(timezone.utc).date()
-    start = start or (_latest_registry_date() - timedelta(days=AUTO_LOOKBACK_DAYS))
+    end = end or uae_today()
+    start = max(
+        AUTO_START_DATE,
+        start or (_latest_registry_date() - timedelta(days=AUTO_LOOKBACK_DAYS)),
+    )
     articles: dict[str, dict] = {}
     for sitemap_url in _sitemap_month_urls(start, end):
-        status, _, body, error = _fetch(sitemap_url)
+        status, _, body = _fetch(sitemap_url)
         if body is None or status != 200:
-            raise RuntimeError(f"WAM monthly sitemap failed: {sitemap_url}: {error or status}")
+            raise RuntimeError(f"WAM monthly sitemap returned HTTP {status}: {sitemap_url}")
         try:
             root = ET.fromstring(body)
         except ET.ParseError as exc:
@@ -210,69 +205,28 @@ def discover_auto_articles(
                 f"{{{NEWS_NAMESPACE}}}news/{{{NEWS_NAMESPACE}}}publication_date",
                 default="",
             ).strip()
-            if not url or not published or not _is_auto_candidate(title, url):
+            last_modified = node.findtext(
+                f"{{{SITEMAP_NAMESPACE}}}lastmod", default=""
+            ).strip()
+            if not _is_auto_candidate(title, url):
                 continue
+            if not url or not published:
+                raise ValueError("WAM candidate sitemap record lacks URL or publication date")
             try:
                 published_date = date.fromisoformat(published[:10])
-            except ValueError:
-                continue
+            except ValueError as exc:
+                raise ValueError(f"Invalid WAM sitemap publication date: {published!r}") from exc
             if not (start <= published_date <= end):
                 continue
             articles[url] = {
                 "url": url,
                 "sitemap_title": title,
                 "sitemap_published_at": published,
+                "sitemap_last_modified": last_modified,
             }
     return sorted(articles.values(), key=lambda item: (item["sitemap_published_at"], item["url"]))
 
 
-def _chrome_path() -> str | None:
-    configured = os.environ.get("WAM_CHROME_PATH", "").strip()
-    candidates = [
-        Path(configured) if configured else None,
-        Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
-        Path(r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"),
-        Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"),
-        Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
-    ]
-    for candidate in candidates:
-        if candidate is not None and candidate.is_file():
-            return str(candidate)
-    return shutil.which("chrome") or shutil.which("msedge")
-
-
-def _render_article(url: str) -> tuple[str | None, str | None]:
-    """Render one article and return the resulting DOM or an error."""
-
-    chrome = _chrome_path()
-    if not chrome:
-        return None, "Chrome/Edge not found; set WAM_CHROME_PATH to a browser executable"
-    with tempfile.TemporaryDirectory(prefix="wam-chrome-") as profile:
-        command = [
-            chrome,
-            "--headless=new",
-            "--disable-gpu",
-            "--no-sandbox",
-            "--disable-dev-shm-usage",
-            f"--user-data-dir={profile}",
-            f"--virtual-time-budget={AUTO_VIRTUAL_TIME_BUDGET_MS}",
-            "--dump-dom",
-            url,
-        ]
-        try:
-            completed = subprocess.run(
-                command,
-                capture_output=True,
-                timeout=AUTO_RENDER_TIMEOUT_SECONDS,
-                check=False,
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            return None, f"browser render failed: {exc}"
-    rendered = completed.stdout.decode("utf-8", errors="replace")
-    if completed.returncode != 0 or not rendered.strip():
-        detail = completed.stderr.decode("utf-8", errors="replace").strip()
-        return None, f"browser render exit={completed.returncode}: {detail[:500]}"
-    return rendered, None
 
 
 def _extract_news_article(dom: str) -> dict | None:
@@ -283,8 +237,8 @@ def _extract_news_article(dom: str) -> dict | None:
     for raw in pattern.findall(dom):
         try:
             payload = json.loads(raw.strip())
-        except json.JSONDecodeError:
-            continue
+        except json.JSONDecodeError as exc:
+            raise ValueError("WAM page contains invalid NewsArticle JSON-LD") from exc
         candidates = payload if isinstance(payload, list) else [payload]
         for item in candidates:
             if not isinstance(item, dict):
@@ -308,73 +262,101 @@ def _archive_auto_dom(url: str, dom: str) -> str:
     return str(path.relative_to(RAW_DIR))
 
 
-def _load_auto_payload() -> dict:
+def _load_auto_payload(*, allow_missing: bool = False) -> dict:
+    if not AUTO_ARTICLES_PATH.is_file():
+        if allow_missing:
+            return {"articles": {}}
+        raise FileNotFoundError(f"WAM article cache not found: {AUTO_ARTICLES_PATH}")
     payload = _read_json(AUTO_ARTICLES_PATH)
-    payload.setdefault("articles", {})
-    if not isinstance(payload["articles"], dict):
-        payload["articles"] = {}
+    articles = payload.get("articles")
+    if not isinstance(articles, dict):
+        raise ValueError("WAM article cache must contain an articles object")
+    for url, record in articles.items():
+        if not isinstance(record, dict) or record.get("status") not in {"ok", "failed"}:
+            raise ValueError(f"Invalid WAM article cache record: {url}")
     return payload
 
-
 def load_auto_articles() -> list[dict]:
-    """Read successfully rendered article records for offline reprocessing."""
+    """Read successful article records for offline reprocessing."""
 
     payload = _load_auto_payload()
-    return [
-        value
-        for value in payload["articles"].values()
-        if isinstance(value, dict) and value.get("status") == "ok"
-    ]
+    failed = [url for url, item in payload["articles"].items() if item["status"] == "failed"]
+    if failed:
+        raise RuntimeError("WAM article cache contains failed records: " + ", ".join(failed))
+    return list(payload["articles"].values())
 
+def cached_discovery_end() -> date:
+    """Return the end of a complete cached sitemap scan or raise."""
 
-def refresh_auto_articles(*, force: bool = False) -> dict[str, int]:
-    """Discover and render new WAM articles, retaining an auditable cache."""
+    payload = _load_auto_payload()
+    if payload.get("scan_status") != "complete":
+        raise RuntimeError("WAM article cache does not contain a complete sitemap scan")
+    value = payload.get("discovery_end")
+    if not isinstance(value, str) or not value:
+        raise ValueError("WAM article cache is missing discovery_end")
+    try:
+        end = date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(f"Invalid WAM discovery_end: {value!r}") from exc
+    return min(end, last_complete_uae_date())
 
-    end = datetime.now(timezone.utc).date()
-    start = _latest_registry_date() - timedelta(days=AUTO_LOOKBACK_DAYS)
+def refresh_auto_articles(
+    *,
+    force: bool = False,
+    start_date: date | None = None,
+    end_date: date | None = None,
+) -> dict[str, int]:
+    """Discover, download, and validate WAM articles; propagate every failure."""
+
+    end = end_date or uae_today()
+    start = max(
+        AUTO_START_DATE,
+        start_date or (_latest_registry_date() - timedelta(days=AUTO_LOOKBACK_DAYS)),
+    )
     discovered = discover_auto_articles(start=start, end=end)
-    payload = _load_auto_payload()
+    payload = _load_auto_payload(allow_missing=True)
     articles = payload["articles"]
-    counts = {"discovered": len(discovered), "downloaded": 0, "reused": 0, "failed": 0}
+    counts = {"discovered": len(discovered), "downloaded": 0, "reused": 0}
     retrieved_at = datetime.now(timezone.utc).isoformat()
     for item in discovered:
         url = item["url"]
         old = articles.get(url, {})
+        published_date = date.fromisoformat(item["sitemap_published_at"][:10])
+        recently_published = published_date >= end - timedelta(days=AUTO_LOOKBACK_DAYS)
         reusable = (
             not force
+            and not recently_published
             and old.get("status") == "ok"
             and old.get("sitemap_published_at") == item["sitemap_published_at"]
+            and old.get("sitemap_last_modified") == item.get("sitemap_last_modified")
             and old.get("article_body")
         )
         if reusable:
             articles[url] = {**old, **item}
             counts["reused"] += 1
             continue
-        dom, error = _render_article(url)
-        record = {**item, "retrieved_at_utc": retrieved_at}
-        if error:
-            record.update({"status": "failed", "error": error})
-            counts["failed"] += 1
-        else:
-            article = _extract_news_article(dom or "")
-            if not article or not article.get("articleBody"):
-                record.update({"status": "failed", "error": "NewsArticle JSON-LD/articleBody not found"})
-                counts["failed"] += 1
-            else:
-                record.update(
-                    {
-                        "status": "ok",
-                        "headline": article.get("headline") or item["sitemap_title"],
-                        "description": article.get("description"),
-                        "article_body": article["articleBody"],
-                        "date_published": article.get("datePublished"),
-                        "date_modified": article.get("dateModified"),
-                        "archive_path": _archive_auto_dom(url, dom or ""),
-                        "error": None,
-                    }
-                )
-                counts["downloaded"] += 1
-        articles[url] = record
+        status, _, raw_body = _fetch(url)
+        if status != 200:
+            raise RuntimeError(f"WAM article request returned HTTP {status}: {url}")
+        dom = raw_body.decode("utf-8")
+        article = _extract_news_article(dom)
+        if not article or not isinstance(article.get("articleBody"), str) or not article["articleBody"].strip():
+            raise ValueError(f"WAM article has no NewsArticle body: {url}")
+        if not isinstance(article.get("headline"), str) or not article["headline"].strip():
+            raise ValueError(f"WAM article has no NewsArticle headline: {url}")
+        articles[url] = {
+            **item,
+            "retrieved_at_utc": retrieved_at,
+            "status": "ok",
+            "headline": article["headline"],
+            "description": article.get("description"),
+            "article_body": article["articleBody"],
+            "date_published": article.get("datePublished"),
+            "date_modified": article.get("dateModified"),
+            "archive_path": _archive_auto_dom(url, dom),
+            "error": None,
+        }
+        counts["downloaded"] += 1
 
     _write_json(
         AUTO_ARTICLES_PATH,
@@ -382,11 +364,11 @@ def refresh_auto_articles(*, force: bool = False) -> dict[str, int]:
             "retrieved_at_utc": retrieved_at,
             "discovery_start": start.isoformat(),
             "discovery_end": end.isoformat(),
+            "scan_status": "complete",
             "articles": articles,
         },
     )
     return counts
-
 
 def _write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -407,24 +389,19 @@ def _write_json(path: Path, payload: object) -> None:
 def refresh_source_manifest(*, force: bool = False) -> dict[str, int]:
     """Download cited pages and write a reproducible local source manifest.
 
-    Download failures are recorded per URL and do not discard the reviewed
-    numerical registry.  ``source_wam.update`` reports the failures explicitly.
+    Every uncached source URL must download successfully; retrieval errors propagate.
     """
 
-    if not DAILY_PATH.is_file():
-        raise FileNotFoundError(f"WAM daily registry not found: {DAILY_PATH}")
     ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
     previous: dict[str, dict] = {}
     if MANIFEST_PATH.is_file():
-        try:
-            previous = json.loads(MANIFEST_PATH.read_text(encoding="utf-8")).get(
-                "sources", {}
-            )
-        except (OSError, json.JSONDecodeError):
-            previous = {}
+        manifest_payload = _read_json(MANIFEST_PATH)
+        previous = manifest_payload.get("sources")
+        if not isinstance(previous, dict):
+            raise ValueError("WAM source manifest must contain a sources object")
 
     manifest: dict[str, dict] = {}
-    counts = {"total": 0, "downloaded": 0, "reused": 0, "failed": 0}
+    counts = {"total": 0, "downloaded": 0, "reused": 0}
     retrieved_at = datetime.now(timezone.utc).isoformat()
     for url in _source_urls():
         counts["total"] += 1
@@ -434,7 +411,9 @@ def refresh_source_manifest(*, force: bool = False) -> dict[str, int]:
             manifest[url] = {**old, "archive_path": str(archive_path.relative_to(RAW_DIR))}
             counts["reused"] += 1
             continue
-        status, content_type, body, error = _fetch(url)
+        status, content_type, body = _fetch(url)
+        if status != 200:
+            raise RuntimeError(f"WAM source returned HTTP {status}: {url}")
         entry = {
             "url": url,
             "retrieved_at_utc": retrieved_at,
@@ -442,13 +421,10 @@ def refresh_source_manifest(*, force: bool = False) -> dict[str, int]:
             "content_type": content_type,
             "archive_path": str(archive_path.relative_to(RAW_DIR)) if body else None,
             "sha256": hashlib.sha256(body).hexdigest() if body else None,
-            "error": error,
+            "error": None,
         }
-        if body is not None and status == 200:
-            archive_path.write_bytes(body)
-            counts["downloaded"] += 1
-        else:
-            counts["failed"] += 1
+        archive_path.write_bytes(body)
+        counts["downloaded"] += 1
         manifest[url] = entry
 
     _write_json(

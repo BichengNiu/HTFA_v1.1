@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 import pandas as pd
-import streamlit as st
 
 from htfa.monitoring.uae.downloads import render_chart_download
 from htfa.monitoring.uae.periods import (
@@ -19,10 +18,8 @@ from htfa.monitoring.uae.oil.charts import (
     DUBAI_PRICE_LABEL,
     REVENUE_LABEL,
     REVENUE_PRICE_LABEL,
-    build_oil_market_figure,
     build_oil_price_figure,
     build_oil_production_figure,
-    build_oil_revenue_figure,
     build_oil_revenue_only_figure,
     build_oil_rig_count_figure,
     build_war_pressure_index_figure,
@@ -30,6 +27,7 @@ from htfa.monitoring.uae.oil.charts import (
 )
 from htfa.monitoring.uae.oil.data import (
     DUBAI_PRICE_INDICATOR,
+    EIA_PRICE_INDICATORS,
     OilMarketData,
     load_oil_market_data,
 )
@@ -104,8 +102,6 @@ def _complete_war_pressure_values(data: WarPressureData) -> pd.DataFrame:
     """删除 WAM 中观测天数不足一个自然月的月度行。"""
 
     values = data.values.loc[:, [*RAW_LABELS, PRESSURE_LABEL]].sort_index()
-    if data.observation_days is None:
-        return values
     days = data.observation_days.reindex(values.index)
     required_days = pd.PeriodIndex(values.index, freq="M").days_in_month
     complete = days.ge(required_days).fillna(False)
@@ -126,16 +122,10 @@ def _monthly_mean_series(series: pd.Series) -> pd.Series:
 
 
 def _render_oil_metrics(st_obj: Any, data: OilMarketData) -> None:
-    columns = st_obj.columns(4)
-    price_names = tuple(
-        name
-        for name in ("布伦特期货", "布伦特现货")
-        if name in data.prices.columns
-    )
-    for column, name in zip(columns[:2], price_names):
+    price_names = tuple(name for name, _ in EIA_PRICE_INDICATORS)
+    columns = st_obj.columns(len(price_names) + 2)
+    for column, name in zip(columns, price_names):
         price_series = through_last_complete_month(data.prices[name])
-        if price_series.empty:
-            continue
         value, as_of, change = _latest_change(price_series, days=30)
         metadata = data.metadata[name]
         with column:
@@ -153,8 +143,7 @@ def _render_oil_metrics(st_obj: Any, data: OilMarketData) -> None:
 
     value, as_of, change = _latest_change(data.production)
     metadata = data.metadata[data.production.name]
-    production_column = columns[len(price_names)]
-    with production_column:
+    with columns[len(price_names)]:
         st_obj.metric(
             "阿联酋原油产量",
             format_count_value(value, "桶/天"),
@@ -166,11 +155,6 @@ def _render_oil_metrics(st_obj: Any, data: OilMarketData) -> None:
                 f"源表更新：{metadata.updated_at}"
             ),
         )
-
-    if data.rig_count is None or data.rig_count.dropna().empty:
-        with columns[len(price_names) + 1]:
-            st_obj.metric("阿联酋石油活跃钻机数", "—")
-        return
 
     value, as_of, change = _latest_change(data.rig_count)
     metadata = data.metadata[data.rig_count.name]
@@ -306,117 +290,6 @@ def _render_war_pressure_section(
     st_obj.divider()
 
 
-def _render_legacy_combined_charts(
-    st_obj: Any,
-    data: OilMarketData,
-    revenue: pd.DataFrame,
-) -> None:
-    production_source = data.metadata[data.production.name].source
-    rig_count_source = (
-        None
-        if data.rig_count is None
-        else data.metadata[data.rig_count.name].source
-    )
-    market_sources = "、".join(
-        dict.fromkeys(
-            source
-            for source in (production_source, rig_count_source)
-            if source
-        )
-    )
-    revenue_sources = "、".join(
-        dict.fromkeys((data.metadata["布伦特现货"].source, production_source))
-    )
-    columns = st_obj.columns(2, gap="small")
-    market_cutoff_series = [(data.production.name, data.production)]
-    if data.rig_count is not None and not data.rig_count.dropna().empty:
-        market_cutoff_series.append((data.rig_count.name, data.rig_count))
-    market_last_month = common_latest_month(market_cutoff_series)
-    market_first_month = market_last_month - 36
-    market_production = within_month_window(
-        data.production,
-        first_month=market_first_month,
-        last_month=market_last_month,
-    )
-    market_rig_count = (
-        None
-        if data.rig_count is None
-        else within_month_window(
-            data.rig_count,
-            first_month=market_first_month,
-            last_month=market_last_month,
-        )
-    )
-    market_series = [
-        market_production.div(10_000).rename("阿联酋原油产量（万桶/天）"),
-    ]
-    if market_rig_count is not None:
-        market_series.append(
-            market_rig_count.rename("阿联酋石油活跃钻机数（台）")
-        )
-    market_download = pd.concat(
-        market_series,
-        axis=1,
-    ).sort_index()
-    revenue_cutoff_series = [(REVENUE_COLUMN, revenue[REVENUE_COLUMN])]
-    revenue_last_month = common_latest_month(revenue_cutoff_series)
-    revenue_download = within_month_window(
-        revenue,
-        first_month=revenue_last_month - 36,
-        last_month=revenue_last_month,
-    )
-    with columns[0]:
-        render_pyplot_figure(
-            st_obj,
-            build_oil_market_figure(
-                market_production,
-                market_sources,
-                market_rig_count,
-                units={
-                    MARKET_PRODUCTION_LABEL: "万桶/天",
-                    **(
-                        {
-                            MARKET_RIG_COUNT_LABEL: data.metadata[
-                                data.rig_count.name
-                            ].unit
-                        }
-                        if data.rig_count is not None
-                        else {}
-                    ),
-                },
-            ),
-            bbox_inches=None,
-            place_legend_bottom=False,
-        )
-        render_chart_download(
-            st_obj,
-            market_download,
-            title="原油产量与活动钻机数",
-            key="analysis.uae.oil.market.download",
-        )
-    with columns[1]:
-        render_pyplot_figure(
-            st_obj,
-            build_oil_revenue_figure(
-                revenue_download,
-                revenue_sources,
-                units={
-                    REVENUE_PRICE_LABEL: data.metadata[
-                        REVENUE_PRICE_BENCHMARK
-                    ].unit,
-                    REVENUE_LABEL: "亿美元",
-                },
-            ),
-            bbox_inches=None,
-            place_legend_bottom=False,
-        )
-        render_chart_download(
-            st_obj,
-            revenue_download,
-            title="石油价格与阿联酋石油收入",
-            key="analysis.uae.oil.revenue.download",
-        )
-
 
 def _render_charts(
     st_obj: Any,
@@ -426,22 +299,17 @@ def _render_charts(
     """Render the oil charts in the requested two-by-two layout."""
 
     production_source = data.metadata[data.production.name].source
-    rig_count_source = (
-        None
-        if data.rig_count is None
-        else data.metadata[data.rig_count.name].source
-    )
+    rig_count_source = data.metadata[data.rig_count.name].source
     price_source = data.metadata[REVENUE_PRICE_BENCHMARK].source
-    dubai_price = None
-    dubai_metadata = data.metadata.get(DUBAI_PRICE_INDICATOR[0])
-    if DUBAI_PRICE_INDICATOR[0] in data.prices.columns:
-        dubai_price = _monthly_mean_series(
-            data.prices[DUBAI_PRICE_INDICATOR[0]]
-        ).rename(DUBAI_PRICE_LABEL)
-    price_sources = [price_source]
-    if dubai_price is not None and not dubai_price.empty and dubai_metadata:
-        price_sources.append(dubai_metadata.source)
-    price_source_text = "、".join(dict.fromkeys(price_sources))
+    dubai_metadata = data.metadata[DUBAI_PRICE_INDICATOR[0]]
+    dubai_price = _monthly_mean_series(
+        data.prices[DUBAI_PRICE_INDICATOR[0]]
+    ).rename(DUBAI_PRICE_LABEL)
+    if dubai_price.empty:
+        raise ValueError("Dubai 原油月均价格没有完整有效观测")
+    price_source_text = "、".join(
+        dict.fromkeys((price_source, dubai_metadata.source))
+    )
     revenue_sources = "、".join(
         dict.fromkeys((price_source, production_source))
     )
@@ -454,38 +322,35 @@ def _render_charts(
         first_month=production_last_month - 36,
         last_month=production_last_month,
     ).div(10_000).rename(MARKET_PRODUCTION_LABEL)
-    if data.rig_count is None or data.rig_count.dropna().empty:
-        rigs = None
-    else:
-        rig_last_month = common_latest_month(
-            [(data.rig_count.name, data.rig_count)]
-        )
-        rigs = within_month_window(
-            data.rig_count,
-            first_month=rig_last_month - 36,
-            last_month=rig_last_month,
-        ).rename(MARKET_RIG_COUNT_LABEL)
 
-    price_cutoff_series = [(REVENUE_COLUMN, revenue[REVENUE_COLUMN])]
-    if dubai_price is not None and not dubai_price.empty:
-        price_cutoff_series.append((DUBAI_PRICE_LABEL, dubai_price))
-    revenue_last_month = common_latest_month(price_cutoff_series)
+    rig_last_month = common_latest_month(
+        [(data.rig_count.name, data.rig_count)]
+    )
+    rigs = within_month_window(
+        data.rig_count,
+        first_month=rig_last_month - 36,
+        last_month=rig_last_month,
+    ).rename(MARKET_RIG_COUNT_LABEL)
+
+    revenue_last_month = common_latest_month(
+        [
+            (REVENUE_COLUMN, revenue[REVENUE_COLUMN]),
+            (DUBAI_PRICE_LABEL, dubai_price),
+        ]
+    )
     revenue_window = within_month_window(
         revenue,
         first_month=revenue_last_month - 36,
         last_month=revenue_last_month,
     )
+    dubai_window = within_month_window(
+        dubai_price,
+        first_month=revenue_last_month - 36,
+        last_month=revenue_last_month,
+    )
     price_download = revenue_window[[PRICE_COLUMN]].rename(
         columns={PRICE_COLUMN: REVENUE_PRICE_LABEL}
-    )
-    dubai_window = None
-    if dubai_price is not None and not dubai_price.empty:
-        dubai_window = within_month_window(
-            dubai_price,
-            first_month=revenue_last_month - 36,
-            last_month=revenue_last_month,
-        )
-        price_download = price_download.join(dubai_window, how="outer").sort_index()
+    ).join(dubai_window, how="outer").sort_index()
     revenue_download = revenue_window[[REVENUE_COLUMN]]
 
     first_row = st_obj.columns(2, gap="small")
@@ -508,36 +373,30 @@ def _render_charts(
             key="analysis.uae.oil.production.download",
         )
     with first_row[1]:
-        if rigs is None or rigs.dropna().empty:
-            st_obj.info("活动钻井机数暂无有效观测。")
-        else:
-            render_pyplot_figure(
-                st_obj,
-                build_oil_rig_count_figure(
-                    rigs,
-                    rig_count_source or "",
-                    units={MARKET_RIG_COUNT_LABEL: data.metadata[
-                        data.rig_count.name
-                    ].unit},
-                ),
-                bbox_inches=None,
-                place_legend_bottom=False,
-            )
-            render_chart_download(
-                st_obj,
+        render_pyplot_figure(
+            st_obj,
+            build_oil_rig_count_figure(
                 rigs,
-                title="活动钻井机数",
-                key="analysis.uae.oil.rig_count.download",
-            )
+                rig_count_source,
+                units={MARKET_RIG_COUNT_LABEL: data.metadata[
+                    data.rig_count.name
+                ].unit},
+            ),
+            bbox_inches=None,
+            place_legend_bottom=False,
+        )
+        render_chart_download(
+            st_obj,
+            rigs,
+            title="活动钻井机数",
+            key="analysis.uae.oil.rig_count.download",
+        )
     with second_row[0]:
         render_pyplot_figure(
             st_obj,
             build_oil_price_figure(
                 revenue_window,
                 price_source_text,
-                units={REVENUE_PRICE_LABEL: data.metadata[
-                    REVENUE_PRICE_BENCHMARK
-                ].unit, DUBAI_PRICE_LABEL: "美元/桶"},
                 dubai_price=dubai_window,
             ),
             bbox_inches=None,
@@ -572,23 +431,16 @@ def render_oil_fiscal_panel(
     st_obj: Any,
     payload: tuple[bytes, str],
 ) -> dict[str, Any]:
-    """用显式工作簿载荷估算石油收入，不生成占位渠道。"""
+    """用正式油价、产量和 WAM 数据渲染监测面板。"""
 
-    war_pressure_available = False
     try:
         content, file_name = payload
         with st_obj.spinner("正在读取日度油价与月度原油产量..."):
             data = _load_oil_market_cached(content, file_name)
-        try:
-            war_pressure = load_war_pressure_data(content, file_name=file_name)
-        except (KeyError, TypeError, ValueError) as exc:
-            st_obj.subheader("战争压力")
-            st_obj.warning(f"战争压力数据暂不可用：{exc}")
-        else:
-            st_obj.subheader("战争压力")
-            _render_war_pressure_metrics(st_obj, war_pressure)
-            _render_war_pressure_section(st_obj, war_pressure)
-            war_pressure_available = True
+        war_pressure = load_war_pressure_data(content, file_name=file_name)
+        st_obj.subheader("战争压力")
+        _render_war_pressure_metrics(st_obj, war_pressure)
+        _render_war_pressure_section(st_obj, war_pressure)
         st_obj.subheader("石油生产与收入")
         _render_oil_metrics(st_obj, data)
         revenue = estimate_monthly_oil_revenue(data.prices, data.production)
@@ -597,13 +449,9 @@ def render_oil_fiscal_panel(
         with st_obj.expander("指标算法与解读", expanded=True):
             st_obj.markdown(OIL_FISCAL_EXPLANATION)
     except (KeyError, TypeError, ValueError) as exc:
-        st_obj.error(f"油价与产量数据加载失败：{exc}")
+        st_obj.error(f"油价、产量或战争压力数据加载失败：{exc}")
         return {"status": "error", "message": str(exc)}
-    return {
-        "status": "success",
-        "source": file_name,
-        "war_pressure": war_pressure_available,
-    }
+    return {"status": "success", "source": file_name, "war_pressure": True}
 
 
 __all__ = ["render_oil_fiscal_panel"]

@@ -19,8 +19,6 @@ CAF_* 航班数）。原始 JSON 缓存于 ``data/UAE/raw/eurostat_air/``。
 from __future__ import annotations
 
 import json
-import math
-import sys
 import tempfile
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
@@ -28,21 +26,12 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from urllib.request import Request, urlopen
-import ssl
 
-from .paths import DATA_DIR, SCRIPTS_DIR
+from .paths import DATA_DIR
 
 
 from . import db  # noqa: E402
 
-
-def _ssl_context() -> ssl.SSLContext:
-    """构造带 CA 的 SSL 上下文：优先 certifi 的 cacert.pem，退化默认。"""
-    try:
-        import certifi  # type: ignore
-        return ssl.create_default_context(cafile=certifi.where())
-    except Exception:  # noqa: BLE001 - certifi 缺失时用系统默认
-        return ssl.create_default_context()
 
 # ---------------------------------------------------------------------------
 # 常量
@@ -58,10 +47,6 @@ USER_AGENT = (
 )
 
 TARGET_SHEET = "月度_Eurostat航空"  # 预留（写表暂未实现）
-INDICATORS_CN = {
-    "avia_paexcc": "EU27↔阿联酋航空旅客",
-    "avia_goexcc": "EU27↔阿联酋航空货运与邮件",
-}
 
 # EU27_2020 的 27 个成员国（官方聚合 = 27 国之和，2025 年实测零差）
 MEMBER_GEOS = (
@@ -84,7 +69,7 @@ DATASETS = (
 
 def fetch_json(url: str) -> Any:
     request = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
-    with urlopen(request, timeout=90, context=_ssl_context()) as response:
+    with urlopen(request, timeout=90) as response:
         if response.status != 200:
             raise RuntimeError(f"HTTP {response.status} while downloading {url}")
         return json.loads(response.read().decode("utf-8"))
@@ -409,15 +394,10 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
                 f"--skip-download 但缺少缓存文件: {RAW_DIR}（缺失 .json）"
             )
     else:
-        try:
-            # The dissemination API URL is stable while observations are
-            # revised/extended in place. Do not treat the JSON as immutable.
-            download(RAW_DIR)
-            download_note = "已在线刷新 Eurostat API 数据"
-        except Exception as exc:  # noqa: BLE001 - valid cache remains usable
-            if not cached:
-                raise
-            download_note = f"Eurostat 在线刷新失败，沿用有效缓存：{exc}"
+        # The dissemination API URL is stable while observations are
+        # revised/extended in place. Do not treat the JSON as immutable.
+        download(RAW_DIR)
+        download_note = "已在线刷新 Eurostat API 数据"
 
     rows: list[dict[str, Any]] = []
     coverage: dict[str, Any] = {}

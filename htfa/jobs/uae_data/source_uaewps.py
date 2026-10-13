@@ -24,14 +24,13 @@ from __future__ import annotations
 
 import json
 import re
-import sys
 from datetime import date
 from pathlib import Path
 from urllib.parse import urljoin
 
 from pypdf import PdfReader
 
-from .paths import DATA_DIR, SCRIPTS_DIR
+from .paths import DATA_DIR
 
 
 from . import db  # noqa: E402
@@ -48,8 +47,6 @@ from ._official_download import download_file, fetch_bytes  # noqa: E402
 
 RAW_DIR = DATA_DIR / "raw" / "uaewps" / "qer"
 TARGET_SHEET = "季度_UAEWPS"
-# 早期版本曾写入「月度_UAEWPS」（频率误标为月）；合并时自动删除该遗留 sheet
-LEGACY_SHEETS = ("月度_UAEWPS",)
 DICTIONARY_SHEET = "指标字典"
 SOURCE_NAME = "CBUAE QER"
 UNIT = "同比%"
@@ -74,10 +71,7 @@ MONTH_NUMBERS = {
     "june": 6, "july": 7, "august": 8, "september": 9, "october": 10,
     "november": 11, "december": 12,
 }
-# 兼容 PDF 文本的 "Wage s Protection" / "Wage Protection" 变体
-_WPS_RE = re.compile(r"Wage\s*s?\s+Protection\s+System\s*\(?\s*WPS\s*\)?", re.I)
 # 同比数字：容忍 "7.5" "4. 8"（数字间空格）等排版碎片
-_NUMBER_RE = re.compile(r"(\d{1,2}(?:\.\d{1,2})?)")
 _PERIOD_RE = re.compile(
     r"\b(" + "|".join(MONTH_NUMBERS) + r")\s+(20\d{2})\b", re.I
 )
@@ -270,7 +264,7 @@ def _discover_qer_files() -> list[tuple[str, str, Path]]:
 
     payload = json.loads(
         fetch_bytes(CBUAE_QER_API, referer="https://www.centralbank.ae/").decode(
-            "utf-8", errors="replace"
+            "utf-8"
         )
     )
     pages = payload.get("Data", {}).get("MediaListingPages", [])
@@ -301,27 +295,25 @@ def _discover_qer_files() -> list[tuple[str, str, Path]]:
     return sorted(discovered.values())
 
 
-def _download_qer_files(*, force: bool) -> tuple[int, int, list[str]]:
+def _download_qer_files(*, force: bool) -> tuple[int, int]:
     downloaded = 0
     existing = 0
-    errors: list[str] = []
-    for tag, url, target in _discover_qer_files():
-        try:
-            status = download_file(
-                url,
-                target,
-                force=force,
-                min_bytes=1024,
-                referer="https://www.centralbank.ae/en/news-and-publications/publications/",
-            )
-        except Exception as exc:  # noqa: BLE001 - keep using a good local cache
-            errors.append(f"{tag}: {exc}")
-            continue
+    discovered = _discover_qer_files()
+    if not discovered:
+        raise ValueError("CBUAE 出版 API 未发现 Quarterly Economic Review PDF")
+    for tag, url, target in discovered:
+        status = download_file(
+            url,
+            target,
+            force=force,
+            min_bytes=1024,
+            referer="https://www.centralbank.ae/en/news-and-publications/publications/",
+        )
         if status == "downloaded":
             downloaded += 1
         else:
             existing += 1
-    return downloaded, existing, errors
+    return downloaded, existing
 
 
 def _long_rows(
@@ -348,46 +340,28 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
 
     download_note = ""
     if not skip_download:
-        try:
-            # QER PDFs can be replaced at the same URL; refresh discovered
-            # files in online mode and keep the local cache on download error.
-            downloaded, existing, download_errors = _download_qer_files(force=True)
-            download_note = f"官网缓存：新增 {downloaded}，复用 {existing}"
-            if download_errors:
-                download_note += f"；下载警告 {len(download_errors)} 条（{download_errors[0]}）"
-        except Exception as exc:  # noqa: BLE001 - cached QER files remain valid
-            if not any(RAW_DIR.glob("*.pdf")):
-                raise
-            download_note = f"官网发现失败，使用本地缓存：{exc}"
+        # QER PDFs can be replaced at the same URL; refresh discovered files
+        # in online mode.
+        downloaded, existing = _download_qer_files(force=True)
+        download_note = f"官网缓存：新增 {downloaded}，复用 {existing}"
 
     sources = sorted(RAW_DIR.glob("*.pdf"))
-    errors: list[str] = []
     parsed: dict[str, tuple[str, float | None, float | None, str]] = {}
     for path in sources:
-        try:
-            tag, period, emp, wage, note = extract_qer_wps(path)
-        except (OSError, ValueError) as exc:
-            errors.append(f"{path.name}: {exc}")
-            continue
+        tag, period, emp, wage, note = extract_qer_wps(path)
         if period is not None or tag in EXPECTED:
             parsed[tag] = (period, emp, wage, note)
 
     valid: dict[str, tuple[str, str, float | None, float | None, str]] = {}
-    validation_errors: list[str] = []
     for tag, item in sorted(parsed.items()):
-        try:
-            checked = validate_observations({tag: item})
-        except ValueError as exc:
-            validation_errors.append(str(exc))
-            continue
+        checked = validate_observations({tag: item})
         valid[tag] = checked[0]
     # QER 的发布日期是季度，但 WPS 文字可能仍只覆盖上一季度末月份（例如
     # June 2026 QER 的正文为“As of March 2026”）。同一观察月保留最新报告，
     # 避免两个报告标签写入同一 (period, indicator) 主键。
     verified = [valid[tag] for tag in sorted(valid)]
     if not verified:
-        detail = validation_errors[0] if validation_errors else "no valid QER observations"
-        raise ValueError(f"UAEWPS validation rejected all observations: {detail}")
+        raise ValueError("UAEWPS validation rejected all observations")
     rows = _long_rows(verified)
     con.begin()
     try:
@@ -405,13 +379,6 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     )
     if download_note:
         note += f"；{download_note}"
-    if errors:
-        note += f"；源警告 {len(errors)} 条，首条：{errors[0]}"
-    if validation_errors:
-        note += (
-            f"；解析校验警告 {len(validation_errors)} 条，首条："
-            f"{validation_errors[0]}"
-        )
     return {"status": "ok", "rows": len(rows), "note": note}
 
 
@@ -465,7 +432,6 @@ def merge(workbook_path: Path) -> dict:
 
     payload = {
         "source_label": SOURCE_NAME,
-        "legacy_sheet_names": list(LEGACY_SHEETS),
         "dictionary_sheet_name": DICTIONARY_SHEET,
         "metadata_labels": ["指标名称", "频率", "单位", "来源", "更新时间"],
         "frequency": FREQUENCY,

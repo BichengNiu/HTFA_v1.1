@@ -20,7 +20,6 @@ from __future__ import annotations
 import csv
 import os
 import re
-import sys
 import tempfile
 from calendar import monthrange
 from datetime import date
@@ -29,7 +28,7 @@ from urllib.parse import unquote, urljoin, urlparse
 
 from pypdf import PdfReader
 
-from .paths import DATA_DIR, SCRIPTS_DIR
+from .paths import DATA_DIR
 
 
 from . import db  # noqa: E402
@@ -72,7 +71,6 @@ _ACTIVE_VEHICLES_RE = re.compile(
     r"(?:c\.?\s*)?(?P<value>\d+(?:\.\d+)?)\s*mn",
     re.I,
 )
-_CHART_VALUE_RE = re.compile(r"(?<![\d.])(?P<value>\d+(?:\.\d+)?)\s*mn\b", re.I)
 
 
 def _period_from_filename(name: str) -> date | None:
@@ -89,7 +87,7 @@ def _discover_official_pdfs() -> list[tuple[date, str, Path]]:
     """Find Salik investor presentations from the official IR page."""
 
     html = fetch_bytes(SALIK_RESULTS_URL, referer="https://www.salik.ae/").decode(
-        "utf-8", errors="replace"
+        "utf-8"
     )
     found: dict[str, tuple[date, str, Path]] = {}
     for match in _PDF_LINK_RE.finditer(html):
@@ -104,14 +102,10 @@ def _discover_official_pdfs() -> list[tuple[date, str, Path]]:
             continue
         period = _period_from_filename(filename)
         if period is None:
-            # The page path carries the period when a filename is abbreviated.
-            path_match = re.search(r"/(20\d{2})/(Q1|H1|Q2|Q3|Q4)/", parsed.path, re.I)
-            if path_match:
-                suffix = f"{path_match.group(2)}_{path_match.group(1)}"
-                period = _period_from_filename(suffix)
-        if period is None:
-            continue
+            raise ValueError(f"Salik investor PDF filename has no reporting period: {filename}")
         found[url] = (period, url, RAW_DIR / filename)
+    if not found:
+        raise ValueError("Salik investor relations page contains no recognized presentation PDFs")
     return sorted(found.values(), key=lambda item: item[0])
 
 
@@ -126,39 +120,34 @@ def _csv_latest_period() -> date | None:
                 continue
             try:
                 period = date.fromisoformat(text)
-            except ValueError:
-                continue
+            except ValueError as exc:
+                raise ValueError(f"Salik CSV has an invalid period_end: {text!r}") from exc
             latest = period if latest is None or period > latest else latest
     return latest
 
 
-def _download_presentations(*, force: bool) -> tuple[int, int, list[str]]:
+def _download_presentations(*, force: bool) -> tuple[int, int]:
     latest = _csv_latest_period()
     downloaded = 0
     existing = 0
-    errors: list[str] = []
     for period, url, target in _discover_official_pdfs():
         # Historical values already compiled manually do not need to be
         # downloaded again. Include the latest known period so a previously
         # blank value can be filled when Salik later publishes an absolute KPI.
         if latest is not None and period < latest:
             continue
-        try:
-            status = download_file(
-                url,
-                target,
-                force=force,
-                min_bytes=1024,
-                referer=SALIK_RESULTS_URL,
-            )
-        except Exception as exc:  # noqa: BLE001 - keep local investor cache usable
-            errors.append(f"{target.name}: {exc}")
-            continue
+        status = download_file(
+            url,
+            target,
+            force=force,
+            min_bytes=1024,
+            referer=SALIK_RESULTS_URL,
+        )
         if status == "downloaded":
             downloaded += 1
         else:
             existing += 1
-    return downloaded, existing, errors
+    return downloaded, existing
 
 
 def _extract_absolute_value(path: Path) -> float | None:
@@ -170,19 +159,10 @@ def _extract_absolute_value(path: Path) -> float | None:
     match = _ACTIVE_VEHICLES_RE.search(text)
     if match:
         return float(match.group("value"))
-    # Some older decks expose only the chart label. This fallback is limited
-    # to the local chart block and takes the last explicit ``mn`` number; it
-    # does not convert the Q1 2026 ``+8.4%`` disclosure into an absolute value.
-    marker = re.search(r"registered\s+active\s+vehicles", text, re.I)
-    if marker:
-        block = text[marker.start() : marker.start() + 700]
-        values = [float(item.group("value")) for item in _CHART_VALUE_RE.finditer(block)]
-        if values:
-            return values[-1]
     return None
 
 
-def _refresh_csv_from_pdfs() -> tuple[int, list[str]]:
+def _refresh_csv_from_pdfs() -> int:
     """Merge newly extracted official values into the cached compilation CSV."""
 
     if not RAW_CSV.is_file():
@@ -195,16 +175,11 @@ def _refresh_csv_from_pdfs() -> tuple[int, list[str]]:
         if record.get("period_end", "").strip()
     }
     added = 0
-    warnings: list[str] = []
     for path in sorted(RAW_DIR.glob("*.pdf")):
         period = _period_from_filename(path.name)
         if period is None:
-            continue
-        try:
-            value = _extract_absolute_value(path)
-        except Exception as exc:  # noqa: BLE001 - one malformed PDF must not erase history
-            warnings.append(f"{path.name}: {exc}")
-            continue
+            raise ValueError(f"Salik PDF filename has no reporting period: {path.name}")
+        value = _extract_absolute_value(path)
         if value is None:
             continue
         key = period.isoformat()
@@ -241,7 +216,7 @@ def _refresh_csv_from_pdfs() -> tuple[int, list[str]]:
             os.unlink(temporary_name)
         except FileNotFoundError:
             pass
-    return added, warnings
+    return added
 
 
 # ---------------------------------------------------------------------------
@@ -259,15 +234,27 @@ def _read_rows() -> list[dict]:
         for record in reader:
             period_end = record.get("period_end", "").strip()
             value_text = (record.get("vehicles_mn") or "").strip()
-            if not period_end or not value_text:
+            if not period_end:
+                if value_text:
+                    raise ValueError("Salik CSV row has a value but no period_end")
+                continue
+            try:
+                period = date.fromisoformat(period_end)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Salik CSV row has invalid period_end: {period_end!r}"
+                ) from exc
+            if not value_text:
                 continue
             try:
                 value = float(value_text)
-            except ValueError:
-                continue
+            except ValueError as exc:
+                raise ValueError(
+                    f"Salik CSV row has invalid vehicles_mn: {value_text!r}"
+                ) from exc
             rows.append(
                 {
-                    "period": date.fromisoformat(period_end),
+                    "period": period,
                     "value": value,
                     "source": record.get("source", "").strip(),
                     "note": record.get("note", "").strip(),
@@ -282,19 +269,12 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
 
     download_note = ""
     if not skip_download:
-        try:
-            # Refresh the latest discovered presentation even when its URL is
-            # unchanged; investor decks may be corrected after publication.
-            downloaded, existing, download_errors = _download_presentations(force=True)
-            download_note = f"官网缓存：新增 {downloaded}，复用 {existing}"
-            if download_errors:
-                download_note += f"；下载警告 {len(download_errors)} 条（{download_errors[0]}）"
-        except Exception as exc:  # noqa: BLE001 - cached PDF/CSV remain usable
-            if not RAW_CSV.is_file():
-                raise
-            download_note = f"官网发现失败，使用本地缓存：{exc}"
+        # Refresh the latest discovered presentation even when its URL is
+        # unchanged; investor decks may be corrected after publication.
+        downloaded, existing = _download_presentations(force=True)
+        download_note = f"官网缓存：新增 {downloaded}，复用 {existing}"
 
-    extracted, extraction_warnings = _refresh_csv_from_pdfs()
+    extracted = _refresh_csv_from_pdfs()
     rows = _read_rows()
     if not rows:
         raise ValueError("salik_active_vehicles_quarterly 输入为空，拒绝入库")
@@ -329,8 +309,6 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     )
     if extracted:
         note += f"；PDF 自动补入 {extracted} 期"
-    if extraction_warnings:
-        note += f"；PDF 解析警告 {len(extraction_warnings)} 条（{extraction_warnings[0]}）"
     if download_note:
         note += f"；{download_note}"
     return {"status": "ok", "rows": len(rows), "note": note}

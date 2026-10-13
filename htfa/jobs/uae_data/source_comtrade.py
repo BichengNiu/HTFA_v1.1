@@ -12,7 +12,6 @@ from __future__ import annotations
 import csv
 import json
 import os
-import sys
 import time
 import urllib.error
 import urllib.parse
@@ -293,7 +292,7 @@ def aggregate() -> tuple[
     dict[tuple[str, str], str],
     list[dict[str, Any]],
 ]:
-    """Aggregate with UAE imports first and full-country mirror fallback."""
+    """Aggregate UAE imports and use partner mirrors where direct data is absent."""
 
     reporters = load_reporters()
     direct_values: dict[tuple[str, str], float] = defaultdict(float)

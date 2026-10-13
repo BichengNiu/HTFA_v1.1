@@ -4,7 +4,7 @@
 process_uae_pmi.py 解析/质检/写）。原始缓存写入 ``data/UAE/raw/pmi/`` 下的
 tradingeconomics_chart.json、source_metadata.json、quality_report.json。
 入库表 ``pmi_monthly`` 的 period 为月末、value 保留一位小数。受管工作表名为
-``月度_LSEG``（兼容工作簿 schema），单元格级来源标注真实公开来源。
+``月度_LSEG``（当前工作簿 schema），单元格级来源标注真实公开来源。
 """
 
 from __future__ import annotations
@@ -17,7 +17,6 @@ import json
 import math
 import re
 import shutil
-import sys
 import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -29,7 +28,7 @@ from urllib.request import Request, urlopen
 
 from openpyxl import load_workbook
 
-from .paths import DATA_DIR, SCRIPTS_DIR
+from .paths import DATA_DIR
 
 
 from . import db  # noqa: E402
@@ -93,9 +92,9 @@ def fetch_bytes(url: str, headers: dict[str, str] | None = None) -> bytes:
 
 
 def fetch_text(url: str, headers: dict[str, str] | None = None) -> str:
-    """抓取一个 UTF-8 兼容的公开页面。"""
+    """抓取并严格按 UTF-8 解码公开页面。"""
 
-    return fetch_bytes(url, headers).decode("utf-8", errors="replace")
+    return fetch_bytes(url, headers).decode("utf-8")
 
 
 def parse_chart_config(page_html: str) -> dict[str, str]:
@@ -122,10 +121,7 @@ def decode_chart_response(response_body: bytes, xor_key: str) -> Any:
     """用其 Web 应用公布的算法解码图表响应。"""
 
     text = response_body.decode("ascii").strip()
-    try:
-        encoded = json.loads(text)
-    except json.JSONDecodeError:
-        encoded = text.strip('"')
+    encoded = json.loads(text)
     if not isinstance(encoded, str) or not encoded:
         raise ValueError("Unexpected public chart response envelope")
     try:
@@ -247,14 +243,9 @@ def download(output_dir: Path) -> tuple[Path, Path]:
     payload = decode_chart_response(chart_body, config["TEObfuscationkey"])
     series = extract_series(payload)
 
-    official_release = None
-    try:
-        official_release = find_latest_official_release(
-            fetch_text(SP_GLOBAL_RELEASES_URL)
-        )
-    except (OSError, RuntimeError):
-        # 可选发布索引交叉核对暂时不可用时，图表下载仍可用。
-        official_release = None
+    official_release = find_latest_official_release(
+        fetch_text(SP_GLOBAL_RELEASES_URL)
+    )
 
     raw_path = output_dir / "tradingeconomics_chart.json"
     metadata_path = output_dir / "source_metadata.json"
@@ -658,15 +649,10 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
                 f"{CHART_PATH.name if not CHART_PATH.is_file() else METADATA_PATH.name}"
             )
     else:
-        try:
-            # The chart URL is stable while the payload changes when a new
-            # S&P Global observation is published. Refresh it online every run.
-            download(RAW_DIR)
-            download_note = "已在线刷新图表与元数据"
-        except Exception as exc:  # noqa: BLE001 - valid cache remains usable
-            if not (CHART_PATH.is_file() and METADATA_PATH.is_file()):
-                raise
-            download_note = f"官网刷新失败，沿用有效缓存：{exc}"
+        # The chart URL is stable while the payload changes when a new
+        # S&P Global observation is published. Refresh it online every run.
+        download(RAW_DIR)
+        download_note = "已在线刷新图表与元数据"
 
     metadata = json.loads(METADATA_PATH.read_text(encoding="utf-8"))
     observations = load_observations(CHART_PATH)
@@ -701,7 +687,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
 def merge(workbook_path: Path) -> dict:
     """把 pmi_monthly 写回 阿联酋.xlsx 的 月度_LSEG sheet。
 
-    与旧脚本一致：sheet 已最新时跳过写入但仍做一次整体校验
+    sheet 已最新时跳过写入但仍做一次整体校验
     （``_verify_workbook``）；否则走带备份/校验/回滚的 ``write_workbook``。
     """
 

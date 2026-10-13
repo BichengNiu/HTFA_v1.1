@@ -59,71 +59,63 @@ def _latest_high_frequency_month(
     payload: tuple[bytes, str],
     *,
     today: pd.Timestamp | None = None,
-) -> pd.Period | None:
-    """返回工作簿中最新的高频数据观测月份。"""
-
+) -> pd.Period:
     observation_cutoff = (
         pd.Timestamp.today().normalize()
         if today is None
         else pd.Timestamp(today).normalize()
     )
     latest_months: list[pd.Period] = []
-    try:
-        content, file_name = payload
-        with _REPORT_WORKBOOK_READER.open_workbook(
-            content,
-            file_name=file_name,
-        ) as (excel_file, _):
-            for sheet_name in excel_file.sheet_names[1:]:
-                raw = _REPORT_WORKBOOK_READER.read_raw_sheet(
-                    excel_file,
-                    sheet_name=sheet_name,
-                )
-                if raw.shape[0] < 7 or raw.shape[1] < 2:
-                    continue
+    content, file_name = payload
+    with _REPORT_WORKBOOK_READER.open_workbook(
+        content,
+        file_name=file_name,
+    ) as (excel_file, _):
+        for sheet_name in excel_file.sheet_names[1:]:
+            raw = _REPORT_WORKBOOK_READER.read_raw_sheet(
+                excel_file,
+                sheet_name=sheet_name,
+            )
+            _REPORT_WORKBOOK_READER.validate_target_sheet(raw, sheet_name)
+            frequencies = {
+                str(value).strip()
+                for value in raw.iloc[2, 1:].tolist()
+                if pd.notna(value)
+            }
+            if not frequencies & _HIGH_FREQUENCY_LABELS:
+                continue
 
-                frequencies = {
-                    str(value).strip()
-                    for value in raw.iloc[2, 1:].tolist()
-                    if pd.notna(value)
-                }
-                if not frequencies & _HIGH_FREQUENCY_LABELS:
-                    continue
-
-                dates = pd.to_datetime(raw.iloc[6:, 0], errors="coerce")
-                values = raw.iloc[6:, 1:].apply(
-                    pd.to_numeric,
-                    errors="coerce",
+            dates = pd.to_datetime(raw.iloc[6:, 0], errors="coerce")
+            values = raw.iloc[6:, 1:].apply(
+                pd.to_numeric,
+                errors="coerce",
+            )
+            valid = (
+                dates.notna()
+                & dates.le(observation_cutoff)
+                & values.notna().any(axis=1)
+            )
+            if not valid.any():
+                raise ValueError(
+                    f"高频工作表“{sheet_name}”没有可用日期或数值观测"
                 )
-                valid = (
-                    dates.notna()
-                    & dates.le(observation_cutoff)
-                    & values.notna().any(axis=1)
+            candidate = pd.Timestamp(dates[valid].max())
+            candidate_month = candidate.to_period("M")
+            if frequencies & {"日", "日度", "周", "周度", "旬", "旬度"}:
+                cutoff = last_complete_month_end(
+                    candidate.date(),
+                    today=observation_cutoff.date(),
                 )
-                if not valid.any():
+                if cutoff is None:
                     continue
-                candidate = pd.Timestamp(dates[valid].max())
-                candidate_month = candidate.to_period("M")
-                if frequencies & {"日", "日度", "周", "周度", "旬", "旬度"}:
-                    cutoff = last_complete_month_end(
-                        candidate.date(),
-                        today=observation_cutoff.date(),
-                    )
-                    if cutoff is None:
-                        continue
-                    complete_month = pd.Timestamp(cutoff).to_period("M")
-                    latest_months.append(complete_month)
-                else:
-                    # 月度源若仍落在当前自然月，也必须等到下月再作为
-                    # 完整月份展示；历史月份的日期可能统一记为月初。
-                    if candidate_month == observation_cutoff.to_period("M"):
-                        candidate_month -= 1
-                    latest_months.append(candidate_month)
-    except Exception:  # noqa: BLE001 - 日期仅用于打印头，不能阻断报告渲染
-        return None
+                latest_months.append(pd.Timestamp(cutoff).to_period("M"))
+            else:
+                if candidate_month == observation_cutoff.to_period("M"):
+                    candidate_month -= 1
+                latest_months.append(candidate_month)
 
     if not latest_months:
-        return None
+        raise ValueError("工作簿没有可用于报告标题的完整高频月份")
     return max(latest_months)
 
 

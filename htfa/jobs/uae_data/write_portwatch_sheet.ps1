@@ -63,27 +63,10 @@ try {
         [void][Runtime.InteropServices.Marshal]::ReleaseComObject($lastSheet)
     }
 
-    $legacySheetNames = @($payload.legacy_sheet_names)
-    foreach ($legacyName in $legacySheetNames) {
-        if ([string]::IsNullOrWhiteSpace([string]$legacyName)) {
-            continue
-        }
-        foreach ($candidate in @($workbook.Worksheets)) {
-            if ($candidate.Name -eq $legacyName) {
-                $candidate.Delete()
-                [void][Runtime.InteropServices.Marshal]::ReleaseComObject($candidate)
-                break
-            }
-        }
-    }
-
     $sheet.Cells.Clear()
     $rowCount = $records.Count + 6
     $values = [object[,]]::new($rowCount, $lastColumnIndex)
     $sourceLabel = $payload.source_label
-    if ($null -eq $sourceLabel -or [string]::IsNullOrWhiteSpace([string]$sourceLabel)) {
-        $sourceLabel = $payload.source
-    }
     $values[0, 0] = $sourceLabel
     $metadataLabels = @($payload.metadata_labels)
     for ($row = 0; $row -lt $metadataLabels.Count; $row++) {
@@ -107,9 +90,6 @@ try {
     for ($column = 0; $column -lt $indicatorCount; $column++) {
         $targetColumn = $column + $firstIndicatorColumn
         $perUnit = $payload.indicators[$column].unit
-        if ($null -eq $perUnit -or [string]::IsNullOrWhiteSpace([string]$perUnit)) {
-            $perUnit = $payload.unit
-        }
         $values[1, $targetColumn] = $indicatorNames[$column]
         $values[2, $targetColumn] = $payload.frequency
         $values[3, $targetColumn] = $perUnit

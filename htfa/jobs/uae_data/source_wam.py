@@ -20,7 +20,6 @@ import html
 import math
 import os
 import re
-import sys
 import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
@@ -31,7 +30,7 @@ from urllib.parse import urlparse
 
 from htfa.data.temporal import last_complete_month_end
 
-from .paths import DATA_DIR, SCRIPTS_DIR
+from .paths import DATA_DIR
 
 RAW_DIR = DATA_DIR / "raw" / "wam"
 DAILY_PATH = RAW_DIR / "uae_military_strike_intensity_daily.csv"
@@ -297,10 +296,29 @@ def _first_event_text(body: str, headline: str) -> str:
         for marker in (
             " since the start",
             " since beginning",
+            " since the beginning",
             " since onset",
+            " since the onset",
+            " since the outbreak",
+            " since hostilities began",
+            " since ",
             " since saturday",
             " over the past",
+            " over past",
+            " over the last",
+            " over last",
             " in the past",
+            " in past",
+            " in the last",
+            " in last",
+            " in the previous",
+            " over the previous",
+            " during the past",
+            " during the last",
+            " within the past",
+            " within the last",
+            " within the previous",
+            " so far",
         )
         if lowered.find(marker) >= 0
     ]
@@ -331,6 +349,30 @@ def _extract_weapon_count(text: str, kind: str) -> int:
     ):
         return 1
     return 0
+
+
+def _has_cumulative_count_lead(text: str) -> bool:
+    """Reject counts explicitly introduced as an overall or cumulative total."""
+
+    labels = (
+        r"ballistic\s+miss(?:ile|les)s?",
+        r"cruise\s+miss(?:ile|les)s?",
+        r"(?:uav(?:s|'s)?|drone(?:s)?)",
+        r"miss(?:ile|les)s?",
+    )
+    positions = []
+    for label in labels:
+        match = re.search(
+            rf"\b{_NUMBER_TOKEN}\s+(?:of\s+)?(?:the\s+)?{label}\b",
+            text,
+            re.IGNORECASE,
+        )
+        if match:
+            positions.append(match.start())
+    if not positions:
+        return False
+    prefix = text[max(0, min(positions) - 70): min(positions)]
+    return bool(re.search(r"\b(?:total|cumulative|altogether|overall)\b", prefix, re.I))
 
 
 def _event_date(record: dict, body: str) -> date | None:
@@ -365,19 +407,40 @@ def extract_auto_article_observation(record: dict) -> dict | None:
         for kind in WEAPON_PRESSURE_WEIGHTS
     }
     if not any(counts.values()):
+        event_text = _first_event_text("", headline)
         for kind in WEAPON_PRESSURE_WEIGHTS:
-            counts[kind] = _extract_weapon_count(headline, kind)
+            counts[kind] = _extract_weapon_count(event_text, kind)
 
-    # Cumulative and interval statements cannot be assigned to one day safely.
-    cumulative = bool(
-        re.search(r"\bsince\s+(?:the\s+start|beginning|onset|saturday)", lowered)
-    )
-    interval = bool(re.search(r"\b(?:over|in)\s+the\s+past\s+\d+\s+hours?", lowered))
-    if not any(counts.values()) or cumulative or interval:
+    # _first_event_text cuts off cumulative and time-window statements before
+    # looking for counts, so those totals cannot be assigned to a single day.
+    if not any(counts.values()) or _has_cumulative_count_lead(event_text):
         return None
     period = _event_date(record, body)
     if period is None:
         return None
+    asset_attack = bool(
+        re.search(
+            r"\b(?:hit|struck|damaged|destroyed|impacted|caused damage to|"
+            r"sustained damage to)\b.{0,100}\b(?:infrastructure|facility|airport|"
+            r"port|refinery|power station|energy site|civilian site|building|asset)\b",
+            lowered,
+        )
+        or re.search(
+            r"\b(?:infrastructure|facility|airport|port|refinery|power station|"
+            r"energy site|civilian site|building|asset)\b.{0,100}\b"
+            r"(?:was hit|was struck|was damaged|was destroyed|was impacted)\b",
+            lowered,
+        )
+    )
+    if re.search(r"\b(?:no|without|zero)\s+(?:material\s+)?damage\b", lowered):
+        asset_attack = False
+    external_alert = bool(
+        re.search(
+            r"\b(?:air[- ]raid|air[- ]defen[cs]e|national airspace|security|"
+            r"threat)\s+(?:alert|warning)\b|\balert issued\b|\bwarning issued\b",
+            lowered,
+        )
+    )
     return {
         "date": period,
         **counts,
@@ -386,29 +449,38 @@ def extract_auto_article_observation(record: dict) -> dict | None:
         "published_at": record.get("date_published") or record.get("sitemap_published_at"),
         "headline": headline,
         "origin": "Iran" if "iran" in lowered else "Unknown/Not stated",
+        "uae_asset_attack": asset_attack,
+        "external_threat_alert": external_alert,
     }
 
 
 def derive_auto_daily_observations(
-    base_daily: list[dict], article_records: list[dict]
+    base_daily: list[dict],
+    article_records: list[dict],
+    *,
+    end_date: date | None = None,
 ) -> list[dict]:
-    """Build the machine-generated daily extension after the reviewed registry."""
+    """Build a daily WAM series from the reviewed end (or the initial start)."""
 
-    if not base_daily:
-        raise ValueError("Cannot derive WAM automatic extension from an empty registry")
-    last_date = base_daily[-1]["date"]
+    end_date = end_date or fetch_wam.last_complete_uae_date()
+    last_date = base_daily[-1]["date"] if base_daily else START_DATE.fromordinal(
+        START_DATE.toordinal() - 1
+    )
+    if end_date < START_DATE or end_date <= last_date:
+        return []
     by_date: dict[date, list[dict]] = {}
     for record in article_records:
         observation = extract_auto_article_observation(record)
-        if observation is not None and observation["date"] > last_date:
+        if (
+            observation is not None
+            and last_date < observation["date"] <= end_date
+            and observation["date"] >= START_DATE
+        ):
             by_date.setdefault(observation["date"], []).append(observation)
-    if not by_date:
-        return []
 
-    last_event_date = max(by_date)
     result: list[dict] = []
     period = last_date.fromordinal(last_date.toordinal() + 1)
-    while period <= last_event_date:
+    while period <= end_date:
         candidates = by_date.get(period, [])
         if candidates:
             values = {
@@ -430,11 +502,15 @@ def derive_auto_daily_observations(
                     "unclassified_missiles": 0,
                     "strike_intensity_log": weighted_pressure(**values),
                     "attack_any": True,
-                    "uae_asset_attack": False,
+                    "uae_asset_attack": any(
+                        item.get("uae_asset_attack", False) for item in candidates
+                    ),
                     "origin": best["origin"],
                     "observation_status": "auto_extracted_wam_jsonld",
                     "count_basis": "official_wam_article_direct_daily_statement",
-                    "external_threat_alert": False,
+                    "external_threat_alert": any(
+                        item.get("external_threat_alert", False) for item in candidates
+                    ),
                     "source_url": urls[0] if urls else None,
                     "source_url_2": urls[1] if len(urls) > 1 else None,
                     "source_url_3": None,
@@ -509,16 +585,24 @@ def write_auto_daily_observations(rows: list[dict]) -> None:
 def load_effective_daily_observations() -> list[dict]:
     """Load the reviewed registry plus any generated automatic extension."""
 
-    base = load_daily_observations()
+    base = load_daily_observations() if DAILY_PATH.is_file() else []
     if not AUTO_DAILY_PATH.is_file():
+        if not base:
+            raise FileNotFoundError(
+                f"Neither reviewed WAM registry nor automatic observations exist under {RAW_DIR}"
+            )
         return base
     auto = load_daily_observations(
         AUTO_DAILY_PATH,
         require_start=False,
         require_contiguous=True,
     )
-    if auto and auto[0]["date"] <= base[-1]["date"]:
+    if base and auto and auto[0]["date"] <= base[-1]["date"]:
         raise ValueError("WAM automatic extension overlaps the reviewed registry")
+    if not base and auto and auto[0]["date"] != START_DATE:
+        raise ValueError(
+            f"WAM automatic bootstrap must start at {START_DATE}, got {auto[0]['date']}"
+        )
     return base + auto
 
 
@@ -620,30 +704,45 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
 
     fetch_note = ""
     base_daily = load_daily_observations()
+    auto_rows: list[dict] = []
     if not skip_download:
-        # WAM source pages and article bodies may be revised behind stable
-        # URLs.  Online runs must re-fetch them; ``--skip-download`` remains
-        # the explicit offline/cache-only mode.
-        archive_counts = fetch_wam.refresh_source_manifest(force=True)
-        auto_counts = fetch_wam.refresh_auto_articles(force=True)
-        if auto_counts["failed"]:
-            raise RuntimeError(
-                f"WAM 自动文章抓取/解析失败 {auto_counts['failed']} 篇；"
-                f"请检查 {fetch_wam.AUTO_ARTICLES_PATH}"
+        # Refresh official sitemaps on every online run. Reuse archived article
+        # bodies for unchanged older articles; ``--force`` refreshes them, while ``--skip-download``
+        # remains the explicit offline/cache-only mode.
+        archive_counts = fetch_wam.refresh_source_manifest(force=force)
+        article_start = (
+            base_daily[-1]["date"].fromordinal(
+                base_daily[-1]["date"].toordinal() - fetch_wam.AUTO_LOOKBACK_DAYS
             )
+            if base_daily
+            else START_DATE
+        )
+        auto_counts = fetch_wam.refresh_auto_articles(
+            force=force, start_date=max(START_DATE, article_start)
+        )
         fetch_note = (
             f"WAM cited sources total={archive_counts['total']}, "
-            f"downloaded={archive_counts['downloaded']}, reused={archive_counts['reused']}, "
-            f"failed={archive_counts['failed']}; auto articles discovered={auto_counts['discovered']}, "
-            f"downloaded={auto_counts['downloaded']}, reused={auto_counts['reused']}, "
-            f"failed={auto_counts['failed']}"
+            f"downloaded={archive_counts['downloaded']}, reused={archive_counts['reused']}; "
+            f"auto articles discovered={auto_counts['discovered']}, "
+            f"downloaded={auto_counts['downloaded']}, reused={auto_counts['reused']}"
         )
-    auto_rows = derive_auto_daily_observations(
-        base_daily, fetch_wam.load_auto_articles()
+        auto_rows = derive_auto_daily_observations(
+            base_daily,
+            fetch_wam.load_auto_articles(),
+            end_date=fetch_wam.last_complete_uae_date(),
+        )
+    else:
+        cached_end = fetch_wam.cached_discovery_end()
+        auto_rows = derive_auto_daily_observations(
+            base_daily,
+            fetch_wam.load_auto_articles(),
+            end_date=cached_end,
+        )
+    daily = (
+        base_daily + auto_rows
+        if auto_rows
+        else load_effective_daily_observations()
     )
-    if auto_rows:
-        write_auto_daily_observations(auto_rows)
-    daily = load_effective_daily_observations()
     monthly = build_monthly_observations(daily)
     daily_rows = [dict(row) for row in daily]
     monthly_rows = [
@@ -671,6 +770,9 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
             [LEGACY_PRESSURE_INDICATOR, PREVIOUS_PRESSURE_INDICATOR, INDICATORS[3][0]],
         )
         db.upsert_dictionary_rows(con, _dictionary_rows())
+    if auto_rows:
+        # Generated observations enter DuckDB before the local raw/cache copy.
+        write_auto_daily_observations(auto_rows)
     note = (
         f"日度 {len(daily)} 行（{daily[0]['date']} 至 {daily[-1]['date']}），"
         f"月度 {len(monthly)} 行；{fetch_note or '使用本地来源缓存'}"

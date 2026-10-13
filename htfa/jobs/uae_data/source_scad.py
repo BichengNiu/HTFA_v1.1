@@ -25,7 +25,6 @@
 from __future__ import annotations
 
 import re
-import sys
 from datetime import date
 from pathlib import Path
 from typing import Iterable
@@ -33,7 +32,7 @@ from urllib.parse import urljoin
 
 from openpyxl import load_workbook
 
-from .paths import DATA_DIR, SCRIPTS_DIR
+from .paths import DATA_DIR
 
 
 from . import db  # noqa: E402
@@ -71,10 +70,6 @@ _INDICATOR_ORDER = {
     name: index for index, (name, *_) in enumerate(HS_INDICATORS + HPI_INDICATORS)
 }
 
-_SERIES_SLUG = {
-    "HotelStats": "HS",
-    "HPI": "HPI",
-}
 
 _FILE_PERIOD = re.compile(r"(20\d{2})-(0[1-9]|1[0-2])\.xlsx")
 SCAD_PUBLICATION_URL = (
@@ -210,19 +205,7 @@ def _long_rows(paths: Iterable[Path]) -> list[dict]:
     for path in sorted(paths):
         year, month = _FILE_PERIOD.search(path.name).groups()
         period = _month_end(int(year), int(month))
-        try:
-            parsed = _parse_workbook(path)
-        except (OSError, ValueError) as exc:
-            # 单文件解析失败只记录该文件，不中断整体（与 cbuae 风格一致）
-            rows.append(
-                {
-                    "period": period,
-                    "indicator": "__parse_error__",
-                    "value": None,
-                    "source_file": f"{path.name}: {exc}",
-                }
-            )
-            continue
+        parsed = _parse_workbook(path)
         for name, value in parsed.items():
             if value is None:
                 continue
@@ -258,9 +241,7 @@ def _discover_official_files() -> list[tuple[str, str, Path]]:
     discovered: dict[tuple[str, str], tuple[str, str, Path]] = {}
     for start in range(1, 9):
         url = SCAD_PUBLICATION_URL.format(start=start)
-        html = fetch_bytes(url, referer="https://scad.gov.ae/").decode(
-            "utf-8", errors="replace"
-        )
+        html = fetch_bytes(url, referer="https://scad.gov.ae/").decode("utf-8")
         page_found = 0
         for match in _SCAD_ARTICLE_RE.finditer(html):
             title = re.sub(r"\s+", " ", match.group("title")).strip()
@@ -298,27 +279,25 @@ def _discover_official_files() -> list[tuple[str, str, Path]]:
     return list(discovered.values())
 
 
-def _download_official_files(*, force: bool) -> tuple[int, int, list[str]]:
+def _download_official_files(*, force: bool) -> tuple[int, int]:
     downloaded = 0
     existing = 0
-    errors: list[str] = []
-    for _prefix, url, target in _discover_official_files():
-        try:
-            status = download_file(
-                url,
-                target,
-                force=force,
-                min_bytes=1024,
-                referer="https://scad.gov.ae/statistical-publication",
-            )
-        except Exception as exc:  # noqa: BLE001 - report per-file drift/network errors
-            errors.append(f"{target.name}: {exc}")
-            continue
+    discovered = _discover_official_files()
+    if not discovered:
+        raise ValueError("SCAD 出版目录未发现酒店统计或酒店价格指数文件")
+    for _prefix, url, target in discovered:
+        status = download_file(
+            url,
+            target,
+            force=force,
+            min_bytes=1024,
+            referer="https://scad.gov.ae/statistical-publication",
+        )
         if status == "downloaded":
             downloaded += 1
         else:
             existing += 1
-    return downloaded, existing, errors
+    return downloaded, existing
 
 
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
@@ -326,17 +305,10 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
 
     download_note = ""
     if not skip_download:
-        try:
-            # Publication files can be revised in place after the landing page
-            # has already exposed them; refresh discovered files online.
-            downloaded, existing, download_errors = _download_official_files(force=True)
-            download_note = f"官网缓存：新增 {downloaded}，复用 {existing}"
-            if download_errors:
-                download_note += f"；下载警告 {len(download_errors)} 条（{download_errors[0]}）"
-        except Exception as exc:  # noqa: BLE001 - cached files remain usable
-            if not any(RAW_DIR.glob("*.xlsx")):
-                raise
-            download_note = f"官网发现失败，使用本地缓存：{exc}"
+        # Publication files can be revised in place after the landing page
+        # has already exposed them; refresh discovered files online.
+        downloaded, existing = _download_official_files(force=True)
+        download_note = f"官网缓存：新增 {downloaded}，复用 {existing}"
 
     paths = [
         path
@@ -344,10 +316,11 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         if path.stem.startswith(("HotelStats", "HPI"))
         and _FILE_PERIOD.search(path.name)
     ]
+    if not paths:
+        raise ValueError("SCAD 没有可解析的酒店统计或酒店价格指数 XLSX")
     rows = _long_rows(paths)
-    # 剔除解析错误占位行
-    error_rows = [row for row in rows if row["indicator"] == "__parse_error__"]
-    rows = [row for row in rows if row["indicator"] != "__parse_error__"]
+    if not rows:
+        raise ValueError("SCAD 官网未提供可解析的 XLSX 数据")
 
     con.execute("DELETE FROM scad_monthly")
     if rows:
@@ -363,8 +336,6 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     note = f"{len(periods)} 个月 × {len(indicators)} 指标"
     if download_note:
         note += f"；{download_note}"
-    if error_rows:
-        note += f"；{len(error_rows)} 文件解析失败（{error_rows[0]['source_file']}）"
     return {"status": "ok", "rows": len(rows), "note": note}
 
 

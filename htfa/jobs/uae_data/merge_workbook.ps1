@@ -108,7 +108,6 @@ try {
     $dictionary = $book.Worksheets.Item($dictionarySheetName)
     $template = $book.Worksheets.Item($templateSheetName)
 
-    $legacyHeaders = @("指标名称", "类型", "行业", "数据来源", "预测变量")
     $extendedHeaders = @(
         "指标名称", "类型", "行业", "频率", "开始日期", "最新日期",
         "缺失期数", "数据来源", "预测变量"
@@ -117,23 +116,15 @@ try {
         1..$dictionary.UsedRange.Columns.Count |
             ForEach-Object { $dictionary.Cells.Item(1, $_).Text }
     )
-    # PowerShell 的集合 -ceq 比较不是可靠的逐项数组比较；把表头连接成
-    # 单一字符串后再比较，兼容旧版 5 列和当前 9 列指标字典。
-    $legacyHeaderText = $legacyHeaders -join "`0"
-    $extendedHeaderText = $extendedHeaders -join "`0"
-    if (($dictionaryHeaders[0..($legacyHeaders.Count - 1)] -join "`0") -ceq $legacyHeaderText) {
-        $dictionarySourceColumn = 4
-        $dictionaryForecastColumn = 5
-        $dictionaryLastColumn = 5
+    if ($dictionaryHeaders.Count -ne $extendedHeaders.Count) {
+        throw "Indicator dictionary must use the current 9-column schema"
     }
-    elseif (($dictionaryHeaders[0..($extendedHeaders.Count - 1)] -join "`0") -ceq $extendedHeaderText) {
-        $dictionarySourceColumn = 8
-        $dictionaryForecastColumn = 9
-        $dictionaryLastColumn = 9
-    }
-    else {
+    if (($dictionaryHeaders -join "`0") -cne ($extendedHeaders -join "`0")) {
         throw "Unexpected indicator dictionary header"
     }
+    $dictionarySourceColumn = 8
+    $dictionaryForecastColumn = 9
+    $dictionaryLastColumn = 9
 
     $lastDictionaryRow = $dictionary.Cells.Item(
         $dictionary.Rows.Count,
