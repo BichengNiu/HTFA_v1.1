@@ -149,8 +149,32 @@ def test_search_index_display_filters_to_start_year() -> None:
 
     display = display_search_index_values(values)
 
-    assert display.index.min() == pd.Timestamp(START_YEAR, 1, 1)
-    assert display.index.max() == values.index.max()
+    assert display.index.min() == pd.Timestamp(START_YEAR, 1, 31)
+    assert display.index.max().to_period("M") == values.index.max().to_period("M")
+
+
+def test_search_index_month_start_observations_align_with_september_tick() -> None:
+    values = pd.DataFrame(
+        {
+            WORK_DUBAI_COLUMN: range(45),
+            WORK_UAE_COLUMN: range(45, 90),
+        },
+        index=pd.date_range("2023-01-01", periods=45, freq="MS"),
+    )
+
+    display = display_search_index_values(values)
+    figure = build_search_index_figure(
+        values, title="搜索热度", source_text="谷歌趋势"
+    )
+
+    assert values.index.max() == pd.Timestamp("2026-09-01")
+    assert display.index.max() == pd.Timestamp("2026-09-30")
+    assert display.iloc[-1].tolist() == values.iloc[-1].tolist()
+    axis = figure.axes[0]
+    for line in axis.get_lines():
+        if not line.get_label().startswith("_"):
+            assert pd.Timestamp(line.get_xdata()[-1]) == pd.Timestamp("2026-09-30")
+    assert axis.get_xticklabels()[-1].get_text() == "9月"
 
 
 def test_search_index_figure_standardizes_series_on_one_axis() -> None:
