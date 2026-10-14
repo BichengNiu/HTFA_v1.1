@@ -284,7 +284,8 @@ def _render_finance_metrics(
             )
         )
         for offset in range(0, len(cards), 4):
-            render_metric_cards(st_obj, cards[offset : offset + 4], n=4)
+            row_cards = cards[offset : offset + 4]
+            render_metric_cards(st_obj, row_cards, n=len(row_cards))
     except (KeyError, TypeError, ValueError) as exc:
         st_obj.warning(f"财政金融指标未加载：{exc}")
 

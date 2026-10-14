@@ -613,6 +613,8 @@ def test_finance_metrics_cover_all_absolute_series_with_mom_and_yoy(
     )
 
     assert st_obj.metric.call_count == 11
+    assert [call.args[0] for call in st_obj.columns.call_args_list] == [4, 4, 3]
+    st_obj.warning.assert_not_called()
     assert [call.args[0] for call in st_obj.metric.call_args_list] == [
         "阿联酋隔夜拆借利率",
         "阿联酋1年期拆借利率",
