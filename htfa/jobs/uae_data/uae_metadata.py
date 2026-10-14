@@ -154,7 +154,7 @@ INDICATOR_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "阿联酋:Google搜索热度(work in dubai)",
         "月",
         "指数",
-        "Google Trends/工作搜索热度 CSV",
+        "Google Trends 官方 API（AE，两词同窗比较）",
         "搜索热度",
         "劳工",
     ),
@@ -162,7 +162,7 @@ INDICATOR_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "阿联酋:Google搜索热度(work in uae)",
         "月",
         "指数",
-        "Google Trends/工作搜索热度 CSV",
+        "Google Trends 官方 API（AE，两词同窗比较）",
         "搜索热度",
         "劳工",
     ),
@@ -567,6 +567,20 @@ _EXTENDED_DICTIONARY_HEADERS = [
 ]
 
 
+def _validate_dictionary_layout(dictionary) -> None:
+    """Validate nine metadata columns, trimming only empty trailing cells."""
+
+    expected_columns = len(_EXTENDED_DICTIONARY_HEADERS)
+    headers = [dictionary.cell(1, column).value for column in range(1, expected_columns + 1)]
+    if headers != _EXTENDED_DICTIONARY_HEADERS:
+        raise ValueError("指标字典必须严格包含 9 列")
+    if dictionary.max_column > expected_columns:
+        for row in dictionary.iter_rows(min_col=expected_columns + 1):
+            if any(cell.value is not None for cell in row):
+                raise ValueError("指标字典第 9 列之后存在数据，拒绝删除额外列")
+        dictionary.delete_cols(expected_columns + 1, dictionary.max_column - expected_columns)
+
+
 def _parse_workbook_date(value: Any) -> date | None:
     if isinstance(value, datetime):
         return value.date()
@@ -711,12 +725,7 @@ def sync_workbook_dictionary(
 
     workbook = load_workbook(workbook_path, keep_links=True)
     dictionary = workbook.worksheets[0]
-    headers = [
-        dictionary.cell(1, column).value
-        for column in range(1, dictionary.max_column + 1)
-    ]
-    if headers != _EXTENDED_DICTIONARY_HEADERS:
-        raise ValueError("指标字典必须严格包含 9 列")
+    _validate_dictionary_layout(dictionary)
     source_column = 8
 
     sheet_names = _workbook_indicator_names(workbook)

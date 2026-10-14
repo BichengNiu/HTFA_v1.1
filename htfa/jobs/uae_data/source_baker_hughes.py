@@ -39,7 +39,9 @@ from ._official_download import download_file, fetch_bytes  # noqa: E402
 
 RAW_DIR = DATA_DIR / "raw" / "baker_hughes"
 BAKER_WORLDWIDE_URL = "https://rigcount.bakerhughes.com/intl-rig-count"
-BAKER_USER_AGENT = "curl/8.0"
+# The public rig-count endpoint accepts this compatibility user agent while
+# rejecting curl/8.0 and the shared HTFA browser header from the same client.
+BAKER_USER_AGENT = "Mozilla/5.0"
 SOURCE_SHEET = "WW Monthly"
 TARGET_SHEET = "月度_贝克休斯"
 SOURCE_NAME = "Baker Hughes"
@@ -47,15 +49,6 @@ UAE_COUNTRY_PREFIX = "UAE - "
 EXPECTED_STATUS = "Active Rigs"
 
 INDICATORS = (("阿联酋石油活跃钻机数", "oil"),)
-
-OBSOLETE_INDICATORS = (
-    "阿联酋活跃钻机总数",
-    "阿联酋石油钻机数",
-    "阿联酋天然气钻机数",
-    "阿联酋其他钻机数",
-    "阿联酋陆地钻机数",
-    "阿联酋海上钻机数",
-)
 
 REQUIRED_COLUMNS = (
     "Region",
@@ -321,7 +314,10 @@ def _download_latest_worldwide_report(*, force: bool) -> str:
         referer=BAKER_WORLDWIDE_URL,
         user_agent=BAKER_USER_AGENT,
     )
-    return f"官网报告：{target.name}（{'新增下载' if status == 'downloaded' else '复用缓存'}）"
+    return (
+        f"官网报告：{target.name}（{'新增下载' if status == 'downloaded' else '复用缓存'}）；"
+        f"来源 {url}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -409,7 +405,6 @@ def merge(workbook_path: Path) -> dict:
             {"name": name, "type": "数量", "industry": "能源"}
             for name, _ in INDICATORS
         ],
-        "obsolete_indicators": list(OBSOLETE_INDICATORS),
         "records": records_latest_first(observations),
     }
     with payload_json_file(
@@ -424,11 +419,3 @@ def merge(workbook_path: Path) -> dict:
         "status": "ok",
         "note": f"{len(observations)} 个月写入 {TARGET_SHEET}",
     }
-
-
-if __name__ == "__main__":
-    print("source_baker_hughes.py 自检：")
-    print("  update(con, force=, skip_download=) 自动发现/下载官网月报并解析")
-    print("    （按源表最新观测月选档）并入库 baker_hughes_monthly")
-    print("  merge(workbook_path) 把表写回 月度_贝克休斯，保留幂等检查")
-    print("  本文件直接运行不执行任何下载或工作簿写入。")

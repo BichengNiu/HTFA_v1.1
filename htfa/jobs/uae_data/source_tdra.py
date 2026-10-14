@@ -16,11 +16,13 @@
 
 from __future__ import annotations
 
+import html
 import re
 from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
 from typing import Iterator
+from urllib.parse import urljoin
 
 from .paths import DATA_DIR
 
@@ -102,7 +104,6 @@ ITEMS: dict[str, tuple[str, str, str, str]] = {
 
 HOST = "https://tdra.gov.ae"
 DATASETS_PAGE = HOST + "/en/open-data/data-sets"
-MEDIA_PREFIX = HOST + "/-/media/Open-Data/"
 
 _TABLE_DDL = f"""
 CREATE TABLE IF NOT EXISTS {TABLE} (
@@ -135,7 +136,7 @@ def _session() -> requests.Session:
 def _discover_downloads(
     session: requests.Session,
 ) -> dict[str, str]:
-    """抓取数据集目录页，把 data-item slug → media 直链路径映射出来。
+    """按官方指标标题发现媒体直链，映射到项目内部指标标识。
 
     页面卡片形如：
         <div class="aegov-card ...">
@@ -148,54 +149,48 @@ def _discover_downloads(
     response.raise_for_status()
     found: dict[str, str] = {}
     for block in re.split(r'<div class="aegov-card ', response.text)[1:]:
-        item_m = re.search(r'data-item="([^"]+)"', block)
+        title_m = re.search(r'<h6\b[^>]*>(.*?)</h6>', block, re.S)
         href_m = re.search(r'href="(/-/media/Open-Data/[^"]+\.ashx[^"]*)"', block)
-        if item_m and href_m:
-            slug = item_m.group(1)
-            if slug not in ITEMS:
-                continue
-            found[slug] = href_m.group(1).lstrip("/")
+        if title_m and href_m:
+            title = " ".join(html.unescape(title_m.group(1)).split()).casefold()
+            for slug, (official_title, *_) in ITEMS.items():
+                if title == " ".join(official_title.split()).casefold():
+                    found[slug] = urljoin(HOST, html.unescape(href_m.group(1)))
     return found
 
 
 def _download_all(
     *,
-    force: bool = False,
     skip_download: bool = False,
-) -> dict[str, Path]:
-    """把 9 个指标的工作簿下载/复用为 raw/tdra/<slug>.xlsx。
-
-    返回 slug → 本地文件路径 映射；已有文件且未 force 时直接复用。
-    """
+) -> None:
+    """在线刷新全部工作簿；显式离线模式要求九份原始文件齐全。"""
     RAW_DIR.mkdir(parents=True, exist_ok=True)
-    target: dict[str, Path] = {}
-    missing = [
-        slug for slug in ITEMS
-        if force or not (RAW_DIR / f"{slug}.xlsx").is_file()
-    ]
-    if missing and skip_download:
-        raise FileNotFoundError(
-            "skip-download 但以下 TDRA 原始件缺失: "
-            + ", ".join(missing)
-        )
-    if missing:
-        session = _session()
+    if skip_download:
+        missing = [slug for slug in ITEMS if not (RAW_DIR / f"{slug}.xlsx").is_file()]
+        if missing:
+            raise FileNotFoundError(
+                "skip-download 但以下 TDRA 原始件缺失: " + ", ".join(missing)
+            )
+        return
+    with _session() as session:
         discovered = _discover_downloads(session)
-        for slug in missing:
-            suffix = discovered.get(slug)
-            if suffix is None:
+        for slug in ITEMS:
+            url = discovered.get(slug)
+            if url is None:
                 raise ValueError(f"TDRA 目录页未发现数据集: {slug}")
-            url = MEDIA_PREFIX + suffix
             response = session.get(url, timeout=120)
             response.raise_for_status()
-            if not response.content.startswith(b"PK") or not response.headers.get(
-                "content-disposition", ""
-            ):
+            if not response.content.startswith(b"PK"):
                 raise ValueError(f"TDRA 下载疑似非 XLSX: {slug} ({response.status_code})")
-            (RAW_DIR / f"{slug}.xlsx").write_bytes(response.content)
-    for slug in ITEMS:
-        target[slug] = RAW_DIR / f"{slug}.xlsx"
-    return target
+            path = RAW_DIR / f"{slug}.xlsx"
+            temporary = path.with_name(f".{slug}.tmp.xlsx")
+            try:
+                temporary.write_bytes(response.content)
+                if not _parse_workbook(temporary):
+                    raise ValueError(f"TDRA 工作簿没有月度数据: {slug}")
+                temporary.replace(path)
+            finally:
+                temporary.unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -293,12 +288,10 @@ def _transaction(con) -> Iterator[None]:
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     """下载 -> 解析 -> 整表替换入 tdra_telecom_monthly。"""
     download_note = ""
-    if skip_download:
-        _download_all(force=False, skip_download=True)
-    else:
+    _download_all(skip_download=skip_download)
+    if not skip_download:
         # TDRA keeps stable workbook names while updating the latest
         # observations in place; refresh all discovered files online.
-        _download_all(force=True, skip_download=False)
         download_note = "已在线刷新 TDRA 工作簿"
     rows = _read_rows()
     if not rows:
@@ -384,10 +377,3 @@ def merge(workbook_path: Path) -> dict:
         "status": "ok",
         "note": f"{len(observations)} 个月写入 {TARGET_SHEET}",
     }
-
-
-if __name__ == "__main__":
-    print("source_tdra.py 自检：")
-    print("  update(con, force=, skip_download=) 从 TDRA Open Data 目录页发现并下载 9 个")
-    print("    xlsx 到 raw/tdra/，解析 'Monthly statistics' 逐月，入长表 tdra_telecom_monthly")
-    print("  merge(workbook_path) 把表写回 月度_TDRA")

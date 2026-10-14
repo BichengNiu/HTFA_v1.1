@@ -7,6 +7,7 @@ dtaidistance>=2.3.12,<3
 scikit-learn>=1.7,<2
 pypdf>=6,<7
 requests>=2.32,<3
+curl_cffi>=0.16.3,<0.17
 tensorflow>=2.20,<3
 
 # HTFA's internal time-series toolkit, pinned to a tested public commit.

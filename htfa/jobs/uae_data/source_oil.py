@@ -8,20 +8,23 @@ DuckDB 长表 → ``月度_OPEC``/``日度_EIA``/``月度_Dubai`` 宽表。Excel
 from __future__ import annotations
 
 import calendar
+import json
 import math
+import os
 import re
+import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from html.parser import HTMLParser
 from io import BytesIO
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urlencode, urljoin
 
 import pandas as pd
 
 from . import db
-from ._official_download import download_file
+from ._official_download import download_file, fetch_bytes
 from .paths import DATA_DIR
 from .workbook_sheet_writer import write_indicator_sheets
 
@@ -32,6 +35,8 @@ OPEC_RAW_PATH = RAW_DIR / "momr_world_oil_supply.html"
 OPEC_HOME_RAW_PATH = RAW_DIR / "momr_home.html"
 
 EIA_BRENT_XLS_URL = "https://www.eia.gov/dnav/pet/hist_xls/RBRTEd.xls"
+EIA_BRENT_API_URL = "https://api.eia.gov/v2/petroleum/pri/spt/data/"
+_EIA_PAGE_SIZE = 5000
 IMF_DUBAI_API_URL = (
     "https://api.imf.org/external/sdmx/2.1/data/"
     "IMF.RES,PCPS/G001.POILDUB.USD.M?startPeriod=1992-01"
@@ -343,6 +348,140 @@ def parse_brent_xls(payload: bytes) -> list[PriceObservation]:
     return [observations[key] for key in sorted(observations)]
 
 
+def parse_brent_api(payload: bytes | dict) -> list[PriceObservation]:
+    """Validate a complete official RBRTE daily API response in ``payload``."""
+
+    content = json.loads(payload) if isinstance(payload, bytes) else payload
+    if not isinstance(content, dict):
+        raise ValueError("EIA API response must be an object")
+    response = content.get("response", {})
+    if not isinstance(response, dict):
+        raise ValueError("EIA API response has an invalid response object")
+    data = response.get("data")
+    if response.get("frequency") != "daily" or not isinstance(data, list):
+        raise ValueError("EIA API response must contain daily observations")
+    if len(data) != int(response.get("total", -1)):
+        raise ValueError("EIA API response is incomplete; all pages are required")
+    observations: dict[date, PriceObservation] = {}
+    seen: set[date] = set()
+    for row in data:
+        if not isinstance(row, dict):
+            raise ValueError("EIA API observation must be an object")
+        if row.get("series") != "RBRTE" or row.get("units") != "$/BBL":
+            raise ValueError("EIA API returned a different series or units")
+        text = str(row.get("period", ""))
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+            raise ValueError("EIA API returned an invalid daily period")
+        period = date.fromisoformat(text)
+        if period > datetime.now(timezone.utc).date():
+            raise ValueError("EIA API returned a future spot-price observation")
+        if period in seen:
+            raise ValueError("EIA API returned duplicate daily observations")
+        seen.add(period)
+        if row.get("value") is None:
+            continue
+        observations[period] = PriceObservation(
+            period=period,
+            price_usd_bbl=_positive_number(row["value"], field="Brent 价格"),
+        )
+    if not observations:
+        raise ValueError("EIA API returned no valid Brent observations")
+    return [observations[key] for key in sorted(observations)]
+
+
+def _brent_api_raw_path() -> Path:
+    return PRICE_RAW_PATH.with_suffix(".api.json")
+
+
+def combine_brent_observations(
+    workbook: list[PriceObservation], api: list[PriceObservation]
+) -> tuple[list[PriceObservation], set[date], int]:
+    """Reconcile ``workbook`` and ``api`` daily observations.
+
+    Preserve the established XLS value on a conflicting common date. The API
+    supplements dates absent from the workbook. Return observations, API-only
+    dates, and the number of conflicting common-date values.
+    """
+
+    workbook_rows = {item.period: item for item in workbook}
+    api_rows = {item.period: item for item in api}
+    api_only = set(api_rows) - set(workbook_rows)
+    conflicts = sum(
+        workbook_rows[period].price_usd_bbl != api_rows[period].price_usd_bbl
+        for period in set(workbook_rows) & set(api_rows)
+    )
+    combined = {**api_rows, **workbook_rows}
+    return [combined[key] for key in sorted(combined)], api_only, conflicts
+
+
+def _require_brent_coverage(stored: set[date], observations: list[PriceObservation]) -> None:
+    """Reject deletion of ``stored`` dates absent from fresh ``observations``."""
+
+    missing = stored - {item.period for item in observations}
+    if missing:
+        raise ValueError(
+            f"EIA refresh omits {len(missing)} stored dates; refusing historical row deletion"
+        )
+
+
+def _download_brent_api() -> str:
+    """Download every RBRTE API page before atomically replacing the raw input."""
+
+    api_key = os.environ.get("HTFA_EIA_API_KEY", "").strip() or "DEMO_KEY"
+    data: list[dict] = []
+    total: int | None = None
+    offset = 0
+    while total is None or offset < total:
+        params = {
+            "api_key": api_key,
+            "frequency": "daily",
+            "data[0]": "value",
+            "facets[series][]": "RBRTE",
+            "sort[0][column]": "period",
+            "sort[0][direction]": "asc",
+            "offset": offset,
+            "length": _EIA_PAGE_SIZE,
+        }
+        payload = json.loads(fetch_bytes(EIA_BRENT_API_URL + "?" + urlencode(params)))
+        response = payload.get("response", {})
+        page_total = int(response.get("total", 0))
+        if total is None:
+            total = page_total
+            if not 0 < total <= 100_000:
+                raise ValueError("EIA API returned an invalid series size")
+        elif page_total != total:
+            raise ValueError("EIA API series changed during pagination; retry the refresh")
+        batch = response.get("data")
+        if (
+            response.get("frequency") != "daily"
+            or not isinstance(batch, list)
+            or len(batch) != min(_EIA_PAGE_SIZE, total - offset)
+        ):
+            raise ValueError("EIA API returned an incomplete daily page")
+        data.extend(batch)
+        offset += len(batch)
+    combined = {
+        "source_url": EIA_BRENT_API_URL,
+        "retrieved_at_utc": datetime.now(timezone.utc).isoformat(),
+        "response": {"frequency": "daily", "total": total, "data": data},
+    }
+    observations = parse_brent_api(combined)
+    target = _brent_api_raw_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", suffix=".tmp", dir=target.parent, delete=False
+        ) as handle:
+            temporary = Path(handle.name)
+            json.dump(combined, handle, ensure_ascii=False)
+        os.replace(temporary, target)
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink()
+    return f"{target.name}:downloaded/API ({len(observations)} observations)"
+
+
 def parse_imf_dubai_xml(payload: bytes | str) -> list[DubaiPriceObservation]:
     """Parse IMF PCPS SDMX XML for the monthly Dubai/Fateh series.
 
@@ -440,7 +579,7 @@ def _dictionary_rows() -> list[dict[str, object]]:
 
 
 def _download_inputs(*, force: bool) -> str:
-    notes: list[str] = []
+    notes: list[str] = [_download_brent_api()]
     downloads = (
         (EIA_BRENT_XLS_URL, PRICE_RAW_PATH, EIA_BRENT_XLS_URL),
         (IMF_DUBAI_API_URL, DUBAI_RAW_PATH, IMF_DUBAI_API_URL),
@@ -463,6 +602,7 @@ def _download_inputs(*, force: bool) -> str:
         # 首页链接会随月报切换，不能按固定文件名长期复用旧首页。
         force=True,
         min_bytes=10_000,
+        browser_transport=True,
     )
     momr_home = OPEC_HOME_RAW_PATH.read_bytes()
     current_supply_url = discover_opec_supply_url(momr_home)
@@ -473,6 +613,7 @@ def _download_inputs(*, force: bool) -> str:
         force=True,
         min_bytes=10_000,
         referer=OPEC_MOMR_HOME_URL,
+        browser_transport=True,
     )
     notes.append(f"{OPEC_RAW_PATH.name}:{current_status}")
 
@@ -486,6 +627,7 @@ def _download_inputs(*, force: bool) -> str:
             force=force,
             min_bytes=10_000,
             referer=OPEC_MOMR_HOME_URL,
+            browser_transport=True,
         )
         archive_supply_url = discover_opec_supply_url(archive_path.read_bytes())
         supply_path = RAW_DIR / f"momr_supply_{report_id}.html"
@@ -495,6 +637,7 @@ def _download_inputs(*, force: bool) -> str:
             force=force,
             min_bytes=10_000,
             referer=archive_url,
+            browser_transport=True,
         )
         notes.append(
             f"{release_date:%Y-%m}:{archive_status}/{supply_status}"
@@ -515,7 +658,18 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict[str
         ),
     ]
     production = parse_opec_production_reports(opec_paths)
-    prices = parse_brent_xls(PRICE_RAW_PATH.read_bytes())
+    api_path = _brent_api_raw_path()
+    if not skip_download and not api_path.is_file():
+        raise FileNotFoundError(api_path)
+    api_prices = parse_brent_api(api_path.read_bytes()) if api_path.is_file() else []
+    workbook_prices = (
+        parse_brent_xls(PRICE_RAW_PATH.read_bytes()) if PRICE_RAW_PATH.is_file() else []
+    )
+    prices, api_only, price_conflicts = combine_brent_observations(workbook_prices, api_prices)
+    stored_dates = {
+        row[0] for row in con.execute(f"SELECT period FROM {EIA_PRICE_TABLE}").fetchall()
+    }
+    _require_brent_coverage(stored_dates, prices)
     dubai_prices = parse_imf_dubai_xml(DUBAI_RAW_PATH.read_bytes())
     if not production or not prices or not dubai_prices:
         raise ValueError(
@@ -535,7 +689,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict[str
         {
             "period": item.period,
             "price_usd_bbl": item.price_usd_bbl,
-            "source_file": PRICE_RAW_PATH.name,
+            "source_file": api_path.name if item.period in api_only else PRICE_RAW_PATH.name,
         }
         for item in prices
     ]
@@ -561,6 +715,10 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict[str
     )
     if download_note:
         note += f"；{download_note}"
+    note += (
+        f"；EIA API 补足 XLS 缺失日期 {len(api_only)} 条；"
+        f"同日差异 {price_conflicts} 条按原 XLS 口径保留"
+    )
     return {
         "status": "ok",
         "rows": len(production) + len(prices) + len(dubai_prices),

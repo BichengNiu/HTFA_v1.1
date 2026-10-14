@@ -409,10 +409,3 @@ def merge(workbook_path: Path) -> dict:
         "status": "ok",
         "note": f"{len(observations)} 个月写入 {TARGET_SHEET}",
     }
-
-
-if __name__ == "__main__":
-    print("source_scad.py 自检：")
-    print("  update(con, force=, skip_download=) 解析 raw/scad/hotel/ 并入 scad_monthly")
-    print("  merge(workbook_path) 把表写回 月度_SCAD")
-    print("  本文件直接运行不执行任何下载或工作簿写入。")

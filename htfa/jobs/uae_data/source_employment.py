@@ -1,4 +1,4 @@
-"""Google Trends employment search indicators: fetch, load, and export.
+"""Google Trends employment search indicators: fetch, load, and workbook merge.
 
 The normal update path queries the UAE monthly timeline from Google Trends.
 An online failure is reported directly; the raw JSON cache is used only when
@@ -7,25 +7,22 @@ an operator explicitly requests ``--skip-download``.
 
 from __future__ import annotations
 
-import csv
 import json
 import math
+import time
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
-import requests
+from curl_cffi import requests
 
+from .db import replace
 from .paths import DATA_DIR
+from .workbook_sheet_writer import merge_source_sheet, pivot_indicator_rows
 
-
-from .db import (  # noqa: E402
-    connect,
-    replace,
-)
-
+TARGET_SHEET = "月度_工作搜索热度"
 RAW_EMPLOYMENT = DATA_DIR / "raw" / "employment"
-EXPORT_PATH = DATA_DIR / "工作搜索热度.csv"
 GOOGLE_TRENDS_CACHE = RAW_EMPLOYMENT / "google_trends_uae_monthly.json"
 GOOGLE_TRENDS_EXPLORE_URL = "https://trends.google.com/trends/api/explore"
 GOOGLE_TRENDS_MULTILINE_URL = (
@@ -37,10 +34,6 @@ KEYWORDS = ("work in dubai", "work in uae")
 SEARCH_TABLE = "employment_search_index"
 
 _GOOGLE_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
-    ),
     "Accept": "application/json, text/plain, */*",
     "Referer": "https://trends.google.com/trends/explore?geo=AE",
 }
@@ -144,17 +137,33 @@ def _rows_from_timeline(payload: dict) -> list[dict[str, object]]:
     return rows
 
 
-def _google_request_json(url: str, *, params: dict[str, str]) -> dict:
-    response = requests.get(
-        url, params=params, headers=_GOOGLE_HEADERS, timeout=(15, 90)
-    )
-    response.raise_for_status()
-    return _decode_google_json(response.text)
+def _google_request_json(
+    url: str, *, params: dict[str, str], session: requests.Session
+) -> dict:
+    for attempt in range(3):
+        response = session.get(url, params=params, timeout=(15, 90))
+        if response.status_code != 429 or attempt == 2:
+            response.raise_for_status()
+            return _decode_google_json(response.text)
+        retry_after = response.headers.get("Retry-After", "")
+        delay = float(retry_after) if retry_after.isdigit() else 10 * (attempt + 1)
+        if delay > 60:
+            response.raise_for_status()
+        time.sleep(delay)
+    raise RuntimeError("Google Trends retry loop ended unexpectedly")
 
 
 def _fetch_google_trends() -> tuple[list[dict[str, object]], str]:
     """从 Google Trends Explore 图表请求阿联酋两组词的完整时间线。"""
 
+    with requests.Session(impersonate="chrome", headers=_GOOGLE_HEADERS) as session:
+        # Establish Google's public session cookies before requesting widget tokens.
+        # The landing page and API have separate rate limits; API status is decisive.
+        session.get("https://trends.google.com/trends/explore?geo=AE", timeout=(15, 90))
+        return _fetch_google_timeline(session)
+
+
+def _fetch_google_timeline(session: requests.Session) -> tuple[list[dict[str, object]], str]:
     request = {
         "comparisonItem": [
             {"keyword": keyword, "geo": "AE", "time": "all"}
@@ -165,6 +174,7 @@ def _fetch_google_trends() -> tuple[list[dict[str, object]], str]:
     }
     explore = _google_request_json(
         GOOGLE_TRENDS_EXPLORE_URL,
+        session=session,
         params={
             "hl": "en-US",
             "tz": "0",
@@ -180,6 +190,7 @@ def _fetch_google_trends() -> tuple[list[dict[str, object]], str]:
 
     payload = _google_request_json(
         GOOGLE_TRENDS_MULTILINE_URL,
+        session=session,
         params={
             "hl": "en-US",
             "tz": "0",
@@ -213,38 +224,17 @@ def _cached_google_trends() -> tuple[list[dict[str, object]], str]:
     cache = json.loads(GOOGLE_TRENDS_CACHE.read_text(encoding="utf-8"))
     if not isinstance(cache, dict):
         raise ValueError("Google Trends 缓存结构无效")
-    payload = cache.get("response", cache)
+    if cache.get("geo") != "AE" or cache.get("keywords") != list(KEYWORDS):
+        raise ValueError("Google Trends 缓存的地区或关键词与当前指标不一致")
+    payload = cache.get("response")
     if not isinstance(payload, dict):
         raise ValueError("Google Trends 缓存的 response 结构无效")
     rows = _rows_from_timeline(payload)
-    fetched_at = str(cache.get("fetched_at_utc") or "抓取时间未知")
+    fetched_at = cache.get("fetched_at_utc")
+    if not isinstance(fetched_at, str) or not fetched_at:
+        raise ValueError("Google Trends 缓存缺少抓取时间")
     month_count = len({row["month"] for row in rows})
     return rows, f"Google Trends 缓存 {month_count} 个月（{fetched_at}）"
-
-
-def export_wide(rows: list[dict[str, object]], target: Path) -> int:
-    """从 long 行导出宽表 CSV（Time, 'work in dubai', 'work in uae'）。
-
-    月份升序；整数值不带小数位（与原始 CSV 观感一致）。
-    """
-
-    by_month: dict[str, dict[str, object]] = {}
-    for row in rows:
-        key = row["month"].strftime("%Y-%m-%d") if hasattr(row["month"], "strftime") else str(row["month"])
-        by_month.setdefault(key, {})[row["keyword"]] = row["value"]
-
-    def fmt(value: object) -> str:
-        if value is None:
-            return ""
-        number = float(value)
-        return str(int(number)) if number.is_integer() else str(number)
-
-    with open(target, "w", encoding="utf-8", newline="") as out:
-        writer = csv.writer(out)
-        writer.writerow(["Time", *KEYWORDS])
-        for key in sorted(by_month):
-            writer.writerow([key, fmt(by_month[key].get("work in dubai")), fmt(by_month[key].get("work in uae"))])
-    return len(by_month)
 
 
 def update(
@@ -266,30 +256,25 @@ def update(
     }
 
 
-def merge(workbook_path: Path) -> dict[str, object]:
-    """从库导出宽表 CSV 到 data/UAE/工作搜索热度.csv（监测模块的输入文件）。
-
-    本模块无目标 sheet；workbook_path 参数保留以符合 merge 统一签名，实际不使用。
-    """
-
-    con = connect(read_only=True)
-    try:
-        rows = [
-            {"month": month, "keyword": keyword, "value": value}
-            for month, keyword, value in con.execute(
-                f"SELECT month, keyword, value FROM {SEARCH_TABLE} ORDER BY month"
-            ).fetchall()
-        ]
-    finally:
-        con.close()
-    month_count = export_wide(rows, EXPORT_PATH)
+def _sheet_spec(con) -> dict[str, Any]:
+    names = {
+        "work in dubai": "阿联酋:Google搜索热度(work in dubai)",
+        "work in uae": "阿联酋:Google搜索热度(work in uae)",
+    }
+    rows = pivot_indicator_rows(
+        con.execute(
+            f"SELECT month, keyword, value FROM {SEARCH_TABLE}"
+        ).fetchall(),
+        lambda keyword: names[keyword],
+    )
     return {
-        "status": "ok",
-        "note": f"已导出 {EXPORT_PATH.name}：{month_count} 个月 × {len(KEYWORDS)} 个关键词",
+        "name": TARGET_SHEET,
+        "title": "Google Trends 阿联酋工作搜索热度",
+        "indicators": list(names.values()),
+        "rows": rows,
     }
 
 
-if __name__ == "__main__":
-    # 自检提示（不执行网络/工作簿写入）
-    print("[source_employment] 运行 data\\update_data.py --source employment 入库；"
-          "data\\merge_workbook.py --source employment 导出 CSV。")
+def merge(workbook_path: Path) -> dict:
+    """Rebuild this source's workbook sheet from DuckDB."""
+    return merge_source_sheet(workbook_path, _sheet_spec)

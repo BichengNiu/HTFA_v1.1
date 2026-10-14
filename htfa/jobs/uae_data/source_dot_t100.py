@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any, Iterator, TextIO
 
 from .paths import DATA_DIR
+from .workbook_sheet_writer import merge_source_sheet, month_end, pivot_indicator_rows
 
 
 from . import db  # noqa: E402
@@ -45,7 +46,7 @@ from . import db  # noqa: E402
 CSV_DIR = DATA_DIR / "raw" / "t100" / "csv"
 RAW_DIR = DATA_DIR / "raw" / "t100"
 
-TARGET_SHEET = "月度_DOTT100"  # 预留（写表暂未实现）
+TARGET_SHEET = "月度_DOTT100"
 
 FIELDS_REQUIRED = (
     "YEAR", "QUARTER", "MONTH",
@@ -424,17 +425,21 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     return {"status": "ok", "rows": len(rows), "note": note}
 
 
-def merge(workbook_path: Path) -> dict:
-    """由 ``source_extended.merge`` 统一写入「月度_DOTT100」。"""
+def _sheet_spec(con) -> dict[str, Any]:
+    indicators = list(INDICATOR_TPL.values())
+    rows = pivot_indicator_rows(
+        con.execute("SELECT period, indicator, value FROM dot_t100_monthly").fetchall(),
+        lambda indicator: indicator,
+        period_transform=month_end,
+    )
     return {
-        "status": "skipped",
-        "note": (
-            "T-100 已入 DuckDB；Excel 由 source_extended.merge 统一写入"
-        ),
+        "name": TARGET_SHEET,
+        "title": "US DOT T-100 美国↔阿联酋月度航空指标",
+        "indicators": indicators,
+        "rows": rows,
     }
 
 
-if __name__ == "__main__":
-    print("source_dot_t100.py 自检：")
-    print("  update(con, force=, skip_download=) 解析 raw/t100/csv/uae_*.zip → 入库 dot_t100_monthly")
-    print("  merge(workbook_path) 由 source_extended.merge 统一写入 月度_DOTT100")
+def merge(workbook_path: Path) -> dict:
+    """Rebuild this source's workbook sheet from DuckDB."""
+    return merge_source_sheet(workbook_path, _sheet_spec)

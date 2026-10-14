@@ -10,7 +10,7 @@ if not exist "runtime\python.exe" (
 
 set "UPDATE_EXIT=0"
 echo [1/2] update all UAE sources and merge their workbook sheets
-"runtime\python.exe" -B -c "import sys; sys.path.insert(0, r'%CD%'); from htfa.jobs.uae_data.update_data import main; sys.argv[0] = 'update_data.py'; raise SystemExit(main())"
+"runtime\python.exe" -B -m htfa.jobs.uae_data.update_data
 if errorlevel 1 set "UPDATE_EXIT=1"
 goto :cleanup
 

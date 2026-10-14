@@ -83,7 +83,7 @@ def _sheet_frame(
     values: list[list[float]],
 ) -> pd.DataFrame:
     rows = [
-        ["Wind", *([None] * len(names))],
+        ["公开来源测试数据", *([None] * len(names))],
         ["指标名称", *names],
         ["频率", *frequencies],
         ["单位", *units],
@@ -103,68 +103,33 @@ def _workbook_bytes(
 ) -> bytes:
     daily_dates = pd.date_range("2025-12-12", periods=20, freq="D")
     monthly_dates = pd.date_range("2025-01-31", periods=12, freq="ME")
-    price_names = [
-        "期货结算价(连续):布伦特原油",
-        "全球:现货价:原油(英国布伦特Dtd)",
-        "全球:现货价:原油(阿联酋迪拜)",
-        "全球:现货均价:原油(阿联酋穆尔班)",
-    ]
     daily = _sheet_frame(
-        dates=daily_dates,
-        names=price_names,
-        frequencies=["日", "日", "日", "周"],
-        units=["美元/桶"] * 4,
-        sources=["ICE", "金联创", "金联创", "金联创"],
-        values=[
-            [0, *range(71, 90)],
-            list(range(70, 90)),
-            list(range(69, 89)),
-            list(range(68, 88)),
-        ],
+        dates=daily_dates, names=["布伦特现货"],
+        frequencies=["日度"], units=["美元/桶"],
+        sources=["U.S. EIA"], values=[list(range(70, 90))],
+    )
+    dubai = _sheet_frame(
+        dates=monthly_dates, names=["全球: 名义商品价格: 迪拜原油"],
+        frequencies=["月度"], units=["美元/桶"],
+        sources=["IMF PCPS"], values=[list(range(69, 81))],
     )
     monthly = _sheet_frame(
-        dates=monthly_dates,
-        names=["阿联酋:产量:原油"] * len(production_units),
-        frequencies=["月"] * len(production_units),
-        units=list(production_units),
+        dates=monthly_dates, names=["阿联酋原油产量"] * len(production_units),
+        frequencies=["月度"] * len(production_units), units=list(production_units),
         sources=["OPEC"] * len(production_units),
-        values=[
-            (
-                [3_000 + index * 10 for index in range(12)]
-                if unit == "千桶/天"
-                else [3_000_000 + index * 10_000 for index in range(12)]
-            )
-            for unit in production_units
-        ],
+        values=[[(3_000 + i * 10 if unit == "千桶/天" else 3_000_000 + i * 10_000)
+                 for i in range(12)] for unit in production_units],
     )
     rigs = _sheet_frame(
-        dates=pd.date_range("2025-01-31", periods=12, freq="ME"),
-        names=["阿联酋石油活跃钻机数"],
-        frequencies=["月"],
-        units=["台"],
-        sources=["Baker Hughes"],
-        values=[[48 + index for index in range(12)]],
+        dates=monthly_dates, names=["阿联酋石油活跃钻机数"],
+        frequencies=["月"], units=["台"], sources=["Baker Hughes"],
+        values=[[48 + i for i in range(12)]],
     )
-
     content = BytesIO()
     with pd.ExcelWriter(content, engine="openpyxl") as writer:
-        pd.DataFrame(
-            {
-                "指标名称": ["重复", "重复"],
-                "类型": [None, None],
-                "行业": [None, None],
-                "数据来源": [None, None],
-                "预测变量": [None, None],
-            }
-        ).to_excel(writer, sheet_name="指标字典", index=False)
-        daily.to_excel(writer, sheet_name="日度_Wind", index=False, header=False)
-        monthly.to_excel(writer, sheet_name="月度_Wind", index=False, header=False)
-        rigs.to_excel(
-            writer,
-            sheet_name="月度_贝克休斯",
-            index=False,
-            header=False,
-        )
+        for sheet_name, frame in [("日度_EIA", daily), ("月度_Dubai", dubai),
+                                  ("月度_OPEC", monthly), ("月度_贝克休斯", rigs)]:
+            frame.to_excel(writer, sheet_name=sheet_name, index=False, header=False)
     return content.getvalue()
 
 
@@ -172,18 +137,16 @@ def test_targeted_loader_reads_prices_and_production() -> None:
     data = load_oil_market_data(_workbook_bytes(), file_name="test.xlsx")
 
     assert data.prices.columns.tolist() == [
-        "布伦特期货",
         "布伦特现货",
         "迪拜现货",
-        "穆尔班现货",
     ]
-    assert data.prices["布伦特期货"].count() == 19
+    assert data.prices["布伦特现货"].count() == 20
     assert data.production.name == "阿联酋原油产量"
     assert data.production.iloc[-1] == 3_110_000
     assert data.rig_count is not None
     assert data.rig_count.name == "阿联酋石油活跃钻机数"
     assert data.rig_count.iloc[-1] == 59
-    assert data.metadata["穆尔班现货"].frequency == "周"
+    assert data.metadata["迪拜现货"].frequency == "月度"
     assert data.metadata["阿联酋原油产量"].source == "OPEC"
 
 
@@ -205,7 +168,7 @@ def test_targeted_loader_rejects_duplicate_matching_production_columns() -> None
         )
 
 
-def test_oil_overview_metrics_show_requested_four_indicators() -> None:
+def test_oil_overview_metrics_show_current_three_indicators() -> None:
     data = load_oil_market_data(_workbook_bytes(), file_name="test.xlsx")
     st_obj = MagicMock()
     st_obj.columns.return_value = [MagicMock() for _ in range(4)]
@@ -214,7 +177,6 @@ def test_oil_overview_metrics_show_requested_four_indicators() -> None:
 
     labels = [call.args[0] for call in st_obj.metric.call_args_list]
     assert labels == [
-        "布伦特期货",
         "布伦特现货",
         "阿联酋原油产量",
         "阿联酋石油活跃钻机数",
@@ -246,8 +208,6 @@ def test_revenue_metrics_include_year_to_date_yoy() -> None:
     assert st_obj.metric.call_args_list[-1].args[1] == "+32.0%"
 
 
-
-
 def test_oil_split_figures_are_single_series() -> None:
     data = load_oil_market_data(_workbook_bytes(), file_name="test.xlsx")
     revenue = estimate_monthly_oil_revenue(data.prices, data.production)
@@ -263,21 +223,12 @@ def test_oil_split_figures_are_single_series() -> None:
             data.rig_count.dropna().size,
         ),
         (
-            build_oil_price_figure(
-                revenue,
-                "U.S. EIA",
-                {"布伦特原油现货价": "百美元/桶"},
-            ),
-            False,
-            len(revenue),
-        ),
-        (
             build_oil_revenue_only_figure(revenue, "OPEC MOMR、U.S. EIA"),
             True,
             len(revenue),
         ),
     ]
-    titles = ["原油产量", "活动钻井机数", "石油价格", "石油收入"]
+    titles = ["原油产量", "活动钻井机数", "石油收入"]
 
     for (figure, bars, expected_points), title in zip(figures, titles):
         assert len(figure.axes) == 1
@@ -313,20 +264,13 @@ def test_oil_split_figures_are_single_series() -> None:
                 for text in extreme_labels
             )
 
-    price_figure = figures[2][0]
-    assert price_figure.axes[0].get_ylabel() == "美元/桶"
-    assert "百美元/桶" not in price_figure.axes[0].get_ylabel()
     assert any(
         text.get_text() == "数据来源：欧佩克月度石油市场报告"
         for text in figures[0][0].texts
     )
     assert any(
-        text.get_text() == "数据来源：美国能源信息署"
-        for text in price_figure.texts
-    )
-    assert any(
         text.get_text() == "数据来源：欧佩克月度石油市场报告、美国能源信息署"
-        for text in figures[3][0].texts
+        for text in figures[2][0].texts
     )
 
 
@@ -345,7 +289,6 @@ def test_oil_price_figure_combines_brent_and_dubai_on_shared_usd_axis() -> None:
     figure = build_oil_price_figure(
         revenue,
         "U.S. EIA、IMF Primary Commodity Price System (PCPS)",
-        units={"布伦特原油现货价": "百美元/桶"},
         dubai_price=dubai_price,
     )
 
@@ -356,7 +299,15 @@ def test_oil_price_figure_combines_brent_and_dubai_on_shared_usd_axis() -> None:
         DUBAI_PRICE_LABEL,
     ]
     assert axis.get_ylabel() == "美元/桶"
-    assert axis.get_title() == "石油价格"
+    assert axis.get_title() == "布伦特与迪拜原油现货月均价格"
+    assert axis.get_lines()[0].get_linestyle() == "-"
+    assert axis.get_lines()[1].get_linestyle() == "--"
+    assert axis.get_lines()[0].get_linewidth() == pytest.approx(2.2)
+    assert axis.get_lines()[1].get_linewidth() == pytest.approx(1.8)
+    assert axis.get_lines()[0].get_marker() == "o"
+    assert axis.get_lines()[1].get_marker() == "s"
+    assert axis.get_lines()[0].get_markersize() == pytest.approx(3.2)
+    assert axis.get_lines()[1].get_markersize() == pytest.approx(3.0)
     assert {
         text.get_text() for text in axis.get_legend().get_texts()
     } == {"布伦特原油现货价", DUBAI_PRICE_LABEL}
@@ -384,12 +335,6 @@ def test_render_charts_uses_requested_two_by_two_rows(monkeypatch) -> None:
         call(2, gap="small"),
         call(2, gap="small"),
     ]
-
-
-
-
-
-
 
 
 def test_monthly_revenue_calculates_yoy_and_contributions() -> None:

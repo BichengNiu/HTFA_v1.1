@@ -323,7 +323,14 @@ def _first_event_text(body: str, headline: str) -> str:
         if lowered.find(marker) >= 0
     ]
     if cut_positions:
-        text = text[: min(cut_positions)]
+        # A trailing "since ..." qualifies the counts in its own sentence.
+        # Remove that whole sentence, preserving any earlier daily statement.
+        qualifier_start = min(cut_positions)
+        boundaries = [
+            match.end()
+            for match in re.finditer(r"[.!?;](?:\s+|$)", text[:qualifier_start])
+        ]
+        text = text[: max(boundaries, default=0)]
     return text
 
 
@@ -402,6 +409,8 @@ def extract_auto_article_observation(record: dict) -> dict | None:
     full_text = f"{body} {headline}"
     lowered = full_text.casefold()
     event_text = _first_event_text(body, headline)
+    if not event_text.strip():
+        return None
     counts = {
         kind: _extract_weapon_count(event_text, kind)
         for kind in WEAPON_PRESSURE_WEIGHTS
@@ -657,6 +666,8 @@ def build_monthly_observations(daily: list[dict]) -> list[MonthlyObservation]:
         if row.observation_days
         >= calendar.monthrange(row.period.year, row.period.month)[1]
     ]
+    if not monthly:
+        return []
     raw_values = [row.strike_intensity_log for row in monthly]
     minimum = min(raw_values)
     maximum = max(raw_values)
@@ -722,7 +733,8 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         )
         fetch_note = (
             f"WAM cited sources total={archive_counts['total']}, "
-            f"downloaded={archive_counts['downloaded']}, reused={archive_counts['reused']}; "
+            f"downloaded={archive_counts['downloaded']}, reused={archive_counts['reused']}, "
+            f"third-party archive failed={archive_counts['failed']}; "
             f"auto articles discovered={auto_counts['discovered']}, "
             f"downloaded={auto_counts['downloaded']}, reused={auto_counts['reused']}"
         )
@@ -762,7 +774,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         for row in monthly
     ]
     with _transaction(con):
-        db.replace(con, "wam_military_strike_daily", daily_rows)
+        db.replace(con, "detail.wam_military_strike_daily", daily_rows)
         db.replace(con, "wam_military_strike_monthly", monthly_rows)
         con.execute(
             "DELETE FROM meta_indicator_dictionary "
@@ -851,9 +863,3 @@ def merge(workbook_path: Path) -> dict:
             helper_path, workbook_path, payload_path, TARGET_SHEET
         )
     return {"status": "ok", "note": f"{len(observations)} 个月写入 {TARGET_SHEET}"}
-
-
-if __name__ == "__main__":
-    print("source_wam.py 自检：")
-    print("  update(con, force=, skip_download=) 解析 raw/wam/ 日度登记表并入库")
-    print("  merge(workbook_path) 从 DuckDB 重建 月度_WAM")

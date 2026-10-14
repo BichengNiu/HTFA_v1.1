@@ -12,10 +12,13 @@ import html
 import json
 import os
 import re
+import shutil
+import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
@@ -154,6 +157,8 @@ def _sitemap_month_urls(start: date, end: date) -> list[str]:
     except ET.ParseError as exc:
         raise RuntimeError("WAM sitemap index is not valid XML") from exc
 
+    _write_bytes(RAW_DIR / "sitemaps" / "index.xml", body)
+
     result: list[str] = []
     pattern = re.compile(r"/sitemap/news/en/(\d{4})/(\d{1,2})/english\.xml$")
     for node in root.findall(f".//{{{SITEMAP_NAMESPACE}}}loc"):
@@ -168,6 +173,19 @@ def _sitemap_month_urls(start: date, end: date) -> list[str]:
         ):
             continue
         result.append(value)
+    expected: set[tuple[int, int]] = set()
+    year, month = start.year, start.month
+    while (year, month) <= (end.year, end.month):
+        expected.add((year, month))
+        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+    present = {
+        (int(match.group(1)), int(match.group(2)))
+        for url in result
+        if (match := pattern.search(url))
+    }
+    missing = sorted(expected - present)
+    if missing:
+        raise RuntimeError(f"WAM sitemap index lacks requested months: {missing}")
     return sorted(set(result))
 
 
@@ -182,6 +200,7 @@ def discover_auto_articles(
         start or (_latest_registry_date() - timedelta(days=AUTO_LOOKBACK_DAYS)),
     )
     articles: dict[str, dict] = {}
+    scans: list[dict] = []
     for sitemap_url in _sitemap_month_urls(start, end):
         status, _, body = _fetch(sitemap_url)
         if body is None or status != 200:
@@ -190,7 +209,26 @@ def discover_auto_articles(
             root = ET.fromstring(body)
         except ET.ParseError as exc:
             raise RuntimeError(f"WAM monthly sitemap is not valid XML: {sitemap_url}") from exc
-        for node in root.findall(f".//{{{SITEMAP_NAMESPACE}}}url"):
+        month_match = re.search(r"/en/(\d{4})/(\d{1,2})/", sitemap_url)
+        if month_match is None:
+            raise ValueError(f"Unexpected WAM monthly sitemap URL: {sitemap_url}")
+        label = f"{month_match.group(1)}-{int(month_match.group(2)):02d}"
+        _write_bytes(RAW_DIR / "sitemaps" / f"en_{label}.xml", body)
+        nodes = root.findall(f".//{{{SITEMAP_NAMESPACE}}}url")
+        published_values = [
+            node.findtext(
+                f"{{{NEWS_NAMESPACE}}}news/{{{NEWS_NAMESPACE}}}publication_date",
+                default="",
+            )
+            for node in nodes
+        ]
+        scans.append({
+            "url": sitemap_url,
+            "sha256": hashlib.sha256(body).hexdigest(),
+            "records": len(nodes),
+            "latest_publication": max(published_values, default=""),
+        })
+        for node in nodes:
             url = (
                 node.findtext(f"{{{SITEMAP_NAMESPACE}}}loc", default="")
                 .strip()
@@ -224,7 +262,52 @@ def discover_auto_articles(
                 "sitemap_published_at": published,
                 "sitemap_last_modified": last_modified,
             }
+    _write_json(RAW_DIR / "sitemaps" / "scan.json", {
+        "retrieved_at_utc": datetime.now(timezone.utc).isoformat(),
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "scan_status": "complete",
+        "monthly_sitemaps": scans,
+    })
     return sorted(articles.values(), key=lambda item: (item["sitemap_published_at"], item["url"]))
+
+
+def _render_article(url: str) -> str:
+    """Render ``url`` in an isolated Chrome/Edge profile to obtain JSON-LD."""
+
+    configured = os.environ.get("WAM_CHROME_PATH", "").strip()
+    candidates = [
+        Path(configured) if configured else None,
+        Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
+        Path(r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"),
+        Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
+    ]
+    browser = next((str(p) for p in candidates if p is not None and p.is_file()), None)
+    browser = browser or shutil.which("google-chrome") or shutil.which("chromium")
+    if not browser:
+        raise RuntimeError("WAM article requires Chrome/Edge; configure WAM_CHROME_PATH")
+    with tempfile.TemporaryDirectory(prefix="wam-render-", ignore_cleanup_errors=True) as profile:
+        command = [
+            browser,
+            "--headless=new",
+            "--disable-gpu",
+            "--no-first-run",
+            "--no-default-browser-check",
+            f"--user-data-dir={profile}",
+            "--virtual-time-budget=10000",
+            "--dump-dom",
+            url,
+        ]
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            timeout=90,
+            check=False,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        )
+    if result.returncode != 0 or not result.stdout:
+        raise RuntimeError(f"WAM browser rendering failed: {url} (exit={result.returncode})")
+    return result.stdout.decode("utf-8")
 
 
 
@@ -340,6 +423,9 @@ def refresh_auto_articles(
             raise RuntimeError(f"WAM article request returned HTTP {status}: {url}")
         dom = raw_body.decode("utf-8")
         article = _extract_news_article(dom)
+        if not article or not article.get("articleBody"):
+            dom = _render_article(url)
+            article = _extract_news_article(dom)
         if not article or not isinstance(article.get("articleBody"), str) or not article["articleBody"].strip():
             raise ValueError(f"WAM article has no NewsArticle body: {url}")
         if not isinstance(article.get("headline"), str) or not article["headline"].strip():
@@ -386,10 +472,26 @@ def _write_json(path: Path, payload: object) -> None:
             temporary_path.unlink()
 
 
+def _write_bytes(path: Path, payload: bytes) -> None:
+    """Atomically archive a successfully parsed live sitemap payload."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".tmp", delete=False) as handle:
+            temporary_path = Path(handle.name)
+            handle.write(payload)
+        os.replace(temporary_path, path)
+    finally:
+        if temporary_path is not None and temporary_path.exists():
+            temporary_path.unlink()
+
+
 def refresh_source_manifest(*, force: bool = False) -> dict[str, int]:
     """Download cited pages and write a reproducible local source manifest.
 
-    Every uncached source URL must download successfully; retrieval errors propagate.
+    Official WAM retrieval errors propagate. Third-party citation archival
+    failures are recorded without blocking the live official sitemap scan.
     """
 
     ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
@@ -401,7 +503,7 @@ def refresh_source_manifest(*, force: bool = False) -> dict[str, int]:
             raise ValueError("WAM source manifest must contain a sources object")
 
     manifest: dict[str, dict] = {}
-    counts = {"total": 0, "downloaded": 0, "reused": 0}
+    counts = {"total": 0, "downloaded": 0, "reused": 0, "failed": 0}
     retrieved_at = datetime.now(timezone.utc).isoformat()
     for url in _source_urls():
         counts["total"] += 1
@@ -411,9 +513,23 @@ def refresh_source_manifest(*, force: bool = False) -> dict[str, int]:
             manifest[url] = {**old, "archive_path": str(archive_path.relative_to(RAW_DIR))}
             counts["reused"] += 1
             continue
-        status, content_type, body = _fetch(url)
-        if status != 200:
-            raise RuntimeError(f"WAM source returned HTTP {status}: {url}")
+        try:
+            status, content_type, body = _fetch(url)
+            if status != 200:
+                raise HTTPError(url, status, "Source retrieval failed", None, None)
+        except (HTTPError, URLError, OSError) as exc:
+            host = (urlparse(url).hostname or "").casefold()
+            if host == "wam.ae" or host.endswith(".wam.ae"):
+                raise
+            counts["failed"] += 1
+            manifest[url] = {
+                **old,
+                "url": url,
+                "retrieved_at_utc": retrieved_at,
+                "status": exc.code if isinstance(exc, HTTPError) else None,
+                "error": str(exc),
+            }
+            continue
         entry = {
             "url": url,
             "retrieved_at_utc": retrieved_at,

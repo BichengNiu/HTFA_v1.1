@@ -6,6 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from openpyxl import Workbook
+import pytest
 
 from htfa.jobs.uae_data import db  # noqa: E402
 from htfa.jobs.uae_data import source_cbuae as source  # noqa: E402
@@ -102,34 +103,20 @@ def test_extract_workbook_returns_both_periods(tmp_path) -> None:
     assert observations[0].source_file == "2020-03.xlsx"
 
 
-def test_extract_bulletin_links_prefers_machine_readable_file() -> None:
-    page_url = (
-        "https://centralbank.ae/en/research-and-statistics/latest-statistics/"
-        "statistical-bulletin-banking-monetary-statistics/statistical-bulletin-july-2026/"
-    )
-    page = """
-    <a href="/media/example/statistical-bulletin-july-2026.pdf">PDF</a>
-    <a href="/media/example/statistical-bulletin-july-2026.xlsx">XLSX</a>
-    <a href="/media/example/other-report.xlsx">ignore</a>
-    """
-
-    links = source._extract_bulletin_links(page, page_url)
-
-    assert links[0].endswith("statistical-bulletin-july-2026.xlsx")
-    assert links[1].endswith("statistical-bulletin-july-2026.pdf")
-    assert len(links) == 2
-
-
 def test_download_latest_bulletin_discovers_and_refreshes_newest(
     tmp_path, monkeypatch
 ) -> None:
     monkeypatch.setattr(source, "RAW_DIR", tmp_path)
-    monkeypatch.setattr(source, "_recent_bulletin_periods", lambda: [(2026, 8)])
-    page = b'<a href="/media/example/statistical-bulletin-august-2026.pdf">PDF</a>'
-    monkeypatch.setattr(source, "fetch_bytes", lambda *args, **kwargs: page)
+    monkeypatch.setattr(source, "_discover_bulletins", lambda: [
+        ("2026-08", "https://centralbank.ae/media/example/statistical-bulletin-august-2026.pdf")
+    ])
+    from types import SimpleNamespace
+    monkeypatch.setattr(
+        source, "extract_pdf_bulletin", lambda path: SimpleNamespace(period="2026-08")
+    )
     calls = []
 
-    def fake_download(url, destination, *, force, min_bytes, referer):
+    def fake_download(url, destination, *, force, min_bytes, referer, **kwargs):
         calls.append((url, destination, force))
         destination.write_bytes(b"x" * min_bytes)
         return "downloaded"
@@ -139,7 +126,8 @@ def test_download_latest_bulletin_discovers_and_refreshes_newest(
     note = source._download_latest_bulletins()
 
     assert calls[0][2] is True
-    assert calls[0][1] == tmp_path / "2026-08.pdf"
+    assert calls[0][1].name == "2026-08.pdf"
+    assert (tmp_path / "2026-08.pdf").is_file()
     assert "2026-08" in note
 
 
@@ -173,7 +161,7 @@ def test_update_roundtrip_long_table_without_wind_dependency(
     con.close()
 
 
-def test_update_falls_back_to_existing_cache_when_discovery_fails(
+def test_failed_online_discovery_preserves_database_without_claiming_refresh(
     tmp_path, monkeypatch
 ) -> None:
     monkeypatch.setattr(source, "RAW_DIR", tmp_path)
@@ -186,11 +174,16 @@ def test_update_falls_back_to_existing_cache_when_discovery_fails(
 
     con = db.connect(":memory:")
     db.init_schema(con)
-    outcome = source.update(con)
-    con.close()
-
-    assert outcome["status"] == "ok"
-    assert "使用本地缓存" in outcome["note"]
+    source.update(con, skip_download=True)
+    previous = con.execute("SELECT * FROM cbuae_monthly ORDER BY period, indicator").fetchall()
+    try:
+        with pytest.raises(RuntimeError, match="offline"):
+            source.update(con)
+        assert con.execute(
+            "SELECT * FROM cbuae_monthly ORDER BY period, indicator"
+        ).fetchall() == previous
+    finally:
+        con.close()
 
 
 def test_update_writes_current_dictionary_rows(tmp_path, monkeypatch) -> None:

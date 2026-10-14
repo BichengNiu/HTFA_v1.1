@@ -5,6 +5,8 @@ import sys
 from datetime import date
 from pathlib import Path
 
+from openpyxl import Workbook, load_workbook
+
 from htfa.jobs.uae_data import db  # noqa: E402
 from htfa.jobs.uae_data import source_comtrade as source  # noqa: E402
 
@@ -131,6 +133,8 @@ def test_to_db_rows_and_roundtrip(tmp_path, monkeypatch) -> None:
     reporters = _write_reporters(tmp_path)
     monkeypatch.setattr(source, "REPORTERS_PATH", reporters)
     monkeypatch.setattr(source, "RAW_DIR", tmp_path)
+    monkeypatch.setattr(source, "QUALITY_PATH", tmp_path / "quality_report.json")
+    (tmp_path / "equipment_all_mirror").mkdir()
     _write_month(
         tmp_path,
         "equipment_uae_reported",
@@ -144,20 +148,22 @@ def test_to_db_rows_and_roundtrip(tmp_path, monkeypatch) -> None:
 
     con = db.connect(":memory:")
     db.init_schema(con)
-    db.replace(con, "comtrade_monthly", monthly)
-    db.replace(con, "comtrade_partner_detail", detail_rows)
-    db.replace(con, "comtrade_quantity_detail", quantity_rows)
+    for table in ("comtrade_partner_detail", "comtrade_quantity_detail"):
+        con.execute(f"CREATE VIEW main.{table} AS SELECT * FROM detail.{table}")
+    outcome = source.update(con, skip_download=True)
+    assert outcome["status"] == "ok"
 
     stored = con.execute(
         "SELECT period, category, value, units FROM comtrade_monthly"
     ).fetchall()
     assert stored == [(date(2026, 3, 31), "manufacturing_equipment", 1_000_000.0, 10.0)]
 
-    rebuilt = source._reconstruct_rows(con)
+    rebuilt = source._sheet_spec(con)
     con.close()
-    assert rebuilt[0]["month"] == "202603"
-    assert rebuilt[0]["manufacturing_equipment_usd_mn"] == 1.0
-    assert rebuilt[0]["civil_construction_equipment_usd"] is None
+    period, values = rebuilt["rows"][0]
+    assert period == date(2026, 3, 31)
+    assert values["阿联酋:进口:制造业设备:当月值"] == 1.0
+    assert values.get("阿联酋:进口:土木及基建施工设备:当月值") is None
 
 
 def test_dictionary_rows_cover_amounts_and_units() -> None:
@@ -166,3 +172,38 @@ def test_dictionary_rows_cover_amounts_and_units() -> None:
     assert "阿联酋:进口:制造业设备:当月值" in names
     assert "阿联酋:进口:钻探设备:台数:当月值" in names
     assert len(rows) == len(source.SERIES) * 2
+
+
+def test_merge_uses_one_atomic_writer_and_retains_workbook_backup(tmp_path, monkeypatch):
+    database = tmp_path / "uae.duckdb"
+    monkeypatch.setattr(source.db, "DB_PATH", database)
+    monkeypatch.setattr(source, "DATA_DIR", tmp_path)
+    con = db.connect(database)
+    try:
+        db.init_schema(con)
+        db.replace(con, "main.comtrade_monthly", [{
+            "period": date(2026, 8, 31), "category": "manufacturing_equipment",
+            "value": 1250000.125, "units": 10,
+        }])
+        db.upsert_dictionary_rows(con, source._dictionary_rows())
+    finally:
+        con.close()
+    target = tmp_path / "workbook.xlsx"
+    book = Workbook()
+    book.active["A1"] = "preserved"
+    book.save(target)
+    book.close()
+    original = target.read_bytes()
+    assert source.merge(target)["status"] == "ok"
+    backups = list((tmp_path / "backups").glob("*.xlsx"))
+    assert len(backups) == 1 and backups[0].read_bytes() == original
+    book = load_workbook(target, read_only=True, data_only=True)
+    try:
+        sheet = book[source.TARGET_SHEET]
+        assert sheet.cell(7, 1).value.date() == date(2026, 8, 31)
+        assert sheet.cell(7, 2).value == 1.250000125
+        assert sheet.cell(7, 3).value is None
+        assert sheet.cell(7, 7).value == 10
+        assert book.worksheets[0]["A1"].value == "preserved"
+    finally:
+        book.close()

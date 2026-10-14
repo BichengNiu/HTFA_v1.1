@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import tempfile
+from calendar import monthrange
+from collections import defaultdict
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -13,6 +15,65 @@ from openpyxl import load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from . import db
+
+
+def month_end(period: date) -> date:
+    """Normalize a database observation's month to its calendar month end."""
+    return date(period.year, period.month, monthrange(period.year, period.month)[1])
+
+
+def pivot_indicator_rows(records, name_builder, *, period_transform=None):
+    """Pivot long records using their period, dimensions and final value.
+
+    ``name_builder`` maps the dimension columns to a workbook indicator name.
+    ``period_transform`` optionally normalizes each observation period.
+    """
+    periods = defaultdict(dict)
+    for record in records:
+        period = period_transform(record[0]) if period_transform else record[0]
+        periods[period][name_builder(*record[1:-1])] = record[-1]
+    return list(periods.items())
+
+
+def merge_source_sheet(workbook_path: Path, spec_builder) -> dict[str, Any]:
+    """Read a source-owned sheet specification and metadata from DuckDB.
+
+    ``spec_builder`` takes the read-only connection and returns a mapping with
+    the sheet's name, title, indicators and wide rows. ``workbook_path`` is
+    written atomically by the shared workbook writer.
+    """
+    with db.connect(read_only=True) as con:
+        spec = spec_builder(con)
+        spec["metadata"] = read_indicator_metadata(con, spec["indicators"])
+    counts = write_indicator_sheets(workbook_path, [spec])
+    return {
+        "status": "ok",
+        "rows": counts[spec["name"]],
+        "note": f"{spec['name']} {counts[spec['name']]} 行",
+    }
+
+
+def read_indicator_metadata(con, names: list[str]) -> dict[str, dict[str, Any]]:
+    """Read metadata from ``con`` for all indicator ``names``, rejecting missing entries."""
+
+    records = con.execute(
+        "SELECT indicator_name, frequency, unit, source "
+        "FROM meta_indicator_dictionary"
+    ).fetchall()
+    by_name = {
+        row[0]: {
+            "frequency": row[1],
+            "unit": row[2],
+            "source": row[3],
+        }
+        for row in records
+    }
+    missing = [name for name in names if name not in by_name]
+    if missing:
+        raise ValueError(f"数据库指标字典缺少：{', '.join(missing)}")
+    return {name: by_name[name] for name in names}
+
 
 def write_indicator_sheets(
     workbook_path: Path,
@@ -20,8 +81,7 @@ def write_indicator_sheets(
 ) -> dict[str, int]:
     """Atomically replace several wide indicator sheets in one workbook.
 
-    Each sheet mapping contains `
-ame``, ``title``, ``indicators``,
+    Each sheet mapping contains ``name``, ``title``, ``indicators``,
     ``metadata`` and ``rows``. Rows are ``(period, {indicator: value})``.
     """
 

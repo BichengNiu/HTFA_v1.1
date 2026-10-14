@@ -107,17 +107,6 @@ try {
         $dictionarySheet.Rows.Count,
         1
     ).End(-4162).Row
-    $obsoleteIndicators = @($payload.obsolete_indicators)
-    for ($row = $lastDictionaryRow; $row -ge 2; $row--) {
-        $name = [string]$dictionarySheet.Cells.Item($row, 1).Value2
-        if ($obsoleteIndicators -contains $name) {
-            $dictionarySheet.Rows.Item($row).Delete()
-        }
-    }
-    $lastDictionaryRow = $dictionarySheet.Cells.Item(
-        $dictionarySheet.Rows.Count,
-        1
-    ).End(-4162).Row
     $knownIndicators = @{}
     for ($row = 2; $row -le $lastDictionaryRow; $row++) {
         $name = [string]$dictionarySheet.Cells.Item($row, 1).Value2

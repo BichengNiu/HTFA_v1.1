@@ -720,11 +720,3 @@ def merge(workbook_path: Path) -> dict:
         "status": "ok",
         "note": f"{len(observations)} 个月写入 {TARGET_SHEET}",
     }
-
-
-if __name__ == "__main__":
-    print("source_pmi.py 自检：")
-    print("  update(con, force=, skip_download=) 按需下载公开样本并解析/质检")
-    print("    （质量报告写 data/UAE/raw/pmi/quality_report.json）后入库 pmi_monthly")
-    print("  merge(workbook_path) 把表写回 月度_LSEG（带幂等检查与回滚）")
-    print("  本文件直接运行不联网、不写工作簿。")

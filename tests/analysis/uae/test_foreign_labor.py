@@ -17,7 +17,7 @@ from htfa.monitoring.uae.foreign_labor import (
 from htfa.ui_shared.chart_legend import place_chart_legend_at_bottom
 
 
-def _workbook_bytes(*, standard_protocol: bool = False) -> bytes:
+def _workbook_bytes() -> bytes:
     dates = pd.date_range("2023-06-30", periods=38, freq="ME")[::-1]
     data = pd.DataFrame(
         {
@@ -31,13 +31,13 @@ def _workbook_bytes(*, standard_protocol: bool = False) -> bytes:
         [
             ["各国官方劳工输出登记/部署/审批数据", None, None],
             [
-                "指标名称" if standard_protocol else "日期",
+                "指标名称",
                 NEPAL_APPROVALS,
                 BANGLADESH_CLEARANCES,
             ],
-            ["频率" if standard_protocol else "月", "月", "月"],
-            ["单位" if standard_protocol else "日期", "人", "人"],
-            ["来源" if standard_protocol else "各国官方劳工输出登记/部署/审批数据",
+            ["频率", "月", "月"],
+            ["单位", "人", "人"],
+            ["来源",
              "尼泊尔 DoFE monthly final labour approval",
              "孟加拉国 BMET/OEP Country Clearance"],
             ["更新时间", "2026-08-14", "2026-08-14"],
@@ -63,7 +63,7 @@ def _workbook_bytes(*, standard_protocol: bool = False) -> bytes:
 
 def test_loader_accepts_standard_workbook_protocol() -> None:
     data = load_foreign_labor_data(
-        _workbook_bytes(standard_protocol=True),
+        _workbook_bytes(),
         file_name="standard.xlsx",
     )
 

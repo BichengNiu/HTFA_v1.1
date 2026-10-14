@@ -65,11 +65,10 @@ def test_select_latest_workbook_uses_observation_month_not_filename(
     _source_workbook(older, month=7)
     _source_workbook(newer, month=8)
 
-    selected, observations, errors = source.select_latest_workbook(tmp_path)
+    selected, observations = source.select_latest_workbook(tmp_path)
 
     assert selected == newer
     assert observations[-1].period == "2026-08"
-    assert errors == []
 
 
 def test_update_loads_monthly_table_and_dictionary(tmp_path, monkeypatch) -> None:

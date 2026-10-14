@@ -24,7 +24,7 @@
 
 其中替代方案不存在：全部海峡仅保留霍尔木兹（chokepoint6），UAE 港口与霍尔木兹
 合并到单一 sheet ``月度_PortWatch``（每月一行 × 13 指标 = UAE 9 + 霍尔木兹 4）。
-旧「月度_PortWatch_海峡」sheet 在合并时自动删除。写表走
+写表走
 ``write_portwatch_sheet.ps1``（Excel COM），并在指标字典 sheet 补录指标名；
 与其它源一致，数据永远先入 duckdb 再从库读取聚合写 Excel。
 """
@@ -33,7 +33,6 @@ from __future__ import annotations
 
 import csv
 import json
-import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from datetime import date
@@ -210,14 +209,12 @@ def resolve_resource_url(package_id: str) -> str:
     raise ValueError(f"HDX package_show 未发现资源下载 URL: {package_id}")
 
 
-def _download_to(url: str, destination: Path, *, force: bool) -> str:
-    """下载 URL 到 destination；文件已存在且非 force 时直接复用。
+def _download_to(url: str, destination: Path) -> str:
+    """在线下载 URL 到 destination。
 
-    返回 "downloaded" / "reused"。写临时文件后原子改名，避免半截文件落盘。
+    返回 "downloaded"。写临时文件后原子改名，避免半截文件落盘。
     """
 
-    if destination.is_file() and not force:
-        return "reused"
     temporary = destination.with_suffix(destination.suffix + ".tmp")
     request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     with urllib.request.urlopen(request, timeout=_TIMEOUT) as response, \
@@ -317,9 +314,9 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         # HDX resource URLs are stable and the CSV content is revised in
         # place. Online mode therefore always re-fetches both files;
         # --skip-download remains the explicit offline mode.
-        uae_state = _download_to(uae_url, UAE_FILE, force=True)
+        uae_state = _download_to(uae_url, UAE_FILE)
         chokepoint_state = _download_to(
-            chokepoint_url, CHOKEPOINT_FILE, force=True
+            chokepoint_url, CHOKEPOINT_FILE
         )
 
     uae_rows = parse_portwatch_csv(
@@ -332,13 +329,13 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         CHOKEPOINT_FILE, CHOKEPOINT_REQUIRED_COLUMNS, CHOKEPOINT_VALUE_COLUMNS
     )
 
-    db.ensure(con, "portwatch_uae_daily", UAE_TABLE_DDL)
-    db.ensure(con, "portwatch_chokepoint_daily", CHOKEPOINT_TABLE_DDL)
+    db.ensure(con, "detail.portwatch_uae_daily", UAE_TABLE_DDL)
+    db.ensure(con, "detail.portwatch_chokepoint_daily", CHOKEPOINT_TABLE_DDL)
 
     transaction = con.begin()
     try:
-        db.replace(con, "portwatch_uae_daily", uae_rows)
-        db.replace(con, "portwatch_chokepoint_daily", chokepoint_rows)
+        db.replace(con, "detail.portwatch_uae_daily", uae_rows)
+        db.replace(con, "detail.portwatch_chokepoint_daily", chokepoint_rows)
         transaction.commit()
     except BaseException:
         transaction.rollback()
@@ -468,7 +465,6 @@ def _sheet_payload(
         "unit": "",
         "source": SOURCE_NAME,
         "updated_at": date.today().isoformat(),
-        "dimension_label": None,
         "indicators": [
             {"name": name, "type": indicator_type, "industry": INDUSTRY, "unit": unit}
             for name, indicator_type, unit in ALL_INDICATORS
@@ -481,7 +477,7 @@ def merge(workbook_path: Path) -> dict:
     """把 PortWatch 日度数据按月聚合，写回 月度_PortWatch（UAE 9 + 霍尔木兹 4 指标）。
 
     数据全部从 uae.duckdb 读取（先 duckdb 后 Excel）；每次调用重建该 sheet，
-    并删除遗留的旧「月度_PortWatch_海峡」sheet。写表走
+    写表走
     write_portwatch_sheet.ps1（Excel COM），失败即抛错。
     """
 
@@ -516,11 +512,3 @@ def merge(workbook_path: Path) -> dict:
             f"{TARGET_SHEET}（{observations[0].period} 至 {observations[-1].period}）；"
         ),
     }
-
-
-if __name__ == "__main__":
-    print("source_portwatch.py 自检：")
-    print("  update(con, force=, skip_download=) 下载/复用 raw/portwatch/*.csv")
-    print("    → 解析校验后整表替换 portwatch_uae_daily / portwatch_chokepoint_daily")
-    print("  merge(workbook_path) 按月聚合（UAE 全港 + 霍尔木兹）→ 重建 月度_PortWatch")
-    print("  本文件直接运行不执行任何下载或工作簿写入。")

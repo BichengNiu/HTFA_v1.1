@@ -468,7 +468,3 @@ def merge(workbook_path: Path) -> dict:
     finally:
         wide_path.unlink(missing_ok=True)
     return {"status": "ok", "note": f"{TARGET_SHEET} 已更新"}
-
-
-if __name__ == "__main__":
-    print("source_steel: 模块入口由 htfa.jobs.uae_data.update_data 与 htfa.jobs.uae_data.merge_workbook 调用")

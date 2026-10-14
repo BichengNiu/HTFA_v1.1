@@ -1395,17 +1395,3 @@ def merge(workbook_path: Path) -> dict[str, object]:
             f"校验通过（逐格检查 {target_checks['target_cells_checked']} 个单元格）"
         ),
     }
-
-
-if __name__ == "__main__":
-    # 自检提示（不执行网络/工作簿写入）
-    _releases = extract_sources(RAW_GFS)
-    _quarterly, _annual = _period_records(_releases)
-    _q_rows, _a_rows = _records_to_db_rows(_releases)
-    print(
-        f"[source_gfs] 自检：2012-2026 源文件解析成功，"
-        f"季度 {len(_quarterly)} 期 / 年度 {len(_annual)} 期；"
-        f"可入库值 {len(_q_rows) + len(_a_rows)} 个。"
-    )
-    print("[source_gfs] 运行 htfa.jobs.uae_data.update_data --source gfs 执行入库；"
-          "htfa.jobs.uae_data.merge_workbook --source gfs 回写工作簿。")

@@ -594,7 +594,7 @@ def write_embedded_path_file(runtime_root: Path) -> Path:
 
     path_file = runtime_root / "python313._pth"
     path_file.write_text(
-        "python313.zip\n.\nLib\nLib/site-packages\nimport site\n",
+        "python313.zip\n.\nLib\nLib/site-packages\n..\nimport site\n",
         encoding="utf-8",
     )
     return path_file

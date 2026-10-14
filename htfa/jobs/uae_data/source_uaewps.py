@@ -9,15 +9,16 @@ Wages Protection System (UAEWPS) Statistics」所列月度统计发布。注意�
 因此，本模块的月度观测来自官方另一持续序列：**CBUAE 季度经济评论（Quarterly
 Economic Review, QER）正文的「Employment and Wages」小节**，每期公布截至季末
 月的 WPS 覆盖员工数与平均工资的同比增速（按 3 个月移动平均计算，见 QER 脚注）。
-原始文件为 raw/uaewps/qer/*.pdf（自动从 CBUAE 出版物 API 下载；当前覆盖 2021Q4 至 2026Q2）；其中
-2024Q1 起的 9 期含 WPS 统计段落，合计 9 个月度观测点（2024-04 至 2026-03）。
+原始文件为 raw/uaewps/qer/*.pdf，通过 CBUAE 出版物 API 自动发现并下载。
+2024 年 6 月 QER 起提取 WPS 段落；报告季度与正文观察月份分别记录。同一观察月
+出现在多个报告时，逐报告校验后保留最新报告；工资下降保留负号。
 
 流程与 source_cbuae.py 一致：``update()`` 解析 PDF 原文 → 与期望值表逐期校验
 （防解析漂移）→ 入长表 ``uaewps_monthly``（(period, indicator)，单位同比%）；
 ``merge()`` 从库读取并调用 ``write_uaewps_sheet.ps1`` 重建 Excel
 「季度_UAEWPS」 sheet（并删除遗留的「月度_UAEWPS」旧 sheet）；缺失值
 （如 2024-06 员工数为“几乎持平”，未给具体增速）以 ``None`` 写入并留空单元格，
-不臆造数字。频率为「季」（每期 QER 一个季末月观察点），观察月保留为季末月。
+不臆造数字。频率为「季」，日期使用正文观察月份，不把报告季度冒充观察季度。
 """
 
 from __future__ import annotations
@@ -85,15 +86,16 @@ _QER_MONTHS = {"march": 1, "june": 2, "september": 3, "december": 4}
 # 期望值校验表：report 标签 -> (观察月 period, 员工覆盖 YoY %|None, 平均工资 YoY %)。
 # 已核对历史期次的回归值；新期次通过结构校验自动接入，防止正则漂移导致静默错数。
 EXPECTED = {
-    "2024Q1": ("2024-04", 7.5, 9.4),
-    "2024Q2": ("2024-06", None, 4.8),
-    "2024Q3": ("2024-09", 4.0, 7.2),
-    "2024Q4": ("2024-12", 8.4, 6.7),
-    "2025Q1": ("2025-03", 7.4, 3.5),
-    "2025Q2": ("2025-06", 10.6, 0.2),
-    "2025Q3": ("2025-09", 13.9, 0.3),
-    "2025Q4": ("2025-12", 14.8, 0.1),
-    "2026Q1": ("2026-03", 11.7, 0.7),
+    "2024Q2": ("2024-04", 7.5, 9.4),
+    "2024Q3": ("2024-06", None, 4.8),
+    "2024Q4": ("2024-09", 4.0, 7.2),
+    "2025Q1": ("2024-12", 8.4, 6.7),
+    "2025Q2": ("2025-03", 7.4, 3.5),
+    "2025Q3": ("2025-06", 10.6, 0.2),
+    "2025Q4": ("2025-09", 13.9, 0.3),
+    "2026Q1": ("2025-12", 14.8, 0.1),
+    "2026Q2": ("2026-03", 11.7, 0.7),
+    "2026Q3": ("2026-06", 11.2, -2.3),
 }
 
 
@@ -145,6 +147,13 @@ def _parse_wage_yoy(section: str) -> float | None:
     - 'average wage rose by 0.7%'
     - 'increased by 7.5% and 9.4% ... respectively'（第二个数为工资）
     """
+    decline = re.search(
+        r"average\s+(?:employee\s+)?(?:salary|wage)[^.]{0,120}?"
+        r"(?:declined|decreased|fell)\s+by\s+(\d{1,2}(?:\s*\.\s*\d{1,2})?)\s*%",
+        section, re.I,
+    )
+    if decline:
+        return -float(decline.group(1).replace(" ", ""))
     patterns = (
         # "increased by 7.5% and 9.4% Y-o-Y ... respectively"（第二数为工资）
         r"increased\s+by\s+\d{1,2}(?:\s*\.\s*\d{1,2})?\s*%\s+and\s+"
@@ -162,13 +171,25 @@ def _parse_wage_yoy(section: str) -> float | None:
     return None
 
 
-def extract_qer_wps(path: Path) -> tuple[str, str, float | None, float | None, str]:
+def extract_qer_wps(path: Path) -> tuple[str, str | None, float | None, float | None, str]:
     """解析单期 QER：返回 (报告标签, 观察月, 员工YoY, 工资YoY, 数据说明)。
 
     ``数据说明`` 为该期脚注（如 'Data as of mid-May 2025.'），供审计。
     """
     reader = PdfReader(str(path))
-    report_tag = path.stem
+    # Older cache filenames shifted three 2024 releases by one quarter.
+    # The PDF's own title controls publication vintage, never its filename.
+    title = _flatten(reader.pages[0].extract_text() or "")
+    report = re.search(
+        r"Quarterly\s+Economic\s+Review\s*,?\s*"
+        r"(March|June|September|December)\s+(20\d{2})", title, re.I,
+    )
+    if report is None:
+        raise ValueError(f"{path.name}: 未能从 PDF 标题确认报告季度")
+    month_name, year = report.groups()
+    report_tag = f"{year}Q{_QER_MONTHS[month_name.lower()]}"
+    if report_tag < "2024Q2":
+        return report_tag, None, None, None, "该报告早于 WPS 正文序列开始期"
     page_text = ""
     for page in reader.pages:
         text = _flatten(page.extract_text() or "")
@@ -180,7 +201,8 @@ def extract_qer_wps(path: Path) -> tuple[str, str, float | None, float | None, s
 
     start = page_text.find("employees covered")
     # 从段落起点（向前找最近的句号）取到 WPS 段落结束（下一个双句号/图注）
-    seg_begin = max(page_text.rfind(". ", 0, start), page_text.rfind(".", 0, start))
+    heading = page_text.rfind("Employment and Wages", 0, start)
+    seg_begin = heading if heading >= 0 else max(page_text.rfind(". ", 0, start), page_text.rfind(".", 0, start))
     seg_begin = max(seg_begin, 0)
     segment = page_text[seg_begin:]
 
@@ -192,6 +214,7 @@ def extract_qer_wps(path: Path) -> tuple[str, str, float | None, float | None, s
         "Figure 2.",
         "Figure 3.",
         "Sources:",
+        "Government Revenue and Expenditure",
     ):
         marker_at = segment.find(stop_marker)
         if marker_at > 0:
@@ -263,7 +286,7 @@ def _discover_qer_files() -> list[tuple[str, str, Path]]:
     """通过 CBUAE 出版物 API 发现最新 Quarterly Economic Review PDF。"""
 
     payload = json.loads(
-        fetch_bytes(CBUAE_QER_API, referer="https://www.centralbank.ae/").decode(
+        fetch_bytes(CBUAE_QER_API, referer="https://www.centralbank.ae/", browser_transport=True).decode(
             "utf-8"
         )
     )
@@ -308,6 +331,7 @@ def _download_qer_files(*, force: bool) -> tuple[int, int]:
             force=force,
             min_bytes=1024,
             referer="https://www.centralbank.ae/en/news-and-publications/publications/",
+            browser_transport=True,
         )
         if status == "downloaded":
             downloaded += 1
@@ -318,6 +342,8 @@ def _download_qer_files(*, force: bool) -> tuple[int, int]:
 
 def _long_rows(
     verified: list[tuple[str, str, float | None, float | None, str]],
+    *,
+    source_files: dict[str, str] | None = None,
 ) -> list[dict]:
     rows: list[dict] = []
     for report_tag, period, emp, wage, note in verified:
@@ -328,11 +354,13 @@ def _long_rows(
                     "period": period_date,
                     "indicator": indicator[0],
                     "value": value,
-                    "source_file": f"{report_tag}.pdf",
+                    "source_file": (source_files or {}).get(report_tag, f"{report_tag}.pdf"),
                     "note": note,
                 }
             )
-    return rows
+    # Several publication vintages may describe the same observation month.
+    # Keep the newest report after validating every vintage independently.
+    return list({(row["period"], row["indicator"]): row for row in rows}.values())
 
 
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
@@ -347,10 +375,16 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
 
     sources = sorted(RAW_DIR.glob("*.pdf"))
     parsed: dict[str, tuple[str, float | None, float | None, str]] = {}
+    source_files: dict[str, str] = {}
     for path in sources:
+        # Legacy cache names start at 2024Q1 for the June 2024 QER.
+        # Actual publication vintages are always read from the PDF title.
+        if path.stem < "2024Q1":
+            continue
         tag, period, emp, wage, note = extract_qer_wps(path)
         if period is not None or tag in EXPECTED:
             parsed[tag] = (period, emp, wage, note)
+            source_files[tag] = path.name
 
     valid: dict[str, tuple[str, str, float | None, float | None, str]] = {}
     for tag, item in sorted(parsed.items()):
@@ -362,7 +396,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     verified = [valid[tag] for tag in sorted(valid)]
     if not verified:
         raise ValueError("UAEWPS validation rejected all observations")
-    rows = _long_rows(verified)
+    rows = _long_rows(verified, source_files=source_files)
     con.begin()
     try:
         db.replace(con, "uaewps_monthly", rows)
@@ -461,11 +495,3 @@ def merge(workbook_path: Path) -> dict:
         "status": "ok",
         "note": f"{len(observations)} 个月写入 {TARGET_SHEET}",
     }
-
-
-if __name__ == "__main__":
-    print("source_uaewps.py 自检：")
-    print("  update(con, force=, skip_download=) 解析 data/UAE/raw/uaewps/qer/ 的 QER PDF")
-    print("    → 与 EXPECTED 校验一致后入长表 uaewps_monthly")
-    print("  merge(workbook_path) 把表写回 月度_UAEWPS")
-    print("  本文件直接运行不执行任何下载或工作簿写入。")

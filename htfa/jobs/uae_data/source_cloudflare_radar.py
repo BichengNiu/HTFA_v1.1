@@ -464,12 +464,3 @@ def merge(workbook_path: Path) -> dict:
     if not done:
         raise ValueError("cloudflare_radar_daily is empty; nothing to merge")
     return {"status": "ok", "note": "；".join(done)}
-
-
-if __name__ == "__main__":
-    print("source_cloudflare_radar.py 自检：")
-    print("  update(con, ...)")
-    print("    · 有 CF_RADAR_TOKEN  → API 拉 /radar/netflows/timeseries?location=AE&dateRange=52w")
-    print("    · --skip-download     → 仅读取最新 API JSON 缓存")
-    print("    → 入日表 cloudflare_radar_daily")
-    print("  merge(workbook_path) 把表写回 日度_CloudflareRadar")

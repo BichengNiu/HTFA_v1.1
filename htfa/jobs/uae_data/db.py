@@ -1,8 +1,8 @@
 """Unified DuckDB infrastructure for the ``data/`` pipeline.
 
-Every ``source_*.py`` module uses the helpers here so that all ten data
+Every ``source_*.py`` module uses the helpers here so that all registered data
 sources land in one database (``data/UAE/uae.duckdb``) with one metadata
-convention. The database is local-only and never committed to Git.
+convention. The production database is tracked through Git LFS.
 """
 
 from __future__ import annotations

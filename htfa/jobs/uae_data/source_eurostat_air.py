@@ -19,6 +19,7 @@ CAF_* 航班数）。原始 JSON 缓存于 ``data/UAE/raw/eurostat_air/``。
 from __future__ import annotations
 
 import json
+import ssl
 import tempfile
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
@@ -27,7 +28,10 @@ from typing import Any, Iterator
 
 from urllib.request import Request, urlopen
 
+import certifi
+
 from .paths import DATA_DIR
+from .workbook_sheet_writer import merge_source_sheet, month_end, pivot_indicator_rows
 
 
 from . import db  # noqa: E402
@@ -46,7 +50,7 @@ USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 )
 
-TARGET_SHEET = "月度_Eurostat航空"  # 预留（写表暂未实现）
+TARGET_SHEET = "月度_Eurostat航空"
 
 # EU27_2020 的 27 个成员国（官方聚合 = 27 国之和，2025 年实测零差）
 MEMBER_GEOS = (
@@ -69,7 +73,8 @@ DATASETS = (
 
 def fetch_json(url: str) -> Any:
     request = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
-    with urlopen(request, timeout=90) as response:
+    context = ssl.create_default_context(cafile=certifi.where())
+    with urlopen(request, timeout=90, context=context) as response:
         if response.status != 200:
             raise RuntimeError(f"HTTP {response.status} while downloading {url}")
         return json.loads(response.read().decode("utf-8"))
@@ -477,7 +482,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         )
 
     with _transaction(con):
-        db.replace(con, "eurostat_air_monthly", rows)
+        db.replace(con, "detail.eurostat_air_monthly", rows)
         db.upsert_dictionary_rows(con, _dictionary_rows())
 
     parts = []
@@ -499,18 +504,32 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     return {"status": "ok", "rows": len(rows), "note": note}
 
 
-def merge(workbook_path: Path) -> dict:
-    """Eurostat 航空数据暂未接入 Excel 写表（预留占位）。"""
+def _sheet_spec(con) -> dict[str, Any]:
+    datasets = DATASET_CN
+    measures = TRA_MEAS_CN
+    indicators = [
+        f"{datasets[dataset]}:{measures[measure]}"
+        for dataset in datasets
+        for measure in measures
+        if (dataset == "avia_paexcc") == measure.startswith("PAS")
+    ]
+    rows = pivot_indicator_rows(
+        con.execute(
+            "SELECT period, dataset, tra_meas, value "
+            "FROM detail.eurostat_air_monthly "
+            "WHERE geo = 'EU27_2020' AND partner = 'AE' AND schedule = 'TOTAL'"
+        ).fetchall(),
+        lambda dataset, measure: f"{datasets[dataset]}:{measures[measure]}",
+        period_transform=month_end,
+    )
     return {
-        "status": "skipped",
-        "note": (
-            "eurostat_air_monthly 尚未接入 Excel 写表；"
-            "如需合并请实现 write_eurostat_air_sheet.ps1 并注册到 merge_workbook.py"
-        ),
+        "name": TARGET_SHEET,
+        "title": "Eurostat EU27↔阿联酋航空月度指标",
+        "indicators": indicators,
+        "rows": rows,
     }
 
 
-if __name__ == "__main__":
-    print("source_eurostat_air.py 自检：")
-    print("  update(con, force=, skip_download=) 下载→解析→质检→入库 eurostat_air_monthly")
-    print("  merge(workbook_path) 暂未接入 Excel 写表")
+def merge(workbook_path: Path) -> dict:
+    """Rebuild this source's workbook sheet from DuckDB."""
+    return merge_source_sheet(workbook_path, _sheet_spec)

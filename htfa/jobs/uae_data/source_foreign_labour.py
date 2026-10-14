@@ -305,9 +305,22 @@ def discover_nepal_reports(session: requests.Session) -> list[dict[str, Any]]:
                 title,
             )
             if not parsed:
-                continue
-            year = int(parsed.group(1).translate(DEVANAGARI_DIGITS))
-            month_name = parsed.group(2)
+                progress = re.fullmatch(r"(\S+)\s+महिनाको\s+प्रगति\s+विवरण", title)
+                if not progress:
+                    continue
+                # New monthly reports omit the year from their title. Read
+                # the publication's BS year from this card's date, not the
+                # site's global current-date banner.
+                card_tail = response.text[match.end():]
+                card_tail = card_tail.split('<div class="grid__card">', 1)[0]
+                year_match = re.search(r"post__date.*?([०-९]{4})", card_tail, re.S)
+                if year_match is None:
+                    raise RuntimeError(f"DoFE monthly progress report has no publication year: {title}")
+                year = int(year_match.group(1).translate(DEVANAGARI_DIGITS))
+                month_name = progress.group(1)
+            else:
+                year = int(parsed.group(1).translate(DEVANAGARI_DIGITS))
+                month_name = parsed.group(2)
             month = NEPAL_MONTHS.get(month_name)
             if month is None:
                 raise RuntimeError(f"Unknown Nepal month name: {month_name}")
@@ -425,7 +438,10 @@ def download_all(refresh: bool = False) -> None:
         existing = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
         manifest["sources"].update(existing.get("sources", {}))
     manifest["sources"]["philippines"] = download_philippines(session, refresh)
-    manifest["sources"]["nepal"] = download_nepal(session, refresh)
+    from curl_cffi import requests as browser_requests
+
+    with browser_requests.Session(impersonate="chrome") as nepal_session:
+        manifest["sources"]["nepal"] = download_nepal(nepal_session, refresh)
     manifest["sources"]["bangladesh"] = download_bangladesh(session, refresh)
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     MANIFEST_PATH.write_text(
@@ -918,7 +934,3 @@ def merge(workbook_path: Path) -> dict:
         + (f"（备份 {backup.name}）" if backup else "")
     )
     return {"status": "ok", "note": note}
-
-
-if __name__ == "__main__":
-    print("source_foreign_labour: 模块入口由 htfa.jobs.uae_data.update_data 与 htfa.jobs.uae_data.merge_workbook 调用")

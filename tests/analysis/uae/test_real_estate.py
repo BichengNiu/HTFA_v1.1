@@ -74,8 +74,7 @@ def _workbook_bytes() -> bytes:
     metadata = pd.DataFrame(
         [
             ["Dubai Land Department", None, None, None, None, None, None, None, None],
-            # 与 source_dld 写表器一致：A2 为「日期」而非「指标名称」标签
-            ["日期", *_INDICATOR_HEADERS],
+            ["指标名称", *_INDICATOR_HEADERS],
             ["频率", *("月",) * 8],
             ["单位", "笔", "百万AED", "笔", "百万AED", "笔", "百万AED", "笔", "百万AED"],
             ["来源", *("Dubai Land Department",) * 8],

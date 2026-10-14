@@ -1024,7 +1024,7 @@ def _parse_moasher_rental(html: str, slug: str | None = None) -> dict | None:
 
 
 def _fetch_moasher_page(
-    url: str, cached_dir: Path, *, force: bool, skip_download: bool
+    url: str, cached_dir: Path, *, skip_download: bool
 ) -> str:
     """Fetch one Mo'asher page or require its exact cache in offline mode."""
 
@@ -1034,8 +1034,6 @@ def _fetch_moasher_page(
     if skip_download:
         if not cache_path.is_file():
             raise FileNotFoundError(f"Mo'asher offline page cache not found: {cache_path}")
-        return cache_path.read_text(encoding="utf-8")
-    if cache_path.is_file() and not force:
         return cache_path.read_text(encoding="utf-8")
     request = urllib.request.Request(
         url, headers={"User-Agent": _USER_AGENT, "Accept-Language": "en-US,en;q=0.9"}
@@ -1058,7 +1056,17 @@ def _discover_moasher_urls() -> list[str]:
             r"insightshub/moasher/(\d{4}-monthly-[a-z]+-\d+)", html
         ):
             found.add(MOASHER_BASE + slug)
-        if not re.findall(r"insightshub/moasher/\d{4}-monthly-[a-z]+-\d+", html):
+        state = re.search(
+            r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S
+        )
+        if state is None:
+            raise ValueError("Property Finder listing is missing pagination data")
+        listing = json.loads(state.group(1))["props"]["pageProps"]["list"]
+        pagination = listing["pagination"]
+        page_count = int(pagination["pageCount"])
+        if int(pagination["page"]) != page_no or page_count > 12:
+            raise ValueError("Property Finder listing pagination exceeds scan bounds")
+        if page_no >= page_count:
             break
     urls = sorted(found)
     if urls:
@@ -1066,7 +1074,7 @@ def _discover_moasher_urls() -> list[str]:
     return urls
 
 
-def _moasher_urls(con, *, skip_download: bool) -> list[str]:
+def _moasher_urls(*, skip_download: bool) -> list[str]:
     """Read the explicit offline URL list or discover current online pages."""
 
     if skip_download:
@@ -1087,7 +1095,7 @@ def _moasher_urls(con, *, skip_download: bool) -> list[str]:
         raise ValueError("Mo'asher online discovery returned no monthly pages")
     return discovered
 
-def build_lease_monthly(con, *, force: bool = False, skip_download: bool = False) -> list[dict]:
+def build_lease_monthly(*, skip_download: bool = False) -> list[dict]:
     """抓取/解析 Mo'asher 租赁指数页面，输出 dld_lease_monthly 入库行。
 
     页面按标题判别：仅处理 "Official Rental Performance Index"（租赁版）；
@@ -1095,7 +1103,7 @@ def build_lease_monthly(con, *, force: bool = False, skip_download: bool = False
     在 source_url 以便追溯。
     """
 
-    urls = _moasher_urls(con, skip_download=skip_download)
+    urls = _moasher_urls(skip_download=skip_download)
     cached_dir = RAW_DLD_DIR / "moasher"
     rows: list[dict] = []
     seen: set[date] = set()
@@ -1106,7 +1114,6 @@ def build_lease_monthly(con, *, force: bool = False, skip_download: bool = False
         html = _fetch_moasher_page(
             url,
             cached_dir,
-            force=force or not skip_download,
             skip_download=skip_download,
         )
         parsed = _parse_moasher_rental(html, slug=slug)
@@ -1669,7 +1676,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     built = build_rows(_fetch_raw_weekly(con))
     weekly_rows = to_weekly_table_rows(built)
     sales_rows = build_sales_monthly(con)
-    lease_rows = build_lease_monthly(con, force=force, skip_download=skip_download)
+    lease_rows = build_lease_monthly(skip_download=skip_download)
 
     con.begin()
     try:
@@ -1924,172 +1931,3 @@ def merge(workbook_path: Path) -> dict:
 # ---------------------------------------------------------------------------
 # 自检
 # ---------------------------------------------------------------------------
-
-def self_check() -> str:
-    """不触碰真实库/网络/工作簿的自检：纯函数冒烟 + 常量完整性。"""
-
-    assert _numeric_value(None, column="value") is None
-    assert _numeric_value(12.5, column="value") == 12.5
-    assert log_momentum(9.0, 2.0) == math.log1p(9.0) - math.log1p(2.0)
-    assert log_momentum(-1.0, 2.0) is None
-    assert log_momentum(5.0, None) is None
-    assert score_from_z(None) is None
-    assert score_from_z(0.0) == 50.0
-    assert score_from_z(5.0) == 100.0
-    assert score_from_z(-5.0) == 0.0
-    assert score_from_z(9.0) == 100.0
-    assert formatted(None) == ""
-    assert formatted(5) == "5"
-    assert formatted(5.5) == "5.500000"
-    assert len(INDICATOR_DICTIONARY) == 6
-    assert len(COLUMN_DICTIONARY) == len(KEEP_COLUMNS) == 9
-    assert all(len(row) == 7 for row in COLUMN_DICTIONARY)
-    assert {row[1] for row in COLUMN_DICTIONARY} == set(KEEP_COLUMNS)
-    assert [row[0] for row in INDICATOR_DICTIONARY] == list(WEEKLY_CSV_HEADERS[1:])
-    assert "FROM detail.dld_transactions" in RAW_WEEKLY_SQL
-    # 周度 SQL 与视图所需列必须全部属于保留列
-    required = {
-        "actual_worth",
-        "instance_date",
-        "project_number",
-        "property_type_en",
-        "reg_type_en",
-        "trans_group_en",
-        "transaction_id",
-    }
-    assert required <= set(KEEP_COLUMNS)
-    # 月度常量完整性
-    assert len(SALES_INDICATOR_KEYS) == 4
-    assert len(LEASE_INDICATORS) == 5
-    assert len(MONTHLY_INDICATOR_DICTIONARY) == len(MONTHLY_SHEET_HEADERS) - 1 == 13
-    assert [row[0] for row in MONTHLY_INDICATOR_DICTIONARY] == list(
-        MONTHLY_SHEET_HEADERS[1:]
-    )
-    assert _moasher_month_from_slug("2023-monthly-january-25") == date(2023, 1, 31)
-    assert _moasher_month_from_slug("garbage") is None
-    # 租赁页面解析冒烟（百分号与 percent 两种官方写法）
-    rental_html = (
-        "<title>Dubai January 2023: The Official Rental Performance Index</title>"
-        "<p>January had a total of 59,390 rental contracts, of which "
-        "53.64 percent were new, and 46.36 percent were renewals.</p>"
-        "<p>66.15 percent were registered for residential purposes, "
-        "while 32.32 percent were for commercial purposes.</p>"
-    )
-    parsed = _parse_moasher_rental(rental_html)
-    assert parsed is not None
-    assert parsed["lease_contracts_total"] == 59390
-    assert abs(parsed["lease_new_pct"] - 53.64) < 1e-9
-    assert abs(parsed["lease_renewed_pct"] - 46.36) < 1e-9
-    assert abs(parsed["lease_residential_pct"] - 66.15) < 1e-9
-    assert abs(parsed["lease_commercial_pct"] - 32.32) < 1e-9
-    rental_pct_html = (
-        "<title>Dubai September 2024: The Official Rental Performance Index</title>"
-        "<p>September had a total of 67,278 rental contracts, of which "
-        "59% of contracts were new and 41% were renewals.</p>"
-        "<p>62.6% were registered for residential purposes, "
-        "while 37.4% were for commercial and other purposes.</p>"
-    )
-    parsed2 = _parse_moasher_rental(rental_pct_html)
-    assert parsed2 is not None
-    assert parsed2["lease_contracts_total"] == 67278
-    assert abs(parsed2["lease_new_pct"] - 59.0) < 1e-9
-    assert abs(parsed2["lease_residential_pct"] - 62.6) < 1e-9
-    sales_html = "<title>Dubai January 2023: The Official Sales Price Index</title><p>x</p>"
-    assert _parse_moasher_rental(sales_html) is None
-    # 2022 版措辞：recorded ... rental leases / percent were X leases
-    rental_2022 = (
-        "<title>Dubai July 2022: The Official Rental Performance Index</title>"
-        "<p>July 2022 recorded 42,698 rental leases. 56.04 percent were new "
-        "leases while 43.96 percent were renewals. 25.66 percent were commercial "
-        "leases while 72.97 percent were residential leases.</p>"
-    )
-    parsed3 = _parse_moasher_rental(rental_2022)
-    assert parsed3 is not None
-    assert parsed3["lease_contracts_total"] == 42698
-    assert abs(parsed3["lease_new_pct"] - 56.04) < 1e-9
-    assert abs(parsed3["lease_residential_pct"] - 72.97) < 1e-9
-    assert abs(parsed3["lease_commercial_pct"] - 25.66) < 1e-9
-    # 2024-01 变体：", and were 53.85% renewals"（renewals 数字在 were 之后）
-    rental_2024 = (
-        "<title>Dubai January 2024: The Official Rental Performance Index</title>"
-        "<p>January had a total of 73,297 rental contracts, of which 46.15% "
-        "were new, and were 53.85% renewals. 60.97% were registered for "
-        "residential purposes, while 37.68% were for commercial purposes.</p>"
-    )
-    parsed4 = _parse_moasher_rental(rental_2024)
-    assert parsed4 is not None
-    assert parsed4["lease_contracts_total"] == 73297
-    assert abs(parsed4["lease_new_pct"] - 46.15) < 1e-9
-    assert abs(parsed4["lease_renewed_pct"] - 53.85) < 1e-9
-    assert abs(parsed4["lease_residential_pct"] - 60.97) < 1e-9
-    assert abs(parsed4["lease_commercial_pct"] - 37.68) < 1e-9
-    # 季报页防误配：页面含 Q1 合计 160,530，但当月（March）为 44,783
-    rental_q1 = (
-        "<title>Dubai March 2022: The Official Rental Performance Index</title>"
-        "<p>Key Findings: • Q1 2022 had a total of 160,530 rental contracts "
-        "of which 51.89 percent of contracts were new and 48.1 percent were "
-        "renewals. • March had a total of 44,783 rental contracts of which "
-        "60.28 percent of contracts were new and 39.72 percent were renewals.</p>"
-    )
-    parsed5 = _parse_moasher_rental(rental_q1, slug="2022-monthly-march-190")
-    assert parsed5 is not None
-    assert parsed5["lease_contracts_total"] == 44783, parsed5
-    assert abs(parsed5["lease_new_pct"] - 60.28) < 1e-9
-    assert abs(parsed5["lease_renewed_pct"] - 39.72) < 1e-9
-    # 2022-01 措辞 "had 51,452 leases"
-    rental_2022a = (
-        "<title>Dubai January 2022: The Official Rental Performance Index</title>"
-        "<p>January 2022 had 51,452 leases. 52% were new leases while 48% "
-        "were renewals. 29% were commercial leases while 70% were residential leases.</p>"
-    )
-    parsed6 = _parse_moasher_rental(rental_2022a, slug="2022-monthly-january-148")
-    assert parsed6 is not None
-    assert parsed6["lease_contracts_total"] == 51452
-    assert abs(parsed6["lease_new_pct"] - 52.0) < 1e-9
-    # 2024-08 措辞 "commercial and other leases"
-    rental_2024a = (
-        "<title>Dubai August 2024: The Official Rental Performance Index</title>"
-        "<p>August 2024 recorded 63,516 rental leases. 64.2% were residential "
-        "leases. While 35.8% were commercial and other leases.</p>"
-    )
-    parsed7 = _parse_moasher_rental(rental_2024a, slug="2024-monthly-august-213")
-    assert parsed7 is not None
-    assert parsed7["lease_contracts_total"] == 63516
-    assert abs(parsed7["lease_residential_pct"] - 64.2) < 1e-9
-    assert abs(parsed7["lease_commercial_pct"] - 35.8) < 1e-9
-    # 短序列冒烟：build_rows 输出形状与 None 传播
-    small = [
-        {
-            "week_start": "2009-01-05",
-            "week_end": "2009-01-11",
-            "source_data_through": "2026-08-10",
-            "initial_new_projects": "3",
-            "confirmed_new_projects": "2",
-            "confirmed_new_projects_28d": "10",
-            "offplan_sales_28d": "100",
-            "offplan_sales_value_28d": "50000",
-            "active_projects_28d": "20",
-            "offplan_sales_per_active_project_28d": "5.0",
-            "project_number_coverage_pct_28d": "99.5",
-            "commercial_transition_projects": "1",
-            "commercial_transition_projects_13w": "12",
-        }
-    ]
-    built = build_rows(small)
-    assert len(built) == 1
-    assert built[0]["confirmed_launch_yoy_log_momentum"] is None
-    assert built[0]["confirmed_launch_z"] is None
-    assert built[0]["offplan_absorption_score"] is None
-    assert built[0]["quality_flag"] == "ok"
-    return "source_dld 自检通过：模块导入、纯函数、常量完整性与短序列冒烟检查均 OK"
-
-
-if __name__ == "__main__":
-    print(self_check())
-    print()
-    print("用法提示：")
-    print("  1) Full update (refresh the Data Dubai snapshot and rebuild indicators):")
-    print("     from htfa.jobs.uae_data import db, source_dld; con = db.connect(); source_dld.update(con)")
-    print("  2) 跳过下载仅本地重建: update(con, skip_download=True)")
-    print("  3) 强制重新下载原始快照: update(con, force=True)")
-    print("  4) 写回工作簿: source_dld.merge(Path('data/UAE/阿联酋.xlsx'))")

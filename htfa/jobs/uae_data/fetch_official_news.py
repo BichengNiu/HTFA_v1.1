@@ -293,6 +293,7 @@ def discover_official_news(*, start: date) -> dict:
         )
 
     observations: list[dict] = []
+    empty_articles: list[str] = []
     previous_date: date | None = None
     scanned_through: date | None = None
     pages_scanned = 0
@@ -323,15 +324,23 @@ def discover_official_news(*, start: date) -> dict:
             headline = item.get("NewsTitle")
             link = item.get("DetailPageLink")
             body = item.get("FullText")
-            if not isinstance(headline, str) or not headline.strip():
+            if not isinstance(headline, str):
                 raise ValueError("Media Office news item is missing NewsTitle")
             if not isinstance(link, str) or not link:
                 raise ValueError("Media Office news item is missing DetailPageLink")
-            if not isinstance(body, str) or not body.strip():
-                raise ValueError(f"Media Office news item has no article text: {link}")
             source_url = urljoin(MEDIA_OFFICE, link)
             if urlsplit(source_url).netloc.casefold() != "mediaoffice.ae":
                 raise ValueError(f"Media Office news item has an external URL: {link!r}")
+            if not isinstance(body, str):
+                raise ValueError(f"Media Office news item has invalid article text: {link}")
+            if not body.strip():
+                if re.search(
+                    r"licen[cs]|\bDED\b|economic development|economy and tourism",
+                    headline, re.I,
+                ):
+                    raise ValueError(f"Media Office licence news has no article text: {link}")
+                empty_articles.append(source_url)
+                continue
             observations.extend(
                 extract_from_text(
                     fetch_text_from_html(body),
@@ -349,6 +358,7 @@ def discover_official_news(*, start: date) -> dict:
         "pages": pages_scanned,
         "observations": observations,
         "scanned_through": scanned_through,
+        "articles_without_text": empty_articles,
     }
 
 

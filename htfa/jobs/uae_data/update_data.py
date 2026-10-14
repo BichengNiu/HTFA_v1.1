@@ -49,6 +49,7 @@ SOURCES = (
     "gfs",
     "pmi",
     "portwatch",
+    "public_market",
     "rta",
     "salik",
     "scad",
@@ -57,20 +58,6 @@ SOURCES = (
     "uaewps",
     "wam",
 )
-
-EXTENDED_MERGE_SOURCES = frozenset(
-    {
-        "comtrade",
-        "comtrade_vehicles",
-        "ded",
-        "dot_t100",
-        "dubai_customs_air",
-        "employment",
-        "eurostat_air",
-        "salik",
-    }
-)
-
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -180,8 +167,6 @@ def workbook_merge_sources(source_names: list[str]) -> list[str]:
 
     merge_module = importlib.import_module(".merge_workbook", package=__package__)
     requested = set(source_names)
-    if requested & EXTENDED_MERGE_SOURCES:
-        requested.add("extended")
     return [name for name in merge_module.SOURCES if name in requested]
 
 

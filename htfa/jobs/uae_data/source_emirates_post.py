@@ -32,6 +32,8 @@ from datetime import date
 from pathlib import Path
 from urllib.parse import quote
 
+from openpyxl import load_workbook
+
 from .paths import DATA_DIR
 
 
@@ -132,8 +134,8 @@ def _discover_resource() -> tuple[str, str]:
     raise ValueError("bayanat 数据集页面未发现当前资源链接")
 
 
-def download(force: bool = False) -> Path:
-    """下载最新 xlsx 到 raw/emirates_post/（force=False 且已存在时复用）。"""
+def download() -> Path:
+    """每次从官网发现并下载最新 xlsx 到 raw/emirates_post/。"""
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     target = RAW_DIR / RAW_FILE_NAME
     resource_id, file_name = _discover_resource()
@@ -153,12 +155,6 @@ def download(force: bool = False) -> Path:
 # ---------------------------------------------------------------------------
 # 解析
 # ---------------------------------------------------------------------------
-
-
-def _load_raw_workbook(path: Path) -> "openpyxl.workbook.Workbook":
-    import openpyxl
-
-    return openpyxl.load_workbook(path, read_only=True, data_only=True)
 
 
 def _metadata_value(metadata_rows: list[list], column: str) -> str | None:
@@ -187,7 +183,7 @@ def parse_workbook(path: Path) -> tuple[list[dict], dict, dict]:
     raw_rows 记录源行数以便审计。全部校验失败即抛错（fail loud），防止
     源格式/口径漂移导致静默错数。
     """
-    workbook = _load_raw_workbook(path)
+    workbook = load_workbook(path, read_only=True, data_only=True)
     try:
         sheet_names = workbook.sheetnames
         if "Dataset" not in sheet_names or "Metadata" not in sheet_names:
@@ -343,13 +339,13 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     else:
         # bayanat keeps a stable resource name while revising the workbook
         # in place; discover and fetch it on every online run.
-        path = download(force=force)
+        path = download()
         download_note = "已在线刷新 bayanat 数据集"
     rows, metadata, duplicate_stats = parse_workbook(path)
 
     con.begin()
     try:
-        db.replace(con, "emirates_post_monthly", rows)
+        db.replace(con, "detail.emirates_post_monthly", rows)
         db.upsert_dictionary_rows(con, _dictionary_rows())
         con.commit()
     except Exception:
@@ -458,12 +454,3 @@ def merge(workbook_path: Path) -> dict:
         "note": f"{len(observations)} 个月写入 {TARGET_SHEET}"
         f"（{len(INDICATORS)} 个指标）",
     }
-
-
-if __name__ == "__main__":
-    print("source_emirates_post.py 自检：")
-    print("  update(con, force=, skip_download=) 下载/解析 bayanat.ae 的")
-    print("    Domestic Postal Services Volume xlsx → 校验 → 入明细表 "
-          "emirates_post_monthly")
-    print("  merge(workbook_path) 按 (period, service) 聚合 → 写回 月度_邮政")
-    print("  本文件直接运行不执行任何下载或工作簿写入。")

@@ -1,8 +1,7 @@
 """Merge DuckDB data back into the relevant ``data/UAE/阿联酋.xlsx`` sheets.
 
-Each ``source_*.py`` module owns its sheet-writing protocol (Excel COM
-helper, openpyxl direct write, or CSV export), exactly as the pre-DuckDB
-scripts did, but reads its input from ``data/UAE/uae.duckdb``.
+Each ``source_*.py`` module owns its workbook sheets and reads their values
+from ``data/UAE/uae.duckdb``. Writers use Excel COM or atomic OOXML writes.
 
 Close the workbook in Excel before merging; every writer keeps its backup
 and rollback behaviour.
@@ -44,18 +43,22 @@ SOURCES = (
     "comtrade_vehicles",
     "ded",
     "dld",
+    "dot_t100",
+    "dubai_customs_air",
     "employment",
     "emirates_post",
+    "eurostat_air",
     "foreign_labour",
     "gfs",
     "pmi",
     "portwatch",
+    "public_market",
     "rta",
+    "salik",
     "scad",
     "steel",
     "tdra",
     "uaewps",
-    "extended",
     "wam",
 )
 

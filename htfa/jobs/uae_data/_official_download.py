@@ -1,7 +1,7 @@
 """Small, conservative helpers for downloading official source files.
 
 The UAE jobs deliberately keep downloaded files under ``data/UAE/raw``.  This
-module only supplies a common user-agent, atomic writes, and a minimum-size
+module supplies explicit HTTP transports, atomic writes, and a minimum-size
 check; source-specific discovery and parsing stay in their own modules.
 """
 
@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import tempfile
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 
@@ -25,8 +26,26 @@ def fetch_bytes(
     referer: str | None = None,
     user_agent: str = USER_AGENT,
     timeout: int = 90,
+    browser_transport: bool = False,
 ) -> bytes:
-    """Fetch an official URL with a browser-like request header."""
+    """Fetch ``url`` using the explicitly selected HTTP transport.
+
+    ``referer`` and ``timeout`` configure either transport. ``user_agent`` is
+    used by urllib; ``browser_transport=True`` selects curl_cffi's Chrome
+    headers and TLS directly. Failed requests propagate without switching
+    transports or substituting old payloads.
+    """
+
+    if browser_transport:
+        from curl_cffi import requests
+
+        headers = {"Referer": referer} if referer else {}
+        response = requests.get(
+            url, impersonate="chrome", timeout=timeout, headers=headers
+        )
+        if response.status_code != 200:
+            raise HTTPError(url, response.status_code, "Official download failed", None, None)
+        return response.content
 
     headers = {"User-Agent": user_agent, "Accept": "*/*"}
     if referer:
@@ -44,6 +63,7 @@ def download_file(
     min_bytes: int = 128,
     referer: str | None = None,
     user_agent: str = USER_AGENT,
+    browser_transport: bool = False,
 ) -> str:
     """Download ``url`` to ``destination`` atomically.
 
@@ -54,7 +74,8 @@ def download_file(
 
     if not force and destination.is_file() and destination.stat().st_size >= min_bytes:
         return "existing"
-    payload = fetch_bytes(url, referer=referer, user_agent=user_agent)
+    fetch_options = {"browser_transport": True} if browser_transport else {}
+    payload = fetch_bytes(url, referer=referer, user_agent=user_agent, **fetch_options)
     if len(payload) < min_bytes:
         raise RuntimeError(
             f"官方地址返回内容过小，疑似错误页: {url} ({len(payload)} bytes)"

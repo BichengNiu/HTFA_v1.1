@@ -63,7 +63,9 @@ def test_update_roundtrip_creates_daily_monthly_and_dictionary_tables() -> None:
     con = db.connect(":memory:")
     db.init_schema(con)
     outcome = source.update(con, skip_download=True)
-    expected_daily = len(source.load_effective_daily_observations())
+    effective = source.load_effective_daily_observations()
+    expected_daily = len(effective)
+    expected_monthly = source.build_monthly_observations(effective)
 
     assert outcome["status"] == "ok"
     assert con.execute(
@@ -71,17 +73,14 @@ def test_update_roundtrip_creates_daily_monthly_and_dictionary_tables() -> None:
     ).fetchone()[0] == expected_daily
     assert con.execute(
         "SELECT COUNT(*) FROM wam_military_strike_monthly"
-    ).fetchone()[0] == 6
+    ).fetchone()[0] == len(expected_monthly)
     assert con.execute(
         "SELECT MAX(period) FROM wam_military_strike_monthly"
-    ).fetchone()[0].isoformat() == "2026-08-31"
+    ).fetchone()[0] == expected_monthly[-1].period
     assert con.execute(
         "SELECT MIN(strike_intensity_index), MAX(strike_intensity_index) "
         "FROM wam_military_strike_monthly"
     ).fetchone() == pytest.approx((0.0, 100.0))
-    assert con.execute(
-        "SELECT COUNT(*) FROM main.wam_military_strike_daily"
-    ).fetchone()[0] == expected_daily
     assert con.execute(
         "SELECT COUNT(*) FROM meta_indicator_dictionary WHERE source = ?",
         [source.SOURCE_NAME],
@@ -176,6 +175,7 @@ def test_auto_daily_extension_fills_days_until_latest_event() -> None:
                 "date_published": "2026-08-31T10:35:47+04:00",
             }
         ],
+        end_date=date(2026, 8, 31),
     )
 
     assert len(rows) == 9

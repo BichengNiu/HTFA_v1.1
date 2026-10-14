@@ -33,6 +33,7 @@ from collections import Counter
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 
 from .paths import DATA_DIR
@@ -43,6 +44,7 @@ from .db import (  # noqa: E402
     replace,
 )
 from . import fetch_official_news  # noqa: E402
+from .workbook_sheet_writer import read_indicator_metadata, write_indicator_sheets
 
 DATA_DUBAI = "https://data.dubai"
 DATASET_PAGE = (
@@ -64,13 +66,6 @@ RAW = OUT / "raw"
 BACKUP_DIR = RAW_DED / "backups"
 
 SHEET_NAME = "月度_DED"
-SOURCE_NAME = "DED"
-
-import openpyxl  # noqa: E402
-from openpyxl.styles import Font  # noqa: E402
-
-HEADER_FONT = Font(name="等线", size=11, bold=True)
-BODY_FONT = Font(name="等线", size=11)
 
 MONTHLY_TABLE = "ded_monthly"
 BY_TYPE_TABLE = "ded_monthly_by_type"
@@ -111,39 +106,8 @@ def sha256_file(path):
     return digest.hexdigest()
 
 
-def parse_netscape_cookies(path):
-    """读取 Netscape cookies.txt（curl -c / 浏览器插件导出），返回 CookieJar。"""
+def build_opener():
     jar = http.cookiejar.CookieJar()
-    with open(path, "r", encoding="utf-8") as source:
-        for line in source:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            parts = line.split("\t")
-            if len(parts) < 7:
-                continue
-            domain, _, path_part, secure, expires, name, value = parts[:7]
-            try:
-                secure = secure.lower() == "true"
-                expires = int(expires) if expires and expires != "0" else None
-            except ValueError:
-                continue
-            jar.set_cookie(http.cookiejar.Cookie(
-                version=0, name=name, value=value,
-                port=None, port_specified=False,
-                domain=domain, domain_specified=bool(domain),
-                domain_initial_dot=domain.startswith("."),
-                path=path_part or "/", path_specified=bool(path_part),
-                secure=secure, expires=expires, discard=False,
-                comment=None, comment_url=None, rest={},
-            ))
-    return jar
-
-
-def build_opener(cookies_file=None):
-    jar = http.cookiejar.CookieJar()
-    if cookies_file:
-        jar = parse_netscape_cookies(cookies_file)
     return urllib.request.build_opener(
         urllib.request.HTTPCookieProcessor(jar),
         urllib.request.HTTPRedirectHandler(),
@@ -164,8 +128,7 @@ def raise_if_sso_url(response):
     if "smartsso.dubai.gov.ae" in final or "/isam/sps/" in final:
         raise AuthRequiredError(
             "请求被重定向到迪拜政府统一登录（smartsso.dubai.gov.ae，需要登录）。"
-            "处理方式：浏览器登录后，把会话 Cookie 通过 --header \"Cookie: ...\" 传入；"
-            "或把数据文件直链用 --url 直接指定。详见 README.md。"
+            "自动更新已终止，不会将登录页面当作数据。"
         )
     return response
 
@@ -270,7 +233,6 @@ def stream_to_file(opener, url, dest, headers=None, timeout=180, retries=4):
             dest.unlink(missing_ok=True)
             raise
     raise last
-
 
 
 def fetch_data_dubai_files(opener, dataset_id, headers=None, prefer="csv"):
@@ -490,7 +452,7 @@ def parse_date(value):
     return None
 
 
-def aggregate(rows, date_col, type_col):
+def aggregate(rows, date_col, type_col, *, as_of=None):
     """月度聚合（与 fetch_ded_license.py 完全相同）。
 
     - monthly            ：记录行数（每条登记记录一张执照，按发照日期归月）
@@ -505,6 +467,8 @@ def aggregate(rows, date_col, type_col):
     by_type = Counter()
     date_min = date_max = None
     sample_rows = []
+    reference = as_of or datetime.now().date()
+    future_rows = []
     for row in rows:
         total += 1
         if len(sample_rows) < 3:
@@ -514,6 +478,10 @@ def aggregate(rows, date_col, type_col):
             result = parse_date(row.get(date_col))
             if result and 1900 <= result[0] <= 2100:  # 过滤占位/脏年份
                 y, m = result
+                if (y, m) > (reference.year, reference.month):
+                    bad += 1
+                    future_rows.append(dict(row))
+                    continue
                 parsed += 1
                 month_key = f"{y:04d}-{m:02d}"
                 monthly[month_key] += 1
@@ -549,6 +517,7 @@ def aggregate(rows, date_col, type_col):
         "date_min": date_min,
         "date_max": date_max,
         "sample_rows": sample_rows,
+        "future_rows": future_rows,
     }
 
 
@@ -573,6 +542,8 @@ def aggregate_snapshots(paths, *, date_col=None, type_col=None, limit=None):
 
     stats = aggregate(all_rows(), used_date_col, used_type_col)
     warnings = []
+    if stats["future_rows"]:
+        warnings.append(f"{len(stats['future_rows'])} 行发证月份晚于当前月份，隔离并保留原始记录。")
     if not used_date_col:
         warnings.append("未识别到日期列，无法按月聚合（可用 --date-col 指定）。")
     elif stats["bad"]:
@@ -836,122 +807,34 @@ def _transaction(con):
 
 
 # --------------------------------------------------------------------------
-# 月度_DED 工作簿写入（与 build_monthly_ded_sheet.py 一致）
-# --------------------------------------------------------------------------
-
-def month_to_date(month):
-    """'YYYY-MM' -> 月末 datetime（工作簿单元格用）。"""
-    year, m = int(month[:4]), int(month[5:7])
-    if m == 12:
-        return datetime(year, 12, 31)
-    return datetime(year, m + 1, 1) - timedelta(days=1)
-
-
-def build_rows(counts, official):
-    """合并为行字典，降序排列。"""
-    months = sorted(set(counts) | set(official), reverse=True)
-    rows = []
-    for month in months:
-        c = counts.get(month) or {}
-        rows.append({
-            "month": month,
-            "date": month_to_date(month),
-            "enterprises": c.get("enterprises"),
-            "licences": c.get("licences"),
-            "official": official.get(month),
-        })
-    return rows
-
-
-def update_sheet(workbook, rows):
-    """写/替换 月度_DED sheet（其他 sheet 不动）。"""
-    if SHEET_NAME in workbook.sheetnames:
-        del workbook[SHEET_NAME]
-    ws = workbook.create_sheet(SHEET_NAME)
-
-    ws.cell(row=1, column=1, value=SOURCE_NAME)
-    ws.cell(row=2, column=1, value="指标名称")
-    ws.cell(row=2, column=2, value="迪拜:当月有发证活动的企业数(企业号筛重)")
-    ws.cell(row=2, column=3, value="迪拜:当月新发执照数(执照号筛重)")
-    ws.cell(row=2, column=4, value="迪拜:新发执照数(官方口径)")
-    ws.cell(row=3, column=1, value="频率")
-    ws.cell(row=3, column=2, value="月")
-    ws.cell(row=3, column=3, value="月")
-    ws.cell(row=3, column=4, value="月")
-    ws.cell(row=4, column=1, value="单位")
-    ws.cell(row=4, column=2, value="家")
-    ws.cell(row=4, column=3, value="张")
-    ws.cell(row=4, column=4, value="张")
-    ws.cell(row=5, column=1, value="来源")
-    ws.cell(row=5, column=2, value="data.dubai Commerce Registry (commerce_number 按发照月去重)")
-    ws.cell(row=5, column=3, value="data.dubai Commerce Registry (main_license_number 按发照月去重)")
-    ws.cell(row=5, column=4, value="DET/迪拜媒体办新闻稿")
-    ws.cell(row=6, column=1, value="更新时间")
-    now = datetime.now()
-    for col in (2, 3, 4):
-        ws.cell(row=6, column=col, value=now)
-
-    for i, row in enumerate(rows):
-        r = 7 + i
-        ws.cell(row=r, column=1, value=row["date"])
-        ws.cell(row=r, column=2, value=row["enterprises"])
-        ws.cell(row=r, column=3, value=row["licences"])
-        ws.cell(row=r, column=4, value=row["official"])
-
-    for row_cells in ws.iter_rows(min_row=1, max_row=6, max_col=4):
-        for cell in row_cells:
-            cell.font = HEADER_FONT
-    for row_cells in ws.iter_rows(min_row=7, max_row=ws.max_row, max_col=4):
-        for cell in row_cells:
-            cell.font = BODY_FONT
-
-    for col, width in (("A", 13), ("B", 46), ("C", 46), ("D", 24)):
-        ws.column_dimensions[col].width = width
-    ws.freeze_panes = "A7"
-    return len(rows)
-
-
-# --------------------------------------------------------------------------
 # 库查询 → 月度_DED 输入（merge 用）
 # --------------------------------------------------------------------------
 
-def _month_key(date_value) -> str:
-    """date/datetime/str -> 'YYYY-MM'。"""
-    if isinstance(date_value, str):
-        return date_value[:7]
-    return f"{date_value.year:04d}-{date_value.month:02d}"
 
-
-def _counts_from_db(con) -> dict[str, dict[str, int]]:
-    """从 ded_monthly 读取筛重序列 -> {YYYY-MM: {"enterprises": int, "licences": int}}。"""
-    data: dict[str, dict[str, int]] = {}
-    for month, series, value in con.execute(
-        "SELECT month, series, value FROM ded_monthly WHERE series IN ('enterprises', 'licences')"
+def _sheet_spec(con) -> dict[str, Any]:
+    series_names = {
+        "records": "迪拜:DED:当月快照记录数",
+        "enterprises": "迪拜:当月有发证活动的企业数(企业号筛重)",
+        "licences": "迪拜:当月新发执照数(执照号筛重)",
+        "official_new_licenses": "迪拜:新发执照数(官方口径)",
+    }
+    periods = {}
+    for period, series, value in con.execute(
+        "SELECT month, series, value FROM ded_monthly ORDER BY month"
     ).fetchall():
-        key = _month_key(month)
-        data.setdefault(key, {})[series] = int(round(float(value)))
-    return data
+        periods.setdefault(period, {})[series_names[series]] = value
+    rows = list(periods.items())
+    return {
+        "name": SHEET_NAME,
+        "title": "DED 迪拜商业注册月度指标",
+        "indicators": list(series_names.values()),
+        "rows": rows,
+    }
 
-
-def _official_from_db(con) -> dict[str, int]:
-    """从 ded_monthly 读取官方系列 -> {YYYY-MM: int}。"""
-    data: dict[str, int] = {}
-    for month, value in con.execute(
-        "SELECT month, value FROM ded_monthly WHERE series = 'official_new_licenses'"
-    ).fetchall():
-        data[_month_key(month)] = int(round(float(value)))
-    return data
-
-
-# --------------------------------------------------------------------------
-# 统一入口
-# --------------------------------------------------------------------------
 
 def _latest_snapshot() -> Path:
     """--skip-download 路径：取 raw/ 下最新快照（与原脚本一致）。"""
     snaps = sorted(RAW.glob("commerce_registry_*"))
-    if not snaps:
-        snaps = sorted(RAW.glob("ded_license_master_*"))
     if not snaps:
         raise FileNotFoundError(f"raw/ 下没有快照，无法跳过下载: {RAW}")
     return snaps[-1]
@@ -963,7 +846,7 @@ def _download_snapshots() -> tuple[list[Path], list[str]]:
     返回 (本地快照路径列表, 源文件直链列表)（直链供清单记录）。
     """
 
-    opener = build_opener(None)
+    opener = build_opener()
     files = fetch_data_dubai_files(opener, DATASET_ID, headers={}, prefer="csv")
     for item in files:
         print(f"  {item['file_name']} ({format_bytes(item['file_size'])})")
@@ -1006,10 +889,15 @@ def update(
     result = aggregate_snapshots(snapshots)
     stats = result["stats"]
     warnings = result["warnings"]
+    (OUT / "future_issue_dates.json").write_text(
+        json.dumps(stats["future_rows"], ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     news_scan = None
     if not skip_download:
         scan_start = _official_news_scan_start(con)
         news_scan = fetch_official_news.discover_official_news(start=scan_start)
+        for url in news_scan.get("articles_without_text", []):
+            warnings.append(f"媒体办原文没有正文，未提取指标: {url}")
 
     # 审计文件（本地，结构照旧）
     write_monthly(OUT / "monthly_new_licenses.csv", stats["monthly"])
@@ -1087,7 +975,8 @@ def update(
             f"官方数字 {len(official)} 个期间；"
             + (
                 f"媒体办扫描 {news_scan['pages']} 页、"
-                f"提取 {len(news_scan['observations'])} 个候选"
+                f"提取 {len(news_scan['observations'])} 个候选；"
+                f"无正文新闻 {len(news_scan.get('articles_without_text', []))} 条（见审计告警）"
                 if news_scan is not None
                 else "跳过媒体办扫描（复用 DuckDB 候选）"
             )
@@ -1096,7 +985,7 @@ def update(
 
 
 def merge(workbook_path: Path) -> dict[str, object]:
-    """从库查询 DED 数据并写入「月度_DED」sheet（openpyxl 直写）。
+    """从正式库重建「月度_DED」，使用共享原子写表工具。
 
     写入前在 data/UAE/raw/ded/backups/ 留时间戳备份；Excel 占用时抛出明确错误。
     """
@@ -1107,13 +996,12 @@ def merge(workbook_path: Path) -> dict[str, object]:
 
     con = connect(read_only=True)
     try:
-        counts = _counts_from_db(con)
-        official = _official_from_db(con)
+        spec = _sheet_spec(con)
+        spec["metadata"] = read_indicator_metadata(con, spec["indicators"])
     finally:
         con.close()
-    if not counts and not official:
+    if not spec["rows"]:
         raise RuntimeError("ded_monthly 数据为空，无可写入内容。")
-    rows = build_rows(counts, official)
 
     # 写入前备份（遵循项目惯例；备份目录改到 data/UAE/raw/ded/backups/）
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
@@ -1121,35 +1009,5 @@ def merge(workbook_path: Path) -> dict[str, object]:
     backup = BACKUP_DIR / f"阿联酋_before_ded_{stamp}.xlsx"
     shutil.copy2(target, backup)
 
-    wb = openpyxl.load_workbook(str(target))
-    n = update_sheet(wb, rows)
-    try:
-        wb.save(str(target))
-    except PermissionError as exc:
-        raise RuntimeError(
-            f"无法写入 {target.name}：文件被占用。\n"
-            "请先关闭 Excel 中打开的 阿联酋.xlsx，然后重新运行本模块。"
-        ) from exc
-    finally:
-        wb.close()
-    note = (
-        f"sheet「{SHEET_NAME}」更新 {n} 行（{rows[0]['month']} ~ {rows[-1]['month']}）；"
-        f"企业列有值 {sum(1 for r in rows if r['enterprises'] is not None)} 个月，"
-        f"执照列有值 {sum(1 for r in rows if r['licences'] is not None)} 个月，"
-        f"官方列有值 {sum(1 for r in rows if r['official'] is not None)} 个月"
-    )
-    return {"status": "ok", "note": note}
-
-
-if __name__ == "__main__":
-    # 自检提示（不执行网络/工作簿写入）
-    _snap = _latest_snapshot()
-    _result = aggregate_snapshots([_snap])
-    _stats = _result["stats"]
-    print(
-        f"[source_ded] 自检（skip-download 路径）：{_snap.name}，"
-        f"{_stats['total']:,} 行，日期可解析 {_stats['parsed']:,}，"
-        f"月份范围 {_stats['date_min']} ~ {_stats['date_max']}。"
-    )
-    print("[source_ded] 运行 htfa.jobs.uae_data.update_data --source ded 执行完整入库；"
-          "htfa.jobs.uae_data.merge_workbook --source ded 回写工作簿。")
+    counts = write_indicator_sheets(target, [spec])
+    return {"status": "ok", "note": f"sheet「{SHEET_NAME}」更新 {counts[SHEET_NAME]} 行"}

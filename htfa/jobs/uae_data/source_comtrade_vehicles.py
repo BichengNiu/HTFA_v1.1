@@ -356,11 +356,3 @@ def merge(workbook_path: Path) -> dict:
         "status": "ok",
         "note": f"{len(observations)} 个月写 {TARGET_SHEET}（乘用车+商用车台数）",
     }
-
-
-if __name__ == "__main__":
-    print("source_comtrade_vehicles.py 自检：")
-    print("  update(con, ...) 聚合 raw/comtrade/hs87/ JSON → comtrade_vehicles_monthly")
-    print("     （镜像口径为主，金额 USD + 台数）")
-    print("  merge() 聚合乘用车(8703)+商用车(8702+8704) 台数 → 月度_汽车进口")
-    print("  Excel 只写两大整车类的进口量（台），不含金额与零件。")
