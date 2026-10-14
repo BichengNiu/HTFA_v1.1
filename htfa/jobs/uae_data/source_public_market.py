@@ -41,9 +41,9 @@ USD = "美元兑阿联酋迪拉姆"
 CNY = "人民币兑阿联酋迪拉姆"
 DFM = "阿联酋DFM综合股票指数"
 INDICATORS = {
-    EIBOR_ON: ("%", "CBUAE EIBOR"),
-    EIBOR_YEAR: ("%", "CBUAE EIBOR"),
-    EFFR: ("%", "Federal Reserve Bank of New York"),
+    EIBOR_ON: ("%", "阿联酋央行"),
+    EIBOR_YEAR: ("%", "阿联酋央行"),
+    EFFR: ("%", "美联储纽约分行"),
     USD: ("AED/USD", "CBUAE VAT reference exchange rates"),
     CNY: ("AED/CNY", "CBUAE VAT reference exchange rates"),
     DFM: ("点", "Dubai Financial Market"),

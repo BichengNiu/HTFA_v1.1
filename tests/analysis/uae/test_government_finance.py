@@ -48,7 +48,6 @@ from htfa.monitoring.uae.government_finance.rates import (
     EIBOR_ONEYEAR_DISPLAY,
     EIBOR_OVERNIGHT_DISPLAY,
     US_OVERNIGHT_DISPLAY,
-    US_SOFR_12M_DISPLAY,
 )
 from htfa.monitoring.uae.government_finance.search_index import (
     WORK_DUBAI_COLUMN,
@@ -461,6 +460,54 @@ def test_payment_chart_failure_warns_only_its_business_cell(monkeypatch) -> None
     assert any(cell.warning.call_count >= 1 for cell in cells)
 
 
+def test_rates_chart_and_download_use_rates_month_not_credit_month(monkeypatch):
+    dates = pd.to_datetime(["2026-08-31", "2026-09-30"])
+    values = pd.DataFrame({
+        EIBOR_OVERNIGHT_DISPLAY: [4.0, 4.1],
+        EIBOR_ONEYEAR_DISPLAY: [3.0, 3.1],
+        US_OVERNIGHT_DISPLAY: [4.5, 4.6],
+    }, index=dates)
+    data = SimpleNamespace(
+        values=values,
+        metadata={
+            name: SimpleNamespace(unit="%", source=(
+                "美联储纽约分行" if name == US_OVERNIGHT_DISPLAY else "阿联酋央行"
+            ))
+            for name in values
+        },
+    )
+    captured = []
+    monkeypatch.setattr(renderer, "build_rates_figure", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        renderer, "_render_figure_with_download",
+        lambda st_obj, figure, frame, **kwargs: captured.append(frame),
+    )
+    st_obj = MagicMock()
+
+    renderer._render_rates_chart(st_obj, data)
+
+    assert captured[0].index.max() == pd.Timestamp("2026-09-30")
+    assert "2026-09" in st_obj.caption.call_args.args[0]
+
+
+def test_search_chart_explicitly_displays_september_cutoff(monkeypatch):
+    values = pd.DataFrame({
+        "work in dubai": [39, 33],
+        "work in uae": [48, 46],
+    }, index=pd.to_datetime(["2026-08-01", "2026-09-01"]))
+    monkeypatch.setattr(
+        renderer, "build_search_index_figure", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        renderer, "_render_figure_with_download", lambda *args, **kwargs: None
+    )
+    st_obj = MagicMock()
+
+    renderer._render_search_index_chart(st_obj, values)
+
+    assert st_obj.caption.call_args.args[0] == "数据截至 2026-09；来源：谷歌趋势"
+
+
 def test_finance_metrics_row_falls_back_to_warning(monkeypatch) -> None:
     """财政金融指标行 loader 失败 → 只在该行出警告，不抛出异常。"""
 
@@ -502,7 +549,6 @@ def test_finance_metrics_cover_all_absolute_series_with_mom_and_yoy(
             EIBOR_OVERNIGHT_DISPLAY: [1.0] * 12 + [1.1, 1.2],
             EIBOR_ONEYEAR_DISPLAY: [2.0] * 12 + [2.1, 2.2],
             US_OVERNIGHT_DISPLAY: [3.0] * 12 + [3.1, 3.2],
-            US_SOFR_12M_DISPLAY: [4.0] * 12 + [4.1, 4.2],
         },
         index=dates,
     )
@@ -566,12 +612,11 @@ def test_finance_metrics_cover_all_absolute_series_with_mom_and_yoy(
         "test.xlsx",
     )
 
-    assert st_obj.metric.call_count == 12
+    assert st_obj.metric.call_count == 11
     assert [call.args[0] for call in st_obj.metric.call_args_list] == [
         "阿联酋隔夜拆借利率",
         "阿联酋1年期拆借利率",
         "美国隔夜拆借利率",
-        "美国1年期拆借利率",
         "银行外债",
         "外币存款",
         "外国主体存款",
@@ -591,7 +636,7 @@ def test_finance_metrics_cover_all_absolute_series_with_mom_and_yoy(
             for unit in ("百亿迪拉姆", "十亿迪拉姆", "亿迪拉姆", "百万迪拉姆")
         )
         and "百万迪拉姆" not in call.args[1]
-        for call in st_obj.metric.call_args_list[4:]
+        for call in st_obj.metric.call_args_list[3:]
     )
 
 

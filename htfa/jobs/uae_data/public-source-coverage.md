@@ -14,6 +14,10 @@
 以上日度数据保存在 `public_market_daily`，月度存贷款保存在 `cbuae_monthly`。
 Excel 匹配列只由 merge 从库写入；指标字典由统一合并流程同步。
 
+利率报告只使用阿联酋央行 EIBOR 隔夜/1年及美联储纽约分行 EFFR，按月平均
+并统一到三条序列共同的最新完整月份。旧 12 个月 Term SOFR 列保留历史数据，
+不参与报告，不冒充纽约联储官方一年期利率。
+
 | 尚未全部替代的类别 | 已找到的公开来源 | 实际限制 |
 |---|---|---|
 | GDP、行业增加值、CPI | [FCSC NSDP](https://fcsc.gov.ae/national-summary-data/)、[UAE.Stat](https://uaestat.fcsc.gov.ae/en) | NSDP XML 当前 GDP 季度只到 2025Q4、CPI 只到 2025-12，落后于工作簿；UAE.Stat 查询页本次返回 403。不能拿较旧数据覆盖现有序列 |

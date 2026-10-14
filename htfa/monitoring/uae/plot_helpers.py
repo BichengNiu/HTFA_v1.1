@@ -70,6 +70,8 @@ SOURCE_DISPLAY_NAMES = {
     "IMF Primary Commodity Price System (PCPS)": "国际货币基金组织初级商品价格体系（PCPS）",
     "Baker Hughes": "贝克休斯",
     "CBUAE": "阿联酋央行",
+    "CBUAE EIBOR": "阿联酋央行",
+    "Federal Reserve Bank of New York": "美联储纽约分行",
     "CBUAE QER": "阿联酋央行季度经济报告",
     "UAE Ministry of Finance (MOF GFS)": "阿联酋财政部（政府财政统计）",
     "DLD": "迪拜土地局",

@@ -72,7 +72,6 @@ from htfa.monitoring.uae.government_finance.rates import (
     EIBOR_ONEYEAR_DISPLAY,
     EIBOR_OVERNIGHT_DISPLAY,
     US_OVERNIGHT_DISPLAY,
-    US_SOFR_12M_DISPLAY,
     RatesData,
     RATES_SERIES,
     build_rates_figure,
@@ -99,8 +98,9 @@ from htfa.monitoring.uae.periods import within_month_window
 from htfa.ui_shared.chart_legend import render_pyplot_figure
 
 FINANCE_EXPLANATION = """
-- **利率**：阿联酋利率由阿联酋央行发布，美国利率依据新闻整理。原始数据为日度/周度阿联酋 EIBOR、美国 EFFR 和 SOFR 12 个月利率，按自然月取算术平均形成月度利率序列，
-  反映银行间融资成本及美国利率基准。
+- **利率**：阿联酋央行发布 EIBOR 隔夜及1年期利率，美联储纽约分行发布美国 EFFR。
+  三条日度序列按自然月取算术平均，并展示到共同的最新完整月份。
+  EFFR 为美国隔夜利率；纽约联储不发布12个月 Term SOFR，本报告不展示该旧序列。
 - **政府贷款与政府控股企业贷款**：由阿联酋央行发布；原始数据为月度存量（百万迪拉姆），
   反映政府及政府控股企业的银行信贷余额。
 - **银行外债、外币存款**：由阿联酋央行发布；原始数据为月度存量，分别反映银行境外负债和外币资金存款规模。
@@ -198,7 +198,6 @@ def _render_finance_metrics(
             ("阿联酋隔夜拆借利率", EIBOR_OVERNIGHT_DISPLAY),
             ("阿联酋1年期拆借利率", EIBOR_ONEYEAR_DISPLAY),
             ("美国隔夜拆借利率", US_OVERNIGHT_DISPLAY),
-            ("美国1年期拆借利率", US_SOFR_12M_DISPLAY),
         ):
             series = rates.values[column]
             value, as_of = latest_month_value(series)
@@ -478,9 +477,8 @@ def _render_charts(
 def _render_rates_chart(
     st_obj: Any,
     data: RatesData,
-    latest_date: pd.Timestamp,
 ) -> None:
-    last_month = latest_date.to_period("M")
+    last_month = latest_complete_month(data.values).to_period("M")
     display_values = within_month_window(
         data.values,
         first_month=last_month - 36,
@@ -488,6 +486,7 @@ def _render_rates_chart(
     )
     source_text = source_text_from_metadata(data.metadata)
     title = "阿联酋与美国市场利率（隔夜、1年期）"
+    st_obj.caption(f"数据截至 {last_month}；来源：{source_text}")
     _render_figure_with_download(
         st_obj,
         build_rates_figure(
@@ -632,6 +631,9 @@ def _render_search_index_chart(
 ) -> None:
     title = "阿联酋工作谷歌搜索热度"
     display_values = display_search_index_values(values)
+    latest_month = display_values.dropna(how="any").index.max()
+    if pd.notna(latest_month):
+        st_obj.caption(f"数据截至 {latest_month:%Y-%m}；来源：{SEARCH_SOURCE_TEXT}")
     _render_figure_with_download(
         st_obj,
         build_search_index_figure(
@@ -756,7 +758,7 @@ def render_government_finance_section(
     content: bytes,
     file_name: str,
 ) -> dict[str, Any]:
-    """Render the CBUAE / Wind rates, credit, DED and labour comparisons."""
+    """Render official rates, credit, DED and labour comparisons."""
 
     st_obj.divider()
     st_obj.subheader("财政金融")
@@ -856,7 +858,7 @@ def _render_quad_finance_charts(
 ) -> None:
     """财政金融 2×2：利率 / 外资流入 / 政府及国有资本信贷 / 企业及居民信贷。
 
-    左上阿联酋与美国隔夜/1年期利率（月度均值），右上外资流入三指标同比（银行外债/
+    左上 EIBOR 隔夜/1年与美国 EFFR（月度均值），右上外资流入三指标同比（银行外债/
     外币存款/外国主体存款），左下政府贷款与政府控股企业贷款同比，右下企业及
     居民信贷同比。单个格子数据缺失只显示该格警告，不影响其它格。
     """
@@ -867,7 +869,7 @@ def _render_quad_finance_charts(
     try:
         with st_obj.spinner("正在读取 EIBOR 与联邦基金利率..."):
             rates = _load_rates_cached(content, file_name)
-        _render_rates_chart(top_left, rates, latest_date)
+        _render_rates_chart(top_left, rates)
     except (KeyError, TypeError, ValueError) as exc:
         top_left.warning(f"利率图未加载：{exc}")
 

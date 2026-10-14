@@ -266,7 +266,7 @@ INDICATOR_DEFINITIONS: tuple[dict[str, Any], ...] = (
     ),
     _indicator(
         "阿联酋:银行间同业拆借利率(EIBOR):1年",
-        "月",
+        "日",
         "%",
         "阿联酋央行",
         "利率",
@@ -290,8 +290,8 @@ INDICATOR_DEFINITIONS: tuple[dict[str, Any], ...] = (
     ),
     _indicator(
         "阿联酋:银行间同业拆借利率(EIBOR):隔夜",
-        "月",
-        None,
+        "日",
+        "%",
         "阿联酋央行",
         "利率",
         "金融",

@@ -39,6 +39,8 @@ def test_compact_axis_uses_count_units_at_the_same_threshold_as_metrics() -> Non
     ("source", "translated"),
     [
         ("CBUAE", "阿联酋央行"),
+        ("CBUAE EIBOR", "阿联酋央行"),
+        ("Federal Reserve Bank of New York", "美联储纽约分行"),
         ("S&P Global", "标普全球"),
         ("Baker Hughes", "贝克休斯"),
         ("UAE Ministry of Finance (MOF GFS)", "阿联酋财政部"),
