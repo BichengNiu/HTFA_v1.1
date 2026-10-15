@@ -39,7 +39,7 @@ def test_all_update_sources_have_exactly_one_merge_owner():
      "INSERT INTO detail.eurostat_air_monthly VALUES ('2026-06-30','avia_paexcc','EU27_2020','AE','TOTAL','PAS_BRD',123)"),
     (source_fcsc,
      "CREATE TABLE fcsc_monthly(period DATE,indicator VARCHAR,value DOUBLE,source_file VARCHAR)",
-     "INSERT INTO fcsc_monthly VALUES ('2026-06-30','阿联酋:消费者价格指数:总体(2021=100)',123,'test.csv')"),
+     "INSERT INTO fcsc_monthly VALUES ('2026-06-30','阿联酋:消费者价格指数:总体同比变化(%)',123,'test.csv')"),
 ])
 def test_native_merge_needs_only_its_own_observation_table(module, ddl, insert, tmp_path, monkeypatch):
     database = tmp_path / "source.duckdb"

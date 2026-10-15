@@ -1,7 +1,8 @@
-"""Federal Competitiveness and Statistics Centre monthly consumer price indices.
+"""Federal Competitiveness and Statistics Centre monthly CPI inflation rates.
 
-Fetches the FCSC UAE.Stat SDMX CPI dataflow and stores the national all-items
-and food-and-beverages index levels (2021 = 100) in ``fcsc_monthly``.
+Fetches national all-items and food-and-beverages CPI series, prefers FCSC's
+published annual-change measure, fills its 2022 gap from index levels, and
+stores the resulting monthly YoY report series in DuckDB.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ import csv
 import io
 from calendar import monthrange
 from datetime import date, datetime
+from math import isfinite
 from pathlib import Path
 
 from . import db
@@ -32,12 +34,19 @@ DATA_URL = (
 EXPLORER_URL = "https://uaestat.fcsc.gov.ae/"
 ACCEPT_CSV = "application/vnd.sdmx.data+csv;version=2.0.0"
 
-INDICATORS = {
+INDEX_INDICATORS = {
     "ALL": "阿联酋:消费者价格指数:总体(2021=100)",
     "FNB": "阿联酋:消费者价格指数:食品与饮料(2021=100)",
 }
-INDICATOR_ORDER = {name: index for index, name in enumerate(INDICATORS.values())}
-INDICATOR_UNITS = {name: "指数（2021=100）" for name in INDICATORS.values()}
+INDICATORS = {
+    "ALL": "阿联酋:消费者价格指数:总体同比变化(%)",
+    "FNB": "阿联酋:消费者价格指数:食品与饮料同比变化(%)",
+}
+INDEX_INDICATOR_ORDER = {
+    name: index for index, name in enumerate(INDEX_INDICATORS.values())
+}
+INDICATOR_UNITS = {name: "%" for name in INDICATORS.values()}
+LEGACY_INDICATORS = tuple(INDEX_INDICATORS.values())
 _REQUIRED_COLUMNS = {
     "STRUCTURE_ID",
     "MEASURE",
@@ -62,7 +71,7 @@ def _parse_period(value: str) -> date:
 
 
 def parse_cpi_csv(payload: bytes | str) -> list[dict]:
-    """Validate FCSC's SDMX CSV and return national 2021-base CPI rows."""
+    """Validate the SDMX CSV and return national 2021-base CPI index rows."""
 
     text = payload.decode("utf-8-sig") if isinstance(payload, bytes) else payload
     reader = csv.DictReader(io.StringIO(text))
@@ -82,12 +91,12 @@ def parse_cpi_csv(payload: bytes | str) -> list[dict]:
             and record["REF_AREA"] == "AE"
             and record["FREQ"] == "M"
             and record["SOURCE_DETAIL"] == "FCSA"
-            and division in INDICATORS
+            and division in INDEX_INDICATORS
         ):
             continue
 
         period = _parse_period(record["TIME_PERIOD"])
-        indicator = INDICATORS[division]
+        indicator = INDEX_INDICATORS[division]
         key = (period, indicator)
         if key in seen:
             raise ValueError(f"FCSC CPI 存在重复观测：{period} / {indicator}")
@@ -108,7 +117,50 @@ def parse_cpi_csv(payload: bytes | str) -> list[dict]:
     if not rows:
         raise ValueError("FCSC CPI SDMX CSV 中没有全国月度 2021=100 指数")
     _validate_rows(rows)
-    return sorted(rows, key=lambda row: (row["period"], INDICATOR_ORDER[row["indicator"]]))
+    return sorted(
+        rows,
+        key=lambda row: (row["period"], INDEX_INDICATOR_ORDER[row["indicator"]]),
+    )
+
+
+def _parse_official_yoy_csv(payload: bytes | str) -> list[dict]:
+    """Return published FCSC annual-change rows where the dataflow provides them."""
+
+    text = payload.decode("utf-8-sig") if isinstance(payload, bytes) else payload
+    reader = csv.DictReader(io.StringIO(text))
+    missing = sorted(_REQUIRED_COLUMNS - set(reader.fieldnames or ()))
+    if missing:
+        raise ValueError(f"FCSC CPI SDMX CSV 缺少字段：{', '.join(missing)}")
+
+    rows: list[dict] = []
+    seen: set[tuple[date, str]] = set()
+    for record in reader:
+        division = record["CPI_DIV"]
+        if not (
+            record["STRUCTURE_ID"] == DATAFLOW
+            and record["MEASURE"] == "CPI_ANNCHG21"
+            and record["UNIT_MEASURE"] == "PERCENT"
+            and record["REF_AREA"] == "AE"
+            and record["FREQ"] == "M"
+            and record["SOURCE_DETAIL"] == "FCSA"
+            and division in INDICATORS
+        ):
+            continue
+
+        period = _parse_period(record["TIME_PERIOD"])
+        indicator = INDICATORS[division]
+        key = (period, indicator)
+        if key in seen:
+            raise ValueError(f"FCSC CPI 存在重复同比观测：{period} / {indicator}")
+        seen.add(key)
+        try:
+            value = float(record["OBS_VALUE"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"FCSC CPI 同比数值异常：{period} / {indicator}") from exc
+        if not isfinite(value):
+            raise ValueError(f"FCSC CPI 同比数值异常：{period} / {indicator}")
+        rows.append({"period": period, "indicator": indicator, "value": value})
+    return rows
 
 
 def _month_sequence(first: date, last: date) -> list[date]:
@@ -126,19 +178,37 @@ def _month_sequence(first: date, last: date) -> list[date]:
 def _validate_rows(rows: list[dict]) -> None:
     grouped = {
         indicator: sorted(row["period"] for row in rows if row["indicator"] == indicator)
-        for indicator in INDICATORS.values()
+        for indicator in INDEX_INDICATORS.values()
     }
     if any(not periods for periods in grouped.values()):
         raise ValueError("FCSC CPI 总体指数或食品与饮料指数缺失")
-    if grouped[INDICATORS["ALL"]] != grouped[INDICATORS["FNB"]]:
+    if grouped[INDEX_INDICATORS["ALL"]] != grouped[INDEX_INDICATORS["FNB"]]:
         raise ValueError("FCSC CPI 总体指数与食品饮料指数期间不一致")
-    periods = grouped[INDICATORS["ALL"]]
+    periods = grouped[INDEX_INDICATORS["ALL"]]
     if periods != _month_sequence(periods[0], periods[-1]):
         raise ValueError("FCSC CPI 月度序列存在缺期")
     if periods[0] != date(2021, 1, 31) or len(periods) < 24:
-        raise ValueError("FCSC CPI 月度历史过短，拒绝更新数据库")
+        raise ValueError("FCSC CPI 月度历史过短或起始月份异常，拒绝更新数据库")
     if periods[-1] > date.today():
         raise ValueError("FCSC CPI 数据含未来月份，拒绝更新数据库")
+
+
+def _validate_yoy_rows(rows: list[dict]) -> None:
+    grouped = {
+        indicator: sorted(row["period"] for row in rows if row["indicator"] == indicator)
+        for indicator in INDICATORS.values()
+    }
+    if any(not periods for periods in grouped.values()):
+        raise ValueError("FCSC CPI 总体或食品与饮料同比序列缺失")
+    if grouped[INDICATORS["ALL"]] != grouped[INDICATORS["FNB"]]:
+        raise ValueError("FCSC CPI 总体与食品饮料同比期间不一致")
+    periods = grouped[INDICATORS["ALL"]]
+    if periods != _month_sequence(periods[0], periods[-1]):
+        raise ValueError("FCSC CPI 同比月度序列存在缺期")
+    if periods[0] != date(2022, 1, 31) or len(periods) < 24:
+        raise ValueError("FCSC CPI 同比历史过短，拒绝更新数据库")
+    if periods[-1] > date.today():
+        raise ValueError("FCSC CPI 同比数据含未来月份，拒绝更新数据库")
 
 
 def _download_csv(*, force: bool) -> str:
@@ -174,7 +244,7 @@ def _dictionary_rows() -> list[dict]:
 
 
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
-    """Fetch, validate, and replace ``fcsc_monthly`` from official SDMX data."""
+    """Fetch CPI index levels, calculate YoY rates, and replace report rows."""
 
     download_note = ""
     if not skip_download:
@@ -183,7 +253,12 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     if not RAW_CSV.is_file():
         raise FileNotFoundError(f"FCSC CPI 原始 CSV 不存在：{RAW_CSV}")
 
-    rows = parse_cpi_csv(RAW_CSV.read_bytes())
+    payload = RAW_CSV.read_bytes()
+    rows = parse_cpi_csv(payload)
+    official_yoy_values = {
+        (row["indicator"], row["period"]): row["value"]
+        for row in _parse_official_yoy_csv(payload)
+    }
     latest = max(row["period"] for row in rows)
     existing_latest = con.execute("SELECT max(period) FROM fcsc_monthly").fetchone()[0]
     if existing_latest is not None and latest < existing_latest:
@@ -191,25 +266,60 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
             f"FCSC API 最新月份 {latest} 早于库中已有月份 {existing_latest}，拒绝回退"
         )
 
+    index_values = {
+        indicator: {row["period"]: row["value"] for row in rows
+                    if row["indicator"] == indicator}
+        for indicator in INDEX_INDICATORS.values()
+    }
+    yoy_rows = []
+    for division, index_indicator in INDEX_INDICATORS.items():
+        target_indicator = INDICATORS[division]
+        for period, index_value in index_values[index_indicator].items():
+            prior_period = date(
+                period.year - 1,
+                period.month,
+                monthrange(period.year - 1, period.month)[1],
+            )
+            previous = index_values[index_indicator].get(prior_period)
+            if previous is None:
+                continue
+            value = official_yoy_values.get((target_indicator, period))
+            if value is None:
+                # FCSC omits its published annual-change measure for 2022. Fill
+                # that gap from the same official index series at its 2-decimal
+                # published precision; prefer FCSC's native rate otherwise.
+                value = round((index_value / previous - 1) * 100, 2)
+            yoy_rows.append({
+                "period": period,
+                "indicator": target_indicator,
+                "value": value,
+                "source_file": RAW_CSV.name,
+            })
+    _validate_yoy_rows(yoy_rows)
+
     con.execute("DELETE FROM fcsc_monthly")
     con.executemany(
         "INSERT INTO fcsc_monthly (period, indicator, value, source_file) "
         "VALUES (?, ?, ?, ?)",
         [
             (row["period"], row["indicator"], row["value"], row["source_file"])
-            for row in rows
+            for row in yoy_rows
         ],
+    )
+    con.execute(
+        "DELETE FROM meta_indicator_dictionary WHERE indicator_name IN (?, ?)",
+        list(LEGACY_INDICATORS),
     )
     db.upsert_dictionary_rows(con, _dictionary_rows())
 
-    periods = sorted({row["period"] for row in rows})
+    periods = sorted({row["period"] for row in yoy_rows})
     note = (
-        f"{len(periods)} 个月 × {len(INDICATORS)} 指标 "
+        f"{len(periods)} 个月 × {len(INDICATORS)} 项同比指标 "
         f"（{periods[0]:%Y-%m} 至 {periods[-1]:%Y-%m}）"
     )
     if download_note:
         note += f"；{download_note}"
-    return {"status": "ok", "rows": len(rows), "note": note}
+    return {"status": "ok", "rows": len(yoy_rows), "note": note}
 
 
 def _sheet_spec(con) -> dict:
@@ -225,7 +335,7 @@ def _sheet_spec(con) -> dict:
     ]
     return {
         "name": TARGET_SHEET,
-        "title": "联邦竞争力与统计中心消费者价格指数",
+        "title": "联邦竞争力与统计中心消费者价格同比变化",
         "indicators": list(INDICATORS.values()),
         "rows": rows,
     }
@@ -240,6 +350,7 @@ def merge(workbook_path: Path) -> dict:
 __all__ = [
     "DATA_URL",
     "INDICATORS",
+    "LEGACY_INDICATORS",
     "RAW_CSV",
     "SOURCE_NAME",
     "TARGET_SHEET",

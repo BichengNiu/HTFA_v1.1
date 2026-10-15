@@ -20,7 +20,7 @@ Excel 匹配列只由 merge 从库写入；指标字典由统一合并流程同�
 
 | 尚未全部替代的类别 | 已找到的公开来源 | 实际限制 |
 |---|---|---|
-| GDP、行业增加值、CPI | [FCSC NSDP](https://fcsc.gov.ae/national-summary-data/)、[UAE.Stat CPI SDMX](https://releaseeuaestat.fcsc.gov.ae/rest/data/FCSA,DF_CPI,3.2.0/all?startPeriod=2021-01&dimensionAtObservation=AllDimensions) | 已将全国月度总体 CPI 与食品饮料 CPI（2021=100）经 SDMX 接入 `fcsc_monthly`，当前数据为 2021-01 至 2025-12，并加入报告“物价”部分；GDP 季度仍只到 2025Q4，CPI 最新月份也落后于工作簿既有统计期，不覆盖原有 CPI 序列 |
+| GDP、行业增加值、CPI | [FCSC NSDP](https://fcsc.gov.ae/national-summary-data/)、[UAE.Stat CPI SDMX](https://releaseeuaestat.fcsc.gov.ae/rest/data/FCSA,DF_CPI,3.2.0/all?startPeriod=2021-01&dimensionAtObservation=AllDimensions) | 全国总体 CPI 与食品饮料 CPI 以月度同比变化（%）接入 `fcsc_monthly`；优先采用 FCSC 已发布同比值，FCSC 缺少的 2022 年按 2021=100 指数计算。官方 SDMX 与下载目录当前最新均为 2025-12，尚未发布 2026 年月度观测；GDP 季度仍只到 2025Q4 |
 | 中国与 UAE 双边贸易 | [中国海关月度统计](https://english.customs.gov.cn/statics/report/monthly.html) | 有按国家贸易表，但还没有完成金额单位、累计/当月及重复金额列的映射和自动适配 |
 | DXB 旅客、货邮、起降 | [Dubai Airports 官方媒体页](https://media.dubaiairports.ae/dxb-enters-stronger-second-half-as-capacity-returns-and-investment-continues/) | 部分月份公布旅客数据，货运/起降常给季度或半年数；不能平均分摊冒充月度观察 |
 | 印度对 UAE 咖啡出口 | [Coffee Board](https://coffeeboard.gov.in/database-coffee.html) | 有出口许可/目的地统计，尚未验证与工作簿累计指标完全一致的日期、财年和再出口口径 |

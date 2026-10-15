@@ -29,7 +29,7 @@ def workbook():
                     ["单位", *[v[1] for v in columns.values()]],
                     ["来源", *["test source"] * len(columns)],
                     ["更新时间", *["2026-10-15"] * len(columns)]]
-            historical = ("2021-01-31",) if sheet == "月度_FCSC" else ()
+            historical = ("2022-01-31",) if sheet == "月度_FCSC" else ()
             for date in (*historical, "2026-08-31", "2026-09-15", "2026-09-30",
                          "2026-10-14", "2026-10-31"):
                 values = []
@@ -63,14 +63,11 @@ def test_federal_cpi_monthly_chart_uses_index_and_complete_months(workbook):
     values, metadata, units = load_chart_data(
         workbook, "test.xlsx", PRICE_CHARTS[1], today=pd.Timestamp("2026-10-15"),
     )
-    assert values.index.min() == pd.Timestamp("2021-01-31")
+    assert values.index.min() == pd.Timestamp("2022-01-31")
     assert values.index.max() == pd.Timestamp("2026-09-30")
-    assert values.columns.tolist() == ["总体 CPI", "食品与饮料 CPI"]
-    assert units == {
-        "总体 CPI": "指数（2021=100）",
-        "食品与饮料 CPI": "指数（2021=100）",
-    }
-    assert set(metadata) == {"总体 CPI", "食品与饮料 CPI"}
+    assert values.columns.tolist() == ["总体 CPI 同比", "食品与饮料 CPI 同比"]
+    assert units == {"总体 CPI 同比": "%", "食品与饮料 CPI 同比": "%"}
+    assert set(metadata) == {"总体 CPI 同比", "食品与饮料 CPI 同比"}
 
 
 def test_daily_placeholders_removed_but_weekly_zero_preserved(workbook):
