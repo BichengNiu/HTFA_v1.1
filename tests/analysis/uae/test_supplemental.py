@@ -58,6 +58,19 @@ def test_monthly_excludes_partial_month_and_transit_share_handles_zero(workbook)
     assert units == {"转运量": "吨", "转运占比": "%"}
 
 
+def test_federal_cpi_monthly_chart_uses_index_and_complete_months(workbook):
+    values, metadata, units = load_chart_data(
+        workbook, "test.xlsx", PRICE_CHARTS[1], today=pd.Timestamp("2026-10-15"),
+    )
+    assert values.index.max() == pd.Timestamp("2026-09-30")
+    assert values.columns.tolist() == ["总体 CPI", "食品与饮料 CPI"]
+    assert units == {
+        "总体 CPI": "指数（2021=100）",
+        "食品与饮料 CPI": "指数（2021=100）",
+    }
+    assert set(metadata) == {"总体 CPI", "食品与饮料 CPI"}
+
+
 def test_daily_placeholders_removed_but_weekly_zero_preserved(workbook):
     daily, _, _ = load_chart_data(
         workbook, "test.xlsx", FINANCE_CHARTS[0], today=pd.Timestamp("2026-10-15"),

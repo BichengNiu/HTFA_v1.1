@@ -279,6 +279,15 @@ _BASE_DDL = (
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS fcsc_monthly (
+        period      DATE           NOT NULL,
+        indicator   VARCHAR        NOT NULL,
+        value       DECIMAL(28, 6),
+        source_file VARCHAR,
+        PRIMARY KEY (period, indicator)
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS detail.wam_military_strike_daily (
         date                    DATE PRIMARY KEY,
         ballistic_missiles      BIGINT NOT NULL,

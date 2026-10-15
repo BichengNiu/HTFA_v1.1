@@ -50,6 +50,7 @@ SOURCES = (
     "employment",
     "emirates_post",
     "eurostat_air",
+    "fcsc",
     "foreign_labour",
     "gfs",
     "pmi",

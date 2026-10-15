@@ -56,6 +56,14 @@ PRICE_CHARTS = (
     ChartSpec("steel", "阿联酋钢材进口报价（CFR/CPT区间中值）", "月度_MEsteel", "月",
               tuple((name, f"阿联酋:钢材进口报价:{name}:CFR/CPT:区间中值", "美元/吨")
                     for name in ("螺纹钢", "钢坯及方坯", "3mm热轧卷"))),
+    ChartSpec(
+        "cpi",
+        "阿联酋居民消费价格指数（月度，2021=100）",
+        "月度_FCSC",
+        "月",
+        (("总体 CPI", "阿联酋:消费者价格指数:总体(2021=100)", "指数（2021=100）"),
+         ("食品与饮料 CPI", "阿联酋:消费者价格指数:食品与饮料(2021=100)", "指数（2021=100）")),
+    ),
 )
 READER = EconomicWorkbookReader("uae_monitoring", "monitoring.uae")
 

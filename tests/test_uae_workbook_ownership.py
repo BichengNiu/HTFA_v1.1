@@ -11,7 +11,7 @@ from openpyxl import Workbook, load_workbook
 from htfa.jobs.uae_data.workbook_sheet_writer import write_indicator_sheets  # noqa: E402
 from htfa.jobs.uae_data import (
     db, source_dot_t100, source_dubai_customs_air, source_employment,
-    source_eurostat_air, source_salik, update_data, merge_workbook,
+    source_eurostat_air, source_fcsc, source_salik, update_data, merge_workbook,
 )
 
 
@@ -37,6 +37,9 @@ def test_all_update_sources_have_exactly_one_merge_owner():
     (source_eurostat_air,
      "CREATE TABLE detail.eurostat_air_monthly(period DATE,dataset VARCHAR,geo VARCHAR,partner VARCHAR,schedule VARCHAR,tra_meas VARCHAR,value DOUBLE)",
      "INSERT INTO detail.eurostat_air_monthly VALUES ('2026-06-30','avia_paexcc','EU27_2020','AE','TOTAL','PAS_BRD',123)"),
+    (source_fcsc,
+     "CREATE TABLE fcsc_monthly(period DATE,indicator VARCHAR,value DOUBLE,source_file VARCHAR)",
+     "INSERT INTO fcsc_monthly VALUES ('2026-06-30','阿联酋:消费者价格指数:总体(2021=100)',123,'test.csv')"),
 ])
 def test_native_merge_needs_only_its_own_observation_table(module, ddl, insert, tmp_path, monkeypatch):
     database = tmp_path / "source.duckdb"

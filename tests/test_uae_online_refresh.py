@@ -429,3 +429,25 @@ def test_failed_browser_download_preserves_existing_raw_without_switching(monkey
     with pytest.raises(HTTPError):
         _official_download.download_file(url, target, force=True, browser_transport=True)
     assert target.read_bytes() == b"previous validated raw payload"
+
+
+def test_browser_download_passes_content_negotiation_headers(monkeypatch, tmp_path):
+    from curl_cffi import requests
+    calls = []
+
+    def compatibility_get(request_url, **kwargs):
+        calls.append((request_url, kwargs))
+        return SimpleNamespace(status_code=200, content=b"validated csv payload")
+
+    monkeypatch.setattr(requests, "get", compatibility_get)
+    target = tmp_path / "data.csv"
+    _official_download.download_file(
+        "https://stats.example.test/data",
+        target,
+        force=True,
+        min_bytes=1,
+        headers={"Accept": "text/csv"},
+        browser_transport=True,
+    )
+    assert calls[0][1]["headers"]["Accept"] == "text/csv"
+    assert target.read_bytes() == b"validated csv payload"
