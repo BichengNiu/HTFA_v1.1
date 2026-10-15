@@ -330,20 +330,6 @@ def build_oil_price_figure(
         ytitle_position="side",
         year_ruler=True,
         grid=True,
-        series_styles={
-            REVENUE_PRICE_LABEL: {
-                "linestyle": "solid",
-                "linewidth": 2.2,
-                "marker": "o",
-                "markersize": 3.2,
-            },
-            DUBAI_PRICE_LABEL: {
-                "linestyle": "dashed",
-                "linewidth": 1.8,
-                "marker": "s",
-                "markersize": 3.0,
-            },
-        },
         vlines=WAR_START_DATE,
         show_legend=True,
         note=source_note(source_text),

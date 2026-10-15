@@ -302,12 +302,22 @@ def test_oil_price_figure_combines_brent_and_dubai_on_shared_usd_axis() -> None:
     assert axis.get_title() == "布伦特与迪拜原油现货月均价格"
     assert axis.get_lines()[0].get_linestyle() == "-"
     assert axis.get_lines()[1].get_linestyle() == "--"
-    assert axis.get_lines()[0].get_linewidth() == pytest.approx(2.2)
-    assert axis.get_lines()[1].get_linewidth() == pytest.approx(1.8)
+    from inspect import signature
+    from Ts.TsPlots import plot_series
+    from Ts.TsPlots.style import WHITE
+
+    defaults = signature(plot_series).parameters
+    assert all(
+        line.get_linewidth() == pytest.approx(defaults["linewidth"].default)
+        for line in axis.get_lines()
+    )
     assert axis.get_lines()[0].get_marker() == "o"
     assert axis.get_lines()[1].get_marker() == "s"
-    assert axis.get_lines()[0].get_markersize() == pytest.approx(3.2)
-    assert axis.get_lines()[1].get_markersize() == pytest.approx(3.0)
+    assert all(
+        line.get_markersize() == pytest.approx(defaults["markersize"].default)
+        for line in axis.get_lines()
+    )
+    assert axis.get_lines()[1].get_markerfacecolor() == WHITE
     assert {
         text.get_text() for text in axis.get_legend().get_texts()
     } == {"布伦特原油现货价", DUBAI_PRICE_LABEL}
