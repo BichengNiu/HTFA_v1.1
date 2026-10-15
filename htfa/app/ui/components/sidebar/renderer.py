@@ -73,7 +73,9 @@ def render_complete_sidebar(
             st.info("请先选择一个主模块")
 
         st.markdown("---")
-        if selected_main in {"数据探索", "监测分析"}:
+        if selected_main == "监测分析" and get_current_sub_module() == "阿联酋":
+            st.caption("阿联酋监测自动读取已发布数据库，无需上传文件。")
+        elif selected_main in {"数据探索", "监测分析"}:
             render_shared_dataset_uploader(
                 st,
                 protocol=(

@@ -110,9 +110,9 @@ def test_uae_maintenance_jobs_have_one_package_boundary() -> None:
         launcher = (PROJECT_ROOT / relative_path).read_text(
             encoding="utf-8-sig"
         )
-        assert "sys.path.insert(0" in launcher
+        assert "sys.path.insert" not in launcher
         assert "htfa.jobs.uae_data" in launcher
-        assert "-m htfa.jobs.uae_data" not in launcher
+        assert "-m htfa.jobs.uae_data" in launcher
 
 
 def test_model_domains_have_no_cross_family_or_application_imports() -> None:

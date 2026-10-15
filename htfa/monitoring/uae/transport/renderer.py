@@ -212,7 +212,7 @@ def _render_transport_metrics(
 
 def render_transport_section(
     st_obj: Any,
-    content: bytes,
+    content: Any,
     file_name: str,
 ) -> dict[str, Any]:
     """渲染「交通物流」板块的两张海运图和两张航空运输图。"""

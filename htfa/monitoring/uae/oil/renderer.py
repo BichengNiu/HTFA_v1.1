@@ -72,7 +72,7 @@ WAR_PRESSURE_EXPLANATION = """
 """.strip()
 
 
-def _load_oil_market_cached(content: bytes, file_name: str) -> OilMarketData:
+def _load_oil_market_cached(content: Any, file_name: str) -> OilMarketData:
     return load_oil_market_data(content, file_name=file_name)
 
 
@@ -429,7 +429,7 @@ def _render_charts(
 
 def render_oil_fiscal_panel(
     st_obj: Any,
-    payload: tuple[bytes, str],
+    payload: tuple[Any, str],
 ) -> dict[str, Any]:
     """用正式油价、产量和 WAM 数据渲染监测面板。"""
 

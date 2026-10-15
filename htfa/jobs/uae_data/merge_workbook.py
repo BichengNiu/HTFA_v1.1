@@ -31,6 +31,8 @@ from ._excel_helpers import cleanup_excel_automation
 
 
 from .uae_metadata import sync_workbook_dictionary  # noqa: E402
+from . import db
+from .publish_report import publish_workbook
 
 WORKBOOK_PATH = DATA_DIR / "阿联酋.xlsx"
 
@@ -135,6 +137,20 @@ def main(argv: list[str] | None = None) -> int:
                 traceback.format_exception_only(type(exc), exc)
             ).strip()
             print(f"[merge_workbook] metadata         FAILED  {detail}", flush=True)
+    if failures == 0:
+        try:
+            with db.connect() as con:
+                publication = publish_workbook(con, workbook_path)
+            print(
+                "[merge_workbook] report           ok       "
+                f"{publication['sheets']} tables, "
+                f"{publication['observations']} observations; "
+                f"version={publication['version'][:12]}",
+                flush=True,
+            )
+        except Exception as exc:  # noqa: BLE001 - preserve previous publication
+            failures += 1
+            print(f"[merge_workbook] report           FAILED  {exc}", flush=True)
     print(
         f"[merge_workbook] done: {len(names) - failures} ok, {failures} failed; "
         f"workbook: {workbook_path}",

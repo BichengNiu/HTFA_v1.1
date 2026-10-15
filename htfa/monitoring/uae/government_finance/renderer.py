@@ -126,44 +126,44 @@ LABOR_EMPLOYMENT_EXPLANATION = """
 
 
 def _load_government_finance_cached(
-    content: bytes,
+    content: Any,
     file_name: str,
 ) -> GovernmentFinanceData:
     return load_government_finance_data(content, file_name=file_name)
 
 
 def _load_foreign_labor_cached(
-    content: bytes,
+    content: Any,
     file_name: str,
 ) -> ForeignLaborData:
     return load_foreign_labor_data(content, file_name=file_name)
 
 
-def _load_rates_cached(content: bytes, file_name: str) -> RatesData:
+def _load_rates_cached(content: Any, file_name: str) -> RatesData:
     return load_rates_data(content, file_name=file_name)
 
 
-def _load_foreign_inflow_cached(content: bytes, file_name: str) -> CbuaeSeriesData:
+def _load_foreign_inflow_cached(content: Any, file_name: str) -> CbuaeSeriesData:
     return load_foreign_inflow_data(content, file_name=file_name)
 
 
-def _load_private_credit_cached(content: bytes, file_name: str) -> CbuaeSeriesData:
+def _load_private_credit_cached(content: Any, file_name: str) -> CbuaeSeriesData:
     return load_private_credit_data(content, file_name=file_name)
 
 
-def _load_ded_cached(content: bytes, file_name: str) -> DedData:
+def _load_ded_cached(content: Any, file_name: str) -> DedData:
     return load_ded_data(content, file_name=file_name)
 
 
-def _load_pmi_cached(content: bytes, file_name: str) -> PmiData:
+def _load_pmi_cached(content: Any, file_name: str) -> PmiData:
     return load_pmi_data(content, file_name=file_name)
 
 
-def _load_payment_cached(content: bytes, file_name: str) -> PaymentData:
+def _load_payment_cached(content: Any, file_name: str) -> PaymentData:
     return load_payment_data(content, file_name=file_name)
 
 
-def _load_search_index_cached(content: bytes, file_name: str) -> pd.DataFrame:
+def _load_search_index_cached(content: Any, file_name: str) -> pd.DataFrame:
     return load_search_index_data(content, file_name=file_name)
 
 
@@ -186,7 +186,7 @@ def _format_finance_value(
 def _render_finance_metrics(
     st_obj: Any,
     data: GovernmentFinanceData,
-    content: bytes,
+    content: Any,
     file_name: str,
 ) -> None:
     """财政金融指标卡：覆盖四类图表序列，主值为绝对量并显示环比和同比。"""
@@ -293,7 +293,7 @@ def _render_finance_metrics(
 def _render_business_metrics(
     st_obj: Any,
     latest_date: pd.Timestamp,
-    content: bytes,
+    content: Any,
     file_name: str,
 ) -> None:
     """企业活动指标卡：企业活动三项与支付数据四项，均显示环比和同比。"""
@@ -366,7 +366,7 @@ def _render_business_metrics(
 
 def _render_labor_metrics(
     st_obj: Any,
-    content: bytes,
+    content: Any,
     file_name: str,
 ) -> None:
     """劳动就业指标卡：劳工人数与工作搜索热度的环比和同比。"""
@@ -756,7 +756,7 @@ def _render_cheques_chart(
 
 def render_government_finance_section(
     st_obj: Any,
-    content: bytes,
+    content: Any,
     file_name: str,
 ) -> dict[str, Any]:
     """Render official rates, credit, DED and labour comparisons."""
@@ -800,7 +800,7 @@ def render_government_finance_section(
 def _render_business_activity_charts(
     st_obj: Any,
     latest_date: pd.Timestamp,
-    content: bytes,
+    content: Any,
     file_name: str,
 ) -> None:
     """企业活动：DED/采购经理指数第一行，客户资金转账/支票清算第二行。"""
@@ -854,7 +854,7 @@ def _render_quad_finance_charts(
     st_obj: Any,
     data: GovernmentFinanceData,
     latest_date: pd.Timestamp,
-    content: bytes,
+    content: Any,
     file_name: str,
 ) -> None:
     """财政金融 2×2：利率 / 外资流入 / 政府及国有资本信贷 / 企业及居民信贷。
@@ -897,7 +897,7 @@ def _render_quad_finance_charts(
 
 def _render_labor_employment_charts(
     st_obj: Any,
-    content: bytes,
+    content: Any,
     file_name: str,
 ) -> None:
     """谷歌工作搜索热度在左，入境阿联酋劳工人数在右。"""

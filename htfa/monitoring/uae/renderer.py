@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -27,7 +26,7 @@ from htfa.monitoring.uae.downloads import render_chart_download
 from htfa.monitoring.uae.results import MacroPanelResult
 from htfa.monitoring.uae.report import render_high_frequency_topics
 from htfa.monitoring.uae.services import build_monitoring_dashboard
-from htfa.app.state.shared_dataset import get_shared_dataset_file
+from htfa.monitoring.uae.database import published_source
 from htfa.ui_shared.chart_legend import place_chart_legend_at_bottom
 
 TAB_CONFIG = (
@@ -56,7 +55,7 @@ _REPORT_WORKBOOK_READER = EconomicWorkbookReader(
 
 
 def _latest_high_frequency_month(
-    payload: tuple[bytes, str],
+    payload: tuple[Any, str],
     *,
     today: pd.Timestamp | None = None,
 ) -> pd.Period:
@@ -238,29 +237,6 @@ def _render_series_group_explanation(st_obj, group_title: str) -> None:
         st_obj.markdown(explanation)
 
 
-def _source_name(file_input: Any) -> str:
-    if hasattr(file_input, "name"):
-        return str(file_input.name)
-    return Path(file_input).name
-
-
-def _source_payload(file_input: Any, source_name: str) -> tuple[bytes, str]:
-    """把共享文件转换成主题 renderer 共享的不可变载荷。"""
-
-    if hasattr(file_input, "getvalue"):
-        content = file_input.getvalue()
-    elif hasattr(file_input, "read"):
-        position = file_input.tell() if hasattr(file_input, "tell") else None
-        content = file_input.read()
-        if position is not None and hasattr(file_input, "seek"):
-            file_input.seek(position)
-    else:
-        raise TypeError("共享数据集必须提供 getvalue() 或 read()")
-    if not isinstance(content, bytes):
-        raise TypeError("共享数据集必须提供 bytes 内容")
-    return content, source_name
-
-
 def _ordered_series_groups(
     series_groups: Mapping[str, Any],
     series_group_titles: tuple[str, ...] | None,
@@ -386,27 +362,24 @@ def _render_growth_tab(
 
 
 def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
-    """渲染阿联酋监测；不写入或生成任何工作簿。"""
-
-    file_input = get_shared_dataset_file()
-    if file_input is None:
+    """从只读 DuckDB 发布版本渲染阿联酋监测，无需上传文件。"""
+    try:
+        file_input = published_source()
+    except (OSError, ValueError) as exc:
         _render_report_header(st_obj)
-        message = (
-            "请先在侧边栏“共享数据集”上传阿联酋工作簿。"
-            "只有上传并通过工作簿协议校验后，才会读取数据并显示图表。"
-        )
-        st_obj.info(message)
+        message = f"阿联酋数据库未就绪：{exc}"
+        st_obj.error(message)
         return {
-            "status": "no_data",
+            "status": "error",
             "message": message,
             "panel_count": 0,
         }
 
-    source_name = _source_name(file_input)
-    payload = _source_payload(file_input, source_name)
-    _render_report_header(st_obj, _latest_high_frequency_month(payload))
-
+    source_name = file_input.name
+    payload = (file_input, source_name)
     try:
+        _render_report_header(st_obj, _latest_high_frequency_month(payload))
+        st_obj.caption(f"数据库发布于 {file_input.published_at} UTC")
         with st_obj.spinner("正在构建宏观监测页面..."):
             dashboard = build_monitoring_dashboard(file_input)
     except Exception as exc:  # noqa: BLE001 - 页面边界需展示工作簿解析错误

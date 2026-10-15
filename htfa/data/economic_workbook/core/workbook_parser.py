@@ -19,6 +19,7 @@ from typing import Any, Callable, Collection, Dict, Optional
 import pandas as pd
 
 from ..domain.models import EconomicWorkbookSnapshot, IndicatorMetadata
+from ..tables import EconomicTableSource
 
 
 DICTIONARY_SHEET_NAME = "指标字典"
@@ -101,7 +102,7 @@ def _load_dictionary(excel_file: pd.ExcelFile) -> Dict[str, Dict[str, Any]]:
     if excel_file.sheet_names[0] != DICTIONARY_SHEET_NAME:
         raise ValueError(f"“{DICTIONARY_SHEET_NAME}”必须是工作簿的首个sheet")
 
-    dictionary = pd.read_excel(excel_file, sheet_name=DICTIONARY_SHEET_NAME)
+    dictionary = excel_file.parse(sheet_name=DICTIONARY_SHEET_NAME)
     missing_columns = [
         column for column in DICTIONARY_BASE_COLUMNS
         if column not in dictionary.columns
@@ -283,10 +284,14 @@ def parse_economic_workbook(
     indicator_allowlist: Optional[Collection[str]] = None,
 ) -> EconomicWorkbookSnapshot:
     """按正式协议解析工作簿，可只校验和加载指定的白名单指标。"""
-    file_buffer, file_name = _read_file(file_input)
-    excel_file = pd.ExcelFile(file_buffer)
+    if isinstance(file_input, EconomicTableSource):
+        opened = file_input.open()
+        file_name = file_input.name
+    else:
+        file_buffer, file_name = _read_file(file_input)
+        opened = pd.ExcelFile(file_buffer)
 
-    try:
+    with opened as excel_file:
         dictionary = _load_dictionary(excel_file)
         if indicator_allowlist is not None:
             normalized_allowlist = {
@@ -302,7 +307,7 @@ def parse_economic_workbook(
         seen_indicators: set[str] = set()
 
         for sheet_name in excel_file.sheet_names[1:]:
-            raw = pd.read_excel(excel_file, sheet_name=sheet_name, header=None)
+            raw = excel_file.parse(sheet_name=sheet_name, header=None)
             if raw.dropna(how="all").empty:
                 continue
             sheet_frames, sheet_metadata = _parse_data_sheet(
@@ -363,8 +368,6 @@ def parse_economic_workbook(
             indicator_metadata_map=metadata_map,
             module_name=module_name,
         )
-    finally:
-        excel_file.close()
 
 
 __all__ = [

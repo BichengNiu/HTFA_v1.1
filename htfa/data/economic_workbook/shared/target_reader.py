@@ -11,6 +11,7 @@ from typing import Any, Iterator
 import pandas as pd
 
 from ..core.workbook_parser import normalize_indicator_name
+from ..tables import EconomicTableSource, TableWorkbook
 
 
 METADATA_LABELS = {
@@ -83,8 +84,12 @@ def open_workbook(
     file_input: Any,
     *,
     file_name: str | None = None,
-) -> Iterator[tuple[pd.ExcelFile, str]]:
-    """打开经济工作簿并在退出时关闭 ExcelFile。"""
+) -> Iterator[tuple[pd.ExcelFile | TableWorkbook, str]]:
+    """打开经济表数据源；Excel 输入在退出时关闭文件。"""
+    if isinstance(file_input, EconomicTableSource):
+        with file_input.open() as tables:
+            yield tables, file_name or file_input.name
+        return
     buffer, source_name = workbook_buffer(file_input, file_name=file_name)
     excel_file = pd.ExcelFile(buffer)
     try:
@@ -107,7 +112,7 @@ def validate_sheet(raw: pd.DataFrame, sheet_name: str) -> None:
 
 
 def parse_target_sheet(
-    excel_file: pd.ExcelFile,
+    excel_file: pd.ExcelFile | TableWorkbook,
     *,
     sheet_name: str,
     targets: tuple[tuple[str, str], ...],
@@ -119,7 +124,7 @@ def parse_target_sheet(
     if sheet_name not in excel_file.sheet_names:
         raise ValueError(f"工作簿缺少“{sheet_name}”sheet")
 
-    raw = pd.read_excel(excel_file, sheet_name=sheet_name, header=None)
+    raw = excel_file.parse(sheet_name=sheet_name, header=None)
     validate_sheet(raw, sheet_name)
 
     normalized_targets = {

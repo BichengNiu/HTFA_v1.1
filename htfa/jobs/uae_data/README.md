@@ -15,6 +15,18 @@ runtime\python.exe -m htfa.jobs.uae_data.merge_workbook   # 单独重跑库→�
 
 常用参数：`--source cbuae,gfs`、`--skip-download`（只用 raw 缓存）、`--force`。
 
+阿联酋监测页面默认只读 `data/UAE/uae.duckdb`，本地与 Streamlit Cloud 均无需上传
+工作簿。统一合并在全部来源和指标字典成功后，由 `publish_report.py` 将完整工作簿
+按原列位置和日期发布到 `report.sheets`、`report.periods`、`report.observations` 长表，
+`report.release` 记录内容版本和 UTC 发布时间。首次发布同时补入仅存于工作簿的
+宏观历史数据；0、缺失值、重复名称但不同口径的列均保留。任一校验或写入失败，
+旧发布版本不变并返回失败，禁止把部分更新发布到在线报告。
+
+在线读取器不打开或生成 Excel，不运行 Windows COM，不抓取原始来源；只读取 LFS
+部署后的数据库文件。缓存按完整发布版本区分，缺库、LFS 指针、未发布版本均明确报错，
+不自动回退到旧 Excel 或上传文件。部署绑定 `main`；每次更新后正常推送数据库 LFS
+对象与源文件。Excel 仍保留为本地维护和导出产物，其他模块的上传功能不受影响。
+
 `--source public_market` 自动下载 DFM、CBUAE 和纽约联储的公开数据，更新 DFM
 综合指数、EIBOR 隔夜/1 年、EFFR、美元/人民币兑迪拉姆六条日度序列，先写入
 `public_market_daily` 再合并 Excel。它同时从既有 `cbuae_monthly` 读取政府/政府

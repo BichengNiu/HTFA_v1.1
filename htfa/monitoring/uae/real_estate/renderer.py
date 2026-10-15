@@ -43,7 +43,7 @@ REAL_ESTATE_EXPLANATION = """
 
 
 def _load_real_estate_cached(
-    content: bytes,
+    content: Any,
     file_name: str,
 ) -> RealEstateData:
     return load_real_estate_data(content, file_name=file_name)
@@ -149,7 +149,7 @@ def _render_sales_chart(
 
 def render_real_estate_section(
     st_obj: Any,
-    content: bytes,
+    content: Any,
     file_name: str,
 ) -> dict[str, Any]:
     """渲染「房地产」板块：交易类型×用途四张笔数+金额双轴图。"""
