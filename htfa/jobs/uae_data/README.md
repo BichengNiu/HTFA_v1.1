@@ -28,13 +28,17 @@ runtime\python.exe -m htfa.jobs.uae_data.merge_workbook   # 单独重跑库→�
 对象与源文件。Excel 仍保留为本地维护和导出产物，其他模块的上传功能不受影响。
 
 `--source public_market` 自动下载 DFM、CBUAE 和纽约联储的公开数据，更新 DFM
-综合指数、EIBOR 隔夜/1 年、EFFR、美元/人民币兑迪拉姆六条日度序列，先写入
+综合指数、FTSE ADX 综合指数、EIBOR 隔夜/1 年、EFFR、美元/人民币兑迪拉姆七条日度序列，先写入
 `public_market_daily` 再合并 Excel。它同时从既有 `cbuae_monthly` 读取政府/政府
 相关实体存贷款四条序列，按百万 AED → 十亿 AED 换算写回对应历史列。
 全量流程先更新 CBUAE 再运行 public_market；单跑 public_market 不会重新下载
 CBUAE 公报。历史 `日度_Wind` / `月度_Wind` 表名保留兼容，匹配列的来源和频率
 元数据同步改成公开源。未匹配列和公开源覆盖前的历史数据保留。覆盖区间内
 无官方观测的交易休息日留空，不延续历史零值填充。
+
+ADX 使用交易所官网 FADGI 五年历史接口。同日同值记录去重，同日不同收盘值
+保留日期但数值写 NULL，不任取一个值。报告中的 DFM、ADX 和人民币兑迪拉姆
+均按有效日度观测计算已结束月份的算术平均，下载数据与图表一致。
 
 Salik 投资者 PDF 和 UAEWPS QER 使用固定的 Chrome 请求方式；抓取失败直接
 报错。Salik 同时读取财报及投资者演示目录，支持 Q/H/FY/9M 文件名并补抓历史

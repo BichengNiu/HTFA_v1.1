@@ -29,7 +29,8 @@ def workbook():
                     ["单位", *[v[1] for v in columns.values()]],
                     ["来源", *["test source"] * len(columns)],
                     ["更新时间", *["2026-10-15"] * len(columns)]]
-            for date in ("2026-08-31", "2026-09-30", "2026-10-31"):
+            for date in ("2026-08-31", "2026-09-15", "2026-09-30",
+                         "2026-10-14", "2026-10-31"):
                 values = []
                 for indicator in columns:
                     value = 20.0
@@ -37,6 +38,10 @@ def workbook():
                         value = 0.0 if date == "2026-08-31" else 100.0
                     if sheet == "日度_Wind" or "经确认新期房" in indicator:
                         value = 0.0 if date == "2026-08-31" else value
+                    if sheet == "日度_Wind" and date == "2026-09-15":
+                        value = 60.0
+                    if sheet == "日度_Wind" and date.startswith("2026-10"):
+                        value = 1000.0
                     values.append(value)
                 rows.append([pd.Timestamp(date), *values])
             pd.DataFrame(rows).to_excel(writer, sheet_name=sheet, index=False, header=False)
@@ -61,6 +66,12 @@ def test_daily_placeholders_removed_but_weekly_zero_preserved(workbook):
         workbook, "test.xlsx", PROPERTY_CHARTS[0], today=pd.Timestamp("2026-10-15"),
     )
     assert list(daily.index) == [pd.Timestamp("2026-09-30")]
+    assert len(daily.columns) == 2
+    assert daily.iloc[0].tolist() == [40.0, 40.0]
+    fx, _, _ = load_chart_data(
+        workbook, "test.xlsx", FINANCE_CHARTS[1], today=pd.Timestamp("2026-10-15"),
+    )
+    assert fx.iloc[0, 0] == 40.0
     assert weekly.loc["2026-08-31"].iloc[0] == 0
 
 
@@ -83,6 +94,8 @@ def test_failed_extra_chart_does_not_hide_sibling_or_create_subsection(monkeypat
     st_obj.warning.assert_called_once()
     st_obj.subheader.assert_not_called()
     st_obj.expander.assert_not_called()
+    for cell in st_obj.columns.return_value:
+        cell.caption.assert_not_called()
 
 
 def test_new_charts_render_in_app_without_subsections():
@@ -99,4 +112,4 @@ render_prices_section(st, (p, p.name))
     assert not app.exception
     assert not app.warning
     assert [element.value for element in app.subheader] == ["物价"]
-    assert len(app.caption) == 10
+    assert not app.caption

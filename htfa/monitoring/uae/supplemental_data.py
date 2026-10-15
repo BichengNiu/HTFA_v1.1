@@ -6,6 +6,7 @@ from typing import Any
 import pandas as pd
 
 from htfa.data.economic_workbook import EconomicWorkbookReader
+from htfa.monitoring.uae.periods import through_last_complete_month
 
 
 @dataclass(frozen=True)
@@ -21,9 +22,10 @@ class ChartSpec:
 
 
 FINANCE_CHARTS = (
-    ChartSpec("dfm", "迪拜金融市场综合股指", "日度_Wind", "日",
-              (("DFM综合股指", "阿联酋DFM综合股票指数", "点"),)),
-    ChartSpec("cny_aed", "人民币兑迪拉姆汇率", "日度_Wind", "日",
+    ChartSpec("dfm", "迪拜与阿布扎比股市综合指数（月均）", "日度_Wind", "日",
+              (("DFM综合股指", "阿联酋DFM综合股票指数", "点"),
+               ("FTSE ADX综合股指", "阿联酋FTSE ADX综合股票指数", "点"))),
+    ChartSpec("cny_aed", "人民币兑迪拉姆汇率（月均）", "日度_Wind", "日",
               (("人民币兑迪拉姆", "人民币兑阿联酋迪拉姆", "AED/CNY"),)),
 )
 PROPERTY_CHARTS = (
@@ -63,7 +65,7 @@ def load_chart_data(
     content: Any, file_name: str, spec: ChartSpec,
     *, today: pd.Timestamp | None = None,
 ) -> tuple[pd.DataFrame, dict, dict[str, str]]:
-    """校验来源、频率与单位；月度排除未结束月份，日周度保留最新观测。"""
+    """校验来源、频率与单位；日度按有效观测取完整月均，周度保留原频率。"""
     frames, metadata = [], {}
     with READER.open_workbook(content, file_name=file_name) as (book, _):
         for label, indicator, unit in spec.series:
@@ -79,6 +81,13 @@ def load_chart_data(
     values = values.loc[values.index <= reference]
     if spec.frequency == "月":
         values = values.loc[values.index.to_period("M") < reference.to_period("M")]
+    elif spec.frequency == "日":
+        values = pd.DataFrame({
+            name: through_last_complete_month(
+                values[name], today=reference,
+            ).resample("ME").mean()
+            for name in values
+        })
     units = {label: unit for label, _, unit in spec.series}
     if spec.key == "air_transit":
         values["转运占比"] = values["转运量"].div(values["合计货量"].where(values["合计货量"] > 0)) * 100

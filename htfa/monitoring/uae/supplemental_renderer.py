@@ -35,7 +35,6 @@ def render_supplemental_charts(
                     key=f"analysis.uae.supplemental.{spec.key}.download",
                 )
                 as_of = values.index.max().strftime("%Y-%m-%d")
-                cell.caption(f"数据截至 {as_of}")
                 rendered[spec.key] = as_of
             except (KeyError, TypeError, ValueError) as exc:
                 cell.warning(f"{spec.title}未加载：{exc}")
@@ -47,5 +46,4 @@ def render_prices_section(st_obj: Any, payload: tuple[Any, str]) -> dict[str, An
     st_obj.divider()
     st_obj.subheader("物价")
     rendered = render_supplemental_charts(st_obj, *payload, PRICE_CHARTS)
-    st_obj.caption("钢材报价为CFR/CPT阿联酋进口报价区间中值，用于观察投入成本，不代表CPI。")
     return {"status": "success" if rendered else "no_data", "charts": rendered}

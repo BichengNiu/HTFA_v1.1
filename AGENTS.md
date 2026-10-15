@@ -92,6 +92,8 @@ Any change touching plotting (chart style, axes, legend, titles, grid, multi-axi
 
 ## Code changes
 
+- **禁止擅自新增灰字注释**：页面中的灰色说明文字（包括 `st.caption`、下载按钮下的“数据截至……”和额外解释性灰字）默认不添加。确有必要时，必须先说明内容与用途，取得用户明确同意后再添加。
+
 Use four-space indentation and PEP 8 naming. Keep UI rendering separate from data transformation, reuse existing module utilities, and keep diffs focused. Preserve user files and unrelated worktree changes. Runtime input validation, statistical assumptions, workbook schemas, authentication, download safety, and failure rollback are product behavior and must not be removed merely to shorten the code.
 
 ## Development loop checklist

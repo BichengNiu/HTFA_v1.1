@@ -33,6 +33,8 @@ EIBOR_URL = BASE + "/umbraco/surface/eibor/GetEiborData"
 FX_URL = BASE + "/umbraco/Surface/Exchange/GetExchangeRateData?lang=en"
 FX_PAGE = BASE + "/en/forex-eibor/exchange-rates/"
 DFM_PAGE = "https://www.dfm.ae/the-exchange/statistics-reports/historical-data/dfmgi"
+ADX_PAGE = "https://www.adx.ae/"
+ADX_URL = "https://apigateway.adx.ae/adx/marketwatch/1.1/indexChart/FADGI/5Y"
 EFFR_BASE = "https://markets.newyorkfed.org/api/rates/unsecured/effr/search.json"
 EIBOR_ON = "阿联酋:银行间同业拆借利率(EIBOR):隔夜"
 EIBOR_YEAR = "阿联酋:银行间同业拆借利率(EIBOR):1年"
@@ -40,6 +42,7 @@ EFFR = "美国:有效联邦基金利率(EFFR)"
 USD = "美元兑阿联酋迪拉姆"
 CNY = "人民币兑阿联酋迪拉姆"
 DFM = "阿联酋DFM综合股票指数"
+ADX = "阿联酋FTSE ADX综合股票指数"
 INDICATORS = {
     EIBOR_ON: ("%", "阿联酋央行"),
     EIBOR_YEAR: ("%", "阿联酋央行"),
@@ -47,6 +50,7 @@ INDICATORS = {
     USD: ("AED/USD", "CBUAE VAT reference exchange rates"),
     CNY: ("AED/CNY", "CBUAE VAT reference exchange rates"),
     DFM: ("点", "Dubai Financial Market"),
+    ADX: ("点", "Abu Dhabi Securities Exchange"),
 }
 MONTHLY_CREDIT = {
     "阿联酋:银行存款:居民存款:政府部门": "阿联酋政府存款",
@@ -119,6 +123,64 @@ def parse_effr(payload: dict) -> list[dict]:
                  r["percentRate"], EFFR_BASE) for r in records]
 
 
+def parse_adx(payload: dict) -> list[dict]:
+    """Parse official FADGI closes; duplicate dates count once, conflicts stay NULL."""
+    if str(payload.get("resultMessage", "")).lower() != "success":
+        raise ValueError("ADX did not return a successful response")
+    records = payload.get("response", {}).get("indexChart")
+    if not isinstance(records, list) or not records:
+        raise ValueError("ADX has no daily closing observations")
+    daily = {}
+    for record in records:
+        if record.get("indexCode") != "FADGI":
+            raise ValueError("ADX returned a different index")
+        row = _row(date.fromisoformat(record["positionDate"]), ADX,
+                   record["closeValue"], ADX_URL)
+        daily.setdefault(row["period"], set()).add(row["value"])
+    result = [
+        {"period": period, "indicator": ADX,
+         "value": next(iter(values)) if len(values) == 1 else None,
+         "source_url": ADX_URL}
+        for period, values in sorted(daily.items())
+    ]
+    if not any(row["value"] is not None for row in result):
+        raise ValueError("ADX has no unambiguous closing observations")
+    return result
+
+
+def _download_adx() -> None:
+    """Discover the official public client's gateway configuration, without login."""
+    page_path = RAW_DIR / "adx-page.html"
+    download_file(ADX_PAGE, page_path, force=True, browser_transport=True)
+    page = page_path.read_text(encoding="utf-8")
+    match = re.search(r'<script[^>]+src=["\']([^"\']*/_next/static/chunks/pages/_app-[^"\']+\.js)', page)
+    if match is None:
+        raise ValueError("ADX public client script is missing")
+    script_url = urljoin(ADX_PAGE, match.group(1))
+    if not script_url.startswith("https://www.adx.ae/_next/"):
+        raise ValueError("ADX client script has an unexpected origin")
+    script_path = RAW_DIR / "adx-client.js"
+    download_file(script_url, script_path, force=True, browser_transport=True)
+    script = script_path.read_text(encoding="utf-8")
+    gateway = re.search(
+        r'let \w+="([a-f0-9-]{36})",\w+="https://apigateway\.adx\.ae"', script,
+    )
+    if gateway is None:
+        raise ValueError("ADX public gateway configuration is missing")
+    from curl_cffi import requests
+
+    response = requests.get(
+        ADX_URL, impersonate="chrome", timeout=60,
+        headers={"adx-Gateway-APIKey": gateway.group(1), "Channel-ID": "OSS WEB",
+                 "X-Correlation-ID": "uuid", "Accept": "application/json",
+                 "Origin": ADX_PAGE.rstrip("/"), "Referer": ADX_PAGE},
+    )
+    response.raise_for_status()
+    payload = response.json()
+    parse_adx(payload)
+    (RAW_DIR / "adx.json").write_text(json.dumps(payload), encoding="utf-8")
+
+
 def _parse_cny_workbook(path: Path, url: str) -> list[dict]:
     workbook = load_workbook(path, read_only=True, data_only=True)
     result = []
@@ -163,6 +225,7 @@ def _download() -> list[dict]:
 
     with ThreadPoolExecutor(max_workers=5) as pool:
         list(pool.map(fetch, plans))
+    _download_adx()
     # Discover the public API base from the official DFM client config.
     dfm_page = (RAW_DIR / "dfm-page.html").read_text(encoding="utf-8")
     match = re.search(r'apiBaseUrl:"(https://[^"\s]+)"', dfm_page)
@@ -224,7 +287,7 @@ def _latest_fx_year_links(page: str) -> list[str]:
 
 
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
-    """Refresh the six matched public series and upsert them in DuckDB."""
+    """Refresh the seven matched public series and upsert them in DuckDB."""
     if not skip_download:
         _download()
     cny = json.loads((RAW_DIR / "cny.json").read_text(encoding="utf-8"))
@@ -233,13 +296,14 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     rows = (parse_eibor((RAW_DIR / "eibor.html").read_text(encoding="utf-8"))
             + parse_usd((RAW_DIR / "usd.html").read_text(encoding="utf-8"))
             + parse_dfm(json.loads((RAW_DIR / "dfm.json").read_text(encoding="utf-8")))
+            + parse_adx(json.loads((RAW_DIR / "adx.json").read_text(encoding="utf-8")))
             + parse_effr(json.loads((RAW_DIR / "effr.json").read_text(encoding="utf-8")))
             + cny)
     keys = [(r["period"], r["indicator"]) for r in rows]
     if len(keys) != len(set(keys)):
         raise ValueError("Public market inputs contain duplicate observation keys")
     if set(r["indicator"] for r in rows) != set(INDICATORS):
-        raise ValueError("Public market inputs do not cover all six indicators")
+        raise ValueError("Public market inputs do not cover all seven indicators")
     con.begin()
     try:
         con.execute(f"CREATE TABLE IF NOT EXISTS {TABLE} (period DATE, "
@@ -267,7 +331,8 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         con.rollback()
         raise
     return {"status": "ok", "rows": len(rows),
-            "note": "六个公开源指标已入库：DFM、EIBOR隔夜/1年、EFFR、USD/AED、CNY/AED"}
+            "note": ("七个公开源指标已入库：DFM、ADX、EIBOR隔夜/1年、EFFR、USD/AED、CNY/AED；"
+                     f"ADX重复冲突日期留空{sum(r['indicator'] == ADX and r['value'] is None for r in rows)}条")}
 
 
 def merge(workbook_path: Path) -> dict:
@@ -290,7 +355,10 @@ def merge(workbook_path: Path) -> dict:
     workbook = load_workbook(path, keep_links=True)
     temporary = None
     try:
-        _update_columns(workbook[SHEET], observations, INDICATORS, "日")
+        sheet = workbook[SHEET]
+        if ADX not in {sheet.cell(2, i).value for i in range(2, sheet.max_column + 1)}:
+            sheet.cell(2, sheet.max_column + 1, ADX)
+        _update_columns(sheet, observations, INDICATORS, "日")
         if credit:
             _update_columns(workbook["月度_Wind"], credit,
                             {name: ("十亿阿联酋迪拉姆", "CBUAE Statistical Bulletin")
@@ -308,7 +376,7 @@ def merge(workbook_path: Path) -> dict:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
     return {"status": "ok", "rows": len(observations),
-            "note": "Wind 表名保留兼容；六个日度公开源、四个央行月度存贷款列已更新"}
+            "note": "Wind 表名保留兼容；七个日度公开源、四个央行月度存贷款列已更新"}
 
 
 def _update_columns(sheet, observations: list[tuple], indicators: dict,

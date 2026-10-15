@@ -14,6 +14,53 @@ from htfa.jobs.uae_data import source_salik as salik
 from htfa.jobs.uae_data import source_uaewps as wps
 
 
+def test_adx_deduplicates_daily_closes_and_preserves_conflicts_as_null():
+    def observation(day, close, code="FADGI"):
+        return {"positionDate": day, "closeValue": close, "indexCode": code}
+
+    payload = {"resultMessage": "Success", "response": {"indexChart": [
+        observation("2026-09-01", 10000),
+        observation("2026-09-01", 10000),
+        observation("2026-09-02", 10100),
+        observation("2026-09-02", 10200),
+    ]}}
+    rows = market.parse_adx(payload)
+    assert len(rows) == 2
+    assert rows[0]["value"] == 10000
+    assert rows[1]["value"] is None
+    assert {r["indicator"] for r in rows} == {market.ADX}
+    payload["response"]["indexChart"][0]["indexCode"] = "FADX15"
+    with pytest.raises(ValueError, match="different index"):
+        market.parse_adx(payload)
+
+
+def test_public_merge_adds_adx_column_from_database(monkeypatch, tmp_path):
+    database = tmp_path / "test.duckdb"
+    with duckdb.connect(str(database)) as con:
+        con.execute(f"CREATE TABLE {market.TABLE}(period DATE,indicator VARCHAR,value DOUBLE)")
+        con.executemany(f"INSERT INTO {market.TABLE} VALUES (?,?,?)", [
+            (date(2026, 9, 30), name, 10000.0 if name == market.ADX else 3.0)
+            for name in market.INDICATORS
+        ])
+    monkeypatch.setattr(market.db, "connect", lambda **k: duckdb.connect(str(database), **k))
+    monkeypatch.setattr(market, "DATA_DIR", tmp_path)
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = market.SHEET
+    for i, name in enumerate((n for n in market.INDICATORS if n != market.ADX), 2):
+        sheet.cell(2, i, name)
+    path = tmp_path / "book.xlsx"
+    workbook.save(path)
+    workbook.close()
+    market.merge(path)
+    updated = load_workbook(path, data_only=True)
+    sheet = updated[market.SHEET]
+    assert sheet.cell(2, sheet.max_column).value == market.ADX
+    assert sheet.cell(3, sheet.max_column).value == "日"
+    assert sheet.cell(7, sheet.max_column).value == 10000
+    updated.close()
+
+
 def test_wps_declining_wages_keep_the_negative_sign():
     assert wps._parse_wage_yoy("the average wage declined by 2.3% Y-o-Y") == -2.3
     assert wps._parse_wage_yoy("the average wage rose by 0.7% Y-o-Y") == 0.7

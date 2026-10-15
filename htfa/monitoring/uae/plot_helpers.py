@@ -60,6 +60,8 @@ UAE_COMPACT_Y_AXIS_RULES = {
 }
 
 SOURCE_DISPLAY_NAMES = {
+    "Dubai Financial Market": "迪拜金融市场",
+    "Abu Dhabi Securities Exchange": "阿布扎比证券交易所",
     "ICE": "洲际交易所",
     "OPEC": "欧佩克",
     "OPEC MOMR": "欧佩克月度石油市场报告",
