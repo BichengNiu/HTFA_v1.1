@@ -561,6 +561,19 @@ div[data-testid="stFullScreenFrame"] div[data-testid="stImageContainer"] img {
 
 /* 主内容区域按钮样式已删除 - 使用Streamlit原生type="primary"参数 */
 
+/* 高频报告指标卡：长金额、单位及涨跌文字完整显示，窄屏允许换行。 */
+.st-key-uae-high-frequency-print [data-testid="stMetricValue"],
+.st-key-uae-high-frequency-print [data-testid="stMetricValue"] *,
+.st-key-uae-high-frequency-print [data-testid="stMetricLabel"],
+.st-key-uae-high-frequency-print [data-testid="stMetricLabel"] *,
+.st-key-uae-high-frequency-print [data-testid="stMetricDelta"],
+.st-key-uae-high-frequency-print [data-testid="stMetricDelta"] * {
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+}
+
 .uae-print-report-header {
     display: none;
 }

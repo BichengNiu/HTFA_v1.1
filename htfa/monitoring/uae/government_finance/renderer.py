@@ -96,6 +96,8 @@ from htfa.monitoring.uae.metrics import (
 )
 from htfa.monitoring.uae.periods import within_month_window
 from htfa.ui_shared.chart_legend import render_pyplot_figure
+from htfa.monitoring.uae.supplemental_data import FINANCE_CHARTS
+from htfa.monitoring.uae.supplemental_renderer import render_supplemental_charts
 
 FINANCE_EXPLANATION = """
 - **利率**：阿联酋央行发布 EIBOR 隔夜及1年期利率，美联储纽约分行发布美国 EFFR。
@@ -771,6 +773,7 @@ def render_government_finance_section(
                 content,
                 file_name,
             )
+            render_supplemental_charts(st_obj, content, file_name, FINANCE_CHARTS)
             with st_obj.expander("指标算法与解读", expanded=True):
                 st_obj.markdown(FINANCE_EXPLANATION)
         _render_business_activity_charts(

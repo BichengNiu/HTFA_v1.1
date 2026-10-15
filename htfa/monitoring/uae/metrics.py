@@ -218,7 +218,7 @@ def render_metric_cards(
                 delta=delta,
                 delta_color="off",
                 help=help_text,
-                width=220,
+                width=300,
             )
 
 

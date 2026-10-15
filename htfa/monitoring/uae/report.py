@@ -12,6 +12,7 @@ from htfa.monitoring.uae.government_finance.renderer import (
 from htfa.monitoring.uae.oil.renderer import render_oil_fiscal_panel
 from htfa.monitoring.uae.real_estate.renderer import render_real_estate_section
 from htfa.monitoring.uae.transport.renderer import render_transport_section
+from htfa.monitoring.uae.supplemental_renderer import render_prices_section
 
 
 TopicStatus = Literal["ok", "empty", "failed"]
@@ -54,6 +55,7 @@ TOPIC_RENDERERS: tuple[tuple[str, str, TopicRenderer], ...] = (
     ("government_finance", "政府金融", _render_government_finance),
     ("real_estate", "房地产", _render_real_estate),
     ("transport", "交通物流", _render_transport),
+    ("prices", "物价", render_prices_section),
 )
 
 

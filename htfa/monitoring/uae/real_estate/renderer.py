@@ -35,6 +35,8 @@ from htfa.monitoring.uae.metrics import (
     source_text_from_metadata,
 )
 from htfa.ui_shared.chart_legend import render_pyplot_figure
+from htfa.monitoring.uae.supplemental_data import PROPERTY_CHARTS
+from htfa.monitoring.uae.supplemental_renderer import render_supplemental_charts
 
 REAL_ESTATE_EXPLANATION = """
 - **交易类型**：由迪拜土地局发布；原始数据为房地产交易明细，按登记月份、交易类型（期房/现房）及市场（住宅/商业）聚合为月度指标；现房含一手和二手房。
@@ -174,6 +176,7 @@ def render_real_estate_section(
                     _render_sales_chart(column, data, last_month, market=market)
                 except (KeyError, TypeError, ValueError) as exc:
                     column.warning(f"{market}销售图未加载：{exc}")
+        render_supplemental_charts(st_obj, content, file_name, PROPERTY_CHARTS)
         with st_obj.expander("指标算法与解读", expanded=True):
             st_obj.markdown(REAL_ESTATE_EXPLANATION)
     except (KeyError, TypeError, ValueError, FileNotFoundError) as exc:

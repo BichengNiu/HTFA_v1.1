@@ -148,7 +148,7 @@ def test_render_metric_cards_renders_dash_for_missing() -> None:
 
     st_obj.columns.assert_not_called()
     st_obj.container.assert_called_once_with(horizontal=True, horizontal_alignment="left")
-    assert all(call.kwargs["width"] == 220 for call in st_obj.metric.call_args_list)
+    assert all(call.kwargs["width"] == 300 for call in st_obj.metric.call_args_list)
     assert st_obj.metric.call_count == 4
     args = [call.args for call in st_obj.metric.call_args_list]
     assert args[0][1] == "1"

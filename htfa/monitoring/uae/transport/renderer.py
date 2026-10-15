@@ -45,6 +45,8 @@ from htfa.monitoring.uae.metrics import (
     render_metric_cards,
 )
 from htfa.ui_shared.chart_legend import render_pyplot_figure
+from htfa.monitoring.uae.supplemental_data import TRANSPORT_CHARTS
+from htfa.monitoring.uae.supplemental_renderer import render_supplemental_charts
 
 PORT_VOLUME_DISPLAY_SCALE = 1_000_000
 
@@ -356,6 +358,7 @@ def render_transport_section(
                 )
             except (KeyError, TypeError, ValueError) as exc:
                 cell.warning(f"{title}未加载：{exc}")
+        render_supplemental_charts(st_obj, content, file_name, TRANSPORT_CHARTS)
         with st_obj.expander("指标算法与解读", expanded=True):
             st_obj.markdown(TRANSPORT_EXPLANATION)
     except (KeyError, TypeError, ValueError, FileNotFoundError) as exc:
