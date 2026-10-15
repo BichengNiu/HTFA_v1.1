@@ -32,7 +32,7 @@ FINANCE_CHARTS = (
 PROPERTY_CHARTS = (
     ChartSpec(
         "project_launch",
-        "确认新期房项目数与活跃项目数（近28天）",
+        "确认新期房项目数与活跃项目数（近28天口径，月均）",
         "周度_迪拜房地产",
         "周",
         (("确认新期房项目数", "经确认新期房项目数_近28天", "个"),
@@ -74,7 +74,7 @@ def load_chart_data(
     content: Any, file_name: str, spec: ChartSpec,
     *, today: pd.Timestamp | None = None,
 ) -> tuple[pd.DataFrame, dict, dict[str, str]]:
-    """校验来源、频率与单位；日度按有效观测取完整月均，周度保留原频率。"""
+    """校验原始频率与单位，日度和周度序列按有效观测转换为月均。"""
     frames, metadata = [], {}
     with READER.open_workbook(content, file_name=file_name) as (book, _):
         for label, indicator, unit in spec.series:
@@ -97,6 +97,11 @@ def load_chart_data(
             ).resample("ME").mean()
             for name in values
         })
+    elif spec.frequency == "周":
+        # DLD 源表已限定完整周及完整自然月；按周末日期归月取均值。
+        values = values.loc[
+            values.index.to_period("M") < reference.to_period("M")
+        ].resample("ME").mean()
     units = {label: unit for label, _, unit in spec.series}
     if spec.key == "air_transit":
         values["转运占比"] = values["转运量"].div(values["合计货量"].where(values["合计货量"] > 0)) * 100

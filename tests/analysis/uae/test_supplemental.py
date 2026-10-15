@@ -41,6 +41,8 @@ def workbook():
                         value = 0.0 if date == "2026-08-31" else value
                     if sheet == "日度_Wind" and date == "2026-09-15":
                         value = 60.0
+                    if sheet == "周度_迪拜房地产" and date == "2026-09-15":
+                        value = 10.0
                     if sheet == "日度_Wind" and date.startswith("2026-10"):
                         value = 1000.0
                     values.append(value)
@@ -70,7 +72,7 @@ def test_federal_cpi_monthly_chart_uses_index_and_complete_months(workbook):
     assert set(metadata) == {"总体 CPI 同比", "食品与饮料 CPI 同比"}
 
 
-def test_daily_placeholders_removed_but_weekly_zero_preserved(workbook):
+def test_daily_and_weekly_monthly_means_preserve_valid_weekly_zero(workbook):
     daily, _, _ = load_chart_data(
         workbook, "test.xlsx", FINANCE_CHARTS[0], today=pd.Timestamp("2026-10-15"),
     )
@@ -85,6 +87,10 @@ def test_daily_placeholders_removed_but_weekly_zero_preserved(workbook):
     )
     assert fx.iloc[0, 0] == 40.0
     assert weekly.loc["2026-08-31"].iloc[0] == 0
+    assert weekly.loc["2026-09-30"].tolist() == [15.0, 15.0]
+    assert weekly.index.max() == pd.Timestamp("2026-09-30")
+    assert weekly.index.is_month_end.all()
+    assert weekly.index.to_period("M").is_unique
 
 
 def test_failed_extra_chart_does_not_hide_sibling_or_create_subsection(monkeypatch):
