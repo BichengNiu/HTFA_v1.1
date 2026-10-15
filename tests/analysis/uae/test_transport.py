@@ -545,7 +545,7 @@ def test_section_renders_two_charts_and_explanation(monkeypatch) -> None:
         for call in st_obj.metric.call_args_list
     )
     assert st_obj.columns.call_args.kwargs["gap"] == "small"
-    assert st_obj.columns.call_count == 4
+    assert st_obj.columns.call_count == 2
     assert left.pyplot.call_count == 2
     assert right.pyplot.call_count == 2
     assert left.download_button.call_count == 2

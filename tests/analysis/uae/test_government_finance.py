@@ -487,7 +487,7 @@ def test_rates_chart_and_download_use_rates_month_not_credit_month(monkeypatch):
     renderer._render_rates_chart(st_obj, data)
 
     assert captured[0].index.max() == pd.Timestamp("2026-09-30")
-    assert "2026-09" in st_obj.caption.call_args.args[0]
+    st_obj.caption.assert_not_called()
 
 
 def test_search_chart_explicitly_displays_september_cutoff(monkeypatch):
@@ -613,7 +613,8 @@ def test_finance_metrics_cover_all_absolute_series_with_mom_and_yoy(
     )
 
     assert st_obj.metric.call_count == 11
-    assert [call.args[0] for call in st_obj.columns.call_args_list] == [4, 4, 3]
+    st_obj.columns.assert_not_called()
+    st_obj.container.assert_called_once_with(horizontal=True, horizontal_alignment="left")
     st_obj.warning.assert_not_called()
     assert [call.args[0] for call in st_obj.metric.call_args_list] == [
         "阿联酋隔夜拆借利率",

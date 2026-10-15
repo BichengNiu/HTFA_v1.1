@@ -98,7 +98,7 @@ def _render_real_estate_metrics(
                 _source_note_from_metadata(data.metadata, column, as_of),
             )
         )
-    render_metric_cards(st_obj, cards, n=4)
+    render_metric_cards(st_obj, cards)
 
 
 def _render_sales_chart(

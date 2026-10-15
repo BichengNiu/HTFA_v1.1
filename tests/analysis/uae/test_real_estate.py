@@ -316,7 +316,7 @@ def test_section_renders_four_cross_segment_charts_and_explanation(
         for call in st_obj.metric.call_args_list
     )
     assert st_obj.columns.call_args.kwargs["gap"] == "small"
-    assert st_obj.columns.call_count == 3
+    assert st_obj.columns.call_count == 2
     assert markets == [
         (left, "现房住宅"),
         (right, "期房住宅"),

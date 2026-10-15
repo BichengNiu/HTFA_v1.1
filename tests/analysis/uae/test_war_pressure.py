@@ -246,6 +246,7 @@ def test_oil_panel_places_war_pressure_before_revenue(monkeypatch) -> None:
         "_render_charts",
         lambda *args: events.append("charts"),
     )
+    st_obj.container = lambda *args, **kwargs: _NullContext()
     st_obj.spinner = lambda *args, **kwargs: _NullContext()
     st_obj.expander = lambda *args, **kwargs: _NullContext()
     st_obj.subheader = lambda *args, **kwargs: None

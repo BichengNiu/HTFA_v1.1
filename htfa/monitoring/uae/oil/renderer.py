@@ -122,13 +122,12 @@ def _monthly_mean_series(series: pd.Series) -> pd.Series:
 
 
 def _render_oil_metrics(st_obj: Any, data: OilMarketData) -> None:
-    price_names = tuple(name for name, _ in EIA_PRICE_INDICATORS)
-    columns = st_obj.columns(len(price_names) + 2)
-    for column, name in zip(columns, price_names):
-        price_series = through_last_complete_month(data.prices[name])
-        value, as_of, change = _latest_change(price_series, days=30)
-        metadata = data.metadata[name]
-        with column:
+    with st_obj.container(horizontal=True, horizontal_alignment="left"):
+        price_names = tuple(name for name, _ in EIA_PRICE_INDICATORS)
+        for name in price_names:
+            price_series = through_last_complete_month(data.prices[name])
+            value, as_of, change = _latest_change(price_series, days=30)
+            metadata = data.metadata[name]
             st_obj.metric(
                 name,
                 format_scaled_value(value, "美元/桶"),
@@ -139,11 +138,11 @@ def _render_oil_metrics(st_obj: Any, data: OilMarketData) -> None:
                     f"来源：{translate_source_text(metadata.source)}；"
                     f"源表更新：{metadata.updated_at}"
                 ),
+                width=220,
             )
 
-    value, as_of, change = _latest_change(data.production)
-    metadata = data.metadata[data.production.name]
-    with columns[len(price_names)]:
+        value, as_of, change = _latest_change(data.production)
+        metadata = data.metadata[data.production.name]
         st_obj.metric(
             "阿联酋原油产量",
             format_count_value(value, "桶/天"),
@@ -154,11 +153,11 @@ def _render_oil_metrics(st_obj: Any, data: OilMarketData) -> None:
                 f"{translate_source_text(metadata.source)}；"
                 f"源表更新：{metadata.updated_at}"
             ),
+            width=220,
         )
 
-    value, as_of, change = _latest_change(data.rig_count)
-    metadata = data.metadata[data.rig_count.name]
-    with columns[len(price_names) + 1]:
+        value, as_of, change = _latest_change(data.rig_count)
+        metadata = data.metadata[data.rig_count.name]
         st_obj.metric(
             "阿联酋石油活跃钻机数",
             format_count_value(value, "台"),
@@ -169,14 +168,14 @@ def _render_oil_metrics(st_obj: Any, data: OilMarketData) -> None:
                 f"{translate_source_text(metadata.source)}；"
                 f"源表更新：{metadata.updated_at}"
             ),
+            width=220,
         )
 
 
 def _render_revenue_metrics(st_obj: Any, revenue: pd.DataFrame) -> None:
-    latest = revenue.iloc[-1]
-    latest_date = pd.Timestamp(revenue.index[-1])
-    columns = st_obj.columns(4)
-    with columns[0]:
+    with st_obj.container(horizontal=True, horizontal_alignment="left"):
+        latest = revenue.iloc[-1]
+        latest_date = pd.Timestamp(revenue.index[-1])
         st_obj.metric(
             "最新月估算石油收入",
             f"{latest[REVENUE_COLUMN]:,.2f} 亿美元",
@@ -184,20 +183,24 @@ def _render_revenue_metrics(st_obj: Any, revenue: pd.DataFrame) -> None:
                 f"截至 {latest_date:%Y-%m}；价格基准："
                 f"{latest[PRICE_BENCHMARK_COLUMN]}"
             ),
+            width=220,
         )
-    with columns[1]:
         st_obj.metric(
             f"{latest_date.year} 年石油累计收入",
             f"{latest[YTD_COLUMN]:,.2f} 亿美元",
+            width=220,
         )
-    with columns[2]:
         value = latest[YOY_COLUMN]
-        st_obj.metric("石油收入月度同比", f"{value:+.1f}%" if pd.notna(value) else "—")
-    with columns[3]:
+        st_obj.metric(
+            "石油收入月度同比",
+            f"{value:+.1f}%" if pd.notna(value) else "—",
+            width=220,
+        )
         value = latest[YTD_YOY_COLUMN]
         st_obj.metric(
             "石油收入年度累计同比",
             f"{value:+.1f}%" if pd.notna(value) else "—",
+            width=220,
         )
 
 
@@ -207,38 +210,37 @@ def _render_war_pressure_metrics(
 ) -> None:
     """展示最新完整月份的三类武器数量与战争压力指数。"""
 
-    latest_values = _complete_war_pressure_values(data).dropna(
-        subset=[*RAW_LABELS, PRESSURE_LABEL]
-    ).sort_index()
-    if latest_values.empty:
-        st_obj.info("战争压力数据没有完整的最新月份。")
-        return
+    with st_obj.container(horizontal=True, horizontal_alignment="left"):
+        latest_values = _complete_war_pressure_values(data).dropna(
+            subset=[*RAW_LABELS, PRESSURE_LABEL]
+        ).sort_index()
+        if latest_values.empty:
+            st_obj.info("战争压力数据没有完整的最新月份。")
+            return
 
-    latest = latest_values.iloc[-1]
-    latest_date = pd.Timestamp(latest_values.index[-1])
-    source_text = "、".join(
-        dict.fromkeys(
-            metadata.source for metadata in data.metadata.values() if metadata.source
+        latest = latest_values.iloc[-1]
+        latest_date = pd.Timestamp(latest_values.index[-1])
+        source_text = "、".join(
+            dict.fromkeys(
+                metadata.source for metadata in data.metadata.values() if metadata.source
+            )
         )
-    )
-    help_text = (
-        f"截至 {latest_date:%Y-%m}；月度_WAM；"
-        f"来源：{translate_source_text(source_text)}"
-    )
-    columns = st_obj.columns(4)
-    metric_specs = (
-        ("最新月弹道导弹", latest[BALLISTIC_LABEL], "枚"),
-        ("最新月巡航导弹", latest[CRUISE_LABEL], "枚"),
-        ("最新月无人机", latest[UAV_LABEL], "架"),
-    )
-    for column, (label, value, unit) in zip(columns[:3], metric_specs):
-        with column:
+        help_text = (
+            f"截至 {latest_date:%Y-%m}；月度_WAM；"
+            f"来源：{translate_source_text(source_text)}"
+        )
+        metric_specs = (
+            ("最新月弹道导弹", latest[BALLISTIC_LABEL], "枚"),
+            ("最新月巡航导弹", latest[CRUISE_LABEL], "枚"),
+            ("最新月无人机", latest[UAV_LABEL], "架"),
+        )
+        for label, value, unit in metric_specs:
             st_obj.metric(
                 label,
                 format_count_value(float(value), unit),
                 help=help_text,
+                width=220,
             )
-    with columns[3]:
         st_obj.metric(
             "最新月战争压力指数",
             format_scaled_value(float(latest[PRESSURE_LABEL]), "指数"),
@@ -246,6 +248,7 @@ def _render_war_pressure_metrics(
                 f"{help_text}；原始压力为每日 9×弹道 log1p + 3×巡航 log1p + 无人机 log1p 后按月汇总，"
                 "再按战争期间 min-max 归一化到 0–100（不累计）"
             ),
+            width=220,
         )
 
 

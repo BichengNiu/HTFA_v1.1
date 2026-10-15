@@ -283,9 +283,7 @@ def _render_finance_metrics(
                 ),
             )
         )
-        for offset in range(0, len(cards), 4):
-            row_cards = cards[offset : offset + 4]
-            render_metric_cards(st_obj, row_cards, n=len(row_cards))
+        render_metric_cards(st_obj, cards)
     except (KeyError, TypeError, ValueError) as exc:
         st_obj.warning(f"财政金融指标未加载：{exc}")
 
@@ -334,7 +332,7 @@ def _render_business_metrics(
                     ),
                 )
             )
-        render_metric_cards(st_obj, cards, n=3)
+        render_metric_cards(st_obj, cards)
 
         payment = _load_payment_cached(content, file_name)
         payment_values = cumulative_to_monthly(payment.values).loc[
@@ -359,7 +357,7 @@ def _render_business_metrics(
                     ),
                 )
             )
-        render_metric_cards(st_obj, payment_cards, n=4)
+        render_metric_cards(st_obj, payment_cards)
     except (KeyError, TypeError, ValueError) as exc:
         st_obj.warning(f"企业活动指标未加载：{exc}")
 
@@ -405,7 +403,7 @@ def _render_labor_metrics(
                     f"按月搜索指数；来源：{SEARCH_SOURCE_TEXT}",
                 )
             )
-        render_metric_cards(st_obj, cards, n=4)
+        render_metric_cards(st_obj, cards)
     except (KeyError, TypeError, ValueError, FileNotFoundError) as exc:
         st_obj.warning(f"劳动就业指标未加载：{exc}")
 
@@ -487,7 +485,6 @@ def _render_rates_chart(
     )
     source_text = source_text_from_metadata(data.metadata)
     title = "阿联酋与美国市场利率（隔夜、1年期）"
-    st_obj.caption(f"数据截至 {last_month}；来源：{source_text}")
     _render_figure_with_download(
         st_obj,
         build_rates_figure(

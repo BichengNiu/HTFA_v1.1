@@ -153,7 +153,7 @@ def _render_transport_metrics(
             )
         )
 
-    render_metric_cards(st_obj, maritime_cards, n=4)
+    render_metric_cards(st_obj, maritime_cards)
 
     air_values = data.monthly_values.loc[
         pd.PeriodIndex(data.monthly_values.index, freq="M") <= last_month
@@ -207,7 +207,7 @@ def _render_transport_metrics(
         ),
     ]
     st_obj.caption("航空运输")
-    render_metric_cards(st_obj, air_cards, n=4)
+    render_metric_cards(st_obj, air_cards)
 
 
 def render_transport_section(

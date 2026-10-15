@@ -11,7 +11,7 @@ st.set_page_config(
     page_title="金轩监测",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 # Must run before HTFA imports any chart module so TsPlots also sees the
@@ -47,6 +47,9 @@ def main() -> None:
         render_standalone_data_overview()
         return
 
+    if "navigation.main_module" not in st.session_state:
+        st.session_state["navigation.main_module"] = "监测分析"
+        st.session_state["navigation.sub_module"] = "阿联酋"
     render_complete_sidebar(MODULE_CONFIG, key_prefix="sidebar")
     render_main_content()
 

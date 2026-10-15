@@ -393,7 +393,9 @@ def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
             "source": source_name,
         }
 
-    tab_objects = st_obj.tabs([label for label, _ in TAB_CONFIG])
+    tab_objects = st_obj.tabs(
+        [label for label, _ in TAB_CONFIG], default="高频数据"
+    )
     for tab, (_, view_key) in zip(tab_objects, TAB_CONFIG):
         with tab:
             if view_key == "growth_overview":
