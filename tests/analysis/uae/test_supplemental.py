@@ -125,6 +125,37 @@ render_prices_section(st, (p, p.name))
     assert not app.warning
     assert [element.value for element in app.subheader] == ["物价"]
     assert not app.caption
+    assert [metric.label for metric in app.metric] == [
+        "螺纹钢报价", "钢坯及方坯报价", "3mm热轧卷报价",
+        "总体 CPI 同比", "食品与饮料 CPI 同比",
+    ]
+    assert all(metric.value.endswith("美元/吨") for metric in app.metric[:3])
+    assert all(metric.value.endswith("%") for metric in app.metric[3:])
+    assert all(metric.delta.endswith("个百分点") for metric in app.metric[3:])
+
+
+def test_price_cpi_metrics_show_changes_in_percentage_points():
+    spec = PRICE_CHARTS[1]
+    values = pd.DataFrame(
+        {"总体 CPI 同比": [2.0, 3.0], "食品与饮料 CPI 同比": [-1.0, -0.5]},
+        index=pd.to_datetime(["2026-05-31", "2026-06-30"]),
+    )
+    st_obj = MagicMock()
+    renderer._render_price_metrics(st_obj, [(spec, values, {}, {})])
+
+    calls = st_obj.metric.call_args_list
+    assert [call.args for call in calls] == [
+        ("总体 CPI 同比", "3.00%"),
+        ("食品与饮料 CPI 同比", "-0.50%"),
+    ]
+    assert [call.kwargs["delta"] for call in calls] == [
+        "较上月 +1.00 个百分点", "较上月 +0.50 个百分点",
+    ]
+    st_obj.container.assert_called_once_with(
+        horizontal=True, horizontal_alignment="left",
+    )
+    assert all(call.kwargs["width"] == 300 for call in calls)
+    st_obj.caption.assert_not_called()
 
 
 def test_real_estate_renders_five_charts_without_extra_captions():
