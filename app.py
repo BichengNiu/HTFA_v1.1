@@ -21,6 +21,7 @@ configure_matplotlib_fonts()
 from htfa.app.ui.components.content_router import render_main_content
 from htfa.app.ui.components.sidebar import render_complete_sidebar
 from htfa.app.ui.style_loader import inject_cached_styles
+from htfa.app.ui.sidebar_defaults import initialize_sidebar_visibility
 from htfa.exploration.ui.standalone_data_overview import (
     is_standalone_data_overview_request,
     render_standalone_data_overview,
@@ -47,6 +48,7 @@ def main() -> None:
         render_standalone_data_overview()
         return
 
+    initialize_sidebar_visibility()
     if "navigation.main_module" not in st.session_state:
         st.session_state["navigation.main_module"] = "监测分析"
         st.session_state["navigation.sub_module"] = "阿联酋"
