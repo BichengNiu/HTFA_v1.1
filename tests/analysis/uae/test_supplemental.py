@@ -113,3 +113,20 @@ render_prices_section(st, (p, p.name))
     assert not app.warning
     assert [element.value for element in app.subheader] == ["物价"]
     assert not app.caption
+
+
+def test_real_estate_renders_five_charts_without_extra_captions():
+    app = AppTest.from_string('''
+import streamlit as st
+from htfa.monitoring.uae.database import published_source
+from htfa.monitoring.uae.real_estate.renderer import render_real_estate_section
+p = published_source()
+render_real_estate_section(st, p, p.name)
+''').run(timeout=60)
+    assert not app.exception
+    assert not app.warning
+    assert not app.error
+    assert len(app.get("image")) == 5
+    assert len(app.get("download_button")) == 5
+    assert [element.value for element in app.subheader] == ["房地产"]
+    assert not app.caption

@@ -154,7 +154,7 @@ def render_real_estate_section(
     content: Any,
     file_name: str,
 ) -> dict[str, Any]:
-    """渲染「房地产」板块：交易类型×用途四张笔数+金额双轴图。"""
+    """渲染「房地产」板块：四张成交图和一张项目数量图。"""
 
     st_obj.divider()
     st_obj.subheader("房地产")
