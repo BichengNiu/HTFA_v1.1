@@ -87,6 +87,7 @@ def test_pmi_figure_plots_single_line() -> None:
     assert figure.axes[0].get_ylabel() == "点"
     # 单序列图不需要图例
     assert len(figure.legends) == 0
+    assert figure.axes[0].get_legend() is None
     assert any(text.get_text() == "数据来源：标普全球" for text in figure.texts)
 
 
