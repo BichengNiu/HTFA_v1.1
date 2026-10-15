@@ -123,22 +123,23 @@ def _monthly_mean_series(series: pd.Series) -> pd.Series:
 
 def _render_oil_metrics(st_obj: Any, data: OilMarketData) -> None:
     price_names = tuple(name for name, _ in EIA_PRICE_INDICATORS)
-    for name in price_names:
+    for index, name in enumerate(price_names):
         price_series = through_last_complete_month(data.prices[name])
         value, as_of, change = _latest_change(price_series, days=30)
         metadata = data.metadata[name]
-        st_obj.metric(
-            name,
-            format_scaled_value(value, "美元/桶"),
-            delta=_metric_delta("30日", change),
-            delta_color="off",
-            help=(
-                f"截至 {as_of:%Y-%m-%d}；{metadata.frequency}；"
-                f"来源：{translate_source_text(metadata.source)}；"
-                f"源表更新：{metadata.updated_at}"
-            ),
-            width=220,
-        )
+        with st_obj.container(key=f"uae-oil-price-{index}", width=300):
+            st_obj.metric(
+                name,
+                f"{value:,.2f} 美元/桶",
+                delta=_metric_delta("30日", change),
+                delta_color="off",
+                help=(
+                    f"截至 {as_of:%Y-%m-%d}；{metadata.frequency}；"
+                    f"来源：{translate_source_text(metadata.source)}；"
+                    f"源表更新：{metadata.updated_at}"
+                ),
+                width="stretch",
+            )
 
     value, as_of, change = _latest_change(data.production)
     metadata = data.metadata[data.production.name]

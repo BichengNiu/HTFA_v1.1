@@ -574,6 +574,13 @@ div[data-testid="stFullScreenFrame"] div[data-testid="stImageContainer"] img {
     overflow-wrap: anywhere !important;
 }
 
+/* 油价使用美元/桶原单位，数值与单位保持单行。 */
+.st-key-uae-high-frequency-print [class*="st-key-uae-oil-price-"] [data-testid="stMetricValue"],
+.st-key-uae-high-frequency-print [class*="st-key-uae-oil-price-"] [data-testid="stMetricValue"] * {
+    white-space: nowrap !important;
+    overflow-wrap: normal !important;
+}
+
 .uae-print-report-header {
     display: none;
 }
