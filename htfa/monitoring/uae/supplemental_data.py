@@ -19,6 +19,7 @@ class ChartSpec:
     frequency: str
     series: tuple[tuple[str, str, str], ...]
     right: tuple[str, ...] = ()
+    window_months: int | None = 36
 
 
 FINANCE_CHARTS = (
@@ -63,6 +64,7 @@ PRICE_CHARTS = (
         "月",
         (("总体 CPI", "阿联酋:消费者价格指数:总体(2021=100)", "指数（2021=100）"),
          ("食品与饮料 CPI", "阿联酋:消费者价格指数:食品与饮料(2021=100)", "指数（2021=100）")),
+        window_months=None,
     ),
 )
 READER = EconomicWorkbookReader("uae_monitoring", "monitoring.uae")
@@ -104,5 +106,8 @@ def load_chart_data(
     if values.empty:
         raise ValueError(f"{spec.title}没有可用观测")
     end = values.index.max()
-    values = values.loc[values.index >= end - pd.DateOffset(months=36)]
+    if spec.window_months is not None:
+        values = values.loc[
+            values.index >= end - pd.DateOffset(months=spec.window_months)
+        ]
     return values, metadata, units
