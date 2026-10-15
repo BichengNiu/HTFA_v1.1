@@ -73,6 +73,7 @@ SOURCE_DISPLAY_NAMES = {
     "Baker Hughes": "贝克休斯",
     "CBUAE": "阿联酋央行",
     "CBUAE EIBOR": "阿联酋央行",
+    "CBUAE VAT reference exchange rates": "阿联酋央行",
     "Federal Reserve Bank of New York": "美联储纽约分行",
     "CBUAE QER": "阿联酋央行季度经济报告",
     "UAE Ministry of Finance (MOF GFS)": "阿联酋财政部（政府财政统计）",
