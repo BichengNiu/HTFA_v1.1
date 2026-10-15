@@ -490,7 +490,7 @@ def test_rates_chart_and_download_use_rates_month_not_credit_month(monkeypatch):
     st_obj.caption.assert_not_called()
 
 
-def test_search_chart_explicitly_displays_september_cutoff(monkeypatch):
+def test_search_chart_has_no_redundant_caption(monkeypatch):
     values = pd.DataFrame({
         "work in dubai": [39, 33],
         "work in uae": [48, 46],
@@ -505,7 +505,7 @@ def test_search_chart_explicitly_displays_september_cutoff(monkeypatch):
 
     renderer._render_search_index_chart(st_obj, values)
 
-    assert st_obj.caption.call_args.args[0] == "数据截至 2026-09；来源：谷歌趋势"
+    st_obj.caption.assert_not_called()
 
 
 def test_finance_metrics_row_falls_back_to_warning(monkeypatch) -> None:
@@ -784,6 +784,9 @@ def test_business_and_labor_metrics_show_mom_and_yoy(monkeypatch) -> None:
         "test.xlsx",
     )
     assert business_st.metric.call_count == 7
+    business_st.container.assert_called_once_with(
+        horizontal=True, horizontal_alignment="left"
+    )
     assert business_st.metric.call_args_list[0].args[0] == (
         "非油私营部门采购经理指数（PMI）"
     )

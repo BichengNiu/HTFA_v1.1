@@ -33,7 +33,7 @@ MODULE_CONFIG = NAV_MODULE_CONFIG
 
 
 def main() -> None:
-    """渲染侧边栏并路由主内容。"""
+    """首次打开阿联酋高频报告，并保留用户后续的模块导航。"""
 
     inject_cached_styles()
     if st.query_params.get("view") == "sarimax-model":

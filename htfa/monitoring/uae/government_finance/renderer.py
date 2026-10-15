@@ -296,8 +296,8 @@ def _render_business_metrics(
 ) -> None:
     """企业活动指标卡：企业活动三项与支付数据四项，均显示环比和同比。"""
 
+    cards = []
     try:
-        cards = []
         pmi = _load_pmi_cached(content, file_name)
         pmi_series = pmi.values[PMI_LABEL]
         pmi_value, pmi_as_of = latest_month_value(pmi_series)
@@ -332,13 +332,11 @@ def _render_business_metrics(
                     ),
                 )
             )
-        render_metric_cards(st_obj, cards)
 
         payment = _load_payment_cached(content, file_name)
         payment_values = cumulative_to_monthly(payment.values).loc[
             pd.PeriodIndex(payment.values.index, freq="M") <= last_period
         ]
-        payment_cards = []
         for label, column, unit in (
             (CUSTOMER_TRANSFERS_NUMBER_DISPLAY, CUSTOMER_TRANSFERS_NUMBER_DISPLAY, "笔"),
             (CUSTOMER_TRANSFERS_AMOUNT_DISPLAY, CUSTOMER_TRANSFERS_AMOUNT_DISPLAY, "百万迪拉姆"),
@@ -347,7 +345,7 @@ def _render_business_metrics(
         ):
             series = payment_values[column]
             value, as_of = latest_month_value(series)
-            payment_cards.append(
+            cards.append(
                 (
                     label,
                     _format_finance_value(value, unit=unit),
@@ -357,9 +355,10 @@ def _render_business_metrics(
                     ),
                 )
             )
-        render_metric_cards(st_obj, payment_cards)
     except (KeyError, TypeError, ValueError) as exc:
         st_obj.warning(f"企业活动指标未加载：{exc}")
+    if cards:
+        render_metric_cards(st_obj, cards)
 
 
 def _render_labor_metrics(
@@ -629,9 +628,6 @@ def _render_search_index_chart(
 ) -> None:
     title = "阿联酋工作谷歌搜索热度"
     display_values = display_search_index_values(values)
-    latest_month = display_values.dropna(how="any").index.max()
-    if pd.notna(latest_month):
-        st_obj.caption(f"数据截至 {latest_month:%Y-%m}；来源：{SEARCH_SOURCE_TEXT}")
     _render_figure_with_download(
         st_obj,
         build_search_index_figure(

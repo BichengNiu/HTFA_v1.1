@@ -568,6 +568,9 @@ def test_section_renders_two_charts_and_explanation(monkeypatch) -> None:
     assert calls.count("subheader") == 1
     assert st_obj.subheader.call_args.args[0] == "交通物流"
     assert st_obj.metric.call_count == 8
+    st_obj.container.assert_called_once_with(
+        horizontal=True, horizontal_alignment="left"
+    )
     assert [call.args[0] for call in st_obj.metric.call_args_list] == [
         "阿联酋港口进口量",
         "阿联酋港口出口量",

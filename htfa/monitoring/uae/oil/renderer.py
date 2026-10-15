@@ -122,86 +122,84 @@ def _monthly_mean_series(series: pd.Series) -> pd.Series:
 
 
 def _render_oil_metrics(st_obj: Any, data: OilMarketData) -> None:
-    with st_obj.container(horizontal=True, horizontal_alignment="left"):
-        price_names = tuple(name for name, _ in EIA_PRICE_INDICATORS)
-        for name in price_names:
-            price_series = through_last_complete_month(data.prices[name])
-            value, as_of, change = _latest_change(price_series, days=30)
-            metadata = data.metadata[name]
-            st_obj.metric(
-                name,
-                format_scaled_value(value, "美元/桶"),
-                delta=_metric_delta("30日", change),
-                delta_color="off",
-                help=(
-                    f"截至 {as_of:%Y-%m-%d}；{metadata.frequency}；"
-                    f"来源：{translate_source_text(metadata.source)}；"
-                    f"源表更新：{metadata.updated_at}"
-                ),
-                width=220,
-            )
-
-        value, as_of, change = _latest_change(data.production)
-        metadata = data.metadata[data.production.name]
+    price_names = tuple(name for name, _ in EIA_PRICE_INDICATORS)
+    for name in price_names:
+        price_series = through_last_complete_month(data.prices[name])
+        value, as_of, change = _latest_change(price_series, days=30)
+        metadata = data.metadata[name]
         st_obj.metric(
-            "阿联酋原油产量",
-            format_count_value(value, "桶/天"),
-            delta=_metric_delta("环比", change),
+            name,
+            format_scaled_value(value, "美元/桶"),
+            delta=_metric_delta("30日", change),
             delta_color="off",
             help=(
-                f"截至 {as_of:%Y-%m}；月度；来源："
-                f"{translate_source_text(metadata.source)}；"
+                f"截至 {as_of:%Y-%m-%d}；{metadata.frequency}；"
+                f"来源：{translate_source_text(metadata.source)}；"
                 f"源表更新：{metadata.updated_at}"
             ),
             width=220,
         )
 
-        value, as_of, change = _latest_change(data.rig_count)
-        metadata = data.metadata[data.rig_count.name]
-        st_obj.metric(
-            "阿联酋石油活跃钻机数",
-            format_count_value(value, "台"),
-            delta=_metric_delta("环比", change),
-            delta_color="off",
-            help=(
-                f"截至 {as_of:%Y-%m}；月度；来源："
-                f"{translate_source_text(metadata.source)}；"
-                f"源表更新：{metadata.updated_at}"
-            ),
-            width=220,
-        )
+    value, as_of, change = _latest_change(data.production)
+    metadata = data.metadata[data.production.name]
+    st_obj.metric(
+        "阿联酋原油产量",
+        format_count_value(value, "桶/天"),
+        delta=_metric_delta("环比", change),
+        delta_color="off",
+        help=(
+            f"截至 {as_of:%Y-%m}；月度；来源："
+            f"{translate_source_text(metadata.source)}；"
+            f"源表更新：{metadata.updated_at}"
+        ),
+        width=220,
+    )
+
+    value, as_of, change = _latest_change(data.rig_count)
+    metadata = data.metadata[data.rig_count.name]
+    st_obj.metric(
+        "阿联酋石油活跃钻机数",
+        format_count_value(value, "台"),
+        delta=_metric_delta("环比", change),
+        delta_color="off",
+        help=(
+            f"截至 {as_of:%Y-%m}；月度；来源："
+            f"{translate_source_text(metadata.source)}；"
+            f"源表更新：{metadata.updated_at}"
+        ),
+        width=220,
+    )
 
 
 def _render_revenue_metrics(st_obj: Any, revenue: pd.DataFrame) -> None:
-    with st_obj.container(horizontal=True, horizontal_alignment="left"):
-        latest = revenue.iloc[-1]
-        latest_date = pd.Timestamp(revenue.index[-1])
-        st_obj.metric(
-            "最新月估算石油收入",
-            f"{latest[REVENUE_COLUMN]:,.2f} 亿美元",
-            help=(
-                f"截至 {latest_date:%Y-%m}；价格基准："
-                f"{latest[PRICE_BENCHMARK_COLUMN]}"
-            ),
-            width=220,
-        )
-        st_obj.metric(
-            f"{latest_date.year} 年石油累计收入",
-            f"{latest[YTD_COLUMN]:,.2f} 亿美元",
-            width=220,
-        )
-        value = latest[YOY_COLUMN]
-        st_obj.metric(
-            "石油收入月度同比",
-            f"{value:+.1f}%" if pd.notna(value) else "—",
-            width=220,
-        )
-        value = latest[YTD_YOY_COLUMN]
-        st_obj.metric(
-            "石油收入年度累计同比",
-            f"{value:+.1f}%" if pd.notna(value) else "—",
-            width=220,
-        )
+    latest = revenue.iloc[-1]
+    latest_date = pd.Timestamp(revenue.index[-1])
+    st_obj.metric(
+        "最新月估算石油收入",
+        f"{latest[REVENUE_COLUMN]:,.2f} 亿美元",
+        help=(
+            f"截至 {latest_date:%Y-%m}；价格基准："
+            f"{latest[PRICE_BENCHMARK_COLUMN]}"
+        ),
+        width=220,
+    )
+    st_obj.metric(
+        f"{latest_date.year} 年石油累计收入",
+        f"{latest[YTD_COLUMN]:,.2f} 亿美元",
+        width=220,
+    )
+    value = latest[YOY_COLUMN]
+    st_obj.metric(
+        "石油收入月度同比",
+        f"{value:+.1f}%" if pd.notna(value) else "—",
+        width=220,
+    )
+    value = latest[YTD_YOY_COLUMN]
+    st_obj.metric(
+        "石油收入年度累计同比",
+        f"{value:+.1f}%" if pd.notna(value) else "—",
+        width=220,
+    )
 
 
 def _render_war_pressure_metrics(
@@ -445,9 +443,10 @@ def render_oil_fiscal_panel(
         _render_war_pressure_metrics(st_obj, war_pressure)
         _render_war_pressure_section(st_obj, war_pressure)
         st_obj.subheader("石油生产与收入")
-        _render_oil_metrics(st_obj, data)
         revenue = estimate_monthly_oil_revenue(data.prices, data.production)
-        _render_revenue_metrics(st_obj, revenue)
+        with st_obj.container(horizontal=True, horizontal_alignment="left"):
+            _render_oil_metrics(st_obj, data)
+            _render_revenue_metrics(st_obj, revenue)
         _render_charts(st_obj, data, revenue)
         with st_obj.expander("指标算法与解读", expanded=True):
             st_obj.markdown(OIL_FISCAL_EXPLANATION)
