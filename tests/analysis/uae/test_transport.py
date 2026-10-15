@@ -51,6 +51,44 @@ _DOTT_HEADERS = [
 ]
 
 
+@pytest.mark.parametrize("dual_axis", [False, True])
+def test_transport_charts_render_and_export_with_base_canvas(monkeypatch, dual_axis):
+    from matplotlib.figure import Figure
+    from htfa.monitoring.uae.transport import charts
+
+    original = charts.plot_series
+    figures = []
+
+    def plot_on_base_canvas(*args, **kwargs):
+        figure = Figure(figsize=kwargs["figsize"])
+        figures.append(figure)
+        return original(*args, ax=figure.add_subplot(), **kwargs)
+
+    monkeypatch.setattr(charts, "plot_series", plot_on_base_canvas)
+    values = pd.DataFrame(
+        {"passengers": [100, 120, 140], "freight": [80, 100, 120]},
+        index=pd.date_range("2026-07-01", periods=3, freq="MS"),
+    )
+    options = dict(
+        columns=("passengers", "freight"), title="Transport",
+        source_text="Public data", last_month=pd.Period("2026-09", freq="M"),
+    )
+    if dual_axis:
+        figure = charts.build_dual_axis_figure(
+            values, **options, left_columns=("passengers",),
+            right_columns=("freight",),
+            units={"passengers": "人次", "freight": "磅"},
+        )
+    else:
+        figure = charts.build_multi_series_figure(values, **options, unit="吨")
+
+    assert figure is figures[0]
+    assert len(figure.axes) == (2 if dual_axis else 1)
+    output = BytesIO()
+    figure.savefig(output, format="png")
+    assert output.getvalue().startswith(b"\x89PNG")
+
+
 def _indicator_sheet_rows(
     *,
     title: str,
