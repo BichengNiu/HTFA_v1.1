@@ -72,6 +72,7 @@ def test_transport_charts_render_and_export_with_base_canvas(monkeypatch, dual_a
     options = dict(
         columns=("passengers", "freight"), title="Transport",
         source_text="Public data", last_month=pd.Period("2026-09", freq="M"),
+        legend_labels=("Passengers (people)", "Freight (lb)"),
     )
     if dual_axis:
         figure = charts.build_dual_axis_figure(
@@ -84,6 +85,10 @@ def test_transport_charts_render_and_export_with_base_canvas(monkeypatch, dual_a
 
     assert figure is figures[0]
     assert len(figure.axes) == (2 if dual_axis else 1)
+    assert [text.get_text() for text in figure.axes[0].get_legend().get_texts()] == (
+        ["Passengers（左轴）", "Freight（右轴）"]
+        if dual_axis else ["Passengers", "Freight"]
+    )
     output = BytesIO()
     figure.savefig(output, format="png")
     assert output.getvalue().startswith(b"\x89PNG")
@@ -492,6 +497,12 @@ def test_dubai_air_figure_combines_awbs_and_total_on_two_axes() -> None:
 
     assert figure.axes[0].get_ylabel() == "万张"
     assert figure.axes[1].get_ylabel() == "万吨"
+    assert [text.get_text() for text in figure.axes[0].get_legend().get_texts()] == [
+        "迪拜航空货运进口运单数（左轴）",
+        "迪拜航空货运出口运单数（左轴）",
+        "迪拜航空货运进口总量（右轴）",
+        "迪拜航空货运出口总量（右轴）",
+    ]
 
 
 def test_us_uae_air_figure_draws_passenger_and_freight_lines() -> None:
@@ -526,8 +537,8 @@ def test_us_uae_air_figure_draws_passenger_and_freight_lines() -> None:
     legend = figure.axes[0].get_legend()
     assert legend is not None
     assert [text.get_text() for text in legend.get_texts()] == [
-        "美国—阿联酋航空旅客",
-        "美国—阿联酋航空货运",
+        "美国—阿联酋航空旅客（左轴）",
+        "美国—阿联酋航空货运（右轴）",
     ]
 
 

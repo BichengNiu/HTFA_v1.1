@@ -88,7 +88,7 @@ def build_multi_series_figure(
     last_month : pandas.Period
         窗口右端月份。
     legend_labels : tuple[str, ...] or None, optional
-        覆盖图例文字；长度必须与 ``columns`` 一致。
+        设置序列显示名；长度必须与 ``columns`` 一致，双轴图自动追加轴标记。
     """
 
     display = _windowed(values, last_month)
@@ -97,8 +97,10 @@ def build_multi_series_figure(
         raise ValueError(f"{title}没有可绘制的有效观测")
 
     frame = display[list(columns)].dropna(how="all")
+    series_labels = _normalize_legend_labels(legend_labels)
     figure, returned_axis = plot_series(
         frame,
+        labels=series_labels,
         facet=False,
         title=title,
         xtitle="",
@@ -106,11 +108,10 @@ def build_multi_series_figure(
         year_ruler=True,
         vlines=WAR_START_DATE,
         show_legend=True,
-        legend_labels=_normalize_legend_labels(legend_labels),
         note=source_note(source_text),
         note_loc="left",
         figsize=(9.4, 6.2),
-        units={column: unit for column in columns},
+        units={label: unit for label in (series_labels or columns)},
     )
     axis = normalize_ts_axis(returned_axis)
     axis.set_ylim(bottom=0)
@@ -154,7 +155,7 @@ def build_dual_axis_figure(
     last_month : pandas.Period
         窗口右端月份。
     legend_labels : tuple[str, ...] or None, optional
-        覆盖图例文字；长度必须与 ``columns`` 一致。
+        设置序列显示名；长度必须与 ``columns`` 一致，图例自动追加轴标记。
     """
 
     if set(left_columns).intersection(right_columns):
@@ -170,12 +171,16 @@ def build_dual_axis_figure(
         raise ValueError(f"{title}没有可绘制的有效观测")
 
     frame = display[list(columns)].dropna(how="all")
+    # 使用序列显示名，保留 Ts 按实际轴分组自动追加的“（左轴）/（右轴）”。
+    series_labels = _normalize_legend_labels(legend_labels)
+    display_names = columns if series_labels is None else series_labels
     axis_groups = {
-        column: "left" if column in left_columns else "right"
-        for column in columns
+        label: "left" if column in left_columns else "right"
+        for column, label in zip(columns, display_names, strict=True)
     }
     figure, returned_axis = plot_series(
         frame,
+        labels=series_labels,
         facet=False,
         axis_groups=axis_groups,
         title=title,
@@ -184,11 +189,13 @@ def build_dual_axis_figure(
         year_ruler=True,
         vlines=WAR_START_DATE,
         show_legend=True,
-        legend_labels=_normalize_legend_labels(legend_labels),
         note=source_note(source_text),
         note_loc="left",
         figsize=(9.4, 6.2),
-        units=dict(units),
+        units={
+            label: units[column]
+            for column, label in zip(columns, display_names, strict=True)
+        },
     )
     axis = normalize_ts_axis(returned_axis)
     right_axis = getattr(axis, "right_ax", None)
