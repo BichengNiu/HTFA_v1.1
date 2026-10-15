@@ -736,6 +736,24 @@ div[data-testid="stFullScreenFrame"] div[data-testid="stImageContainer"] img {
         display: none !important;
     }
 
+    /* 指标行在打印时使用四列网格，覆盖网页端卡片的固定宽度，按行从左到右排列。
+       只匹配直接包含指标卡的横向容器，不影响双列图表布局。 */
+    .st-key-uae-high-frequency-print [data-testid="stHorizontalBlock"]:has(> [data-testid="stElementContainer"] [data-testid="stMetric"]) {
+        display: grid !important;
+        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+        grid-auto-flow: row !important;
+        gap: 0.5rem 0.75rem !important;
+        align-items: start !important;
+    }
+
+    .st-key-uae-high-frequency-print [data-testid="stHorizontalBlock"]:has(> [data-testid="stElementContainer"] [data-testid="stMetric"]) > [data-testid="stElementContainer"],
+    .st-key-uae-high-frequency-print [data-testid="stHorizontalBlock"]:has(> [data-testid="stElementContainer"] [data-testid="stMetric"]) > [data-testid="stLayoutWrapper"] {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        break-inside: avoid !important;
+    }
+
     /* A4 下四列会变窄，允许标签、数值和环比文字换行，避免 Streamlit 的省略号截断。 */
     [data-testid="stMetric"] {
         min-width: 0 !important;
