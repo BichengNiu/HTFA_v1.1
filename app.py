@@ -1,4 +1,4 @@
-"""HTFA Streamlit 应用入口。"""
+"""HTFA Streamlit 入口；UAE 报告只读加载仓库中的 DuckDB 发布版本。"""
 
 from __future__ import annotations
 
