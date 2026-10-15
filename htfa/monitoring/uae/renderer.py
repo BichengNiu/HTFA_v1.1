@@ -233,7 +233,10 @@ def _render_series_group_explanation(st_obj, group_title: str) -> None:
     explanation = SERIES_GROUP_EXPLANATIONS.get(group_title)
     if explanation is None:
         return
-    with st_obj.expander("指标算法与解读", expanded=True):
+    with st_obj.expander(
+        "指标算法与解读", expanded=True,
+        key=f"uae-indicator-explanation-{group_title}",
+    ):
         st_obj.markdown(explanation)
 
 

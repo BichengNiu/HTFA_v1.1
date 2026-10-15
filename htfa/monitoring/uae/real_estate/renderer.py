@@ -177,7 +177,7 @@ def render_real_estate_section(
                 except (KeyError, TypeError, ValueError) as exc:
                     column.warning(f"{market}销售图未加载：{exc}")
         render_supplemental_charts(st_obj, content, file_name, PROPERTY_CHARTS)
-        with st_obj.expander("指标算法与解读", expanded=True):
+        with st_obj.expander("指标算法与解读", expanded=True, key="uae-indicator-explanation-property"):
             st_obj.markdown(REAL_ESTATE_EXPLANATION)
     except (KeyError, TypeError, ValueError, FileNotFoundError) as exc:
         st_obj.error(f"房地产数据加载失败：{exc}")

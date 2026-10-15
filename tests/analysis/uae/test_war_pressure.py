@@ -197,7 +197,9 @@ def test_war_pressure_section_renders_algorithm_and_interpretation(monkeypatch) 
         ),
     )
 
-    st_obj.expander.assert_called_once_with("指标算法与解读", expanded=True)
+    st_obj.expander.assert_called_once_with(
+        "指标算法与解读", expanded=True, key="uae-indicator-explanation-war",
+    )
     explanation = st_obj.markdown.call_args.args[0]
     assert "9×log1p(弹道导弹数量)" in explanation
     assert "min-max 归一化" in explanation

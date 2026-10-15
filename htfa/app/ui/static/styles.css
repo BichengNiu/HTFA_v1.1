@@ -827,7 +827,13 @@ div[data-testid="stFullScreenFrame"] div[data-testid="stImageContainer"] img {
         object-fit: contain !important;
     }
 
-    /* 展开器正文按打印正文尺度排版，避免算法说明占满页面。 */
+    /* 算法解读只供网页交互查看，打印时隐藏整个展开器及其占位。 */
+    [class*="st-key-uae-indicator-explanation-"],
+    [data-testid="stLayoutWrapper"]:has(> [data-testid="stExpander"][class*="st-key-uae-indicator-explanation-"]) {
+        display: none !important;
+    }
+
+    /* 其他展开器正文按打印正文尺度排版。 */
     [data-testid="stExpander"] summary,
     [data-testid="stExpander"] summary *,
     .streamlit-expanderHeader {

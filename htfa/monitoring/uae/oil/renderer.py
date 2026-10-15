@@ -287,7 +287,7 @@ def _render_war_pressure_section(
         title="战争压力（月度_WAM）",
         key="analysis.uae.oil.war_pressure.download",
     )
-    with st_obj.expander("指标算法与解读", expanded=True):
+    with st_obj.expander("指标算法与解读", expanded=True, key="uae-indicator-explanation-war"):
         st_obj.markdown(WAR_PRESSURE_EXPLANATION)
     st_obj.divider()
 
@@ -449,7 +449,7 @@ def render_oil_fiscal_panel(
             _render_oil_metrics(st_obj, data)
             _render_revenue_metrics(st_obj, revenue)
         _render_charts(st_obj, data, revenue)
-        with st_obj.expander("指标算法与解读", expanded=True):
+        with st_obj.expander("指标算法与解读", expanded=True, key="uae-indicator-explanation-oil"):
             st_obj.markdown(OIL_FISCAL_EXPLANATION)
     except (KeyError, TypeError, ValueError) as exc:
         st_obj.error(f"油价、产量或战争压力数据加载失败：{exc}")
