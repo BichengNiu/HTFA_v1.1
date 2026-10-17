@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 
+import matplotlib
 import pandas as pd
 from matplotlib.axes import Axes
 from matplotlib.dates import date2num
@@ -15,15 +16,10 @@ from matplotlib.figure import Figure
 from matplotlib.transforms import blended_transform_factory
 import numpy as np
 from Ts.TsPlots.style import format_compact_y_axis as ts_format_compact_y_axis
+from htfa.ui_shared.fonts import matplotlib_font_family
 
 
-CHINESE_FONT_FAMILY = [
-    "Noto Sans CJK SC",
-    "Noto Sans CJK TC",
-    "Microsoft YaHei",
-    "SimHei",
-    "DejaVu Sans",
-]
+CHINESE_FONT_FAMILY = matplotlib_font_family()
 WAR_START_DATE = pd.Timestamp("2026-03-01")
 WAR_LINE_COLOR = "#C0392B"
 
@@ -64,6 +60,8 @@ UAE_COMPACT_Y_AXIS_RULES = {
 }
 
 SOURCE_DISPLAY_NAMES = {
+    "Dubai Financial Market": "迪拜金融市场",
+    "Abu Dhabi Securities Exchange": "阿布扎比证券交易所",
     "ICE": "洲际交易所",
     "OPEC": "欧佩克",
     "OPEC MOMR": "欧佩克月度石油市场报告",
@@ -74,6 +72,9 @@ SOURCE_DISPLAY_NAMES = {
     "IMF Primary Commodity Price System (PCPS)": "国际货币基金组织初级商品价格体系（PCPS）",
     "Baker Hughes": "贝克休斯",
     "CBUAE": "阿联酋央行",
+    "CBUAE EIBOR": "阿联酋央行",
+    "CBUAE VAT reference exchange rates": "阿联酋央行",
+    "Federal Reserve Bank of New York": "美联储纽约分行",
     "CBUAE QER": "阿联酋央行季度经济报告",
     "UAE Ministry of Finance (MOF GFS)": "阿联酋财政部（政府财政统计）",
     "DLD": "迪拜土地局",
@@ -90,6 +91,7 @@ SOURCE_DISPLAY_NAMES = {
     "IMF PortWatch (HDX mirror)": "国际货币基金组织港口监测（HDX 镜像）",
     "Emirates Post (bayanat.ae)": "阿联酋邮政（bayanat.ae）",
     "SCAD": "沙迦统计与社区发展局",
+    "FCSC UAE.Stat SDMX": "阿联酋联邦竞争力与统计中心",
     "TDRA Open Data": "电信和数字政府监管局开放数据",
     "RTA Open Data (Data Dubai)": "迪拜道路与交通管理局开放数据（迪拜数据）",
     "Cloudflare Radar (UAE)": "Cloudflare 雷达（阿联酋）",
@@ -182,12 +184,18 @@ def annotate_war(axis: Axes) -> None:
 
 
 def apply_htfa_fonts(figure: Figure) -> None:
-    """把 Ts 模板默认字体（Times New Roman + 仿宋）统一覆盖为微软雅黑。
+    """把 Ts 模板默认字体统一覆盖为当前平台可用的 CJK 字体。
 
     模板在 ``plot_series`` 内部通过 ``apply_fonts`` 配置 rcParams；本项目
-    豁免项要求全图使用微软雅黑，此函数在图完成后把坐标轴标题、刻度、
+    此函数在图完成后把坐标轴标题、刻度、
     轴内文字、图例与图注一并改为 ``CHINESE_FONT_FAMILY``。
     """
+
+    # Ts 可能已经把 rcParams 指向 Windows 字体；覆盖全局设置，确保后续
+    # 新建的 Matplotlib Text artist 也使用云端已安装的 Noto CJK。
+    matplotlib.rcParams["font.family"] = list(CHINESE_FONT_FAMILY)
+    matplotlib.rcParams["font.sans-serif"] = list(CHINESE_FONT_FAMILY)
+    matplotlib.rcParams["axes.unicode_minus"] = False
 
     for axis in figure.axes:
         format_compact_y_axis(axis)

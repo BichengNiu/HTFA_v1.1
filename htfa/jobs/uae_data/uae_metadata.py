@@ -13,8 +13,6 @@ from __future__ import annotations
 import copy
 import math
 import os
-import re
-import sys
 import tempfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -156,7 +154,7 @@ INDICATOR_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "阿联酋:Google搜索热度(work in dubai)",
         "月",
         "指数",
-        "Google Trends/工作搜索热度 CSV",
+        "Google Trends 官方 API（AE，两词同窗比较）",
         "搜索热度",
         "劳工",
     ),
@@ -164,7 +162,7 @@ INDICATOR_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "阿联酋:Google搜索热度(work in uae)",
         "月",
         "指数",
-        "Google Trends/工作搜索热度 CSV",
+        "Google Trends 官方 API（AE，两词同窗比较）",
         "搜索热度",
         "劳工",
     ),
@@ -268,7 +266,7 @@ INDICATOR_DEFINITIONS: tuple[dict[str, Any], ...] = (
     ),
     _indicator(
         "阿联酋:银行间同业拆借利率(EIBOR):1年",
-        "月",
+        "日",
         "%",
         "阿联酋央行",
         "利率",
@@ -292,8 +290,8 @@ INDICATOR_DEFINITIONS: tuple[dict[str, Any], ...] = (
     ),
     _indicator(
         "阿联酋:银行间同业拆借利率(EIBOR):隔夜",
-        "月",
-        None,
+        "日",
+        "%",
         "阿联酋央行",
         "利率",
         "金融",
@@ -564,93 +562,23 @@ def _row_values(worksheet, row_number: int) -> list[Any]:
     return [cell.value for cell in worksheet[row_number]]
 
 
-_LEGACY_DICTIONARY_HEADERS = ["指标名称", "类型", "行业", "数据来源", "预测变量"]
-_MERGED_EXTENDED_DICTIONARY_HEADERS = [
-    "指标名称", "类型", "行业", "频率", "起止时间", "缺失期数",
-    "数据来源", "预测变量",
-]
-_TIME_EXTENDED_DICTIONARY_HEADERS = [
-    "指标名称", "类型", "行业", "频率", "开始时间", "结束时间",
-    "缺失期数", "数据来源", "预测变量",
-]
 _EXTENDED_DICTIONARY_HEADERS = [
-    "指标名称", "类型", "行业", "频率", "开始日期", "最新日期",
-    "缺失期数", "数据来源", "预测变量",
+    '指标名称', '类型', '行业', '频率', '开始日期', '最新日期', '缺失期数', '数据来源', '预测变量'
 ]
 
 
-def _split_dictionary_date_range(value: Any, *, row_number: int) -> tuple[Any, Any]:
-    """Split one legacy ``起止时间`` cell into start and end values."""
+def _validate_dictionary_layout(dictionary) -> None:
+    """Validate nine metadata columns, trimming only empty trailing cells."""
 
-    if value is None or value == "":
-        return None, None
-    if isinstance(value, date):
-        formatted = value.strftime("%Y-%m-%d")
-        return formatted, formatted
-
-    text = str(value).strip()
-    parts = re.split(r"\s*至\s*", text, maxsplit=1)
-    if len(parts) != 2 or not all(parts):
-        raise ValueError(
-            f"指标字典第{row_number}行的起止时间无法拆分：{value!r}"
-        )
-    return parts[0], parts[1]
-
-
-def _migrate_merged_dictionary_date_columns(dictionary) -> bool:
-    """Migrate the old extended dictionary layout to two date columns."""
-
-    headers = [
-        dictionary.cell(1, column).value
-        for column in range(1, dictionary.max_column + 1)
-    ]
-    if headers[: len(_MERGED_EXTENDED_DICTIONARY_HEADERS)] != (
-        _MERGED_EXTENDED_DICTIONARY_HEADERS
-    ):
-        return False
-
-    old_date_width = dictionary.column_dimensions["E"].width
-    dictionary.insert_cols(6, 1)
-    if old_date_width is not None:
-        dictionary.column_dimensions["F"].width = old_date_width
-
-    for row_number in range(1, dictionary.max_row + 1):
-        source_cell = dictionary.cell(row_number, 5)
-        target_cell = dictionary.cell(row_number, 6)
-        target_cell._style = copy.copy(source_cell._style)
-        if source_cell.has_style:
-            target_cell.number_format = source_cell.number_format
-        if source_cell.alignment:
-            target_cell.alignment = copy.copy(source_cell.alignment)
-        if source_cell.protection:
-            target_cell.protection = copy.copy(source_cell.protection)
-
-    dictionary.cell(1, 5).value = "开始日期"
-    dictionary.cell(1, 6).value = "最新日期"
-    for row_number in range(2, dictionary.max_row + 1):
-        start, end = _split_dictionary_date_range(
-            dictionary.cell(row_number, 5).value,
-            row_number=row_number,
-        )
-        dictionary.cell(row_number, 5).value = start
-        dictionary.cell(row_number, 6).value = end
-    return True
-
-
-def _migrate_time_dictionary_date_headers(dictionary) -> bool:
-    """Rename the intermediate time-column headers to the final protocol."""
-
-    headers = [
-        dictionary.cell(1, column).value
-        for column in range(1, dictionary.max_column + 1)
-    ]
-    if headers[: len(_TIME_EXTENDED_DICTIONARY_HEADERS)] != (
-        _TIME_EXTENDED_DICTIONARY_HEADERS
-    ):
-        return False
-    dictionary.cell(1, 5).value = "开始日期"
-    dictionary.cell(1, 6).value = "最新日期"
-    return True
+    expected_columns = len(_EXTENDED_DICTIONARY_HEADERS)
+    headers = [dictionary.cell(1, column).value for column in range(1, expected_columns + 1)]
+    if headers != _EXTENDED_DICTIONARY_HEADERS:
+        raise ValueError("指标字典必须严格包含 9 列")
+    if dictionary.max_column > expected_columns:
+        for row in dictionary.iter_rows(min_col=expected_columns + 1):
+            if any(cell.value is not None for cell in row):
+                raise ValueError("指标字典第 9 列之后存在数据，拒绝删除额外列")
+        dictionary.delete_cols(expected_columns + 1, dictionary.max_column - expected_columns)
 
 
 def _parse_workbook_date(value: Any) -> date | None:
@@ -797,18 +725,8 @@ def sync_workbook_dictionary(
 
     workbook = load_workbook(workbook_path, keep_links=True)
     dictionary = workbook.worksheets[0]
-    _migrate_merged_dictionary_date_columns(dictionary)
-    _migrate_time_dictionary_date_headers(dictionary)
-    headers = [
-        dictionary.cell(1, column).value
-        for column in range(1, dictionary.max_column + 1)
-    ]
-    if headers[: len(_LEGACY_DICTIONARY_HEADERS)] == _LEGACY_DICTIONARY_HEADERS:
-        source_column = 4
-    elif headers[: len(_EXTENDED_DICTIONARY_HEADERS)] == _EXTENDED_DICTIONARY_HEADERS:
-        source_column = 8
-    else:
-        raise ValueError("指标字典表头不符合工作簿协议")
+    _validate_dictionary_layout(dictionary)
+    source_column = 8
 
     sheet_names = _workbook_indicator_names(workbook)
     coverage = _workbook_indicator_coverage(workbook, as_of=as_of)

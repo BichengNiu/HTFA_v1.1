@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import shutil
 import sys
 from datetime import date, timedelta
@@ -59,11 +60,23 @@ def test_daily_registry_and_monthly_pressure() -> None:
     assert max(row.strike_intensity_index for row in monthly) == pytest.approx(100.0)
 
 
-def test_update_roundtrip_creates_daily_monthly_and_dictionary_tables() -> None:
+def test_update_roundtrip_creates_daily_monthly_and_dictionary_tables(
+    monkeypatch, tmp_path: Path,
+) -> None:
+    cache_path = tmp_path / "articles.json"
+    cache_path.write_text(json.dumps({
+        "articles": {},
+        "scan_status": "complete",
+        "discovery_end": source.load_daily_observations()[-1]["date"].isoformat(),
+    }), encoding="utf-8")
+    monkeypatch.setattr(source.fetch_wam, "AUTO_ARTICLES_PATH", cache_path)
+    monkeypatch.setattr(source, "AUTO_DAILY_PATH", tmp_path / "auto_daily.csv")
     con = db.connect(":memory:")
     db.init_schema(con)
     outcome = source.update(con, skip_download=True)
-    expected_daily = len(source.load_effective_daily_observations())
+    effective = source.load_effective_daily_observations()
+    expected_daily = len(effective)
+    expected_monthly = source.build_monthly_observations(effective)
 
     assert outcome["status"] == "ok"
     assert con.execute(
@@ -71,17 +84,14 @@ def test_update_roundtrip_creates_daily_monthly_and_dictionary_tables() -> None:
     ).fetchone()[0] == expected_daily
     assert con.execute(
         "SELECT COUNT(*) FROM wam_military_strike_monthly"
-    ).fetchone()[0] == 6
+    ).fetchone()[0] == len(expected_monthly)
     assert con.execute(
         "SELECT MAX(period) FROM wam_military_strike_monthly"
-    ).fetchone()[0].isoformat() == "2026-08-31"
+    ).fetchone()[0] == expected_monthly[-1].period
     assert con.execute(
         "SELECT MIN(strike_intensity_index), MAX(strike_intensity_index) "
         "FROM wam_military_strike_monthly"
     ).fetchone() == pytest.approx((0.0, 100.0))
-    assert con.execute(
-        "SELECT COUNT(*) FROM main.wam_military_strike_daily"
-    ).fetchone()[0] == expected_daily
     assert con.execute(
         "SELECT COUNT(*) FROM meta_indicator_dictionary WHERE source = ?",
         [source.SOURCE_NAME],
@@ -176,6 +186,7 @@ def test_auto_daily_extension_fills_days_until_latest_event() -> None:
                 "date_published": "2026-08-31T10:35:47+04:00",
             }
         ],
+        end_date=date(2026, 8, 31),
     )
 
     assert len(rows) == 9

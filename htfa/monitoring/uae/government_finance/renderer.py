@@ -17,7 +17,7 @@ from htfa.monitoring.uae.foreign_labor import (
     build_foreign_labor_figure,
     common_observations,
     latest_common_month as latest_foreign_labor_month,
-    load_foreign_labor_from_duckdb,
+    load_foreign_labor_data,
 )
 from htfa.monitoring.uae.government_finance.charts import (
     build_government_finance_yoy_figure,
@@ -32,8 +32,8 @@ from htfa.monitoring.uae.government_finance.credit import (
     PRIVATE_CORPORATE_DISPLAY,
     build_foreign_inflow_figure,
     build_private_credit_yoy_figure,
-    load_foreign_inflow_from_duckdb,
-    load_private_credit_from_duckdb,
+    load_foreign_inflow_data,
+    load_private_credit_data,
 )
 from htfa.monitoring.uae.government_finance.data import (
     GOVERNMENT_CREDIT,
@@ -41,14 +41,14 @@ from htfa.monitoring.uae.government_finance.data import (
     GovernmentFinanceData,
     calculate_calendar_yoy,
     latest_complete_month,
-    load_government_finance_from_duckdb,
+    load_government_finance_data,
 )
 from htfa.monitoring.uae.government_finance.ded import (
     ENTERPRISES_DISPLAY,
     LICENCES_DISPLAY,
     DedData,
     build_ded_figure,
-    load_ded_from_duckdb,
+    load_ded_data,
 )
 from htfa.monitoring.uae.government_finance.pmi import (
     PMI_LABEL,
@@ -56,7 +56,7 @@ from htfa.monitoring.uae.government_finance.pmi import (
     PmiData,
     build_pmi_figure,
     display_pmi_values,
-    load_pmi_from_duckdb,
+    load_pmi_data,
 )
 from htfa.monitoring.uae.government_finance.payments import (
     CHEQUES_AMOUNT_DISPLAY,
@@ -67,16 +67,16 @@ from htfa.monitoring.uae.government_finance.payments import (
     build_cheques_figure,
     build_customer_transfers_figure,
     cumulative_to_monthly,
-    load_payment_from_duckdb,
+    load_payment_data,
 )
 from htfa.monitoring.uae.government_finance.rates import (
     EIBOR_ONEYEAR_DISPLAY,
     EIBOR_OVERNIGHT_DISPLAY,
     US_OVERNIGHT_DISPLAY,
-    US_SOFR_12M_DISPLAY,
     RatesData,
     RATES_SERIES,
     build_rates_figure,
+    load_rates_data,
 )
 from htfa.monitoring.uae.government_finance.search_index import (
     SOURCE_TEXT as SEARCH_SOURCE_TEXT,
@@ -84,7 +84,7 @@ from htfa.monitoring.uae.government_finance.search_index import (
     WORK_UAE_COLUMN,
     build_search_index_figure,
     display_search_index_values,
-    load_search_index_from_duckdb,
+    load_search_index_data,
 )
 from htfa.monitoring.uae.metrics import (
     _source_note_from_metadata,
@@ -97,10 +97,13 @@ from htfa.monitoring.uae.metrics import (
 )
 from htfa.monitoring.uae.periods import within_month_window
 from htfa.ui_shared.chart_legend import render_pyplot_figure
+from htfa.monitoring.uae.supplemental_data import FINANCE_CHARTS
+from htfa.monitoring.uae.supplemental_renderer import render_supplemental_charts
 
 FINANCE_EXPLANATION = """
-- **利率**：阿联酋利率由阿联酋央行发布，美国利率依据新闻整理。原始数据为日度/周度阿联酋 EIBOR、美国 EFFR 和 SOFR 12 个月利率，按自然月取算术平均形成月度利率序列，
-  反映银行间融资成本及美国利率基准。
+- **利率**：阿联酋央行发布 EIBOR 隔夜及1年期利率，美联储纽约分行发布美国 EFFR。
+  三条日度序列按自然月取算术平均，并展示到共同的最新完整月份。
+  EFFR 为美国隔夜利率；纽约联储不发布12个月 Term SOFR，本报告不展示该旧序列。
 - **政府贷款与政府控股企业贷款**：由阿联酋央行发布；原始数据为月度存量（百万迪拉姆），
   反映政府及政府控股企业的银行信贷余额。
 - **银行外债、外币存款**：由阿联酋央行发布；原始数据为月度存量，分别反映银行境外负债和外币资金存款规模。
@@ -126,51 +129,54 @@ LABOR_EMPLOYMENT_EXPLANATION = """
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
-def _load_government_finance_cached(_database_snapshot: str) -> GovernmentFinanceData:
-    return load_government_finance_from_duckdb()
+def _load_government_finance_cached(
+    content: Any,
+    file_name: str,
+) -> GovernmentFinanceData:
+    return load_government_finance_data(content, file_name=file_name)
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
-def _load_foreign_labor_cached(_database_snapshot: str) -> ForeignLaborData:
-    return load_foreign_labor_from_duckdb()
+def _load_foreign_labor_cached(
+    content: Any,
+    file_name: str,
+) -> ForeignLaborData:
+    return load_foreign_labor_data(content, file_name=file_name)
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
-def _load_rates_cached(_database_snapshot: str) -> RatesData:
-    raise ValueError("DuckDB 尚未入库 EIBOR 与美国利率序列")
+def _load_rates_cached(content: Any, file_name: str) -> RatesData:
+    return load_rates_data(content, file_name=file_name)
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
-def _load_foreign_inflow_cached(_database_snapshot: str) -> CbuaeSeriesData:
-    return load_foreign_inflow_from_duckdb()
+def _load_foreign_inflow_cached(content: Any, file_name: str) -> CbuaeSeriesData:
+    return load_foreign_inflow_data(content, file_name=file_name)
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
-def _load_private_credit_cached(_database_snapshot: str) -> CbuaeSeriesData:
-    return load_private_credit_from_duckdb()
+def _load_private_credit_cached(content: Any, file_name: str) -> CbuaeSeriesData:
+    return load_private_credit_data(content, file_name=file_name)
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
-def _load_ded_cached(
-    _database_snapshot: str,
-    through_month: str | None = None,
-) -> DedData:
-    return load_ded_from_duckdb(through=through_month)
+def _load_ded_cached(content: Any, file_name: str) -> DedData:
+    return load_ded_data(content, file_name=file_name)
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
-def _load_pmi_cached(_database_snapshot: str) -> PmiData:
-    return load_pmi_from_duckdb()
+def _load_pmi_cached(content: Any, file_name: str) -> PmiData:
+    return load_pmi_data(content, file_name=file_name)
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
-def _load_payment_cached(_database_snapshot: str) -> PaymentData:
-    return load_payment_from_duckdb()
+def _load_payment_cached(content: Any, file_name: str) -> PaymentData:
+    return load_payment_data(content, file_name=file_name)
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
-def _load_search_index_cached(_database_snapshot: str) -> pd.DataFrame:
-    return load_search_index_from_duckdb()
+def _load_search_index_cached(content: Any, file_name: str) -> pd.DataFrame:
+    return load_search_index_data(content, file_name=file_name)
 
 
 def _format_finance_value(
@@ -192,23 +198,23 @@ def _format_finance_value(
 def _render_finance_metrics(
     st_obj: Any,
     data: GovernmentFinanceData,
-    database_snapshot: str,
+    content: Any,
+    file_name: str,
 ) -> None:
     """财政金融指标卡：覆盖四类图表序列，主值为绝对量并显示环比和同比。"""
 
-    cards = []
     try:
-        rates = _load_rates_cached(database_snapshot)
+        rates = _load_rates_cached(content, file_name)
+        rate_cards = []
         for label, column in (
             ("阿联酋隔夜拆借利率", EIBOR_OVERNIGHT_DISPLAY),
             ("阿联酋1年期拆借利率", EIBOR_ONEYEAR_DISPLAY),
             ("美国隔夜拆借利率", US_OVERNIGHT_DISPLAY),
-            ("美国1年期拆借利率", US_SOFR_12M_DISPLAY),
         ):
             series = rates.values[column]
             value, as_of = latest_month_value(series)
             value_text = None if value is None else f"{value:.2f}%"
-            cards.append(
+            rate_cards.append(
                 (
                     label,
                     value_text,
@@ -219,10 +225,8 @@ def _render_finance_metrics(
                 )
             )
 
-    except (KeyError, TypeError, ValueError) as exc:
-        st_obj.warning(f"利率数据缺口：{exc}")
+        cards = rate_cards
 
-    try:
         def _amount_cards(
             values: pd.DataFrame,
             metadata: dict[str, Any],
@@ -250,7 +254,7 @@ def _render_finance_metrics(
                 )
             return cards
 
-        foreign = _load_foreign_inflow_cached(database_snapshot)
+        foreign = _load_foreign_inflow_cached(content, file_name)
         cards.extend(
             _amount_cards(
                 foreign.values,
@@ -279,7 +283,7 @@ def _render_finance_metrics(
             )
         )
 
-        private = _load_private_credit_cached(database_snapshot)
+        private = _load_private_credit_cached(content, file_name)
         cards.extend(
             _amount_cards(
                 private.values,
@@ -291,8 +295,7 @@ def _render_finance_metrics(
                 ),
             )
         )
-        for offset in range(0, len(cards), 4):
-            render_metric_cards(st_obj, cards[offset : offset + 4], n=4)
+        render_metric_cards(st_obj, cards)
     except (KeyError, TypeError, ValueError) as exc:
         st_obj.warning(f"财政金融指标未加载：{exc}")
 
@@ -300,13 +303,14 @@ def _render_finance_metrics(
 def _render_business_metrics(
     st_obj: Any,
     latest_date: pd.Timestamp,
-    database_snapshot: str,
+    content: Any,
+    file_name: str,
 ) -> None:
     """企业活动指标卡：企业活动三项与支付数据四项，均显示环比和同比。"""
 
+    cards = []
     try:
-        cards = []
-        pmi = _load_pmi_cached(database_snapshot)
+        pmi = _load_pmi_cached(content, file_name)
         pmi_series = pmi.values[PMI_LABEL]
         pmi_value, pmi_as_of = latest_month_value(pmi_series)
         cards.append(
@@ -319,9 +323,9 @@ def _render_business_metrics(
                 ),
             )
         )
-        last_period = latest_date.to_period("M")
+        ded = _load_ded_cached(content, file_name)
         # 与 DED 柱图同规则：锚定 latest_date，避开尾部欠计噪声月
-        ded = _load_ded_cached(database_snapshot, last_period.strftime("%Y-%m"))
+        last_period = latest_date.to_period("M")
         ded_series = ded.values.loc[
             pd.PeriodIndex(ded.values.index, freq="M") <= last_period
         ]
@@ -340,13 +344,11 @@ def _render_business_metrics(
                     ),
                 )
             )
-        render_metric_cards(st_obj, cards, n=3)
 
-        payment = _load_payment_cached(database_snapshot)
+        payment = _load_payment_cached(content, file_name)
         payment_values = cumulative_to_monthly(payment.values).loc[
             pd.PeriodIndex(payment.values.index, freq="M") <= last_period
         ]
-        payment_cards = []
         for label, column, unit in (
             (CUSTOMER_TRANSFERS_NUMBER_DISPLAY, CUSTOMER_TRANSFERS_NUMBER_DISPLAY, "笔"),
             (CUSTOMER_TRANSFERS_AMOUNT_DISPLAY, CUSTOMER_TRANSFERS_AMOUNT_DISPLAY, "百万迪拉姆"),
@@ -355,7 +357,7 @@ def _render_business_metrics(
         ):
             series = payment_values[column]
             value, as_of = latest_month_value(series)
-            payment_cards.append(
+            cards.append(
                 (
                     label,
                     _format_finance_value(value, unit=unit),
@@ -365,20 +367,22 @@ def _render_business_metrics(
                     ),
                 )
             )
-        render_metric_cards(st_obj, payment_cards, n=4)
     except (KeyError, TypeError, ValueError) as exc:
         st_obj.warning(f"企业活动指标未加载：{exc}")
+    if cards:
+        render_metric_cards(st_obj, cards)
 
 
 def _render_labor_metrics(
     st_obj: Any,
-    database_snapshot: str,
+    content: Any,
+    file_name: str,
 ) -> None:
     """劳动就业指标卡：劳工人数与工作搜索热度的环比和同比。"""
 
     try:
         cards = []
-        labor = _load_foreign_labor_cached(database_snapshot)
+        labor = _load_foreign_labor_cached(content, file_name)
         for label, column in (
             ("尼泊尔批准劳工人数", NEPAL_APPROVALS),
             ("孟加拉国出境许可人数", BANGLADESH_CLEARANCES),
@@ -394,7 +398,7 @@ def _render_labor_metrics(
                     ),
                 )
             )
-        search = _load_search_index_cached(database_snapshot)
+        search = _load_search_index_cached(content, file_name)
         for label, column in (
             ("谷歌「在迪拜工作」搜索热度", WORK_DUBAI_COLUMN),
             ("谷歌「在阿联酋工作」搜索热度", WORK_UAE_COLUMN),
@@ -410,7 +414,7 @@ def _render_labor_metrics(
                     f"按月搜索指数；来源：{SEARCH_SOURCE_TEXT}",
                 )
             )
-        render_metric_cards(st_obj, cards, n=4)
+        render_metric_cards(st_obj, cards)
     except (KeyError, TypeError, ValueError, FileNotFoundError) as exc:
         st_obj.warning(f"劳动就业指标未加载：{exc}")
 
@@ -483,9 +487,8 @@ def _render_charts(
 def _render_rates_chart(
     st_obj: Any,
     data: RatesData,
-    latest_date: pd.Timestamp,
 ) -> None:
-    last_month = latest_date.to_period("M")
+    last_month = latest_complete_month(data.values).to_period("M")
     display_values = within_month_window(
         data.values,
         first_month=last_month - 36,
@@ -758,50 +761,49 @@ def _render_cheques_chart(
 
 def render_government_finance_section(
     st_obj: Any,
-    _content: bytes | None = None,
-    _file_name: str | None = None,
+    content: Any,
+    file_name: str,
 ) -> dict[str, Any]:
-    """从 DuckDB 渲染财政金融主题；Excel 载荷只保留调用兼容性。"""
+    """Render official rates, credit, DED and labour comparisons."""
 
     st_obj.divider()
     st_obj.subheader("财政金融")
     try:
-        from htfa.monitoring.uae.duckdb_reader import database_snapshot_key
-
-        database_snapshot = database_snapshot_key()
         with st_obj.spinner("正在读取 CBUAE 月度存款与信贷数据..."):
-            data = _load_government_finance_cached(database_snapshot)
+            data = _load_government_finance_cached(content, file_name)
         latest_date = latest_complete_month(data.values)
         # 设定稳定的容器 key，供打印媒体查询只压缩财政金融的图表，
         # 不改变企业活动、劳动就业和网页端的图表尺寸。
         with st_obj.container(key="uae-finance-part"):
-            _render_finance_metrics(st_obj, data, database_snapshot)
+            _render_finance_metrics(st_obj, data, content, file_name)
             _render_quad_finance_charts(
                 st_obj,
                 data,
                 latest_date,
-                database_snapshot,
+                content,
+                file_name,
             )
-            with st_obj.expander("指标算法与解读", expanded=True):
+            render_supplemental_charts(st_obj, content, file_name, FINANCE_CHARTS)
+            with st_obj.expander("指标算法与解读", expanded=True, key="uae-indicator-explanation-finance"):
                 st_obj.markdown(FINANCE_EXPLANATION)
-        show_extended = st_obj.toggle(
+        if st_obj.toggle(
             "显示企业活动与劳动就业扩展图表",
             value=False,
             key="analysis.uae.government_finance.show_extended_charts",
-        )
-        if show_extended:
+        ):
             _render_business_activity_charts(
                 st_obj,
                 latest_date,
-                database_snapshot,
+                content,
+                file_name,
             )
-            _render_labor_employment_charts(st_obj, database_snapshot)
+            _render_labor_employment_charts(st_obj, content, file_name)
     except (KeyError, TypeError, ValueError) as exc:
         st_obj.error(f"政府及国有资本存款与信贷数据加载失败：{exc}")
         return {"status": "error", "message": str(exc)}
     return {
         "status": "success",
-        "source": "uae.duckdb",
+        "source": file_name,
         "as_of": latest_date.strftime("%Y-%m"),
     }
 
@@ -809,24 +811,24 @@ def render_government_finance_section(
 def _render_business_activity_charts(
     st_obj: Any,
     latest_date: pd.Timestamp,
-    database_snapshot: str,
+    content: Any,
+    file_name: str,
 ) -> None:
     """企业活动：DED/采购经理指数第一行，客户资金转账/支票清算第二行。"""
 
     st_obj.divider()
     st_obj.subheader("企业活动")
-    _render_business_metrics(st_obj, latest_date, database_snapshot)
+    _render_business_metrics(st_obj, latest_date, content, file_name)
     ded_column, pmi_column = st_obj.columns(2, gap="small")
     try:
         with st_obj.spinner("正在读取迪拜企业发证与新发执照数据..."):
-            through_month = latest_date.to_period("M").strftime("%Y-%m")
-            ded = _load_ded_cached(database_snapshot, through_month)
+            ded = _load_ded_cached(content, file_name)
         _render_ded_chart(ded_column, ded, latest_date)
     except (KeyError, TypeError, ValueError) as exc:
         ded_column.warning(f"企业发证活动柱图未加载：{exc}")
     try:
         with st_obj.spinner("正在读取非油私营部门采购经理指数（PMI）数据..."):
-            pmi = _load_pmi_cached(database_snapshot)
+            pmi = _load_pmi_cached(content, file_name)
         _render_pmi_chart(pmi_column, pmi)
     except (KeyError, TypeError, ValueError) as exc:
         pmi_column.warning(f"采购经理指数（PMI）图表未加载：{exc}")
@@ -837,7 +839,7 @@ def _render_business_activity_charts(
     )
     try:
         with st_obj.spinner("正在读取 CBUAE 客户转账与支票清算数据..."):
-            payment = _load_payment_cached(database_snapshot)
+            payment = _load_payment_cached(content, file_name)
     except (KeyError, TypeError, ValueError) as exc:
         customer_transfers_column.warning(f"客户转账图未加载：{exc}")
         cheques_column.warning(f"支票清算图未加载：{exc}")
@@ -855,7 +857,7 @@ def _render_business_activity_charts(
         except (KeyError, TypeError, ValueError) as exc:
             cheques_column.warning(f"支票清算图未加载：{exc}")
 
-    with st_obj.expander("指标算法与解读", expanded=True):
+    with st_obj.expander("指标算法与解读", expanded=True, key="uae-indicator-explanation-business"):
         st_obj.markdown(BUSINESS_ACTIVITY_EXPLANATION)
 
 
@@ -863,11 +865,12 @@ def _render_quad_finance_charts(
     st_obj: Any,
     data: GovernmentFinanceData,
     latest_date: pd.Timestamp,
-    database_snapshot: str,
+    content: Any,
+    file_name: str,
 ) -> None:
     """财政金融 2×2：利率 / 外资流入 / 政府及国有资本信贷 / 企业及居民信贷。
 
-    左上阿联酋与美国隔夜/1年期利率（月度均值），右上外资流入三指标同比（银行外债/
+    左上 EIBOR 隔夜/1年与美国 EFFR（月度均值），右上外资流入三指标同比（银行外债/
     外币存款/外国主体存款），左下政府贷款与政府控股企业贷款同比，右下企业及
     居民信贷同比。单个格子数据缺失只显示该格警告，不影响其它格。
     """
@@ -877,14 +880,14 @@ def _render_quad_finance_charts(
 
     try:
         with st_obj.spinner("正在读取 EIBOR 与联邦基金利率..."):
-            rates = _load_rates_cached(database_snapshot)
-        _render_rates_chart(top_left, rates, latest_date)
+            rates = _load_rates_cached(content, file_name)
+        _render_rates_chart(top_left, rates)
     except (KeyError, TypeError, ValueError) as exc:
         top_left.warning(f"利率图未加载：{exc}")
 
     try:
         with st_obj.spinner("正在读取 CBUAE 外资流入数据..."):
-            foreign_inflow = _load_foreign_inflow_cached(database_snapshot)
+            foreign_inflow = _load_foreign_inflow_cached(content, file_name)
         _render_foreign_inflow_chart(top_right, foreign_inflow, latest_date)
     except (KeyError, TypeError, ValueError) as exc:
         top_right.warning(f"外资流入图未加载：{exc}")
@@ -893,7 +896,7 @@ def _render_quad_finance_charts(
 
     try:
         with st_obj.spinner("正在读取 CBUAE 企业及居民信贷数据..."):
-            private_credit = _load_private_credit_cached(database_snapshot)
+            private_credit = _load_private_credit_cached(content, file_name)
         _render_private_credit_chart(
             bottom_right,
             private_credit,
@@ -905,27 +908,28 @@ def _render_quad_finance_charts(
 
 def _render_labor_employment_charts(
     st_obj: Any,
-    database_snapshot: str,
+    content: Any,
+    file_name: str,
 ) -> None:
     """谷歌工作搜索热度在左，入境阿联酋劳工人数在右。"""
 
     st_obj.divider()
     st_obj.subheader("劳动就业")
-    _render_labor_metrics(st_obj, database_snapshot)
+    _render_labor_metrics(st_obj, content, file_name)
     search_column, labor_column = st_obj.columns(2, gap="small")
     try:
         with st_obj.spinner("正在读取谷歌工作搜索热度数据..."):
-            search_index = _load_search_index_cached(database_snapshot)
+            search_index = _load_search_index_cached(content, file_name)
         _render_search_index_chart(search_column, search_index)
     except (KeyError, TypeError, ValueError, FileNotFoundError) as exc:
         search_column.warning(f"谷歌搜索热度图表未加载：{exc}")
     try:
         with st_obj.spinner("正在读取外籍劳动力月度数据..."):
-            foreign_labor = _load_foreign_labor_cached(database_snapshot)
+            foreign_labor = _load_foreign_labor_cached(content, file_name)
         _render_foreign_labor_chart(labor_column, foreign_labor)
     except (KeyError, TypeError, ValueError) as exc:
         labor_column.warning(f"外籍劳动力图表未加载：{exc}")
-    with st_obj.expander("指标算法与解读", expanded=True):
+    with st_obj.expander("指标算法与解读", expanded=True, key="uae-indicator-explanation-labor"):
         st_obj.markdown(LABOR_EMPLOYMENT_EXPLANATION)
 
 

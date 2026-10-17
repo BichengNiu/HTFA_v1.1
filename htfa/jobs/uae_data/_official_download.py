@@ -1,18 +1,17 @@
 """Small, conservative helpers for downloading official source files.
 
 The UAE jobs deliberately keep downloaded files under ``data/UAE/raw``.  This
-module only supplies a common user-agent, atomic writes, and a minimum-size
+module supplies explicit HTTP transports, atomic writes, and a minimum-size
 check; source-specific discovery and parsing stay in their own modules.
 """
 
 from __future__ import annotations
 
 import os
-import shutil
-import subprocess
 import tempfile
+from collections.abc import Mapping
 from pathlib import Path
-from urllib.error import HTTPError, URLError
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 
@@ -27,44 +26,38 @@ def fetch_bytes(
     *,
     referer: str | None = None,
     user_agent: str = USER_AGENT,
+    headers: Mapping[str, str] | None = None,
     timeout: int = 90,
+    browser_transport: bool = False,
 ) -> bytes:
-    """Fetch an official URL with a browser-like request header."""
+    """Fetch ``url`` using the explicitly selected HTTP transport.
 
-    headers = {"User-Agent": user_agent, "Accept": "*/*"}
+    ``referer``, ``headers`` and ``timeout`` configure either transport.
+    ``user_agent`` is used by urllib; ``browser_transport=True`` selects
+    curl_cffi's Chrome headers and TLS directly. Failed requests propagate
+    without switching transports or substituting old payloads.
+    """
+
+    if browser_transport:
+        from curl_cffi import requests
+
+        request_headers = dict(headers or {})
+        if referer:
+            request_headers.setdefault("Referer", referer)
+        response = requests.get(
+            url, impersonate="chrome", timeout=timeout, headers=request_headers
+        )
+        if response.status_code != 200:
+            raise HTTPError(url, response.status_code, "Official download failed", None, None)
+        return response.content
+
+    request_headers = {"User-Agent": user_agent, "Accept": "*/*"}
+    request_headers.update(headers or {})
     if referer:
-        headers["Referer"] = referer
-    request = Request(url, headers=headers)
-    try:
-        with urlopen(request, timeout=timeout) as response:
-            return response.read()
-    except (HTTPError, URLError, TimeoutError) as exc:
-        # A few official sites reject Python's urllib TLS fingerprint while
-        # allowing the system curl client. Use curl only as a transport
-        # fallback; parsing and validation still happen in the source module.
-        curl = shutil.which("curl.exe") or shutil.which("curl")
-        if curl:
-            command = [
-                curl,
-                "-L",
-                "--fail",
-                "--silent",
-                "--show-error",
-                "-A",
-                user_agent,
-            ]
-            if referer:
-                command.extend(["-H", f"Referer: {referer}"])
-            command.append(url)
-            result = subprocess.run(
-                command,
-                capture_output=True,
-                timeout=timeout,
-                check=False,
-            )
-            if result.returncode == 0 and result.stdout:
-                return result.stdout
-        raise RuntimeError(f"官方地址访问失败: {url} ({exc})") from exc
+        request_headers.setdefault("Referer", referer)
+    request = Request(url, headers=request_headers)
+    with urlopen(request, timeout=timeout) as response:
+        return response.read()
 
 
 def download_file(
@@ -75,17 +68,26 @@ def download_file(
     min_bytes: int = 128,
     referer: str | None = None,
     user_agent: str = USER_AGENT,
+    headers: Mapping[str, str] | None = None,
+    browser_transport: bool = False,
 ) -> str:
     """Download ``url`` to ``destination`` atomically.
 
     Returns ``existing`` when a valid local file is reused and ``downloaded``
-    when a new response is written.  A failed/empty response never replaces a
-    good cache.
+    when a new response is written. ``headers`` are passed to the selected
+    transport. A failed/empty response never replaces a good cache.
     """
 
     if not force and destination.is_file() and destination.stat().st_size >= min_bytes:
         return "existing"
-    payload = fetch_bytes(url, referer=referer, user_agent=user_agent)
+    fetch_options = {"browser_transport": True} if browser_transport else {}
+    payload = fetch_bytes(
+        url,
+        referer=referer,
+        user_agent=user_agent,
+        headers=headers,
+        **fetch_options,
+    )
     if len(payload) < min_bytes:
         raise RuntimeError(
             f"官方地址返回内容过小，疑似错误页: {url} ({len(payload)} bytes)"

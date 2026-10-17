@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from io import BytesIO
 
 import pandas as pd
@@ -119,6 +120,22 @@ def test_update_merge_and_oil_loader_use_duckdb_as_source_of_truth(tmp_path, mon
         return "downloaded"
 
     monkeypatch.setattr(source_oil, "download_file", fake_download)
+    api_rows = [
+        {
+            "period": item.period.isoformat(),
+            "series": "RBRTE",
+            "value": item.price_usd_bbl,
+            "units": "$/BBL",
+        }
+        for item in source_oil.parse_brent_xls(_price_payload())
+    ]
+    monkeypatch.setattr(
+        source_oil,
+        "fetch_bytes",
+        lambda url: json.dumps({
+            "response": {"frequency": "daily", "total": len(api_rows), "data": api_rows}
+        }).encode(),
+    )
     con = db.connect(database_path)
     db.init_schema(con)
     try:
@@ -155,6 +172,18 @@ def test_update_merge_and_oil_loader_use_duckdb_as_source_of_truth(tmp_path, mon
         pd.DataFrame({"placeholder": [1]}).to_excel(
             writer, sheet_name="placeholder", index=False
         )
+        # The oil page also requires the independently maintained rig series.
+        rig_sheet = writer.book.create_sheet("月度_贝克休斯")
+        for row in (
+            ["Baker Hughes", None],
+            ["指标名称", "阿联酋石油活跃钻机数"],
+            ["频率", "月"],
+            ["单位", "台"],
+            ["来源", "Baker Hughes"],
+            ["更新时间", pd.Timestamp("2026-01-31")],
+            [pd.Timestamp("2026-01-31"), 60],
+        ):
+            rig_sheet.append(row)
     merge_result = source_oil.merge(workbook_path)
 
     assert merge_result["status"] == "ok"

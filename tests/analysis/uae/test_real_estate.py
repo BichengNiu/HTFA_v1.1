@@ -74,8 +74,7 @@ def _workbook_bytes() -> bytes:
     metadata = pd.DataFrame(
         [
             ["Dubai Land Department", None, None, None, None, None, None, None, None],
-            # 与 source_dld 写表器一致：A2 为「日期」而非「指标名称」标签
-            ["日期", *_INDICATOR_HEADERS],
+            ["指标名称", *_INDICATOR_HEADERS],
             ["频率", *("月",) * 8],
             ["单位", "笔", "百万AED", "笔", "百万AED", "笔", "百万AED", "笔", "百万AED"],
             ["来源", *("Dubai Land Department",) * 8],
@@ -293,7 +292,11 @@ def test_section_renders_four_cross_segment_charts_and_explanation(
 
     monkeypatch.setattr(renderer, "_render_sales_chart", _record_market)
 
-    result = renderer.render_real_estate_section(st_obj)
+    result = renderer.render_real_estate_section(
+        st_obj,
+        b"workbook",
+        "test.xlsx",
+    )
 
     assert result["status"] == "success"
     assert result["as_of"] == "2025-05"
@@ -313,7 +316,7 @@ def test_section_renders_four_cross_segment_charts_and_explanation(
         for call in st_obj.metric.call_args_list
     )
     assert st_obj.columns.call_args.kwargs["gap"] == "small"
-    assert st_obj.columns.call_count == 3
+    assert st_obj.columns.call_count == 2
     assert markets == [
         (left, "现房住宅"),
         (right, "期房住宅"),
@@ -345,7 +348,11 @@ def test_section_loader_failure_shows_error_and_returns_error_status(
     monkeypatch.setattr(renderer, "_load_real_estate_cached", _explode)
     st_obj = MagicMock()
 
-    result = renderer.render_real_estate_section(st_obj)
+    result = renderer.render_real_estate_section(
+        st_obj,
+        b"workbook",
+        "test.xlsx",
+    )
 
     assert result["status"] == "error"
     assert st_obj.error.call_count == 1
@@ -379,7 +386,11 @@ def test_cell_failure_warns_cell_and_keeps_other_charts(monkeypatch) -> None:
 
     monkeypatch.setattr(renderer, "_render_sales_chart", _fail_offplan)
 
-    result = renderer.render_real_estate_section(st_obj)
+    result = renderer.render_real_estate_section(
+        st_obj,
+        b"workbook",
+        "test.xlsx",
+    )
 
     assert result["status"] == "success"
     assert second_row[1].warning.call_count == 1

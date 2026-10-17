@@ -25,7 +25,6 @@ from htfa.monitoring.uae.real_estate.data import (
     RealEstateData,
     anchor_last_month,
     load_real_estate_data,
-    load_real_estate_from_duckdb,
 )
 from htfa.monitoring.uae.metrics import (
     _source_note_from_metadata,
@@ -37,18 +36,24 @@ from htfa.monitoring.uae.metrics import (
     source_text_from_metadata,
 )
 from htfa.ui_shared.chart_legend import render_pyplot_figure
+from htfa.monitoring.uae.supplemental_data import PROPERTY_CHARTS
+from htfa.monitoring.uae.supplemental_renderer import render_supplemental_charts
 
 REAL_ESTATE_EXPLANATION = """
 - **交易类型**：由迪拜土地局发布；原始数据为房地产交易明细，按登记月份、交易类型（期房/现房）及市场（住宅/商业）聚合为月度指标；现房含一手和二手房。
 - **笔数与金额**：原始数据为交易笔数和金额；笔数反映交易数量，金额原始单位为百万 AED。两类指标分别反映房地产交易活跃度和成交规模。
+- **确认新期房项目数（左轴）**：最近 28 天确认入市的新项目数。新项目首次成交后的 28 天内至少成交 10 笔，才算通过确认。
+- **活跃期房项目数（右轴）**：最近 28 天至少成交 3 笔的项目数，包括新项目和老项目。
+- **月均值**：每周统计一次上述数量，再取当月平均值，因此可能出现小数。两个指标可能包含同一项目，不能相加。
 """.strip()
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
-def _load_real_estate_cached(database_snapshot: str) -> RealEstateData:
-    """按数据库快照缓存房地产数据。"""
-
-    return load_real_estate_from_duckdb()
+def _load_real_estate_cached(
+    content: Any,
+    file_name: str,
+) -> RealEstateData:
+    return load_real_estate_data(content, file_name=file_name)
 
 
 def _market_columns(market: str) -> tuple[str, str]:
@@ -100,7 +105,7 @@ def _render_real_estate_metrics(
                 _source_note_from_metadata(data.metadata, column, as_of),
             )
         )
-    render_metric_cards(st_obj, cards, n=4)
+    render_metric_cards(st_obj, cards)
 
 
 def _render_sales_chart(
@@ -149,16 +154,18 @@ def _render_sales_chart(
     )
 
 
-def render_real_estate_section(st_obj: Any) -> dict[str, Any]:
-    """渲染「房地产」板块：交易类型×用途四张笔数+金额双轴图。"""
+def render_real_estate_section(
+    st_obj: Any,
+    content: Any,
+    file_name: str,
+) -> dict[str, Any]:
+    """渲染「房地产」板块：四张成交图和一张项目数量图。"""
 
     st_obj.divider()
     st_obj.subheader("房地产")
     try:
         with st_obj.spinner("正在读取 DLD 月度房地产销售数据..."):
-            from htfa.monitoring.uae.duckdb_reader import database_snapshot_key
-
-            data = _load_real_estate_cached(database_snapshot_key())
+            data = _load_real_estate_cached(content, file_name)
         last_month = anchor_last_month(data.values)
         try:
             _render_real_estate_metrics(st_obj, data, last_month)
@@ -174,14 +181,15 @@ def render_real_estate_section(st_obj: Any) -> dict[str, Any]:
                     _render_sales_chart(column, data, last_month, market=market)
                 except (KeyError, TypeError, ValueError) as exc:
                     column.warning(f"{market}销售图未加载：{exc}")
-        with st_obj.expander("指标算法与解读", expanded=True):
+        render_supplemental_charts(st_obj, content, file_name, PROPERTY_CHARTS)
+        with st_obj.expander("指标算法与解读", expanded=True, key="uae-indicator-explanation-property"):
             st_obj.markdown(REAL_ESTATE_EXPLANATION)
     except (KeyError, TypeError, ValueError, FileNotFoundError) as exc:
         st_obj.error(f"房地产数据加载失败：{exc}")
         return {"status": "error", "message": str(exc)}
     return {
         "status": "success",
-        "source": "uae.duckdb",
+        "source": file_name,
         "as_of": last_month.strftime("%Y-%m"),
     }
 

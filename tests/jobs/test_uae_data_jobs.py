@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from contextlib import nullcontext
 
 from htfa.jobs.uae_data import merge_workbook, update_data
 
@@ -84,3 +85,29 @@ def test_merge_does_not_sync_dictionary_after_source_failure(monkeypatch, tmp_pa
 
     assert result == 1
     assert imported == [".source_baker_hughes", ".source_cbuae"]
+
+
+def test_merge_publishes_once_after_all_sources_and_dictionary(monkeypatch, tmp_path):
+    calls = []
+
+    def import_source(name, *, package=None):
+        return SimpleNamespace(merge=lambda path: (
+            calls.append(name) or {"status": "ok"}
+        ))
+
+    monkeypatch.setattr(merge_workbook.importlib, "import_module", import_source)
+    monkeypatch.setattr(merge_workbook, "cleanup_excel_automation", lambda: None)
+    monkeypatch.setattr(merge_workbook.db, "connect", lambda: nullcontext(object()))
+    monkeypatch.setattr(merge_workbook, "sync_workbook_dictionary", lambda path: (
+        calls.append("dictionary") or {
+            "added": 0, "updated": 0, "removed": 0, "sheet_indicators": 1,
+        }
+    ))
+    monkeypatch.setattr(merge_workbook, "publish_workbook", lambda con, path: (
+        calls.append("publish") or {"sheets": 2, "observations": 3, "version": "test"}
+    ))
+
+    assert merge_workbook.main([
+        "--source", "salik,employment", "--workbook", str(tmp_path / "book.xlsx")
+    ]) == 0
+    assert calls == [".source_salik", ".source_employment", "dictionary", "publish"]

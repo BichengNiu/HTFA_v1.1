@@ -29,6 +29,17 @@ htmlcov/
 *.swo
 *~
 .ipynb_checkpoints/
+.cache/
+
+# UAE pipeline intermediate outputs
+/htfa/jobs/uae_data/backups/
+/htfa/jobs/uae_data/processed/
+
+# Untracked root-level debugging artifacts
+/_*.py
+/_*.ps1
+/_*.json
+/_*.csv
 
 # Local data: keep only source documentation and pipeline scripts in Git
 /data/**

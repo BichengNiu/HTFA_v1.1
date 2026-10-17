@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
-from io import BytesIO
+from types import SimpleNamespace
 
 
 class _Tab:
@@ -35,7 +35,7 @@ def test_high_frequency_topics_render_all_sections_in_order(monkeypatch) -> None
     called: list[str] = []
 
     def renderer(name):
-        def _render(_st_obj):
+        def _render(_st_obj, _payload):
             called.append(name)
             return {"status": "success"}
 
@@ -52,7 +52,7 @@ def test_high_frequency_topics_render_all_sections_in_order(monkeypatch) -> None
     )
     host = _TabsHost(open_index=1)
 
-    result = report.render_high_frequency_topics(host)
+    result = report.render_high_frequency_topics(host, (object(), "uae.duckdb"))
 
     assert called == ["oil", "finance", "property"]
     assert set(result) == {"oil", "finance", "property"}
@@ -100,14 +100,17 @@ def test_uae_monitoring_only_renders_the_open_top_level_tab(monkeypatch) -> None
         def info(self, _message: str) -> None:
             return None
 
+        def caption(self, _message: str) -> None:
+            return None
+
     class _Dashboard:
         panels = {"growth": object()}
 
-    upload = BytesIO(b"workbook")
-    upload.name = "uae.xlsx"
+    source = SimpleNamespace(name="uae.duckdb", published_at="2026-10-15")
     host = _MonitoringHost(open_index=0)
     rendered: list[tuple[str, ...]] = []
-    monkeypatch.setattr(renderer, "get_shared_dataset_file", lambda: upload)
+    monkeypatch.setattr(renderer, "published_source", lambda: source)
+    monkeypatch.setattr(renderer, "_latest_high_frequency_month", lambda *_args: None)
     monkeypatch.setattr(renderer, "_render_report_header", lambda *_args: None)
     monkeypatch.setattr(
         renderer,
@@ -137,18 +140,20 @@ def test_government_finance_loader_is_cached_by_database_snapshot(monkeypatch) -
 
     calls: list[str] = []
 
-    def load():
+    def load(content, file_name):
         calls.append("loaded")
         return {"source": "uae.duckdb"}
 
     renderer._load_government_finance_cached.clear()
-    monkeypatch.setattr(renderer, "load_government_finance_from_duckdb", load)
+    monkeypatch.setattr(renderer, "load_government_finance_data", load)
 
-    first = renderer._load_government_finance_cached("db-snapshot")
-    second = renderer._load_government_finance_cached("db-snapshot")
+    first = renderer._load_government_finance_cached("db-snapshot", "uae.duckdb")
+    second = renderer._load_government_finance_cached("db-snapshot", "uae.duckdb")
 
     assert first == second
     assert calls == ["loaded"]
+    renderer._load_government_finance_cached("new-db-snapshot", "uae.duckdb")
+    assert calls == ["loaded", "loaded"]
 
 
 def test_high_frequency_tab_never_reads_shared_workbook(monkeypatch) -> None:
@@ -164,25 +169,23 @@ def test_high_frequency_tab_never_reads_shared_workbook(monkeypatch) -> None:
         def info(self, _message: str) -> None:
             return None
 
+        def caption(self, _message: str) -> None:
+            return None
+
     host = _MonitoringHost(open_index=2)
     monkeypatch.setattr(
-        renderer,
-        "get_shared_dataset_file",
-        lambda: (_ for _ in ()).throw(AssertionError("shared workbook accessed")),
+        renderer, "published_source",
+        lambda: SimpleNamespace(name="uae.duckdb", published_at="2026-10-15"),
     )
     monkeypatch.setattr(renderer, "_render_report_header", lambda *_args: None)
-    monkeypatch.setattr(
-        renderer,
-        "_source_payload",
-        lambda *_args: (_ for _ in ()).throw(AssertionError("Excel payload read")),
-    )
+    monkeypatch.setattr(renderer, "_latest_high_frequency_month", lambda *_args: None)
     monkeypatch.setattr(
         renderer,
         "_build_monitoring_dashboard_cached",
         lambda *_args: (_ for _ in ()).throw(AssertionError("workbook parsed")),
     )
 
-    def render_topics(_st_obj):
+    def render_topics(_st_obj, _payload):
         return {"oil": object()}
 
     monkeypatch.setattr(renderer, "render_high_frequency_topics", render_topics)

@@ -1,18 +1,25 @@
-"""HTFA Streamlit 应用入口。"""
+"""HTFA Streamlit 入口；UAE 报告只读加载仓库中的 DuckDB 发布版本。"""
 
 from __future__ import annotations
 
 import streamlit as st
+
+from htfa.ui_shared.fonts import configure_matplotlib_fonts
 
 
 st.set_page_config(
     page_title="金轩监测",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
+# Must run before HTFA imports any chart module so TsPlots also sees the
+# platform font selected for Streamlit Cloud.
+configure_matplotlib_fonts()
+
 from htfa.app.ui.style_loader import inject_cached_styles
+from htfa.app.ui.sidebar_defaults import initialize_sidebar_visibility
 from htfa.app.navigation.config import MODULE_CONFIG as NAV_MODULE_CONFIG
 
 
@@ -21,7 +28,7 @@ MODULE_CONFIG = NAV_MODULE_CONFIG
 
 
 def main() -> None:
-    """渲染侧边栏并路由主内容。"""
+    """首次打开阿联酋高频报告，并保留用户后续的模块导航。"""
 
     inject_cached_styles()
     if st.query_params.get("view") == "sarimax-model":
@@ -42,6 +49,10 @@ def main() -> None:
     from htfa.app.ui.components.content_router import render_main_content
     from htfa.app.ui.components.sidebar import render_complete_sidebar
 
+    initialize_sidebar_visibility()
+    if "navigation.main_module" not in st.session_state:
+        st.session_state["navigation.main_module"] = "监测分析"
+        st.session_state["navigation.sub_module"] = "阿联酋"
     render_complete_sidebar(MODULE_CONFIG, key_prefix="sidebar")
     render_main_content()
 

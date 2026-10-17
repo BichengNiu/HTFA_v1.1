@@ -15,7 +15,7 @@ from htfa.ui_shared.data_overview.core.options import (
     trim_to_valid_range,
 )
 
-# 当前折线预览不向用户暴露的数据管线/柱线混合参数。
+# 当前折线预览不向用户暴露的数据管线、柱线混合及月度监测专用参数。
 _NON_USER_TS_PARAMETERS = {
     "data",
     "x",
@@ -28,6 +28,7 @@ _NON_USER_TS_PARAMETERS = {
     "bar_edge_linewidth",
     "bar_alpha",
     "bar_face_color",
+    "monthly_ticks",
 }
 
 # UI 层键名 → Ts plot_series 参数名的别名（draw_series_plot 内转换）。

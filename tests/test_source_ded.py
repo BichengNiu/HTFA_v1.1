@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import csv
-import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -159,16 +158,22 @@ def test_audit_files_structure(tmp_path) -> None:
     assert manifest["date_col_used"] == "issue_date"
 
 
-def test_month_to_date_and_build_rows() -> None:
-    """月末换算（含闰年）与 build_rows 的降序、缺报留空行为。"""
-
-    counts = {"2024-01": {"enterprises": 10, "licences": 11}}
-    official = {"2024-02": 99}
-    rows = sd.build_rows(counts, official)
-    assert [row["month"] for row in rows] == ["2024-02", "2024-01"]
-    assert rows[0]["date"] == datetime(2024, 2, 29)  # 2024 闰年
-    assert rows[0]["enterprises"] is None  # 官方有值但筛重无值 → 留空
-    assert rows[1]["official"] is None
+def test_ded_sheet_spec_keeps_all_series_and_missing_values() -> None:
+    con = db.connect(":memory:")
+    try:
+        db.init_schema(con)
+        db.replace(con, "ded_monthly", [
+            {"month": datetime(2024, 1, 31).date(), "series": "enterprises", "value": 10},
+            {"month": datetime(2024, 1, 31).date(), "series": "licences", "value": 11},
+            {"month": datetime(2024, 2, 29).date(), "series": "official_new_licenses", "value": 99},
+        ])
+        spec = sd._sheet_spec(con)
+    finally:
+        con.close()
+    assert len(spec["indicators"]) == 4
+    rows = dict(spec["rows"])
+    assert rows[datetime(2024, 2, 29).date()].get(spec["indicators"][1]) is None
+    assert rows[datetime(2024, 1, 31).date()].get(spec["indicators"][3]) is None
     assert sd._month_end_date("2023-02") == datetime(2023, 2, 28).date()
 
 
@@ -179,17 +184,28 @@ def test_update_writes_files_and_db(tmp_path, monkeypatch) -> None:
     raw_dir.mkdir()
     _write_fixture(raw_dir / "commerce_registry_sample.csv")
     out_dir = tmp_path / "DED_data"
-    official_path = tmp_path / "official_ded_monthly.csv"
-    official_path.write_text(
-        "month,official_new_licenses,note,source_url\n2024-01,12345,test,\n",
-        encoding="utf-8",
-    )
     monkeypatch.setattr(sd, "RAW", raw_dir)
     monkeypatch.setattr(sd, "OUT", out_dir)
-    monkeypatch.setattr(sd, "OFFICIAL_CSV", official_path)
 
     con = db.connect(":memory:")
     db.init_schema(con)
+    sd._ensure_official_news_tables(con)
+    sd._store_official_news_candidates(
+        con,
+        [
+            {
+                "source_url": "https://mediaoffice.ae/en/news/example",
+                "published_at": datetime(2024, 2, 1).date(),
+                "period": "January",
+                "year": 2024,
+                "month": "2024-01",
+                "period_kind": "month",
+                "value": 12345,
+                "headline": "New business licences",
+                "snippet": "12,345 new business licences in January 2024",
+            }
+        ],
+    )
     outcome = sd.update(con, skip_download=True)
     assert outcome["status"] == "ok"
     assert (out_dir / "monthly_counts.csv").exists()

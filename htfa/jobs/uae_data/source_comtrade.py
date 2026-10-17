@@ -1,7 +1,6 @@
 """UN Comtrade 阿联酋设备进口：下载 → 聚合 → 入库与写表。
 
-逻辑移植自 ``data/capitalImports/``（download_comtrade.py 下载 +
-process_and_merge.py 聚合/质检 + merge_with_excel.ps1 写表）。原始 JSON 缓存
+逻辑移植自 ``data/capitalImports/``（下载 + 聚合/质检）。原始 JSON 缓存
 写入 ``data/UAE/raw/comtrade/``；API 密钥读 ``data/UAE/.env``。入库表三张：
 comtrade_monthly（五类金额/台数）、detail.comtrade_partner_detail（镜像申报国明细）、
 detail.comtrade_quantity_detail（HS6 数量明细）。工作簿 sheet 为 ``月度_UNComtrade``。
@@ -12,7 +11,7 @@ from __future__ import annotations
 import csv
 import json
 import os
-import sys
+import shutil
 import time
 import urllib.error
 import urllib.parse
@@ -24,11 +23,11 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Iterator
 
-from .paths import DATA_DIR, SCRIPTS_DIR
+from .paths import DATA_DIR
 
 
 from . import db  # noqa: E402
-from ._excel_helpers import run_powershell_command  # noqa: E402
+from .workbook_sheet_writer import read_indicator_metadata, write_indicator_sheets
 from .source_comtrade_scope import (  # noqa: E402
     CODE_DESCRIPTIONS,
     EXCLUDED_RELATED_CODES,
@@ -44,13 +43,9 @@ from .source_comtrade_scope import (  # noqa: E402
 
 RAW_DIR = DATA_DIR / "raw" / "comtrade"
 REFERENCE_DIR = RAW_DIR / "reference"
-# merge_with_excel.ps1 reads this generated CSV from the package-local
-# processed/ directory.  Keep the derived intermediary beside the helper;
-# source data still enters DuckDB before it is reconstructed here.
-PROCESSED_DIR = SCRIPTS_DIR / "processed"
 REPORTERS_PATH = REFERENCE_DIR / "reporters.json"
 QUALITY_PATH = RAW_DIR / "quality_report.json"
-MERGE_SCRIPT = SCRIPTS_DIR / "merge_with_excel.ps1"
+TARGET_SHEET = "月度_UNComtrade"
 
 API_ROOT = "https://comtradeapi.un.org/data/v1/get"
 REPORTERS_URL = "https://comtradeapi.un.org/files/v1/app/reference/Reporters.json"
@@ -212,7 +207,7 @@ def download_monthly(client: ComtradeClient, force: bool) -> None:
             path = RAW_DIR / source / f"{source}_{year}.json"
             # Comtrade revises the current calendar year behind the same
             # endpoint/file name. Historical years remain cache candidates.
-            payload = client.get(
+            client.get(
                 "M", parameters, path, force or year == current_year
             )
 
@@ -293,7 +288,7 @@ def aggregate() -> tuple[
     dict[tuple[str, str], str],
     list[dict[str, Any]],
 ]:
-    """Aggregate with UAE imports first and full-country mirror fallback."""
+    """Aggregate UAE imports and use partner mirrors where direct data is absent."""
 
     reporters = load_reporters()
     direct_values: dict[tuple[str, str], float] = defaultdict(float)
@@ -605,9 +600,9 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         rows, detail, quantity_detail
     )
     with _transaction(con):
-        db.replace(con, "comtrade_monthly", monthly_rows)
-        db.replace(con, "comtrade_partner_detail", detail_rows)
-        db.replace(con, "comtrade_quantity_detail", quantity_rows)
+        db.replace(con, "main.comtrade_monthly", monthly_rows)
+        db.replace(con, "detail.comtrade_partner_detail", detail_rows)
+        db.replace(con, "detail.comtrade_quantity_detail", quantity_rows)
         db.upsert_dictionary_rows(con, _dictionary_rows())
 
     quality = _quality_report(rows, detail, sources, quantity_detail, None)
@@ -681,99 +676,59 @@ def _quality_report(
 
 
 # ---------------------------------------------------------------------------
-# 写表（走 merge_with_excel.ps1，协议不变）
+# 从 DuckDB 重建唯一的 Comtrade 工作表
 # ---------------------------------------------------------------------------
 
 
-def _reconstruct_rows(con) -> list[dict[str, Any]]:
-    """从库重建旧 process_and_merge 的 rows 结构（含缺失月补空）。"""
-
-    records = con.execute(
-        "SELECT period, category, value, units FROM comtrade_monthly"
-    ).fetchall()
-    by_period: dict[date, dict[str, Any]] = defaultdict(dict)
-    for period, category, value, units in records:
-        by_period[period][category] = (value, units)
-    rows = []
-    for period in sorted(by_period, reverse=True):
-        result: dict[str, Any] = {
-            "month": period.strftime("%Y%m"),
-            "date": period,
-        }
-        for category in SERIES:
-            value, units = by_period[period].get(category, (None, None))
-            result[f"{category}_usd"] = value
-            result[f"{category}_usd_mn"] = (
-                round(value / 1_000_000, 6) if value is not None else None
-            )
-            result[f"{category}_units"] = units
-        rows.append(result)
-    return rows
+def _sheet_spec(con) -> dict[str, Any]:
+    categories = {
+        category: definition["name_zh"].removesuffix("进口")
+        for category, definition in SERIES.items()
+    }
+    indicators = [
+        *[f"阿联酋:进口:{name}:当月值" for name in categories.values()],
+        *[f"阿联酋:进口:{name}:台数:当月值" for name in categories.values()],
+    ]
+    periods: dict[date, dict[str, Any]] = defaultdict(dict)
+    for period, category, value, units in con.execute(
+        "SELECT period, category, value, units FROM main.comtrade_monthly"
+    ).fetchall():
+        name = categories[category]
+        periods[period][f"阿联酋:进口:{name}:当月值"] = (
+            float(value) / 1_000_000 if value is not None else None
+        )
+        periods[period][f"阿联酋:进口:{name}:台数:当月值"] = units
+    return {
+        "name": TARGET_SHEET,
+        "title": "UN Comtrade 阿联酋资本品进口月度指标",
+        "indicators": indicators,
+        "rows": list(periods.items()),
+    }
 
 
 def merge(workbook_path: Path) -> dict:
-    """把 comtrade 三表合并进 月度_UNComtrade sheet（Excel COM 原生合并）。"""
+    """从正式 DuckDB 重建 Comtrade 工作表，写入前备份并原子替换工作簿。"""
 
-    workbook_path = workbook_path.resolve()
+    workbook_path = Path(workbook_path).resolve()
     if not workbook_path.is_file():
-        raise FileNotFoundError(f"Destination workbook not found: {workbook_path}")
-    if not MERGE_SCRIPT.is_file():
-        raise FileNotFoundError(f"Excel merge helper not found: {MERGE_SCRIPT}")
+        raise FileNotFoundError(workbook_path)
     lock_path = workbook_path.with_name(f"~${workbook_path.name}")
     if lock_path.exists():
-        raise PermissionError(
-            f"Close Excel before updating the workbook: {lock_path}"
-        )
-
+        raise PermissionError(f"Close Excel before updating the workbook: {lock_path}")
     con = db.connect(read_only=True)
     try:
-        rows = _reconstruct_rows(con)
+        spec = _sheet_spec(con)
+        if not spec["rows"]:
+            raise ValueError("comtrade_monthly is empty; nothing to merge")
+        spec["metadata"] = read_indicator_metadata(con, spec["indicators"])
     finally:
         con.close()
-    if not rows:
-        raise ValueError("comtrade_monthly is empty; nothing to merge")
-
-    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
-    monthly_path = PROCESSED_DIR / "uae_imports_monthly.csv"
-    fieldnames = ["month", "date"]
-    for category in SERIES:
-        fieldnames.extend(
-            [f"{category}_usd", f"{category}_usd_mn", f"{category}_units"]
-        )
-    with monthly_path.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(
-                {
-                    key: (
-                        value.isoformat()
-                        if isinstance(value, date)
-                        else value
-                    )
-                    for key, value in row.items()
-                }
-            )
-
-    completed = run_powershell_command(
-        (
-            "powershell",
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            str(MERGE_SCRIPT),
-            "-SourceWorkbook",
-            str(workbook_path),
-        )
+    backup_dir = DATA_DIR / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    backup = backup_dir / (
+        f"{workbook_path.stem}_before_comtrade_merge_"
+        f"{datetime.now():%Y%m%d_%H%M%S_%f}.xlsx"
     )
-    if completed.returncode != 0:
-        raise RuntimeError(
-            "Excel merge did not complete successfully: "
-            f"{(completed.stderr or completed.stdout or '').strip()}"
-        )
-    return {"status": "ok", "note": f"月度_UNComtrade 已更新（{len(rows)} 个月）"}
-
-
-if __name__ == "__main__":
-    print("source_comtrade: 模块入口由 htfa.jobs.uae_data.update_data 与 htfa.jobs.uae_data.merge_workbook 调用")
+    shutil.copy2(workbook_path, backup)
+    counts = write_indicator_sheets(workbook_path, [spec])
+    return {"status": "ok", "note": f"{TARGET_SHEET} 已更新（{counts[TARGET_SHEET]} 个月）"}

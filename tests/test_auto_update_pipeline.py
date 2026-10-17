@@ -16,5 +16,22 @@ def test_auto_update_batch_does_not_force_cache_only_mode() -> None:
 
 def test_auto_update_batch_covers_every_registered_source() -> None:
     text = BATCH.read_text(encoding="utf-8")
-    missing = [name for name in update_data.SOURCES if name not in text]
-    assert not missing
+    assert "-m htfa.jobs.uae_data.update_data" in text
+    assert "sys.path.insert" not in text
+    assert update_data.resolve_source_names(update_data.parse_args([]).source) == list(
+        update_data.SOURCES
+    )
+
+
+def test_comtrade_has_only_one_workbook_merge_owner() -> None:
+    assert update_data.workbook_merge_sources(["comtrade"]) == ["comtrade"]
+    assert update_data.workbook_merge_sources(["comtrade", "emirates_post", "portwatch"]) == [
+        "comtrade", "emirates_post", "portwatch",
+    ]
+
+
+def test_source_batch_launchers_use_runtime_package_entrypoints():
+    for module in ("update_data", "merge_workbook"):
+        text = (ROOT / "htfa/jobs/uae_data" / f"{module}.bat").read_text(encoding="utf-8-sig")
+        assert f"-m htfa.jobs.uae_data.{module} %*" in text
+        assert "sys.path.insert" not in text

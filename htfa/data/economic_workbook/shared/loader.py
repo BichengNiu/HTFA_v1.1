@@ -9,6 +9,7 @@ import pandas as pd
 
 from ..core.workbook_parser import parse_economic_workbook
 from ..domain.models import EconomicWorkbookSnapshot
+from ..tables import TableWorkbook
 from .target_reader import (
     SheetSeriesMetadata,
     open_workbook as open_economic_workbook,
@@ -80,8 +81,7 @@ class EconomicWorkbookReader:
         """读取工作簿各 sheet 的表格视图，供领域处理器消费。"""
         with self.open_workbook(file_input) as (excel_file, _):
             return {
-                sheet_name: pd.read_excel(
-                    excel_file,
+                sheet_name: excel_file.parse(
                     sheet_name=sheet_name,
                     header=header,
                 )
@@ -98,14 +98,14 @@ class EconomicWorkbookReader:
         file_input: Any,
         *,
         file_name: str | None = None,
-    ) -> Iterator[tuple[pd.ExcelFile, str]]:
+    ) -> Iterator[tuple[pd.ExcelFile | TableWorkbook, str]]:
         """打开供主题读取的正式经济工作簿。"""
         with open_economic_workbook(file_input, file_name=file_name) as opened:
             yield opened
 
     def read_target_sheet(
         self,
-        excel_file: pd.ExcelFile,
+        excel_file: pd.ExcelFile | TableWorkbook,
         *,
         sheet_name: str,
         targets: tuple[tuple[str, str], ...],
@@ -129,14 +129,14 @@ class EconomicWorkbookReader:
 
     def read_raw_sheet(
         self,
-        excel_file: pd.ExcelFile,
+        excel_file: pd.ExcelFile | TableWorkbook,
         *,
         sheet_name: str,
     ) -> pd.DataFrame:
         """读取一个经济数据 sheet 的原始二维表。"""
         if sheet_name not in excel_file.sheet_names:
             raise ValueError(f"工作簿缺少“{sheet_name}”sheet")
-        return pd.read_excel(excel_file, sheet_name=sheet_name, header=None)
+        return excel_file.parse(sheet_name=sheet_name, header=None)
 
 
 __all__ = ["EconomicWorkbookReader", "extract_industry_name"]

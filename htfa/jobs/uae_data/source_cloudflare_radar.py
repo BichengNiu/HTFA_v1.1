@@ -3,13 +3,13 @@
 数据来源：Cloudflare Radar API（https://radar.cloudflare.com/）国家级网络流量
 日度序列。官方接口需**免费 API Token**（Account → Radar → Read）。
 
-双模式：
+更新模式：
 1. **API 模式（首选，有 token 时）**：调
    `GET /client/v4/radar/netflows/timeseries?name=ae_netflows&location=AE&dateRange=52w&aggInterval=1d`
    token 从环境变量 `CF_RADAR_TOKEN` 或 `data/UAE/.env` 的 `CF_RADAR_TOKEN=` 行读取；
    原始 JSON 存 `raw/cloudflare_radar/netflows_<yyyyMMdd>.json` 留档。
-2. **手动 CSV 模式（无 token 时的回落）**：解析用户从官网 Download CSV 保存的文件
-   `data/UAE/raw/cloudflare_radar/uae_http_traffic_daily.csv`（容忍列名变动）。
+2. **离线重算**：仅显式指定 ``--skip-download`` 时读取最新 API JSON 原始缓存。
+   在线 API、认证或响应校验失败都会直接报错。
 
 - 值口径：国家级网络流量（流量字节/包量）相对基准的**百分比变化**，非绝对流量。
   百分比与 HTTP 请求变化量同属 Radar「数字活动」高频代理系列。
@@ -19,10 +19,8 @@
 
 from __future__ import annotations
 
-import csv
 import json
 import os
-import sys
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -30,7 +28,7 @@ from typing import Iterator
 
 from htfa.data.temporal import last_complete_month_end
 
-from .paths import DATA_DIR, SCRIPTS_DIR
+from .paths import DATA_DIR
 
 
 import requests  # noqa: E402
@@ -42,7 +40,6 @@ from . import db  # noqa: E402
 # ---------------------------------------------------------------------------
 
 RAW_DIR = DATA_DIR / "raw" / "cloudflare_radar"
-RAW_CSV = RAW_DIR / "uae_http_traffic_daily.csv"
 TABLE = "cloudflare_radar_daily"
 SOURCE_NAME = "Cloudflare Radar (UAE)"
 FREQUENCY = "日"
@@ -61,7 +58,6 @@ TARGET_SHEET_W = "周度_CloudflareRadar"
 API_URL = "https://api.cloudflare.com/client/v4/radar/netflows/timeseries"
 # 日度粒度 API 保留期约 90 天（90d/1d 可用，120d 及以上被拒退化为周度）；
 # 周度可回溯 52 周。此处取日度最大值窗口。
-API_PARAMS = {"name": "ae_netflows", "location": "AE", "dateRange": "90d", "aggInterval": "1d"}
 API_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120"}
 
 _TABLE_DDL = f"""
@@ -87,7 +83,7 @@ def _load_token() -> str | None:
         return token.strip()
     env_path = DATA_DIR / ".env"
     if env_path.is_file():
-        for line in env_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
             line = line.strip()
             if line.startswith("CF_RADAR_TOKEN="):
                 return line.split("=", 1)[1].strip().strip('"').strip("'")
@@ -241,6 +237,43 @@ def _api_rows() -> tuple[list[dict], str]:
 HISTORY_FILE = RAW_DIR / "netflows_weekly_history.json"
 
 
+def _cached_api_rows() -> tuple[list[dict], str]:
+    """Read the newest daily and weekly API responses for explicit offline runs."""
+
+    rows: list[dict] = []
+    notes: list[str] = []
+    for suffix, indicator, frequency in (
+        ("d90", INDICATOR, "日度"),
+        ("w52", INDICATOR_W, "周度"),
+    ):
+        paths = sorted(RAW_DIR.glob(f"netflows_*_{suffix}.json"), reverse=True)
+        if not paths:
+            raise FileNotFoundError(
+                f"Cloudflare Radar offline {frequency} API cache not found in {RAW_DIR}"
+            )
+        path = paths[0]
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError(f"Cloudflare Radar 缓存不是 JSON 对象: {path}")
+        pairs, meta = _parse_netflows_json(data)
+        if not pairs:
+            raise ValueError(f"Cloudflare Radar 缓存没有 {frequency} 观测: {path}")
+        rows.extend(
+            {
+                "period": period,
+                "indicator": indicator,
+                "value": round(value, 3),
+                "source_file": path.name,
+            }
+            for period, value in pairs
+        )
+        notes.append(
+            f"缓存 API {frequency} {len(pairs)} 点（{path.name}，"
+            f"norm={meta.get('normalization') or 'n/a'}）"
+        )
+    return rows, "；".join(notes)
+
+
 def _history_rows() -> tuple[list[dict], str]:
     """用户提供的周度历史 JSON（权威底稿）→ 周度指标行；无文件则返回空。"""
     if not HISTORY_FILE.is_file():
@@ -273,75 +306,9 @@ def _ingest(con, rows: list[dict]) -> int:
     return len(rows)
 
 
-def _read_csv(path: Path) -> list[dict]:
-    """自动识别日期列与数值列，返回 (period, value) 长行。"""
-    if not path.is_file():
-        raise FileNotFoundError(
-            f"Cloudflare Radar CSV 缺失: {path}\n"
-            "请从 radar.cloudflare.com/ae 的 HTTP traffic 图表 'Download CSV' "
-            "手动保存近一年日度序列为本文件。"
-        )
-    with path.open(encoding="utf-8-sig", newline="") as handle:
-        reader = csv.reader(handle)
-        rows = list(reader)
-    if not rows:
-        raise ValueError(f"Cloudflare Radar CSV 为空: {path}")
-    header = [str(c).strip() for c in rows[0]]
-    body = rows[1:]
-
-    # 找日期列（能解析成日期的样本占比最高者）
-    date_col = -1
-    for col in range(min(len(header), 6)):
-        ok = sum(1 for row in body if len(row) > col and _parse_date(row[col]) is not None)
-        if body and ok / len(body) > 0.5:
-            date_col = col
-            break
-    if date_col < 0:
-        raise ValueError(f"Cloudflare Radar CSV 未找到日期列: header={header}")
-
-    # 找数值列（首列即可解数字、且非日期列）
-    value_col = -1
-    for col in range(min(len(header), 6)):
-        if col == date_col:
-            continue
-        if body and all(
-            len(row) <= col or _coerce_number(row[col]) is not None
-            for row in body[:50]
-        ):
-            value_col = col
-            break
-    if value_col < 0:
-        raise ValueError(f"Cloudflare Radar CSV 未找到数值列: header={header}")
-
-    pairs: list[tuple[date, float]] = []
-    for row in body:
-        if len(row) <= max(date_col, value_col):
-            continue
-        period = _parse_date(row[date_col])
-        value = _coerce_number(row[value_col])
-        if period is None or value is None:
-            continue
-        pairs.append((period, value))
-    pairs.sort(key=lambda item: item[0])
-    return [{"period": p, "value": v} for p, v in pairs]
-
-
 # ---------------------------------------------------------------------------
 # 入库
 # ---------------------------------------------------------------------------
-
-
-def _read_rows() -> list[dict]:
-    raw = _read_csv(RAW_CSV)
-    return [
-        {
-            "period": item["period"],
-            "indicator": INDICATOR,
-            "value": item["value"],
-            "source_file": RAW_CSV.name,
-        }
-        for item in raw
-    ]
 
 
 def _dictionary_rows() -> list[dict]:
@@ -382,10 +349,8 @@ def _transaction(con) -> Iterator[None]:
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     """Cloudflare Radar 网络流量入库（增量合并，不整表替换）。
 
-    数据来源按序并入（主键 (period, indicator) 去重，保留既有历史只补新点）：
-    1. `raw/cloudflare_radar/netflows_weekly_history.json` —— 用户提供的周度历史；
-    2. 有 CF_RADAR_TOKEN 且非 ``skip_download`` → API 拉日度 90d + 周度 52w 补新；
-    3. 无 token → 回落手动 CSV `uae_http_traffic_daily.csv`。
+    按主键 (period, indicator) 去重并保留已有历史。在线请求失败直接报错；
+    仅显式 skip_download 时读取最近一次成功的 API JSON。
     """
     rows: list[dict] = []
     notes: list[str] = []
@@ -395,24 +360,20 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     if hnote:
         notes.append(hnote)
 
-    if _load_token() and not skip_download:
+    if not skip_download:
         arows, anote = _api_rows()
         rows += arows
         if anote:
             notes.append(anote)
-    elif not rows:
-        crow = _read_rows()
-        rows += crow
-        if crow:
-            notes.append(
-                f"手动 CSV {len(crow)} 天（{crow[0]['period'].isoformat()}→"
-                f"{crow[-1]['period'].isoformat()}，源文件 {RAW_CSV.name}）"
-            )
+    else:
+        cached_rows, cached_note = _cached_api_rows()
+        rows += cached_rows
+        if cached_note:
+            notes.append(cached_note)
 
     if not rows:
         raise ValueError(
-            "cloudflare_radar_daily 输入为空：既没有 CF_RADAR_TOKEN，"
-            "也没有历史 JSON / 手动 CSV。"
+            "cloudflare_radar_daily 输入为空：没有可用 API 或历史 JSON。"
         )
 
     with _transaction(con):
@@ -503,12 +464,3 @@ def merge(workbook_path: Path) -> dict:
     if not done:
         raise ValueError("cloudflare_radar_daily is empty; nothing to merge")
     return {"status": "ok", "note": "；".join(done)}
-
-
-if __name__ == "__main__":
-    print("source_cloudflare_radar.py 自检：")
-    print("  update(con, ...)")
-    print("    · 有 CF_RADAR_TOKEN  → API 拉 /radar/netflows/timeseries?location=AE&dateRange=52w")
-    print("    · 无 token             → 解析手动 CSV raw/cloudflare_radar/uae_http_traffic_daily.csv")
-    print("    → 入日表 cloudflare_radar_daily")
-    print("  merge(workbook_path) 把表写回 日度_CloudflareRadar")

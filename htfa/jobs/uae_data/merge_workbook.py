@@ -1,8 +1,7 @@
 """Merge DuckDB data back into the relevant ``data/UAE/阿联酋.xlsx`` sheets.
 
-Each ``source_*.py`` module owns its sheet-writing protocol (Excel COM
-helper, openpyxl direct write, or CSV export), exactly as the pre-DuckDB
-scripts did, but reads its input from ``data/UAE/uae.duckdb``.
+Each ``source_*.py`` module owns its workbook sheets and reads their values
+from ``data/UAE/uae.duckdb``. Writers use Excel COM or atomic OOXML writes.
 
 Close the workbook in Excel before merging; every writer keeps its backup
 and rollback behaviour.
@@ -27,12 +26,13 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-from .paths import DATA_DIR, SCRIPTS_DIR
+from .paths import DATA_DIR
 from ._excel_helpers import cleanup_excel_automation
 
 
-from . import db  # noqa: E402
 from .uae_metadata import sync_workbook_dictionary  # noqa: E402
+from . import db
+from .publish_report import publish_workbook
 
 WORKBOOK_PATH = DATA_DIR / "阿联酋.xlsx"
 
@@ -45,18 +45,23 @@ SOURCES = (
     "comtrade_vehicles",
     "ded",
     "dld",
+    "dot_t100",
+    "dubai_customs_air",
     "employment",
     "emirates_post",
+    "eurostat_air",
+    "fcsc",
     "foreign_labour",
     "gfs",
     "pmi",
     "portwatch",
+    "public_market",
     "rta",
+    "salik",
     "scad",
     "steel",
     "tdra",
     "uaewps",
-    "extended",
     "wam",
 )
 
@@ -133,6 +138,20 @@ def main(argv: list[str] | None = None) -> int:
                 traceback.format_exception_only(type(exc), exc)
             ).strip()
             print(f"[merge_workbook] metadata         FAILED  {detail}", flush=True)
+    if failures == 0:
+        try:
+            with db.connect() as con:
+                publication = publish_workbook(con, workbook_path)
+            print(
+                "[merge_workbook] report           ok       "
+                f"{publication['sheets']} tables, "
+                f"{publication['observations']} observations; "
+                f"version={publication['version'][:12]}",
+                flush=True,
+            )
+        except Exception as exc:  # noqa: BLE001 - preserve previous publication
+            failures += 1
+            print(f"[merge_workbook] report           FAILED  {exc}", flush=True)
     print(
         f"[merge_workbook] done: {len(names) - failures} ok, {failures} failed; "
         f"workbook: {workbook_path}",

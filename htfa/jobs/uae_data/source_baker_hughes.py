@@ -4,14 +4,13 @@
 先从 Baker Hughes Worldwide Rig Count 官方页面发现并下载最新工作簿，再从
 ``data/UAE/raw/baker_hughes/`` 下按"源表最新观测月"选择有效工作簿（不依赖文件名），
 提取阿布扎比/迪拜/沙迦的 Oil 活跃钻机数并按月汇总，入库 ``baker_hughes_monthly``。
-目标工作簿的最新状态检测（``target_is_current``）与写表协议与旧脚本完全一致。
+目标工作簿的最新状态检测（``target_is_current``）用于避免重复写入。
 """
 
 from __future__ import annotations
 
 import calendar
 import re
-import sys
 import warnings
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -23,7 +22,7 @@ from urllib.parse import urljoin, urlparse
 
 from openpyxl import load_workbook
 
-from .paths import DATA_DIR, SCRIPTS_DIR
+from .paths import DATA_DIR
 
 
 from . import db  # noqa: E402
@@ -35,12 +34,14 @@ from ._excel_helpers import (  # noqa: E402
 from ._official_download import download_file, fetch_bytes  # noqa: E402
 
 # ---------------------------------------------------------------------------
-# 常量（与旧脚本一致）
+# 来源与写表常量
 # ---------------------------------------------------------------------------
 
 RAW_DIR = DATA_DIR / "raw" / "baker_hughes"
 BAKER_WORLDWIDE_URL = "https://rigcount.bakerhughes.com/intl-rig-count"
-BAKER_USER_AGENT = "curl/8.0"
+# The public rig-count endpoint accepts this compatibility user agent while
+# rejecting curl/8.0 and the shared HTFA browser header from the same client.
+BAKER_USER_AGENT = "Mozilla/5.0"
 SOURCE_SHEET = "WW Monthly"
 TARGET_SHEET = "月度_贝克休斯"
 SOURCE_NAME = "Baker Hughes"
@@ -48,15 +49,6 @@ UAE_COUNTRY_PREFIX = "UAE - "
 EXPECTED_STATUS = "Active Rigs"
 
 INDICATORS = (("阿联酋石油活跃钻机数", "oil"),)
-
-OBSOLETE_INDICATORS = (
-    "阿联酋活跃钻机总数",
-    "阿联酋石油钻机数",
-    "阿联酋天然气钻机数",
-    "阿联酋其他钻机数",
-    "阿联酋陆地钻机数",
-    "阿联酋海上钻机数",
-)
 
 REQUIRED_COLUMNS = (
     "Region",
@@ -186,19 +178,14 @@ def extract_uae_monthly(path: Path) -> list[RigObservation]:
 
 def select_latest_workbook(
     directory: Path,
-) -> tuple[Path, list[RigObservation], list[str]]:
+) -> tuple[Path, list[RigObservation]]:
     """选择包含最新观测月的有效工作簿。"""
 
     candidates: list[tuple[str, int, str, Path, list[RigObservation]]] = []
-    errors: list[str] = []
     for path in sorted(directory.glob("*.xlsx")):
         if path.name.startswith("~$"):
             continue
-        try:
-            observations = extract_uae_monthly(path)
-        except (OSError, ValueError) as exc:
-            errors.append(f"{path.name}: {exc}")
-            continue
+        observations = extract_uae_monthly(path)
         candidates.append(
             (
                 observations[-1].period,
@@ -209,10 +196,9 @@ def select_latest_workbook(
             )
         )
     if not candidates:
-        details = "; ".join(errors) if errors else "no .xlsx files found"
-        raise FileNotFoundError(f"No valid Baker Hughes workbook: {details}")
+        raise FileNotFoundError(f"No Baker Hughes .xlsx files found in {directory}")
     _, _, _, selected_path, selected_observations = max(candidates)
-    return selected_path, selected_observations, errors
+    return selected_path, selected_observations
 
 
 def _normalized_number(value: object) -> Decimal | None:
@@ -298,7 +284,7 @@ def _discover_latest_worldwide_report() -> tuple[str, Path]:
     html = fetch_bytes(
         BAKER_WORLDWIDE_URL,
         user_agent=BAKER_USER_AGENT,
-    ).decode("utf-8", errors="replace")
+    ).decode("utf-8")
     for match in _BAKER_LINK_RE.finditer(html):
         href_match = _BAKER_HREF_RE.search(match.group("attrs"))
         if href_match is None:
@@ -328,7 +314,10 @@ def _download_latest_worldwide_report(*, force: bool) -> str:
         referer=BAKER_WORLDWIDE_URL,
         user_agent=BAKER_USER_AGENT,
     )
-    return f"官网报告：{target.name}（{'新增下载' if status == 'downloaded' else '复用缓存'}）"
+    return (
+        f"官网报告：{target.name}（{'新增下载' if status == 'downloaded' else '复用缓存'}）；"
+        f"来源 {url}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -341,19 +330,14 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
 
     download_note = ""
     if not skip_download:
-        try:
-            download_note = _download_latest_worldwide_report(force=force)
-        except Exception as exc:  # noqa: BLE001 - a valid local workbook remains usable
-            if not any(RAW_DIR.glob("*.xlsx")):
-                raise
-            download_note = f"官网报告下载失败，使用本地缓存：{exc}"
+        download_note = _download_latest_worldwide_report(force=force)
 
     warnings.filterwarnings(
         "ignore",
         message="Unknown extension is not supported and will be removed",
         module="openpyxl.worksheet._reader",
     )
-    source_path, observations, warnings_found = select_latest_workbook(RAW_DIR)
+    source_path, observations = select_latest_workbook(RAW_DIR)
     rows = [
         {
             "period": _month_end(observation.period),
@@ -369,8 +353,6 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         f"{len(rows)} 个月（{observations[0].period} 至 {observations[-1].period}），"
         f"源文件 {source_path.name}"
     )
-    if warnings_found:
-        note += f"；跳过 {len(warnings_found)} 个失效文件"
     if download_note:
         note += f"；{download_note}"
     return {"status": "ok", "rows": len(rows), "note": note}
@@ -379,7 +361,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
 def merge(workbook_path: Path) -> dict:
     """把 baker_hughes_monthly 写回 阿联酋.xlsx 的 月度_贝克休斯 sheet。
 
-    保留旧脚本的 target_is_current 幂等检查：工作表已是最新则不重写。
+    工作表已是最新时跳过重复写入，并执行完整性校验。
     写表走 data/write_baker_hughes_sheet.ps1（Excel COM），失败即抛错。
     """
 
@@ -423,7 +405,6 @@ def merge(workbook_path: Path) -> dict:
             {"name": name, "type": "数量", "industry": "能源"}
             for name, _ in INDICATORS
         ],
-        "obsolete_indicators": list(OBSOLETE_INDICATORS),
         "records": records_latest_first(observations),
     }
     with payload_json_file(
@@ -438,11 +419,3 @@ def merge(workbook_path: Path) -> dict:
         "status": "ok",
         "note": f"{len(observations)} 个月写入 {TARGET_SHEET}",
     }
-
-
-if __name__ == "__main__":
-    print("source_baker_hughes.py 自检：")
-    print("  update(con, force=, skip_download=) 自动发现/下载官网月报并解析")
-    print("    （按源表最新观测月选档）并入库 baker_hughes_monthly")
-    print("  merge(workbook_path) 把表写回 月度_贝克休斯，保留幂等检查")
-    print("  本文件直接运行不执行任何下载或工作簿写入。")

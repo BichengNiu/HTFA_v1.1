@@ -56,9 +56,6 @@ try {
     $columnCount = $lastColumnIndex
     $values = [object[,]]::new($rowCount, $columnCount)
     $sourceLabel = $payload.source_label
-    if ($null -eq $sourceLabel -or [string]::IsNullOrWhiteSpace([string]$sourceLabel)) {
-        $sourceLabel = $payload.source
-    }
     $values[0, 0] = $sourceLabel
     $metadataLabels = @($payload.metadata_labels)
     for ($row = 0; $row -lt $metadataLabels.Count; $row++) {
@@ -67,9 +64,6 @@ try {
     for ($column = 0; $column -lt $indicatorCount; $column++) {
         $targetColumn = $column + 1
         $perUnit = $payload.indicators[$column].unit
-        if ($null -eq $perUnit -or [string]::IsNullOrWhiteSpace([string]$perUnit)) {
-            $perUnit = $payload.unit
-        }
         $values[1, $targetColumn] = $indicatorNames[$column]
         $values[2, $targetColumn] = $payload.frequency
         $values[3, $targetColumn] = $perUnit

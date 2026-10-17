@@ -92,9 +92,11 @@ def load_search_index_from_duckdb() -> pd.DataFrame:
 
 
 def display_search_index_values(values: pd.DataFrame) -> pd.DataFrame:
-    """返回从指定年份起的工作搜索热度观测。"""
+    """返回指定年份起的观测，月度展示日期对齐月末刻度。"""
 
-    return values.loc[values.index >= pd.Timestamp(START_YEAR, 1, 1)]
+    display = values.loc[values.index >= pd.Timestamp(START_YEAR, 1, 1)].copy()
+    display.index = display.index.to_period("M").to_timestamp("M")
+    return display
 
 
 def _smooth_series(series: pd.Series) -> pd.Series:
@@ -147,6 +149,7 @@ def build_search_index_figure(
         xtitle="",
         ytitle_position="side",
         year_ruler=True,
+        max_ticks=16,
         grid=True,
         vlines=WAR_START_DATE,
         show_legend=True,

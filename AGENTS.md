@@ -53,6 +53,12 @@ Any change touching plotting (chart style, axes, legend, titles, grid, multi-axi
 
 ## 推送规范（Push policy）
 
+### 远端同步规则（强制）
+
+- 后续所有「推送 / push」操作都必须包含远端同步：完成清理、复核和本地提交后，执行 `git push origin main`，不得只提交到本地便宣称已推送。
+- 用户的推送指令已授权上述完整流程，无需再次确认是否推送远端。
+- 推送后核对本地 `main` 与远端 `origin/main` 的提交哈希一致；如推送失败，明确说明失败原因，不得报告推送成功。
+
 ### 主分支提交规则（强制）
 
 - 所有修改必须直接在本地 `main` 分支上完成并提交。
@@ -85,6 +91,8 @@ Any change touching plotting (chart style, axes, legend, titles, grid, multi-axi
 `.gitignore` 已整体覆盖上述临时形态（`*.duckdb*` 全局忽略，仅 `data/UAE/uae.duckdb` 特例入库，走 LFS）。
 
 ## Code changes
+
+- **禁止擅自新增灰字注释**：页面中的灰色说明文字（包括 `st.caption`、下载按钮下的“数据截至……”和额外解释性灰字）默认不添加。确有必要时，必须先说明内容与用途，取得用户明确同意后再添加。
 
 Use four-space indentation and PEP 8 naming. Keep UI rendering separate from data transformation, reuse existing module utilities, and keep diffs focused. Preserve user files and unrelated worktree changes. Runtime input validation, statistical assumptions, workbook schemas, authentication, download safety, and failure rollback are product behavior and must not be removed merely to shorten the code.
 

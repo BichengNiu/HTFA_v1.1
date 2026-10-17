@@ -61,9 +61,6 @@ try {
     for ($column = 0; $column -lt $indicatorCount; $column++) {
         $targetColumn = $column + 1
         $perUnit = $payload.indicators[$column].unit
-        if ($null -eq $perUnit -or [string]::IsNullOrWhiteSpace([string]$perUnit)) {
-            $perUnit = $payload.unit
-        }
         $values[1, $targetColumn] = $indicatorNames[$column]
         $values[2, $targetColumn] = $payload.frequency
         $values[3, $targetColumn] = $perUnit

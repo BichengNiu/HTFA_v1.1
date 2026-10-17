@@ -48,7 +48,6 @@ from htfa.monitoring.uae.government_finance.rates import (
     EIBOR_ONEYEAR_DISPLAY,
     EIBOR_OVERNIGHT_DISPLAY,
     US_OVERNIGHT_DISPLAY,
-    US_SOFR_12M_DISPLAY,
 )
 from htfa.monitoring.uae.government_finance.search_index import (
     WORK_DUBAI_COLUMN,
@@ -236,9 +235,10 @@ def test_section_renders_quad_business_and_labor_employment_subsections(
     monkeypatch.setattr(
         renderer,
         "_load_government_finance_cached",
-        lambda *_args: data,
+        lambda content, file_name: data,
     )
     for loader_name in (
+        "_load_rates_cached",
         "_load_foreign_inflow_cached",
         "_load_private_credit_cached",
         "_load_ded_cached",
@@ -250,6 +250,7 @@ def test_section_renders_quad_business_and_labor_employment_subsections(
         monkeypatch.setattr(renderer, loader_name, lambda *args: object())
     render_mocks: dict[str, MagicMock] = {}
     for render_name in (
+        "_render_rates_chart",
         "_render_foreign_inflow_chart",
         "_render_private_credit_chart",
         "_render_charts",
@@ -268,7 +269,11 @@ def test_section_renders_quad_business_and_labor_employment_subsections(
     st_obj = MagicMock()
     st_obj.columns.return_value = (MagicMock(), MagicMock())
 
-    result = renderer.render_government_finance_section(st_obj)
+    result = renderer.render_government_finance_section(
+        st_obj,
+        b"workbook",
+        "test.xlsx",
+    )
 
     assert result["status"] == "success"
     st_obj.container.assert_called_once_with(key="uae-finance-part")
@@ -288,6 +293,7 @@ def test_section_renders_quad_business_and_labor_employment_subsections(
     ]
     # 2×2 四图 + 企业活动两行 + 劳动就业一行共 5 次 columns（指标行被 mock 不计）
     assert st_obj.columns.call_count == 5
+    assert render_mocks["_render_rates_chart"].call_count == 1
     assert render_mocks["_render_foreign_inflow_chart"].call_count == 1
     assert render_mocks["_render_charts"].call_count == 1
     assert render_mocks["_render_private_credit_chart"].call_count == 1
@@ -304,32 +310,13 @@ def test_section_renders_quad_business_and_labor_employment_subsections(
 
 
 def test_quad_cell_failure_warns_cell_and_keeps_section(monkeypatch) -> None:
-    data = load_government_finance_data(_workbook_bytes(), file_name="test.xlsx")
-    failing_chart = lambda *_args: (_ for _ in ()).throw(KeyError("CBUAE 外资流入缺失"))
-    monkeypatch.setattr(renderer, "_render_foreign_inflow_chart", failing_chart)
-    monkeypatch.setattr(renderer, "_load_foreign_inflow_cached", lambda *_args: object())
-    monkeypatch.setattr(renderer, "_load_private_credit_cached", lambda *_args: object())
-    private_chart = MagicMock()
-    all_finance_charts = MagicMock()
-    monkeypatch.setattr(renderer, "_render_private_credit_chart", private_chart)
-    monkeypatch.setattr(renderer, "_render_charts", all_finance_charts)
-    st_obj = MagicMock()
-    top_left, top_right = MagicMock(), MagicMock()
-    bottom_left, bottom_right = MagicMock(), MagicMock()
-    st_obj.columns.side_effect = [(top_left, top_right), (bottom_left, bottom_right)]
+    """某个格子的渲染 KeyError 只能让该格警告，不能拖垮整个区块。"""
 
-    renderer._render_quad_finance_charts(
-        st_obj, data, pd.Timestamp("2026-06-30"), "db-snapshot"
+    from htfa.monitoring.uae.government_finance.rates import (
+        EIBOR_OVERNIGHT_DISPLAY,
     )
 
-    top_left.info.assert_called_once()
-    top_right.warning.assert_called_once()
-    all_finance_charts.assert_called_once()
-    private_chart.assert_called_once()
-
-
-def test_payment_chart_failure_warns_only_its_business_cell(monkeypatch) -> None:
-    """支付图单独失败时，另一张支付图和其它分区仍继续渲染。"""
+    missing_key = EIBOR_OVERNIGHT_DISPLAY
 
     data = load_government_finance_data(
         _workbook_bytes(),
@@ -338,9 +325,10 @@ def test_payment_chart_failure_warns_only_its_business_cell(monkeypatch) -> None
     monkeypatch.setattr(
         renderer,
         "_load_government_finance_cached",
-        lambda *_args: data,
+        lambda content, file_name: data,
     )
     for loader_name in (
+        "_load_rates_cached",
         "_load_foreign_inflow_cached",
         "_load_private_credit_cached",
         "_load_ded_cached",
@@ -353,6 +341,79 @@ def test_payment_chart_failure_warns_only_its_business_cell(monkeypatch) -> None
 
     render_mocks: dict[str, MagicMock] = {}
     for render_name in (
+        "_render_foreign_inflow_chart",
+        "_render_private_credit_chart",
+        "_render_charts",
+        "_render_ded_chart",
+        "_render_pmi_chart",
+        "_render_customer_transfers_chart",
+        "_render_cheques_chart",
+        "_render_foreign_labor_chart",
+        "_render_search_index_chart",
+        "_render_finance_metrics",
+        "_render_business_metrics",
+        "_render_labor_metrics",
+    ):
+        render_mocks[render_name] = MagicMock()
+        monkeypatch.setattr(renderer, render_name, render_mocks[render_name])
+
+    def _fail_rate_chart(*args, **kwargs):
+        raise KeyError(missing_key)
+
+    monkeypatch.setattr(renderer, "_render_rates_chart", _fail_rate_chart)
+
+    st_obj = MagicMock()
+    cells: list[MagicMock] = []
+
+    def columns(n, gap="small"):
+        row = [MagicMock() for _ in range(n)]
+        cells.extend(row)
+        return tuple(row)
+
+    st_obj.columns.side_effect = columns
+
+    result = renderer.render_government_finance_section(
+        st_obj,
+        b"workbook",
+        "test.xlsx",
+    )
+
+    assert result["status"] == "success"
+    # 其他九张图照常渲染
+    for name in render_mocks:
+        assert render_mocks[name].call_count == 1, name
+    # 区块级错误不出现；而是某个格子出现警告
+    assert st_obj.error.call_count == 0
+    assert any(cell.warning.call_count >= 1 for cell in cells)
+
+
+def test_payment_chart_failure_warns_only_its_business_cell(monkeypatch) -> None:
+    """支付图单独失败时，另一张支付图和其它分区仍继续渲染。"""
+
+    data = load_government_finance_data(
+        _workbook_bytes(),
+        file_name="test.xlsx",
+    )
+    monkeypatch.setattr(
+        renderer,
+        "_load_government_finance_cached",
+        lambda content, file_name: data,
+    )
+    for loader_name in (
+        "_load_rates_cached",
+        "_load_foreign_inflow_cached",
+        "_load_private_credit_cached",
+        "_load_ded_cached",
+        "_load_pmi_cached",
+        "_load_payment_cached",
+        "_load_foreign_labor_cached",
+        "_load_search_index_cached",
+    ):
+        monkeypatch.setattr(renderer, loader_name, lambda *args: object())
+
+    render_mocks: dict[str, MagicMock] = {}
+    for render_name in (
+        "_render_rates_chart",
         "_render_foreign_inflow_chart",
         "_render_private_credit_chart",
         "_render_charts",
@@ -387,7 +448,11 @@ def test_payment_chart_failure_warns_only_its_business_cell(monkeypatch) -> None
 
     st_obj.columns.side_effect = columns
 
-    result = renderer.render_government_finance_section(st_obj)
+    result = renderer.render_government_finance_section(
+        st_obj,
+        b"workbook",
+        "test.xlsx",
+    )
 
     assert result["status"] == "success"
     assert render_mocks["_render_cheques_chart"].call_count == 1
@@ -395,32 +460,98 @@ def test_payment_chart_failure_warns_only_its_business_cell(monkeypatch) -> None
     assert any(cell.warning.call_count >= 1 for cell in cells)
 
 
-def test_finance_metrics_row_falls_back_to_warning(monkeypatch) -> None:
-    """A DuckDB loader failure warns without requiring an Excel workbook."""
-
-    def _explode(*args, **kwargs):
-        raise ValueError("CBUAE DuckDB 指标缺失")
-
-    monkeypatch.setattr(renderer, "_load_foreign_inflow_cached", _explode)
+def test_rates_chart_and_download_use_rates_month_not_credit_month(monkeypatch):
+    dates = pd.to_datetime(["2026-08-31", "2026-09-30"])
+    values = pd.DataFrame({
+        EIBOR_OVERNIGHT_DISPLAY: [4.0, 4.1],
+        EIBOR_ONEYEAR_DISPLAY: [3.0, 3.1],
+        US_OVERNIGHT_DISPLAY: [4.5, 4.6],
+    }, index=dates)
+    data = SimpleNamespace(
+        values=values,
+        metadata={
+            name: SimpleNamespace(unit="%", source=(
+                "美联储纽约分行" if name == US_OVERNIGHT_DISPLAY else "阿联酋央行"
+            ))
+            for name in values
+        },
+    )
+    captured = []
+    monkeypatch.setattr(renderer, "build_rates_figure", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        renderer, "_render_figure_with_download",
+        lambda st_obj, figure, frame, **kwargs: captured.append(frame),
+    )
     st_obj = MagicMock()
 
-    renderer._render_finance_metrics(st_obj, MagicMock(), "db-snapshot")
+    renderer._render_rates_chart(st_obj, data)
+
+    assert captured[0].index.max() == pd.Timestamp("2026-09-30")
+    st_obj.caption.assert_not_called()
+
+
+def test_search_chart_has_no_redundant_caption(monkeypatch):
+    values = pd.DataFrame({
+        "work in dubai": [39, 33],
+        "work in uae": [48, 46],
+    }, index=pd.to_datetime(["2026-08-01", "2026-09-01"]))
+    monkeypatch.setattr(
+        renderer, "build_search_index_figure", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        renderer, "_render_figure_with_download", lambda *args, **kwargs: None
+    )
+    st_obj = MagicMock()
+
+    renderer._render_search_index_chart(st_obj, values)
+
+    st_obj.caption.assert_not_called()
+
+
+def test_finance_metrics_row_falls_back_to_warning(monkeypatch) -> None:
+    """财政金融指标行 loader 失败 → 只在该行出警告，不抛出异常。"""
+
+    def _explode(*args, **kwargs):
+        raise ValueError("日度_Wind 利率列缺失")
+
+    monkeypatch.setattr(renderer, "_load_rates_cached", _explode)
+    st_obj = MagicMock()
+    st_obj.columns.return_value = (MagicMock(), MagicMock(), MagicMock(), MagicMock())
+
+    renderer._render_finance_metrics(
+        st_obj,
+        MagicMock(),
+        b"workbook",
+        "test.xlsx",
+    )
 
     assert st_obj.warning.call_count == 1
     assert st_obj.metric.call_count == 0
 
 
-def test_finance_metrics_cover_all_absolute_series_with_mom_and_yoy(monkeypatch) -> None:
+def test_finance_metrics_cover_all_absolute_series_with_mom_and_yoy(
+    monkeypatch,
+) -> None:
     dates = pd.date_range("2025-01-31", periods=14, freq="ME")
 
     def _metadata(columns):
         return {
             column: SimpleNamespace(
-                frequency="月", source="测试来源", updated_at="2026-08-20"
+                frequency="月",
+                source="测试来源",
+                updated_at="2026-08-20",
             )
             for column in columns
         }
 
+    rates_values = pd.DataFrame(
+        {
+            EIBOR_OVERNIGHT_DISPLAY: [1.0] * 12 + [1.1, 1.2],
+            EIBOR_ONEYEAR_DISPLAY: [2.0] * 12 + [2.1, 2.2],
+            US_OVERNIGHT_DISPLAY: [3.0] * 12 + [3.1, 3.2],
+        },
+        index=dates,
+    )
     foreign_values = pd.DataFrame(
         {
             FOREIGN_LIABILITIES_DISPLAY: [100.0] * 12 + [110.0, 121.0],
@@ -439,36 +570,56 @@ def test_finance_metrics_cover_all_absolute_series_with_mom_and_yoy(monkeypatch)
     )
     monkeypatch.setattr(
         renderer,
+        "_load_rates_cached",
+        lambda content, file_name: SimpleNamespace(
+            values=rates_values,
+            metadata=_metadata(rates_values.columns),
+        ),
+    )
+    monkeypatch.setattr(
+        renderer,
         "_load_foreign_inflow_cached",
-        lambda *_args: SimpleNamespace(
+        lambda content, file_name: SimpleNamespace(
             values=foreign_values,
-            metadata=_metadata([
-                FOREIGN_LIABILITIES_DISPLAY,
-                FOREIGN_CURRENCIES_DISPLAY,
-                NONRESIDENT_DEPOSITS,
-                "非居民私人企业存款",
-            ]),
+            metadata=_metadata(
+                [
+                    FOREIGN_LIABILITIES_DISPLAY,
+                    FOREIGN_CURRENCIES_DISPLAY,
+                    "非居民私人企业存款",
+                ]
+            ),
         ),
     )
     monkeypatch.setattr(
         renderer,
         "_load_private_credit_cached",
-        lambda *_args: SimpleNamespace(
-            values=private_values, metadata=_metadata(private_values.columns)
+        lambda content, file_name: SimpleNamespace(
+            values=private_values,
+            metadata=_metadata(private_values.columns),
         ),
     )
+
     data = load_government_finance_data(_workbook_bytes(), file_name="test.xlsx")
     st_obj = MagicMock()
-    st_obj.columns.side_effect = lambda n: tuple(MagicMock() for _ in range(n))
+    st_obj.columns.side_effect = lambda n: tuple(
+        MagicMock() for _ in range(n)
+    )
 
-    renderer._render_finance_metrics(st_obj, data, "db-snapshot")
+    renderer._render_finance_metrics(
+        st_obj,
+        data,
+        b"workbook",
+        "test.xlsx",
+    )
 
-    assert st_obj.metric.call_count == 12
+    assert st_obj.metric.call_count == 11
+    st_obj.columns.assert_not_called()
+    st_obj.container.assert_called_once_with(horizontal=True, horizontal_alignment="left")
+    st_obj.warning.assert_not_called()
     assert [call.args[0] for call in st_obj.metric.call_args_list] == [
         "阿联酋隔夜拆借利率",
         "阿联酋1年期拆借利率",
         "美国隔夜拆借利率",
-        "美国1年期拆借利率",
         "银行外债",
         "外币存款",
         "外国主体存款",
@@ -478,15 +629,17 @@ def test_finance_metrics_cover_all_absolute_series_with_mom_and_yoy(monkeypatch)
         "个人信贷",
         "工商业贷款",
     ]
-    assert all(call.args[1] == "—" for call in st_obj.metric.call_args_list[:4])
     assert all(
         "环比" in call.kwargs["delta"] and "同比" in call.kwargs["delta"]
-        for call in st_obj.metric.call_args_list[4:]
+        for call in st_obj.metric.call_args_list
     )
     assert all(
-        any(unit in call.args[1] for unit in ("百亿迪拉姆", "十亿迪拉姆", "亿迪拉姆", "百万迪拉姆"))
+        any(
+            unit in call.args[1]
+            for unit in ("百亿迪拉姆", "十亿迪拉姆", "亿迪拉姆", "百万迪拉姆")
+        )
         and "百万迪拉姆" not in call.args[1]
-        for call in st_obj.metric.call_args_list[4:]
+        for call in st_obj.metric.call_args_list[3:]
     )
 
 
@@ -499,7 +652,12 @@ def test_business_metrics_row_falls_back_to_warning(monkeypatch) -> None:
     monkeypatch.setattr(renderer, "_load_pmi_cached", _explode)
     st_obj = MagicMock()
 
-    renderer._render_business_metrics(st_obj, pd.Timestamp("2026-06-30"), "db-snapshot")
+    renderer._render_business_metrics(
+        st_obj,
+        pd.Timestamp("2026-06-30"),
+        b"workbook",
+        "test.xlsx",
+    )
 
     assert st_obj.warning.call_count == 1
     assert st_obj.metric.call_count == 0
@@ -514,7 +672,11 @@ def test_labor_metrics_row_falls_back_to_warning(monkeypatch) -> None:
     monkeypatch.setattr(renderer, "_load_foreign_labor_cached", _explode)
     st_obj = MagicMock()
 
-    renderer._render_labor_metrics(st_obj, "db-snapshot")
+    renderer._render_labor_metrics(
+        st_obj,
+        b"workbook",
+        "test.xlsx",
+    )
 
     assert st_obj.warning.call_count == 1
     assert st_obj.metric.call_count == 0
@@ -569,7 +731,7 @@ def test_business_and_labor_metrics_show_mom_and_yoy(monkeypatch) -> None:
     monkeypatch.setattr(
         renderer,
         "_load_pmi_cached",
-        lambda *_args: SimpleNamespace(
+        lambda content, file_name: SimpleNamespace(
             values=pmi_values,
             metadata=_metadata([PMI_LABEL]),
         ),
@@ -577,7 +739,7 @@ def test_business_and_labor_metrics_show_mom_and_yoy(monkeypatch) -> None:
     monkeypatch.setattr(
         renderer,
         "_load_ded_cached",
-        lambda *_args: SimpleNamespace(
+        lambda content, file_name: SimpleNamespace(
             values=ded_values,
             metadata=_metadata([ENTERPRISES_DISPLAY, LICENCES_DISPLAY]),
         ),
@@ -585,7 +747,7 @@ def test_business_and_labor_metrics_show_mom_and_yoy(monkeypatch) -> None:
     monkeypatch.setattr(
         renderer,
         "_load_foreign_labor_cached",
-        lambda *_args: SimpleNamespace(
+        lambda content, file_name: SimpleNamespace(
             values=labor_values,
             metadata=_metadata([NEPAL_APPROVALS, BANGLADESH_CLEARANCES]),
         ),
@@ -593,12 +755,12 @@ def test_business_and_labor_metrics_show_mom_and_yoy(monkeypatch) -> None:
     monkeypatch.setattr(
         renderer,
         "_load_search_index_cached",
-        lambda *_args: search_values,
+        lambda content, file_name: search_values,
     )
     monkeypatch.setattr(
         renderer,
         "_load_payment_cached",
-        lambda *_args: SimpleNamespace(
+        lambda content, file_name: SimpleNamespace(
             values=payment_values,
             metadata=_metadata(
                 [
@@ -615,8 +777,16 @@ def test_business_and_labor_metrics_show_mom_and_yoy(monkeypatch) -> None:
     business_st.columns.side_effect = lambda n: tuple(
         MagicMock() for _ in range(n)
     )
-    renderer._render_business_metrics(business_st, dates[-1], "db-snapshot")
+    renderer._render_business_metrics(
+        business_st,
+        dates[-1],
+        b"workbook",
+        "test.xlsx",
+    )
     assert business_st.metric.call_count == 7
+    business_st.container.assert_called_once_with(
+        horizontal=True, horizontal_alignment="left"
+    )
     assert business_st.metric.call_args_list[0].args[0] == (
         "非油私营部门采购经理指数（PMI）"
     )
@@ -628,7 +798,7 @@ def test_business_and_labor_metrics_show_mom_and_yoy(monkeypatch) -> None:
 
     labor_st = MagicMock()
     labor_st.columns.return_value = tuple(MagicMock() for _ in range(4))
-    renderer._render_labor_metrics(labor_st, "db-snapshot")
+    renderer._render_labor_metrics(labor_st, b"workbook", "test.xlsx")
     assert labor_st.metric.call_count == 4
     assert all(
         "环比" in call.kwargs["delta"] and "同比" in call.kwargs["delta"]

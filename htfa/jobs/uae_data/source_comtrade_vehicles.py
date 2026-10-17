@@ -28,7 +28,7 @@ from calendar import monthrange
 from datetime import date
 from pathlib import Path
 
-from .paths import DATA_DIR, SCRIPTS_DIR
+from .paths import DATA_DIR
 
 
 from . import db  # noqa: E402
@@ -71,7 +71,6 @@ TWO_CATEGORIES = (
     ("商用车进口量", ("8702", "8704")),
 )
 CATEGORY_ORDER = {name: i for i, (name, _codes) in enumerate(TWO_CATEGORIES)}
-LEGACY_SHEETS: tuple[str, ...] = ()
 DICTIONARY_SHEET = "指标字典"
 
 _TABLE_DDL = f"""
@@ -228,17 +227,9 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
 
     download_note = ""
     if not skip_download:
-        try:
-            # The raw helper uses stable yearly filenames. Force the online
-            # run so the current/revised Comtrade year is not silently reused.
-            download_note = _download_official_data(force=True)
-        except Exception as exc:  # noqa: BLE001 - valid local JSON remains usable
-            if not all(
-                folder.exists() and any(folder.glob("*.json"))
-                for folder in (RAW_DIR / "all_mirror", RAW_DIR / "uae_reported")
-            ):
-                raise
-            download_note = f"API 下载未完成，使用本地缓存：{exc}"
+        # The raw helper uses stable yearly filenames. Force the online
+        # run so the current/revised Comtrade year is not silently reused.
+        download_note = _download_official_data(force=True)
 
     missing = [
         folder
@@ -341,7 +332,6 @@ def merge(workbook_path: Path) -> dict:
 
     payload = {
         "source_label": SOURCE_NAME,
-        "legacy_sheet_names": list(LEGACY_SHEETS),
         "dictionary_sheet_name": DICTIONARY_SHEET,
         "metadata_labels": ["指标名称", "频率", "单位", "来源", "更新时间"],
         "frequency": FREQUENCY,
@@ -366,11 +356,3 @@ def merge(workbook_path: Path) -> dict:
         "status": "ok",
         "note": f"{len(observations)} 个月写 {TARGET_SHEET}（乘用车+商用车台数）",
     }
-
-
-if __name__ == "__main__":
-    print("source_comtrade_vehicles.py 自检：")
-    print("  update(con, ...) 聚合 raw/comtrade/hs87/ JSON → comtrade_vehicles_monthly")
-    print("     （镜像口径为主，金额 USD + 台数）")
-    print("  merge() 聚合乘用车(8703)+商用车(8702+8704) 台数 → 月度_汽车进口")
-    print("  Excel 只写两大整车类的进口量（台），不含金额与零件。")

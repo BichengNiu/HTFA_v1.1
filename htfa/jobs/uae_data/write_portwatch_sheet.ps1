@@ -10,9 +10,6 @@
 )
 
 # Monthly wide-table writer for IMF PortWatch data.
-# Two layouts, selected by payload:
-#   - no "dimension_label"   -> standard monthly layout (A = month-end, B.. = indicators)
-#   - with "dimension_label" -> dimension layout    (A = month-end, B = dimension, C.. = indicators)
 # All Chinese text comes from the JSON payload (ensure_ascii=True), never from
 # literals in this file, so script encoding is irrelevant.
 
@@ -29,13 +26,9 @@ try {
     $indicatorNames = @($payload.indicators | ForEach-Object { $_.name })
     $indicatorCount = $indicatorNames.Count
 
-    $dimensionLabel = [string]$payload.dimension_label
-    $hasDimension = -not [string]::IsNullOrWhiteSpace($dimensionLabel)
-
-    $lastColumnIndex = 1 + $(if ($hasDimension) { 1 } else { 0 }) + $indicatorCount
+    $lastColumnIndex = 1 + $indicatorCount
     $lastColumnLetter = [char]([int][char]'A' + $lastColumnIndex - 1)
-    $dimensionColumn = 1
-    $firstIndicatorColumn = $(if ($hasDimension) { 2 } else { 1 })
+    $firstIndicatorColumn = 1
 
     $excel = New-Object -ComObject Excel.Application
     $excel.Visible = $false
@@ -63,53 +56,19 @@ try {
         [void][Runtime.InteropServices.Marshal]::ReleaseComObject($lastSheet)
     }
 
-    $legacySheetNames = @($payload.legacy_sheet_names)
-    foreach ($legacyName in $legacySheetNames) {
-        if ([string]::IsNullOrWhiteSpace([string]$legacyName)) {
-            continue
-        }
-        foreach ($candidate in @($workbook.Worksheets)) {
-            if ($candidate.Name -eq $legacyName) {
-                $candidate.Delete()
-                [void][Runtime.InteropServices.Marshal]::ReleaseComObject($candidate)
-                break
-            }
-        }
-    }
-
     $sheet.Cells.Clear()
     $rowCount = $records.Count + 6
     $values = [object[,]]::new($rowCount, $lastColumnIndex)
     $sourceLabel = $payload.source_label
-    if ($null -eq $sourceLabel -or [string]::IsNullOrWhiteSpace([string]$sourceLabel)) {
-        $sourceLabel = $payload.source
-    }
     $values[0, 0] = $sourceLabel
     $metadataLabels = @($payload.metadata_labels)
     for ($row = 0; $row -lt $metadataLabels.Count; $row++) {
         $values[($row + 1), 0] = $metadataLabels[$row]
     }
 
-    if ($hasDimension) {
-        $values[1, $dimensionColumn] = $dimensionLabel
-        $values[2, $dimensionColumn] = $payload.frequency
-        $values[3, $dimensionColumn] = ""
-        $values[4, $dimensionColumn] = $payload.source
-        $values[5, $dimensionColumn] = (
-            [datetime]::ParseExact(
-                $payload.updated_at,
-                "yyyy-MM-dd",
-                [Globalization.CultureInfo]::InvariantCulture
-            ).ToOADate()
-        )
-    }
-
     for ($column = 0; $column -lt $indicatorCount; $column++) {
         $targetColumn = $column + $firstIndicatorColumn
         $perUnit = $payload.indicators[$column].unit
-        if ($null -eq $perUnit -or [string]::IsNullOrWhiteSpace([string]$perUnit)) {
-            $perUnit = $payload.unit
-        }
         $values[1, $targetColumn] = $indicatorNames[$column]
         $values[2, $targetColumn] = $payload.frequency
         $values[3, $targetColumn] = $perUnit
@@ -131,9 +90,6 @@ try {
             [Globalization.CultureInfo]::InvariantCulture
         )
         $values[($index + 6), 0] = $monthStart.AddMonths(1).AddDays(-1).ToOADate()
-        if ($hasDimension) {
-            $values[($index + 6), $dimensionColumn] = $record.dimension
-        }
         for ($column = 0; $column -lt $indicatorCount; $column++) {
             $value = $record.values[$column]
             if ($null -ne $value) {
@@ -156,12 +112,7 @@ try {
     $sheet.Range("A7:A$rowCount").NumberFormat = "yyyy-mm"
     $sheet.Range("B7:$($lastColumnLetter)$rowCount").NumberFormat = "#,##0"
     $sheet.Columns.Item("A").ColumnWidth = 13
-    if ($hasDimension) {
-        $sheet.Columns.Item("B").ColumnWidth = 24
-        $sheet.Columns.Item("C:$($lastColumnLetter)").ColumnWidth = 16
-    } else {
-        $sheet.Columns.Item("B:$($lastColumnLetter)").ColumnWidth = 42
-    }
+    $sheet.Columns.Item("B:$($lastColumnLetter)").ColumnWidth = 42
 
     $dictionarySheet = $workbook.Worksheets.Item(
         $payload.dictionary_sheet_name

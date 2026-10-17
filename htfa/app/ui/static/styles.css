@@ -561,6 +561,26 @@ div[data-testid="stFullScreenFrame"] div[data-testid="stImageContainer"] img {
 
 /* 主内容区域按钮样式已删除 - 使用Streamlit原生type="primary"参数 */
 
+/* 高频报告指标卡：长金额、单位及涨跌文字完整显示，窄屏允许换行。 */
+.st-key-uae-high-frequency-print [data-testid="stMetricValue"],
+.st-key-uae-high-frequency-print [data-testid="stMetricValue"] *,
+.st-key-uae-high-frequency-print [data-testid="stMetricLabel"],
+.st-key-uae-high-frequency-print [data-testid="stMetricLabel"] *,
+.st-key-uae-high-frequency-print [data-testid="stMetricDelta"],
+.st-key-uae-high-frequency-print [data-testid="stMetricDelta"] * {
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+}
+
+/* 油价使用美元/桶原单位，数值与单位保持单行。 */
+.st-key-uae-high-frequency-print [class*="st-key-uae-oil-price-"] [data-testid="stMetricValue"],
+.st-key-uae-high-frequency-print [class*="st-key-uae-oil-price-"] [data-testid="stMetricValue"] * {
+    white-space: nowrap !important;
+    overflow-wrap: normal !important;
+}
+
 .uae-print-report-header {
     display: none;
 }
@@ -716,6 +736,24 @@ div[data-testid="stFullScreenFrame"] div[data-testid="stImageContainer"] img {
         display: none !important;
     }
 
+    /* 指标行在打印时使用四列网格，覆盖网页端卡片的固定宽度，按行从左到右排列。
+       只匹配直接包含指标卡的横向容器，不影响双列图表布局。 */
+    .st-key-uae-high-frequency-print [data-testid="stHorizontalBlock"]:has(> [data-testid="stElementContainer"] [data-testid="stMetric"]) {
+        display: grid !important;
+        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+        grid-auto-flow: row !important;
+        gap: 0.5rem 0.75rem !important;
+        align-items: start !important;
+    }
+
+    .st-key-uae-high-frequency-print [data-testid="stHorizontalBlock"]:has(> [data-testid="stElementContainer"] [data-testid="stMetric"]) > [data-testid="stElementContainer"],
+    .st-key-uae-high-frequency-print [data-testid="stHorizontalBlock"]:has(> [data-testid="stElementContainer"] [data-testid="stMetric"]) > [data-testid="stLayoutWrapper"] {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        break-inside: avoid !important;
+    }
+
     /* A4 下四列会变窄，允许标签、数值和环比文字换行，避免 Streamlit 的省略号截断。 */
     [data-testid="stMetric"] {
         min-width: 0 !important;
@@ -789,7 +827,13 @@ div[data-testid="stFullScreenFrame"] div[data-testid="stImageContainer"] img {
         object-fit: contain !important;
     }
 
-    /* 展开器正文按打印正文尺度排版，避免算法说明占满页面。 */
+    /* 算法解读只供网页交互查看，打印时隐藏整个展开器及其占位。 */
+    [class*="st-key-uae-indicator-explanation-"],
+    [data-testid="stLayoutWrapper"]:has(> [data-testid="stExpander"][class*="st-key-uae-indicator-explanation-"]) {
+        display: none !important;
+    }
+
+    /* 其他展开器正文按打印正文尺度排版。 */
     [data-testid="stExpander"] summary,
     [data-testid="stExpander"] summary *,
     .streamlit-expanderHeader {

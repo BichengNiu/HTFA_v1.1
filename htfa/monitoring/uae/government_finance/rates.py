@@ -1,8 +1,7 @@
-"""阿联酋 1 年期 EIBOR 与美国有效联邦基金利率的月度均值对比图。
+"""阿联酋央行 EIBOR 隔夜/1年与纽约联储 EFFR 的月度均值。
 
-两条序列都存放在用户维护的 ``日度_Wind`` sheet 中：EIBOR 为日度、EFFR 实为逐日
-取值（sheet 元数据标注月频），统一先按自然月 ``resample`` 取均值，再绘制双线水平
-（单位 %），与「财政支出和投资」区块其它图对齐到同一 3 年窗口。
+日度数据经 DuckDB 写入工作簿。三条序列按自然月平均，截到共同的最新
+完整月份；纽约联储不发布 12 个月 Term SOFR，该旧列不用于本报告。
 """
 
 from __future__ import annotations
@@ -21,6 +20,7 @@ from htfa.monitoring.uae.plot_helpers import (
     apply_htfa_fonts,
     normalize_ts_axis,
     source_note,
+    translate_source_text,
 )
 from htfa.monitoring.uae.periods import through_last_complete_month
 from htfa.data.economic_workbook import (
@@ -34,17 +34,14 @@ RATES_SHEET = "日度_Wind"
 EIBOR_OVERNIGHT_DISPLAY = "阿联酋银行间市场拆借利率（隔夜）"
 EIBOR_ONEYEAR_DISPLAY = "阿联酋银行间市场拆借利率（1年期）"
 US_OVERNIGHT_DISPLAY = "美国银行间市场拆借利率（隔夜）"
-US_SOFR_12M_DISPLAY = "美国银行间市场拆借利率（1年期）"
 EIBOR_OVERNIGHT_INDICATOR = "阿联酋:银行间同业拆借利率(EIBOR):隔夜"
 EIBOR_ONEYEAR_INDICATOR = "阿联酋:银行间同业拆借利率(EIBOR):1年"
 US_OVERNIGHT_INDICATOR = "美国:有效联邦基金利率(EFFR)"
-US_SOFR_12M_INDICATOR = "美国:SOFR期限利率:12个月"
 
 RATES_INDICATORS: tuple[tuple[str, str], ...] = (
     (EIBOR_OVERNIGHT_DISPLAY, EIBOR_OVERNIGHT_INDICATOR),
     (EIBOR_ONEYEAR_DISPLAY, EIBOR_ONEYEAR_INDICATOR),
     (US_OVERNIGHT_DISPLAY, US_OVERNIGHT_INDICATOR),
-    (US_SOFR_12M_DISPLAY, US_SOFR_12M_INDICATOR),
 )
 
 # 序列名即图例文本；颜色与线型由模板色板/循环接管。
@@ -52,7 +49,6 @@ RATES_SERIES = (
     EIBOR_OVERNIGHT_DISPLAY,
     EIBOR_ONEYEAR_DISPLAY,
     US_OVERNIGHT_DISPLAY,
-    US_SOFR_12M_DISPLAY,
 )
 
 ALLOWED_FREQUENCIES = {"日", "日度", "月", "月度"}
@@ -64,7 +60,7 @@ _WORKBOOK_READER = EconomicWorkbookReader(
 
 @dataclass(frozen=True)
 class RatesData:
-    """EIBOR 与美国的隔夜/1年期市场利率的月度均值数据与元数据。"""
+    """EIBOR 隔夜/1年与美国 EFFR 的月度均值数据与元数据。"""
 
     values: pd.DataFrame
     metadata: dict[str, SheetSeriesMetadata]
@@ -76,7 +72,7 @@ def load_rates_data(
     *,
     file_name: str | None = None,
 ) -> RatesData:
-    """读 ``日度_Wind`` 的四条利率并聚合成月度均值。"""
+    """读取三条官方利率，聚合为月度均值并统一末期。"""
 
     with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
         excel_file,
@@ -89,11 +85,23 @@ def load_rates_data(
             allowed_frequencies=ALLOWED_FREQUENCIES,
             expected_unit="%",
         )
-    frame = through_last_complete_month(frame)
-    monthly = frame.resample("ME").mean()
+    for label, _ in RATES_INDICATORS:
+        expected_source = (
+            "美联储纽约分行" if label == US_OVERNIGHT_DISPLAY else "阿联酋央行"
+        )
+        if translate_source_text(metadata[label].source) != expected_source:
+            raise ValueError(f"{label}须使用{expected_source}数据，请更新工作簿")
+    monthly = pd.DataFrame(
+        {
+            label: through_last_complete_month(frame[label]).resample("ME").mean()
+            for label, _ in RATES_INDICATORS
+        }
+    )
     monthly = monthly.dropna(how="all").sort_index()
-    if monthly.empty:
-        raise ValueError(f"{RATES_SHEET} 没有可用的利率观测")
+    common = monthly.dropna(how="any")
+    if common.empty:
+        raise ValueError(f"{RATES_SHEET} 没有共同可用的完整月份利率观测")
+    monthly = monthly.loc[:common.index.max()]
     return RatesData(
         values=monthly,
         metadata=metadata,
@@ -108,7 +116,7 @@ def build_rates_figure(
     source_text: str,
     units: Mapping[str, str | None] | None = None,
 ) -> Figure:
-    """绘制阿联酋与美国隔夜/1年期利率的月度均值四线图（单位 %），内部取最近 36 个月。"""
+    """绘制三条官方利率的月度均值（单位 %），取最近 36 个月。"""
 
     selected = through_last_complete_month(values).dropna(how="all").sort_index()
     if selected.empty:
@@ -153,8 +161,6 @@ __all__ = [
     "RatesData",
     "US_OVERNIGHT_DISPLAY",
     "US_OVERNIGHT_INDICATOR",
-    "US_SOFR_12M_DISPLAY",
-    "US_SOFR_12M_INDICATOR",
     "build_rates_figure",
     "load_rates_data",
 ]

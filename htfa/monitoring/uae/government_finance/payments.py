@@ -143,20 +143,20 @@ def _parse_payment_sheet(
     matching_columns: dict[str, int] = {}
     for display_name, indicator_name, unit in PAYMENT_INDICATORS:
         columns = candidate_columns.get(display_name, [])
-        compatible = [
+        valid_columns = [
             column_index
             for column_index in columns
-            if optional_text(raw.iloc[2, column_index]) in {"月", "月度"}
+            if optional_text(raw.iloc[2, column_index]) == "月"
             and optional_text(raw.iloc[3, column_index]) == unit
             and bool(optional_text(raw.iloc[4, column_index]))
         ]
-        if len(compatible) != 1:
+        if len(valid_columns) != 1:
             if not columns:
                 raise ValueError(f"sheet“{PAYMENT_SHEET}”缺少指标：{indicator_name}")
             raise ValueError(
                 f"指标“{indicator_name}”应有唯一一列月度、{unit}、且来源非空的观测"
             )
-        matching_columns[display_name] = compatible[0]
+        matching_columns[display_name] = valid_columns[0]
 
     data_block = raw.iloc[6:, :].dropna(how="all")
     dates = pd.to_datetime(data_block.iloc[:, 0], errors="coerce")

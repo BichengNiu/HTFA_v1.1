@@ -11,8 +11,8 @@ Domestic_Volume_2022_2025：月度、按 寄出城市 × 寄达城市 × 服务�
 下载：门户数据集信息页公开提供「Download」按钮，实际文件来自
     GET /api/DatasetResources/DownloadSingle?resourceID={rid}&fileName={name}
 无需登录或密钥。资源 ID 与文件名从信息页 HTML 中解析（button#resourceDownload
-的 data-resource-id / data-file-name），解析失败时回退到硬编码常量（当前
-数据集，经 2026-08-18 实抓核验）。原始文件保存到 raw/emirates_post/。
+的 data-resource-id / data-file-name）；页面结构异常或请求失败直接报错。
+原始文件保存到 raw/emirates_post/。
 
 流程与 source_cbuae.py 一致：``update()`` 下载（或复用 raw/ 现有文件）→
 解析 xlsx → 与期望值校验（表头、年份集合、服务集合、非负整数，fail loud
@@ -26,15 +26,15 @@ destn_city, service) 粒度）；``merge()`` 从库按 (period, service) 聚合�
 from __future__ import annotations
 
 import collections
-import json
 import re
-import sys
 import urllib.request
 from datetime import date
 from pathlib import Path
 from urllib.parse import quote
 
-from .paths import DATA_DIR, SCRIPTS_DIR
+from openpyxl import load_workbook
+
+from .paths import DATA_DIR
 
 
 from . import db  # noqa: E402
@@ -63,9 +63,6 @@ DATASET_PAGE_URL = (
     "?id=xXwKgwMkhnTL7sJ5gg65jw-d4lvgRFJJZ2z2Fj7YRts"
 )
 DOWNLOAD_API = "https://bayanat.ae/api/DatasetResources/DownloadSingle"
-# 回退常量：2026-08-18 实抓页面的当前资源
-FALLBACK_RESOURCE_ID = "gIGxt-bcrjfBlNRrxFRKBWl9zRilVz9ZEbXpws2UY2Q"
-FALLBACK_FILE_NAME = "Domestic Postal Services Volume"
 
 _HEADERS = {
     "User-Agent": (
@@ -125,14 +122,8 @@ def _fetch_bytes(url: str) -> bytes:
 
 
 def _discover_resource() -> tuple[str, str]:
-    """从数据集信息页解析当前资源 (resourceID, fileName)。
-
-    失败时回退到 FALLBACK_* 常量并返回提示，不阻断下载（资源 ID 长期稳定）。
-    """
-    try:
-        html = _fetch_bytes(DATASET_PAGE_URL).decode("utf-8", errors="replace")
-    except Exception:
-        return FALLBACK_RESOURCE_ID, FALLBACK_FILE_NAME
+    """从数据集信息页解析当前资源 (resourceID, fileName)。"""
+    html = _fetch_bytes(DATASET_PAGE_URL).decode("utf-8")
     match = re.search(
         r'id="resourceDownload"\s+data-resource-id="([^"]+)"\s+'
         r'data-file-name="([^"]+)"',
@@ -140,11 +131,11 @@ def _discover_resource() -> tuple[str, str]:
     )
     if match:
         return match.group(1), match.group(2)
-    return FALLBACK_RESOURCE_ID, FALLBACK_FILE_NAME
+    raise ValueError("bayanat 数据集页面未发现当前资源链接")
 
 
-def download(force: bool = False) -> Path:
-    """下载最新 xlsx 到 raw/emirates_post/（force=False 且已存在时复用）。"""
+def download() -> Path:
+    """每次从官网发现并下载最新 xlsx 到 raw/emirates_post/。"""
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     target = RAW_DIR / RAW_FILE_NAME
     resource_id, file_name = _discover_resource()
@@ -164,12 +155,6 @@ def download(force: bool = False) -> Path:
 # ---------------------------------------------------------------------------
 # 解析
 # ---------------------------------------------------------------------------
-
-
-def _load_raw_workbook(path: Path) -> "openpyxl.workbook.Workbook":
-    import openpyxl
-
-    return openpyxl.load_workbook(path, read_only=True, data_only=True)
 
 
 def _metadata_value(metadata_rows: list[list], column: str) -> str | None:
@@ -198,7 +183,7 @@ def parse_workbook(path: Path) -> tuple[list[dict], dict, dict]:
     raw_rows 记录源行数以便审计。全部校验失败即抛错（fail loud），防止
     源格式/口径漂移导致静默错数。
     """
-    workbook = _load_raw_workbook(path)
+    workbook = load_workbook(path, read_only=True, data_only=True)
     try:
         sheet_names = workbook.sheetnames
         if "Dataset" not in sheet_names or "Metadata" not in sheet_names:
@@ -352,21 +337,15 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     if skip_download:
         path = RAW_DIR / RAW_FILE_NAME
     else:
-        try:
-            # bayanat keeps a stable resource name while revising the workbook
-            # in place; discover and fetch it on every online run.
-            path = download(force=force)
-            download_note = "已在线刷新 bayanat 数据集"
-        except Exception as exc:  # noqa: BLE001 - valid cache remains usable
-            if not (RAW_DIR / RAW_FILE_NAME).is_file():
-                raise
-            path = RAW_DIR / RAW_FILE_NAME
-            download_note = f"bayanat 在线刷新失败，沿用有效缓存：{exc}"
+        # bayanat keeps a stable resource name while revising the workbook
+        # in place; discover and fetch it on every online run.
+        path = download()
+        download_note = "已在线刷新 bayanat 数据集"
     rows, metadata, duplicate_stats = parse_workbook(path)
 
     con.begin()
     try:
-        db.replace(con, "emirates_post_monthly", rows)
+        db.replace(con, "detail.emirates_post_monthly", rows)
         db.upsert_dictionary_rows(con, _dictionary_rows())
         con.commit()
     except Exception:
@@ -450,7 +429,6 @@ def merge(workbook_path: Path) -> dict:
 
     payload = {
         "source_label": SOURCE_NAME,
-        "legacy_sheet_names": [],
         "dictionary_sheet_name": DICTIONARY_SHEET,
         "metadata_labels": ["指标名称", "频率", "单位", "来源", "更新时间"],
         "frequency": FREQUENCY,
@@ -476,12 +454,3 @@ def merge(workbook_path: Path) -> dict:
         "note": f"{len(observations)} 个月写入 {TARGET_SHEET}"
         f"（{len(INDICATORS)} 个指标）",
     }
-
-
-if __name__ == "__main__":
-    print("source_emirates_post.py 自检：")
-    print("  update(con, force=, skip_download=) 下载/解析 bayanat.ae 的")
-    print("    Domestic Postal Services Volume xlsx → 校验 → 入明细表 "
-          "emirates_post_monthly")
-    print("  merge(workbook_path) 按 (period, service) 聚合 → 写回 月度_邮政")
-    print("  本文件直接运行不执行任何下载或工作簿写入。")

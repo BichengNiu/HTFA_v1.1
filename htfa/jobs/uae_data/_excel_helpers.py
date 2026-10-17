@@ -79,33 +79,29 @@ def _automation_excel_pids() -> set[int]:
     """返回隐藏 Excel COM 自动化进程，不包含用户可见的 Excel。"""
 
     if os.name != "nt":
-        return set()
-    try:
-        completed = subprocess.run(
-            (
-                "powershell.exe",
-                "-NoProfile",
-                "-NonInteractive",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-Command",
-                _AUTOMATION_EXCEL_QUERY,
-            ),
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=10,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return set()
+        raise OSError("Excel COM cleanup requires Windows PowerShell")
+    completed = subprocess.run(
+        (
+            "powershell.exe",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            _AUTOMATION_EXCEL_QUERY,
+        ),
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=10,
+    )
     pids: set[int] = set()
     for line in completed.stdout.splitlines():
-        try:
-            pids.add(int(line.strip()))
-        except ValueError:
-            continue
+        value = line.strip()
+        if value:
+            pids.add(int(value))
     return pids
 
 
@@ -125,15 +121,12 @@ def _terminate_automation_excel(pids: set[int]) -> None:
     """只强制结束已确认带 COM 自动化参数的隐藏 Excel 进程。"""
 
     for pid in sorted(pids & _automation_excel_pids()):
-        try:
-            subprocess.run(
-                ("taskkill.exe", "/PID", str(pid), "/F"),
-                check=False,
-                capture_output=True,
-                timeout=10,
-            )
-        except (OSError, subprocess.SubprocessError):
-            continue
+        subprocess.run(
+            ("taskkill.exe", "/PID", str(pid), "/F"),
+            check=True,
+            capture_output=True,
+            timeout=10,
+        )
 
 
 def cleanup_excel_automation() -> None:

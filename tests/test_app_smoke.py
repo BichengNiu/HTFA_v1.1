@@ -43,21 +43,16 @@ def test_public_entry_renders_navigation_without_exception():
     assert not app.exception
     assert MODEL_LIBRARY_TOKEN_KEY not in app.session_state
     assert [button.label for button in app.sidebar.button] == [
-        "数据预览",
-        "模型分析",
-        "监测分析",
-        "数据探索",
+        "数据预览", "模型分析", "监测分析", "数据探索", "工业", "阿联酋",
     ]
-    assert any("金轩监测" in markdown.value for markdown in app.markdown)
-    assert any(
-        "中国驻阿联酋大使馆经商处" in markdown.value
-        for markdown in app.markdown
-    )
-    assert any(
-        "国家发展改革委国家信息中心" in markdown.value
-        for markdown in app.markdown
-    )
-    assert any("金轩监测" in markdown.value for markdown in app.sidebar.markdown)
+    assert app.session_state["navigation.main_module"] == "监测分析"
+    assert app.session_state["navigation.sub_module"] == "阿联酋"
+    assert [tab.label for tab in app.tabs] == ["宏观概览", "行业分析", "高频数据"]
+    assert app.get("tab_container")[0].proto.tab_container.default_tab_index == 2
+    assert not app.get("file_uploader")
+    assert len(app.metric) > 0
+    assert not app.error
+    assert 'initial_sidebar_state="collapsed"' in APP_PATH.read_text(encoding="utf-8")
 
 
 def test_model_library_is_not_initialized_outside_model_analysis():

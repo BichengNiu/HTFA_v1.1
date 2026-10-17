@@ -184,20 +184,10 @@ def load_real_estate_from_duckdb() -> RealEstateData:
 def _parse_sales_sheet(
     excel_file: pd.ExcelFile,
 ) -> tuple[dict[str, pd.Series], dict[str, SheetSeriesMetadata]]:
-    """解析 DLD 销售 8 列（单位：笔 / 百万AED）。
-
-    ``月度_DLD`` 的写表器把 A2 写成日期列头「日期」（覆盖「指标名称」标签），
-    因此元数据行按标签扫描定位（频率/单位/来源/更新时间），指标名统一取自
-    第 2 行（零基行 1）；标准「指标名称」布局同样兼容。
-    """
-
-    if DLD_SHEET not in excel_file.sheet_names:
-        raise ValueError(f"工作簿缺少“{DLD_SHEET}”sheet")
+    """按标准元数据布局解析 DLD 的八个销售指标。"""
 
     raw = _WORKBOOK_READER.read_raw_sheet(excel_file, sheet_name=DLD_SHEET)
-    if raw.shape[0] < 7 or raw.shape[1] < 2:
-        raise ValueError(f"sheet“{DLD_SHEET}”不符合前六行元数据协议")
-    metadata_rows = _scan_metadata_rows(raw)
+    _WORKBOOK_READER.validate_target_sheet(raw, DLD_SHEET)
 
     normalized_targets = {
         normalize_indicator_name(indicator_name): display_name
@@ -214,25 +204,19 @@ def _parse_sales_sheet(
     matching_columns: dict[str, int] = {}
     for display_name, indicator_name, unit in SALES_COLUMNS:
         columns = candidate_columns.get(display_name, [])
-        compatible = [
-            column_index
-            for column_index in columns
-            if optional_text(raw.iloc[metadata_rows["频率"], column_index])
-            in {"月", "月度"}
-            and optional_text(raw.iloc[metadata_rows["单位"], column_index])
-            == unit
-            and bool(
-                optional_text(raw.iloc[metadata_rows["来源"], column_index])
-            )
-        ]
-        if len(compatible) != 1:
+        if len(columns) != 1:
             if not columns:
                 raise ValueError(f"sheet“{DLD_SHEET}”缺少指标：{indicator_name}")
+            raise ValueError(f"sheet“{DLD_SHEET}”包含重复指标：{indicator_name}")
+        column_index = columns[0]
+        frequency = optional_text(raw.iloc[2, column_index])
+        actual_unit = optional_text(raw.iloc[3, column_index])
+        source = optional_text(raw.iloc[4, column_index])
+        if frequency != "月" or actual_unit != unit or not source:
             raise ValueError(
-                f"指标“{indicator_name}”应有唯一一列月度、单位“{unit}”、"
-                f"来源非空的观测"
+                f"指标“{indicator_name}”的频率、单位或来源不符合当前工作簿契约"
             )
-        matching_columns[display_name] = compatible[0]
+        matching_columns[display_name] = column_index
 
     data_block = raw.iloc[6:, :].dropna(how="all")
     dates = pd.to_datetime(data_block.iloc[:, 0], errors="coerce")
@@ -266,44 +250,17 @@ def _parse_sales_sheet(
         if series.empty:
             raise ValueError(f"指标“{display_name}”没有非零有效观测")
         series_map[display_name] = series
-        indicator_name = normalize_indicator_name(raw.iloc[1, column_index])
         metadata[display_name] = SheetSeriesMetadata(
             display_name=display_name,
-            indicator_name=indicator_name,
-            frequency=optional_text(
-                raw.iloc[metadata_rows["频率"], column_index]
-            ),
-            unit=optional_text(raw.iloc[metadata_rows["单位"], column_index]),
-            source=optional_text(raw.iloc[metadata_rows["来源"], column_index]),
-            updated_at=format_updated_at(
-                raw.iloc[metadata_rows["更新时间"], column_index]
-            ),
+            indicator_name=normalize_indicator_name(raw.iloc[1, column_index]),
+            frequency=optional_text(raw.iloc[2, column_index]),
+            unit=optional_text(raw.iloc[3, column_index]),
+            source=optional_text(raw.iloc[4, column_index]),
+            updated_at=format_updated_at(raw.iloc[5, column_index]),
             sheet_name=DLD_SHEET,
         )
     return series_map, metadata
 
-
-def _scan_metadata_rows(raw: pd.DataFrame) -> dict[str, int]:
-    """在前六行中按首列标签定位频率/单位/来源/更新时间的行号。"""
-
-    positions: dict[str, int] = {}
-    for row_index in range(1, 6):
-        label = optional_text(raw.iloc[row_index, 0])
-        if label in {"频率", "单位", "来源", "更新时间"}:
-            if label in positions:
-                raise ValueError(
-                    f"sheet“{DLD_SHEET}”元数据标签“{label}”重复出现"
-                )
-            positions[label] = row_index
-    missing = [
-        label for label in ("频率", "单位", "来源", "更新时间")
-        if label not in positions
-    ]
-    if missing:
-        raise ValueError(
-            f"sheet“{DLD_SHEET}”前六行缺少元数据标签：{'、'.join(missing)}"
-        )
-    return positions
 
 
 def _aggregate_sales(
@@ -360,7 +317,7 @@ def anchor_last_month(
     """锚定**已结束**的最新月份（图表窗口右端）。
 
     工作簿的最新月若恰为当前自然月（该月尚未过完、数值是截至目前的滚动统计），
-    回退一个月；否则直接取数据侧最新完整月。``today`` 仅测试注入。
+    则选择上一个完整月；否则直接取数据侧最新完整月。``today`` 仅测试注入。
     """
 
     return _anchor_last_month(

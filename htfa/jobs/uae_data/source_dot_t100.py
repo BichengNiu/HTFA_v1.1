@@ -26,7 +26,6 @@ import csv
 import io
 import os
 import shutil
-import sys
 import subprocess
 import zipfile
 from contextlib import contextmanager
@@ -34,7 +33,8 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Iterator, TextIO
 
-from .paths import DATA_DIR, SCRIPTS_DIR
+from .paths import DATA_DIR
+from .workbook_sheet_writer import merge_source_sheet, month_end, pivot_indicator_rows
 
 
 from . import db  # noqa: E402
@@ -46,7 +46,7 @@ from . import db  # noqa: E402
 CSV_DIR = DATA_DIR / "raw" / "t100" / "csv"
 RAW_DIR = DATA_DIR / "raw" / "t100"
 
-TARGET_SHEET = "月度_DOTT100"  # 预留（写表暂未实现）
+TARGET_SHEET = "月度_DOTT100"
 
 FIELDS_REQUIRED = (
     "YEAR", "QUARTER", "MONTH",
@@ -83,7 +83,7 @@ def _open_csv_from_zip(zip_path: Path) -> TextIO | None:
         names = [n for n in zf.namelist() if n.lower().endswith((".csv", ".txt", ".asc"))]
         if not names:
             return None
-        raw = zf.read(names[0]).decode("utf-8-sig", errors="replace")
+        raw = zf.read(names[0]).decode("utf-8-sig")
         return io.StringIO(raw)
 
 
@@ -386,14 +386,9 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
 
     download_note = ""
     if not skip_download:
-        try:
-            # TranStats keeps the same yearly ZIP name while revising recent
-            # months. The online path always refreshes the recent-year window.
-            download_note = _download_recent_years(force=True)
-        except Exception as exc:  # noqa: BLE001 - a valid local cache remains usable
-            if not any(CSV_DIR.glob("uae_*.zip")):
-                raise
-            download_note = f"官网下载未完成，使用本地缓存：{exc}"
+        # TranStats keeps the same yearly ZIP name while revising recent
+        # months. The online path always refreshes the recent-year window.
+        download_note = _download_recent_years(force=True)
 
     zips = sorted(CSV_DIR.glob("uae_*.zip"))
     if not zips:
@@ -430,17 +425,21 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     return {"status": "ok", "rows": len(rows), "note": note}
 
 
-def merge(workbook_path: Path) -> dict:
-    """由 ``source_extended.merge`` 统一写入「月度_DOTT100」。"""
+def _sheet_spec(con) -> dict[str, Any]:
+    indicators = list(INDICATOR_TPL.values())
+    rows = pivot_indicator_rows(
+        con.execute("SELECT period, indicator, value FROM dot_t100_monthly").fetchall(),
+        lambda indicator: indicator,
+        period_transform=month_end,
+    )
     return {
-        "status": "skipped",
-        "note": (
-            "T-100 已入 DuckDB；Excel 由 source_extended.merge 统一写入"
-        ),
+        "name": TARGET_SHEET,
+        "title": "US DOT T-100 美国↔阿联酋月度航空指标",
+        "indicators": indicators,
+        "rows": rows,
     }
 
 
-if __name__ == "__main__":
-    print("source_dot_t100.py 自检：")
-    print("  update(con, force=, skip_download=) 解析 raw/t100/csv/uae_*.zip → 入库 dot_t100_monthly")
-    print("  merge(workbook_path) 由 source_extended.merge 统一写入 月度_DOTT100")
+def merge(workbook_path: Path) -> dict:
+    """Rebuild this source's workbook sheet from DuckDB."""
+    return merge_source_sheet(workbook_path, _sheet_spec)

@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from io import BytesIO
-from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -28,7 +26,7 @@ from htfa.monitoring.uae.downloads import render_chart_download
 from htfa.monitoring.uae.results import MacroPanelResult
 from htfa.monitoring.uae.report import render_high_frequency_topics
 from htfa.monitoring.uae.services import build_monitoring_dashboard
-from htfa.app.state.shared_dataset import get_shared_dataset_file
+from htfa.monitoring.uae.database import published_source
 from htfa.ui_shared.chart_legend import place_chart_legend_at_bottom
 
 TAB_CONFIG = (
@@ -57,86 +55,72 @@ _REPORT_WORKBOOK_READER = EconomicWorkbookReader(
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
-def _build_monitoring_dashboard_cached(
-    content: bytes,
-    file_name: str,
-):
-    """按文件内容缓存监测计算，避免交互重跑时重新解析整个工作簿。"""
-
-    file_input = BytesIO(content)
-    file_input.name = file_name
-    return build_monitoring_dashboard(file_input)
+def _build_monitoring_dashboard_cached(source):
+    """按已发布的数据版本缓存宏观监测计算。"""
+    return build_monitoring_dashboard(source)
 
 
 def _latest_high_frequency_month(
-    payload: tuple[bytes, str],
+    payload: tuple[Any, str],
     *,
     today: pd.Timestamp | None = None,
-) -> pd.Period | None:
-    """返回工作簿中最新的高频数据观测月份。"""
-
+) -> pd.Period:
     observation_cutoff = (
         pd.Timestamp.today().normalize()
         if today is None
         else pd.Timestamp(today).normalize()
     )
     latest_months: list[pd.Period] = []
-    try:
-        content, file_name = payload
-        with _REPORT_WORKBOOK_READER.open_workbook(
-            content,
-            file_name=file_name,
-        ) as (excel_file, _):
-            for sheet_name in excel_file.sheet_names[1:]:
-                raw = _REPORT_WORKBOOK_READER.read_raw_sheet(
-                    excel_file,
-                    sheet_name=sheet_name,
-                )
-                if raw.shape[0] < 7 or raw.shape[1] < 2:
-                    continue
+    content, file_name = payload
+    with _REPORT_WORKBOOK_READER.open_workbook(
+        content,
+        file_name=file_name,
+    ) as (excel_file, _):
+        for sheet_name in excel_file.sheet_names[1:]:
+            raw = _REPORT_WORKBOOK_READER.read_raw_sheet(
+                excel_file,
+                sheet_name=sheet_name,
+            )
+            _REPORT_WORKBOOK_READER.validate_target_sheet(raw, sheet_name)
+            frequencies = {
+                str(value).strip()
+                for value in raw.iloc[2, 1:].tolist()
+                if pd.notna(value)
+            }
+            if not frequencies & _HIGH_FREQUENCY_LABELS:
+                continue
 
-                frequencies = {
-                    str(value).strip()
-                    for value in raw.iloc[2, 1:].tolist()
-                    if pd.notna(value)
-                }
-                if not frequencies & _HIGH_FREQUENCY_LABELS:
-                    continue
-
-                dates = pd.to_datetime(raw.iloc[6:, 0], errors="coerce")
-                values = raw.iloc[6:, 1:].apply(
-                    pd.to_numeric,
-                    errors="coerce",
+            dates = pd.to_datetime(raw.iloc[6:, 0], errors="coerce")
+            values = raw.iloc[6:, 1:].apply(
+                pd.to_numeric,
+                errors="coerce",
+            )
+            valid = (
+                dates.notna()
+                & dates.le(observation_cutoff)
+                & values.notna().any(axis=1)
+            )
+            if not valid.any():
+                raise ValueError(
+                    f"高频工作表“{sheet_name}”没有可用日期或数值观测"
                 )
-                valid = (
-                    dates.notna()
-                    & dates.le(observation_cutoff)
-                    & values.notna().any(axis=1)
+            candidate = pd.Timestamp(dates[valid].max())
+            candidate_month = candidate.to_period("M")
+            if frequencies & {"日", "日度", "周", "周度", "旬", "旬度"}:
+                cutoff = last_complete_month_end(
+                    candidate.date(),
+                    today=observation_cutoff.date(),
                 )
-                if not valid.any():
+                if cutoff is None:
                     continue
-                candidate = pd.Timestamp(dates[valid].max())
-                candidate_month = candidate.to_period("M")
-                if frequencies & {"日", "日度", "周", "周度", "旬", "旬度"}:
-                    cutoff = last_complete_month_end(
-                        candidate.date(),
-                        today=observation_cutoff.date(),
-                    )
-                    if cutoff is None:
-                        continue
-                    complete_month = pd.Timestamp(cutoff).to_period("M")
-                    latest_months.append(complete_month)
-                else:
-                    # 月度源若仍落在当前自然月，也必须等到下月再作为
-                    # 完整月份展示；历史月份的日期可能统一记为月初。
-                    if candidate_month == observation_cutoff.to_period("M"):
-                        candidate_month -= 1
-                    latest_months.append(candidate_month)
-    except Exception:  # noqa: BLE001 - 日期仅用于打印头，不能阻断报告渲染
-        return None
+                latest_months.append(pd.Timestamp(cutoff).to_period("M"))
+            else:
+                if candidate_month == observation_cutoff.to_period("M"):
+                    candidate_month -= 1
+                latest_months.append(candidate_month)
 
     if not latest_months:
-        return None
+        raise ValueError("工作簿没有可用于报告标题的完整高频月份")
     return max(latest_months)
 
 
@@ -255,31 +239,11 @@ def _render_series_group_explanation(st_obj, group_title: str) -> None:
     explanation = SERIES_GROUP_EXPLANATIONS.get(group_title)
     if explanation is None:
         return
-    with st_obj.expander("指标算法与解读", expanded=True):
+    with st_obj.expander(
+        "指标算法与解读", expanded=True,
+        key=f"uae-indicator-explanation-{group_title}",
+    ):
         st_obj.markdown(explanation)
-
-
-def _source_name(file_input: Any) -> str:
-    if hasattr(file_input, "name"):
-        return str(file_input.name)
-    return Path(file_input).name
-
-
-def _source_payload(file_input: Any, source_name: str) -> tuple[bytes, str]:
-    """把共享文件转换成主题 renderer 共享的不可变载荷。"""
-
-    if hasattr(file_input, "getvalue"):
-        content = file_input.getvalue()
-    elif hasattr(file_input, "read"):
-        position = file_input.tell() if hasattr(file_input, "tell") else None
-        content = file_input.read()
-        if position is not None and hasattr(file_input, "seek"):
-            file_input.seek(position)
-    else:
-        raise TypeError("共享数据集必须提供 getvalue() 或 read()")
-    if not isinstance(content, bytes):
-        raise TypeError("共享数据集必须提供 bytes 内容")
-    return content, source_name
 
 
 def _ordered_series_groups(
@@ -407,64 +371,24 @@ def _render_growth_tab(
 
 
 def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
-    """渲染阿联酋监测；不写入或生成任何工作簿。"""
-
-    file_input = None
-    tab_objects = st_obj.tabs(
-        [label for label, _ in TAB_CONFIG],
-        key="analysis.uae.active_tab",
-        on_change="rerun",
-    )
-    active_tab = next(
-        (
-            (tab, view_key)
-            for tab, (_, view_key) in zip(tab_objects, TAB_CONFIG)
-            if tab.open
-        ),
-        None,
-    )
-    if active_tab is None:
-        return {"status": "idle", "panel_count": 0, "high_frequency": {}}
-    active_container, active_view = active_tab
-
-    # 高频主题完全由 DuckDB 驱动。即使用户在其他页面上传或查看 Excel，打开
-    # 「高频数据」也不能触发工作簿读取、月度扫描或宏观仪表板计算。
-    if active_view == "oil_fiscal":
+    """从只读 DuckDB 发布版本渲染阿联酋监测，无需上传文件。"""
+    try:
+        file_input = published_source()
+    except (OSError, ValueError) as exc:
         _render_report_header(st_obj)
-        with active_container:
-            with st_obj.container(key="uae-high-frequency-print"):
-                topic_results = render_high_frequency_topics(
-                    st_obj,
-                )
+        message = f"阿联酋数据库未就绪：{exc}"
+        st_obj.error(message)
         return {
-            "status": "duckdb_only",
-            "source": "uae.duckdb",
-            "panel_count": 0,
-            "high_frequency": topic_results,
-        }
-
-    # 只有宏观概览/行业分析需要共享工作簿；高频页在上方已直接返回，
-    # 因此不会因上传 Excel 而触发读取或解析。
-    file_input = get_shared_dataset_file()
-    if file_input is None:
-        _render_report_header(st_obj)
-        message = "宏观概览和行业分析暂未迁移到 DuckDB。"
-        with active_container:
-            st_obj.info(message)
-        return {
-            "status": "duckdb_only",
+            "status": "error",
             "message": message,
             "panel_count": 0,
-            "high_frequency": {},
         }
 
-    source_name = _source_name(file_input)
-    payload = _source_payload(file_input, source_name)
-    _render_report_header(st_obj, _latest_high_frequency_month(payload))
-
+    source_name = file_input.name
+    payload = (file_input, source_name)
     try:
-        with st_obj.spinner("正在构建宏观监测页面..."):
-            dashboard = _build_monitoring_dashboard_cached(*payload)
+        _render_report_header(st_obj, _latest_high_frequency_month(payload))
+        st_obj.caption(f"数据库发布于 {file_input.published_at} UTC")
     except Exception as exc:  # noqa: BLE001 - 页面边界需展示工作簿解析错误
         for key in list(st.session_state):
             if str(key).startswith("analysis.uae."):
@@ -476,22 +400,35 @@ def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
             "source": source_name,
         }
 
-    with active_container:
-        if active_view == "growth_overview":
-            _render_growth_tab(
-                st_obj,
-                dashboard,
-                GROWTH_OVERVIEW_GROUPS,
-            )
-        else:
-            _render_growth_tab(
-                st_obj,
-                dashboard,
-                GROWTH_INDUSTRY_GROUPS,
-            )
+    tab_objects = st_obj.tabs(
+        [label for label, _ in TAB_CONFIG],
+        default="高频数据",
+        key="analysis.uae.active_tab",
+        on_change="rerun",
+    )
+    topic_results = {}
+    panel_count = 0
+    for tab, (_, view_key) in zip(tab_objects, TAB_CONFIG):
+        if not tab.open:
+            continue
+        with tab:
+            if view_key == "oil_fiscal":
+                with st_obj.container(key="uae-high-frequency-print"):
+                    topic_results = render_high_frequency_topics(st_obj, payload)
+            else:
+                with st_obj.spinner("正在构建宏观监测页面..."):
+                    dashboard = _build_monitoring_dashboard_cached(file_input)
+                panel_count = len(dashboard.panels)
+                _render_growth_tab(
+                    st_obj,
+                    dashboard,
+                    GROWTH_OVERVIEW_GROUPS
+                    if view_key == "growth_overview"
+                    else GROWTH_INDUSTRY_GROUPS,
+                )
     return {
         "status": "success",
         "source": source_name,
-        "panel_count": len(dashboard.panels),
-        "high_frequency": {},
+        "panel_count": panel_count,
+        "high_frequency": topic_results,
     }

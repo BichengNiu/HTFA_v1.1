@@ -12,6 +12,7 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from htfa.ui_shared.chart_legend import place_chart_legend_at_bottom
+from htfa.ui_shared.fonts import plotly_font_family
 from htfa.exploration.analysis.dtw_batch import perform_batch_dtw_calculation
 from htfa.exploration.core.series_utils import fingerprint_dataframe
 from htfa.exploration.ui.base import TimeSeriesAnalysisComponent
@@ -613,10 +614,11 @@ class DTWAnalysisComponent(TimeSeriesAnalysisComponent):
                     ))
 
             # 更新布局
+            font_family = plotly_font_family()
             fig.update_layout(
                 title={
                     "text": f"DTW对齐路径: {s1_name} vs {s2_name}",
-                    "font": {"size": 16, "family": 'Microsoft YaHei, SimHei, sans-serif'},
+                    "font": {"size": 16, "family": font_family},
                     "x": 0.5,  # 标题居中
                     "xanchor": 'center'
                 },
@@ -624,13 +626,13 @@ class DTWAnalysisComponent(TimeSeriesAnalysisComponent):
                     "title": None,  # 取消X轴标题
                     "gridcolor": 'rgba(128, 128, 128, 0.2)',
                     "showgrid": True,
-                    "tickfont": {"size": 13, "family": 'Microsoft YaHei, SimHei, sans-serif'},  # X轴刻度字体加大
+                    "tickfont": {"size": 13, "family": font_family},  # X轴刻度字体加大
                     "tickformat": '%Y-%m'  # 时间格式：年-月
                 },
                 yaxis={
                     "title": {
                         "text": 'Z值',
-                        "font": {"size": 12, "family": 'Microsoft YaHei, SimHei, sans-serif'}
+                        "font": {"size": 12, "family": font_family}
                     },
                     "gridcolor": 'rgba(128, 128, 128, 0.2)',
                     "showgrid": True
@@ -645,7 +647,7 @@ class DTWAnalysisComponent(TimeSeriesAnalysisComponent):
                     "y": -0.15,  # 放在图表下方
                     "xanchor": 'center',
                     "x": 0.5,
-                    "font": {"size": 12, "family": 'Microsoft YaHei, SimHei, sans-serif'},  # 字体从11号加大到12号
+                    "font": {"size": 12, "family": font_family},  # 字体从11号加大到12号
                     "itemwidth": 50  # 增加图例项宽度，使色块和文字更大
                 }
             )

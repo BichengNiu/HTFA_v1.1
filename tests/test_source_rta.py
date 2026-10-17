@@ -31,7 +31,7 @@ def test_rta_schema_contains_aggregates_only() -> None:
         "rta_marine_ridership_raw",
         "rta_bus_ridership_raw",
     )
-    assert source_rta._LEGACY_TABLES == legacy_names
+    assert not hasattr(source_rta, "_LEGACY_TABLES")
     assert all(
         not any(name in statement for name in legacy_names)
         for statement in db._BASE_DDL
@@ -76,17 +76,15 @@ def test_daily_aggregators_and_rebuild_preserve_aggregate_contract(tmp_path: Pat
         "10,2025-01-01,N,R1,Bus,AM,2025-01-02\n"
         "20,2025-01-01,S,R2,Bus,PM,2025-01-02\n",
     )
-    marine = _csv(
-        tmp_path,
-        "marine_ridership.csv",
-        "line_name,location,txn_date,txn_time,txn_type,zone,load_timestamp\n"
-        "L1,S1,2025-01-01,08:00,IN,1,2025-01-02\n"
-        "L1,S2,2025-01-01,08:01,OUT,1,2025-01-02\n",
+    marine = tmp_path / "marine_ridership.json"
+    marine.write_text(
+        '{"line_name":"L1","txn_date":"2025-01-01"}\n'
+        '{"line_name":"L2","txn_date":"2025-01-01"}\n', encoding="utf-8"
     )
     con = duckdb.connect(":memory:")
     try:
         speed_values = source_rta._aggregate_bus_speed(con, [speed])
-        marine_values = source_rta._aggregate_marine_daily(con, [marine])
+        marine_values = source_rta._aggregate_marine_daily([marine])
         assert speed_values == {date(2025, 1, 1): 15.0}
         assert marine_values == {date(2025, 1, 1): 2}
 

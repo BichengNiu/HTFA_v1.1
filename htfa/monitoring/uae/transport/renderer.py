@@ -6,7 +6,6 @@ from collections.abc import Mapping
 from typing import Any
 
 import pandas as pd
-import streamlit as st
 
 from htfa.monitoring.uae.downloads import render_chart_download
 from htfa.monitoring.uae.transport.charts import (
@@ -36,7 +35,6 @@ from htfa.monitoring.uae.transport.data import (
     TransportData,
     anchor_last_month,
     load_transport_data,
-    load_transport_from_duckdb,
 )
 from htfa.monitoring.uae.metrics import (
     _source_note_from_metadata,
@@ -47,6 +45,8 @@ from htfa.monitoring.uae.metrics import (
     render_metric_cards,
 )
 from htfa.ui_shared.chart_legend import render_pyplot_figure
+from htfa.monitoring.uae.supplemental_data import TRANSPORT_CHARTS
+from htfa.monitoring.uae.supplemental_renderer import render_supplemental_charts
 
 PORT_VOLUME_DISPLAY_SCALE = 1_000_000
 
@@ -59,13 +59,6 @@ TRANSPORT_EXPLANATION = """
 - **美国—阿联酋航空运输**：由美国交通部统计局 BTS T-100 国际航段发布；原始数据为承运商、机场对、机型及舱等层级的月度航段记录，按月份和方向汇总为双边旅客人次和货运磅数，
   反映两国航空客运与货运联系规模。
 """.strip()
-
-
-@st.cache_data(show_spinner=False, max_entries=4)
-def _load_transport_cached(database_snapshot: str) -> TransportData:
-    """按数据库快照缓存交通物流查询结果。"""
-
-    return load_transport_from_duckdb()
 
 
 def _render_chart(
@@ -161,9 +154,6 @@ def _render_transport_metrics(
                 source_column=column,
             )
         )
-
-    render_metric_cards(st_obj, maritime_cards, n=4)
-
     air_values = data.monthly_values.loc[
         pd.PeriodIndex(data.monthly_values.index, freq="M") <= last_month
     ]
@@ -215,20 +205,21 @@ def _render_transport_metrics(
             source_column=_source_column((US_UAE_AIR_FREIGHT,)),
         ),
     ]
-    st_obj.caption("航空运输")
-    render_metric_cards(st_obj, air_cards, n=4)
+    render_metric_cards(st_obj, [*maritime_cards, *air_cards])
 
 
-def render_transport_section(st_obj: Any) -> dict[str, Any]:
+def render_transport_section(
+    st_obj: Any,
+    content: Any,
+    file_name: str,
+) -> dict[str, Any]:
     """渲染「交通物流」板块的两张海运图和两张航空运输图。"""
 
     st_obj.divider()
     st_obj.subheader("交通物流")
     try:
         with st_obj.spinner("正在读取交通物流数据..."):
-            from htfa.monitoring.uae.duckdb_reader import database_snapshot_key
-
-            data = _load_transport_cached(database_snapshot_key())
+            data = load_transport_data(content, file_name=file_name)
         last_month = anchor_last_month(data.values)
         try:
             _render_transport_metrics(st_obj, data, last_month)
@@ -367,14 +358,15 @@ def render_transport_section(st_obj: Any) -> dict[str, Any]:
                 )
             except (KeyError, TypeError, ValueError) as exc:
                 cell.warning(f"{title}未加载：{exc}")
-        with st_obj.expander("指标算法与解读", expanded=True):
+        render_supplemental_charts(st_obj, content, file_name, TRANSPORT_CHARTS)
+        with st_obj.expander("指标算法与解读", expanded=True, key="uae-indicator-explanation-transport"):
             st_obj.markdown(TRANSPORT_EXPLANATION)
     except (KeyError, TypeError, ValueError, FileNotFoundError) as exc:
         st_obj.error(f"交通物流数据加载失败：{exc}")
         return {"status": "error", "message": str(exc)}
     return {
         "status": "success",
-        "source": "uae.duckdb",
+        "source": file_name,
         "as_of": last_month.strftime("%Y-%m"),
     }
 

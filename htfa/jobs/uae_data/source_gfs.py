@@ -5,7 +5,7 @@
 - 解析结果不再直接写工作簿，而是先入 DuckDB（gfs_quarterly / gfs_annual），
   merge() 再从库查询回写「季度_GFS」「年度_GFS」及「指标字典」。
 
-口径保持与旧脚本 100% 一致：
+数据口径：
 - 年度值只用原件中年发表列，绝不由季度加总（MOF 明确说明两者可以不同）；
 - 没有值的单元格不入库（保留缺失语义），行/列顺序照旧；
 - 写工作簿仍采用 ZIP 层 OOXML 补丁（只改目标部件，其余部件字节不变），
@@ -20,7 +20,6 @@ import io
 import json
 import os
 import re
-import sys
 import time
 import uuid
 import zipfile
@@ -36,7 +35,7 @@ from xml.etree import ElementTree as ET
 from openpyxl import load_workbook
 from pypdf import PdfReader
 
-from .paths import DATA_DIR, SCRIPTS_DIR
+from .paths import DATA_DIR
 from ._excel_helpers import cleanup_excel_automation
 from ._official_download import download_file, fetch_bytes
 
@@ -51,7 +50,6 @@ SOURCE_NAME = "UAE Ministry of Finance (MOF GFS)"
 UNIT = "百万阿联酋迪拉姆"
 UPDATED_AT = date.today().isoformat()
 QUARTER_ENDS = {1: "03-31", 2: "06-30", 3: "09-30", 4: "12-31"}
-QUARTER_BY_MONTH = {3: 1, 6: 2, 9: 3, 12: 4}
 MAIN_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 OFFICE_REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 PACKAGE_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
@@ -76,7 +74,7 @@ def _discover_gfs_files(page_html: str | bytes) -> dict[int, str]:
     """从财政部 GFS 页面发现按年份归档的官方 PDF/XLSX 直链。"""
 
     if isinstance(page_html, bytes):
-        page_html = page_html.decode("utf-8", errors="replace")
+        page_html = page_html.decode("utf-8")
     discovered: dict[int, tuple[tuple[int, str], str]] = {}
     for raw_href in _HTML_HREF_PATTERN.findall(page_html):
         href = html_lib.unescape(raw_href).replace("\\/", "/")
@@ -703,80 +701,24 @@ def _excel_serial(period: str) -> int:
     return (observed - date(1899, 12, 30)).days
 
 
-def _style_with_format(entries: dict[str, bytes], format_code: str) -> str:
-    """按格式串在 styles.xml 中找对应 xf 下标（找不到返回 '0'）。
+def _sheet_style_map(entries: dict[str, bytes], target: str) -> dict[str, str]:
+    """Read template style IDs and fail when a required worksheet style is missing."""
 
-    兼容性说明：旧脚本硬编码样式 ID（16/18/19/6），但 openpyxl 重存工作簿会
-    重新编号样式表，硬编码 ID 会错位（Quarter GFS 日期格式校验失败）。
-    改用格式码解析，保证与当前工作簿样式表一致。
-    """
-
-    styles_root = _parse_xml(entries["xl/styles.xml"])
-    fmt_by_id = {
-        node.attrib["numFmtId"]: node.attrib["formatCode"]
-        for node in styles_root.iter(f"{{{MAIN_NS}}}numFmt")
-    }
-    xfs = styles_root.find(f"{{{MAIN_NS}}}cellXfs")
-    if xfs is None:
-        return "0"
-    for index, xf in enumerate(xfs.findall(f"{{{MAIN_NS}}}xf")):
-        num_fmt_id = xf.attrib.get("numFmtId")
-        candidate = fmt_by_id.get(num_fmt_id)
-        if candidate == format_code or (
-            candidate is not None
-            and candidate.replace("\\", "") == format_code.replace("\\", "")
-        ):
-            return str(index)
-    return "0"
-
-
-def _bold_header_style(entries: dict[str, bytes]) -> str:
-    """找第一个使用加粗字体的 xf 下标（表头样式，找不到返回 '0'）。"""
-
-    styles_root = _parse_xml(entries["xl/styles.xml"])
-    fonts = styles_root.find(f"{{{MAIN_NS}}}fonts")
-    xfs = styles_root.find(f"{{{MAIN_NS}}}cellXfs")
-    if fonts is None or xfs is None:
-        return "0"
-    bold_font_ids = {
-        index
-        for index, font in enumerate(fonts.findall(f"{{{MAIN_NS}}}font"))
-        if font.find(f"{{{MAIN_NS}}}b") is not None
-    }
-    for index, xf in enumerate(xfs.findall(f"{{{MAIN_NS}}}xf")):
-        if int(xf.attrib.get("fontId", "0")) in bold_font_ids:
-            return str(index)
-    return "0"
-
-
-def _sheet_style_map(
-    entries: dict[str, bytes],
-    target: str,
-    date_format: str = "yyyy\\-mm\\-dd",
-) -> dict[str, str]:
-    """收集/推导单个 GFS 工作表的样式 ID（表头/单位/来源/更新时间/日期/数值）。
-
-    优先复用该工作表现有单元格的样式（与被重写前的观感一致）；现有样式为
-    General（可能被本脚本此前误写）时，按该表权威的 date_format 回退到
-    格式码解析（季度/年度日期列格式不同）。
-    """
-
-    fallback = {
-        "header": _bold_header_style(entries),
-        "unit": "0",
-        "source": "0",
-        "updated_at": _style_with_format(entries, "yyyy\\-mm\\-dd"),
-        "date": _style_with_format(entries, date_format),
-        "number": _style_with_format(entries, "#,##0.000"),
-    }
-    if fallback["date"] == "0":
-        fallback["date"] = _style_with_format(entries, "yyyy\\-mm\\-dd")
     if target not in entries:
-        return fallback
+        raise ValueError(f"GFS workbook is missing worksheet XML: {target}")
     root = _parse_xml(entries[target])
     sheet_data = root.find(f"{{{MAIN_NS}}}sheetData")
     if sheet_data is None:
-        return fallback
+        raise ValueError(f"GFS worksheet has no sheetData: {target}")
+
+    styles_xml = entries.get("xl/styles.xml")
+    if styles_xml is None:
+        raise ValueError("GFS workbook is missing xl/styles.xml")
+    styles_root = _parse_xml(styles_xml)
+    cell_xfs = styles_root.find(f"{{{MAIN_NS}}}cellXfs")
+    if cell_xfs is None:
+        raise ValueError("GFS workbook styles.xml is missing cellXfs")
+    style_count = len(cell_xfs.findall(f"{{{MAIN_NS}}}xf"))
 
     style_by_cell: dict[tuple[int, int], str] = {}
     for row in sheet_data.findall(f"{{{MAIN_NS}}}row"):
@@ -790,26 +732,39 @@ def _sheet_style_map(
                     column = column * 26 + (ord(char) - 64)
                 style_by_cell[(row_number, column)] = cell.attrib.get("s", "0")
 
-    def use(row: int, column: int) -> str:
-        return style_by_cell.get((row, column)) or fallback
-
-    def valid(row: int, column: int) -> str | None:
-        """取现有单元格样式；为 General（'0'）或缺失时视为无效。"""
+    def require(
+        row: int, column: int, label: str, *, allow_general: bool = False
+    ) -> str:
         style = style_by_cell.get((row, column))
-        if style and style != "0":
-            return style
-        return None
+        if style is None:
+            raise ValueError(
+                f"GFS worksheet {target} has no template cell for {label} "
+                f"at ({row}, {column})"
+            )
+        try:
+            style_number = int(style)
+        except ValueError as exc:
+            raise ValueError(
+                f"GFS worksheet {target} has invalid style {style!r}"
+            ) from exc
+        if style_number < 0 or style_number >= style_count:
+            raise ValueError(
+                f"GFS worksheet {target} style {style_number} for {label} "
+                "is outside cellXfs"
+            )
+        if style_number == 0 and not allow_general:
+            raise ValueError(
+                f"GFS worksheet {target} uses General style for required {label}"
+            )
+        return style
 
-    header = use(2, 1) if (2, 1) in style_by_cell else fallback["header"]
-    # 日期/数值优先沿用工作表现有样式（年度_GFS 的日期列是 "yyyy"），
-    # 但若现有样式是 General（可能被此前误写污染）则退回格式码解析。
     return {
-        "header": header,
-        "unit": use(4, 2),
-        "source": use(5, 2),
-        "updated_at": valid(6, 2) or fallback["updated_at"],
-        "date": valid(7, 1) or fallback["date"],
-        "number": valid(7, 2) or fallback["number"],
+        "header": require(2, 1, "header"),
+        "unit": require(4, 2, "unit", allow_general=True),
+        "source": require(5, 2, "source", allow_general=True),
+        "updated_at": require(6, 2, "updated_at"),
+        "date": require(7, 1, "date"),
+        "number": require(7, 2, "number"),
     }
 
 
@@ -870,8 +825,7 @@ def _build_sheet_xml(
 
 
 def _shared_strings(entries: dict[str, bytes]) -> list[str]:
-    # 兼容性说明：openpyxl 保存过的工作簿可能没有 sharedStrings.xml 部件
-    # （字符串全部以 inlineStr 存储），此时按空共享串表处理，旧脚本会直接报错。
+    # OOXML 允许工作簿将字符串全部存为 inlineStr，此时可以没有共享字符串部件。
     if "xl/sharedStrings.xml" not in entries:
         return []
     root = _parse_xml(entries["xl/sharedStrings.xml"])
@@ -1071,7 +1025,7 @@ def write_workbook(workbook_path: Path, payload: dict[str, object]) -> None:
             next_sheet_id += 1
             next_rel_id += 1
             next_file_id += 1
-        styles = _sheet_style_map(entries, target, str(sheet_spec.get("date_format", "yyyy\\-mm\\-dd")))
+        styles = _sheet_style_map(entries, target)
         entries[target] = _build_sheet_xml(sheet_spec, payload, styles)
 
     entries["xl/workbook.xml"] = _xml_bytes(workbook_root)
@@ -1129,7 +1083,7 @@ def validate_target(
         for name in archive.namelist():
             if not name.endswith((".xml", ".vml")):
                 continue
-            xml_text = archive.read(name).decode("utf-8", errors="ignore")
+            xml_text = archive.read(name).decode("utf-8")
             root_tag = re.search(r"<[^!?][^>]*>", xml_text)
             if root_tag is None:
                 continue
@@ -1337,7 +1291,7 @@ def _transaction(con):
 # --------------------------------------------------------------------------
 
 def _query_records(con) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
-    """从库中重建旧脚本结构（29 值行、降序），供 build_payload 使用。"""
+    """从库中重建当前工作簿所需的 29 个值行，并按期间降序排列。"""
 
     quarterly_by_period: dict[str, dict[str, Decimal | None]] = {}
     for year, quarter, indicator, value in con.execute(
@@ -1386,14 +1340,7 @@ def update(
     source_dir = RAW_GFS
     download_note = ""
     if not skip_download:
-        try:
-            download_note = _download_releases(force=force)
-        except (OSError, RuntimeError) as exc:
-            # A temporary outage must not discard a previously validated local
-            # release. Parsing still runs and reports the fallback in the note.
-            if not any(source_dir.glob("GFS-*.*")):
-                raise
-            download_note = f"MOF GFS 官网发现失败，使用本地缓存（{exc}）"
+        download_note = _download_releases(force=force)
     releases = extract_sources(source_dir)
     quarterly_rows, annual_rows = _records_to_db_rows(releases)
     with _transaction(con):
@@ -1420,7 +1367,7 @@ def update(
 
 
 def merge(workbook_path: Path) -> dict[str, object]:
-    """从库查询 GFS 数据，按旧脚本协议写「季度_GFS」「年度_GFS」与指标字典。
+    """从库查询 GFS 数据，写入「季度_GFS」「年度_GFS」与指标字典。
 
     工作簿写入前自动快照，写后逐单元格校验，全部通过才保留结果。
     """
@@ -1448,17 +1395,3 @@ def merge(workbook_path: Path) -> dict[str, object]:
             f"校验通过（逐格检查 {target_checks['target_cells_checked']} 个单元格）"
         ),
     }
-
-
-if __name__ == "__main__":
-    # 自检提示（不执行网络/工作簿写入）
-    _releases = extract_sources(RAW_GFS)
-    _quarterly, _annual = _period_records(_releases)
-    _q_rows, _a_rows = _records_to_db_rows(_releases)
-    print(
-        f"[source_gfs] 自检：2012-2026 源文件解析成功，"
-        f"季度 {len(_quarterly)} 期 / 年度 {len(_annual)} 期；"
-        f"可入库值 {len(_q_rows) + len(_a_rows)} 个。"
-    )
-    print("[source_gfs] 运行 htfa.jobs.uae_data.update_data --source gfs 执行入库；"
-          "htfa.jobs.uae_data.merge_workbook --source gfs 回写工作簿。")

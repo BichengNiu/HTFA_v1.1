@@ -6,19 +6,19 @@ from htfa.monitoring.uae import report
 def test_high_frequency_topics_are_isolated_when_oil_fails(monkeypatch) -> None:
     events: list[str] = []
 
-    def fail_oil(_st_obj):
+    def fail_oil(*args):
         events.append("oil")
         raise ValueError("oil unavailable")
 
-    def render_finance(_st_obj):
+    def render_finance(*args):
         events.append("government_finance")
         return {"status": "success", "value": 1}
 
-    def render_real_estate(_st_obj):
+    def render_real_estate(*args):
         events.append("real_estate")
         return {"status": "no_data", "message": "empty"}
 
-    def render_transport(_st_obj):
+    def render_transport(*args):
         events.append("transport")
         return {"status": "success", "value": 2}
 
@@ -34,7 +34,10 @@ def test_high_frequency_topics_are_isolated_when_oil_fails(monkeypatch) -> None:
     )
     st_obj = MagicMock()
 
-    results = report.render_high_frequency_topics(st_obj)
+    results = report.render_high_frequency_topics(
+        st_obj,
+        (b"workbook", "test.xlsx"),
+    )
 
     assert events == ["oil", "government_finance", "real_estate", "transport"]
     assert results["oil"].status == "failed"

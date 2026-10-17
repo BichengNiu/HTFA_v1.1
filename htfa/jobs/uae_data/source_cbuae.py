@@ -3,7 +3,7 @@
 逻辑移植自 ``scripts/data_sources/cbuae/update_cbuae_monthly.py``：扫描
 ``data/UAE/raw/cbuae/`` 下全部 YYYY-MM.xlsx / YYYY-MM.pdf 统计公报，读取全银行口径的
 国内信贷、居民/非居民存款、按币种存款、国外资产负债等多张表，为每个观测月保留
-最新 vintage；无工作簿的月份回退解析 PDF。入库为长表 ``cbuae_monthly``
+最新 vintage；只发布 PDF 的期间解析 PDF 版本公报。入库为长表 ``cbuae_monthly``
 （(period, indicator) 一行），单位百万迪拉姆。数据一律直接来自 CBUAE 公报，不依赖
 任何 Wind 序列。
 
@@ -14,29 +14,30 @@
 支付体系月度数据：同批 CBUAE 月度公报的 Cheques(ICCS) 与 FTS 两表（表 36/37 或
 47/48）亦一并入库为 ``cbuae_monthly`` 的 8 个「支付」指标（金额百万迪拉姆、笔数
 为张/笔），口径为公报原样发布的年内累计(YTD，每年 1 月重置)；单月增量需在分析层
-差分。PDF 回退月（如 2020-01）不覆盖支付表。
+差分。PDF 版本公报（如 2020-01）不覆盖支付表。
 """
 
 from __future__ import annotations
 
 import calendar
-import html as html_lib
+import json
+import os
 import re
-import sys
+import tempfile
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from typing import Iterable, Iterator
-from urllib.parse import unquote, urljoin, urlparse
+from urllib.parse import unquote, urlencode, urljoin, urlparse
 
 from openpyxl import load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 from pypdf import PdfReader
 
-from .paths import DATA_DIR, SCRIPTS_DIR
+from .paths import DATA_DIR
 
 
 from . import db  # noqa: E402
@@ -48,18 +49,12 @@ from ._excel_helpers import (  # noqa: E402
 from ._official_download import download_file, fetch_bytes
 
 # ---------------------------------------------------------------------------
-# 常量（与旧脚本一致）
+# 指标与来源常量
 # ---------------------------------------------------------------------------
 
 RAW_DIR = DATA_DIR / "raw" / "cbuae"
-CBUAE_BULLETIN_PAGE_TEMPLATES = (
-    "https://centralbank.ae/en/research-and-statistics/latest-statistics/"
-    "statistical-bulletin-banking-monetary-statistics/"
-    "statistical-bulletin-{month}-{year}/",
-    "https://www.centralbank.ae/en/research-and-statistics/latest-statistics/"
-    "statistical-bulletin-banking-monetary-statistics/"
-    "statistical-bulletin-{month}-{year}/",
-)
+CBUAE_STATISTICS_URL = "https://centralbank.ae/en/research-and-statistics/latest-statistics/"
+CBUAE_LISTING_API_URL = "https://centralbank.ae/umbraco/api/MediaListing/Get"
 TARGET_SHEET = "月度_CBUAE"
 DICTIONARY_SHEET = "指标字典"
 SOURCE_NAME = "CBUAE"
@@ -100,45 +95,89 @@ PERIOD_PATTERN = re.compile(
 )
 FILE_PERIOD_PATTERN = re.compile(r"^(20\d{2})-(0[1-9]|1[0-2])$")
 NUMBER_PATTERN = re.compile(r"-?\d[\d,]*(?:\.\d+)?")
-HTML_HREF_PATTERN = re.compile(
-    r"(?:href|src)\s*=\s*[\"']([^\"']+)[\"']", re.IGNORECASE
-)
 
 
-def _extract_bulletin_links(page_html: str | bytes, page_url: str) -> list[str]:
-    """提取 CBUAE 公报页中的官方 PDF/XLSX 直链，优先 XLSX。"""
+def _fetch_cbuae_listing(url: str) -> bytes:
+    """Fetch the official listing using the source's fixed Chrome transport."""
 
-    if isinstance(page_html, bytes):
-        page_html = page_html.decode("utf-8", errors="replace")
-    candidates: dict[str, tuple[int, str]] = {}
-    for raw_href in HTML_HREF_PATTERN.findall(page_html):
-        href = html_lib.unescape(raw_href).replace("\\/", "/")
-        url = urljoin(page_url, href)
-        parsed = urlparse(url)
-        filename = Path(unquote(parsed.path)).name
-        suffix = Path(filename).suffix.casefold()
-        if suffix not in {".xlsx", ".xls", ".pdf"}:
+    return fetch_bytes(
+        url, referer=CBUAE_STATISTICS_URL, browser_transport=True,
+    )
+
+
+def _parse_bulletin_listing(payload: bytes) -> list[tuple[str, str]]:
+    """Read official bulletin periods and prefer Excel links from the live API."""
+
+    result = json.loads(payload)
+    data = result.get("Data") if isinstance(result, dict) else None
+    rows = data.get("MediaListingPages") if isinstance(data, dict) else None
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("CBUAE listing API returned no bulletin records")
+    bulletins: dict[str, str] = {}
+    for row in rows:
+        title = str(row.get("Title", "")).strip()
+        match = PERIOD_PATTERN.search(title)
+        if not title.casefold().startswith("statistical bulletin") or match is None:
             continue
-        if "statistical-bulletin" not in filename.casefold():
-            continue
-        priority = 0 if suffix in {".xlsx", ".xls"} else 1
-        candidates[url] = (priority, filename.casefold())
-    return [url for url, _ in sorted(candidates.items(), key=lambda item: item[1])]
+        period = f"{int(match.group(2))}-{MONTH_NUMBERS[match.group(1).lower()]:02d}"
+        if datetime.strptime(period, "%Y-%m").date() > date.today():
+            raise ValueError("CBUAE listing contains a future bulletin month")
+        links: list[tuple[int, str]] = []
+        for media in row.get("MediaList", []):
+            url = urljoin(CBUAE_STATISTICS_URL, str(media.get("Url", "")))
+            parsed = urlparse(url)
+            filename = unquote(Path(parsed.path).name).casefold()
+            suffix = Path(filename).suffix
+            if suffix not in {".xlsx", ".pdf"} or "statistical-bulletin" not in filename:
+                continue
+            if (
+                parsed.scheme != "https"
+                or parsed.netloc.casefold() not in {"centralbank.ae", "www.centralbank.ae"}
+                or not parsed.path.startswith("/media/")
+                or parsed.query or parsed.fragment
+            ):
+                raise ValueError("CBUAE listing contains a non-official bulletin download URL")
+            links.append((0 if suffix == ".xlsx" else 1, url))
+        if not links:
+            raise ValueError(f"CBUAE listing has no usable media file for {period}")
+        if period in bulletins:
+            raise ValueError(f"CBUAE listing contains duplicate bulletin month {period}")
+        bulletins[period] = min(links)[1]
+    if not bulletins:
+        raise ValueError("CBUAE listing did not contain statistical bulletins")
+    return sorted(bulletins.items(), reverse=True)
 
 
-def _recent_bulletin_periods(count: int = 6) -> list[tuple[int, int]]:
-    """返回从当前月份起向前的公报月份，用于发现最新发布页。"""
+def _discover_bulletins() -> list[tuple[str, str]]:
+    """Discover the website's listing content ID and query its current media API."""
 
-    current = date.today()
-    year, month = current.year, current.month
-    periods: list[tuple[int, int]] = []
-    for _ in range(count):
-        periods.append((year, month))
-        month -= 1
-        if month == 0:
-            year -= 1
-            month = 12
-    return periods
+    page = _fetch_cbuae_listing(CBUAE_STATISTICS_URL)
+    text = page.decode("utf-8")
+    section = re.search(r"<section\b[^>]*\bdata-media-listing\b[^>]*>", text, re.I)
+    identifier = (
+        re.search(r'data-content-id=["\']([0-9a-f-]{36})["\']', section[0], re.I)
+        if section else None
+    )
+    if identifier is None:
+        raise ValueError("CBUAE statistics page lacks its media-listing content ID")
+    query = urlencode({
+        "language": "en", "ContentId": identifier.group(1),
+        "filterBy": "", "search": "Statistical Bulletin",
+    })
+    api_url = CBUAE_LISTING_API_URL + "?" + query
+    payload = _fetch_cbuae_listing(api_url)
+    bulletins = _parse_bulletin_listing(payload)
+    RAW_DIR.mkdir(parents=True, exist_ok=True)
+    (RAW_DIR / "listing.html").write_bytes(page)
+    (RAW_DIR / "listing.json").write_bytes(payload)
+    (RAW_DIR / "discovery.json").write_text(json.dumps({
+        "retrieved_at_utc": datetime.now(timezone.utc).isoformat(),
+        "statistics_url": CBUAE_STATISTICS_URL,
+        "api_url": api_url,
+        "latest_bulletin_period": bulletins[0][0],
+        "latest_download_url": bulletins[0][1],
+    }, indent=2), encoding="utf-8")
+    return bulletins
 
 
 def _download_latest_bulletins(*, force: bool = False) -> str:
@@ -146,57 +185,33 @@ def _download_latest_bulletins(*, force: bool = False) -> str:
 
     downloaded: list[str] = []
     reused: list[str] = []
-    pages_found = 0
-    files_ready = 0
-    for year, month in _recent_bulletin_periods():
-        discovered: list[str] = []
-        page_url = ""
-        for template in CBUAE_BULLETIN_PAGE_TEMPLATES:
-            candidate_page = template.format(
-                month=calendar.month_name[month].lower(), year=year
-            )
-            try:
-                page = fetch_bytes(candidate_page, referer="https://centralbank.ae/en")
-            except (OSError, RuntimeError):
-                continue
-            discovered = _extract_bulletin_links(page, candidate_page)
-            if discovered:
-                page_url = candidate_page
-                break
-        if not discovered:
+    discovered = _discover_bulletins()[:6]
+    for index, (period, url) in enumerate(discovered):
+        suffix = Path(urlparse(url).path).suffix.casefold()
+        destination = RAW_DIR / f"{period}{suffix}"
+        if index and not force and destination.is_file() and destination.stat().st_size >= 1024:
+            reused.append(period)
             continue
-        pages_found += 1
-        for url in discovered:
-            suffix = Path(urlparse(url).path).suffix.casefold()
-            destination = RAW_DIR / f"{year}-{month:02d}{suffix}"
-            try:
-                status = download_file(
-                    url,
-                    destination,
-                    # The first discovered page is the newest available
-                    # bulletin; refresh it on every online run so revisions
-                    # are picked up without forcing the whole six-month cache.
-                    force=force or pages_found == 1,
-                    min_bytes=1024,
-                    referer=page_url,
-                )
-            except (OSError, RuntimeError):
-                continue
-            label = destination.stem
-            (downloaded if status == "downloaded" else reused).append(label)
-            files_ready += 1
-            break
-
-    if pages_found == 0:
-        raise RuntimeError("CBUAE 最新统计公报页未发现可下载文件")
-    if files_ready == 0:
-        raise RuntimeError("CBUAE 公报直链下载失败")
+        RAW_DIR.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix=".cbuae-", dir=RAW_DIR) as temporary:
+            staged = Path(temporary) / destination.name
+            download_file(
+                url, staged, force=True, min_bytes=1024,
+                referer=CBUAE_STATISTICS_URL, user_agent="Mozilla/5.0",
+            )
+            observations = (
+                extract_workbook(staged) if suffix == ".xlsx" else [extract_pdf_bulletin(staged)]
+            )
+            if not observations or max(item.period for item in observations) != period:
+                raise ValueError(f"CBUAE workbook observations do not match declared month {period}")
+            os.replace(staged, destination)
+        downloaded.append(period)
     detail: list[str] = []
     if downloaded:
         detail.append("刷新 " + ", ".join(downloaded))
     if reused:
         detail.append("缓存 " + ", ".join(reused))
-    return "CBUAE 公报官网：" + "；".join(detail)
+    return f"CBUAE 官网列表接口（最新公报 {discovered[0][0]}）：" + "；".join(detail)
 
 CBUAE_CREDIT_INDICATORS = (
     ("阿联酋政府存款", "存款"),
@@ -232,7 +247,6 @@ CBUAE_PAYMENT_INDICATORS = (
 
 CBUAE_INDICATORS = CBUAE_CREDIT_INDICATORS + CBUAE_PAYMENT_INDICATORS
 INDICATOR_ORDER = {name: index for index, (name, _) in enumerate(CBUAE_INDICATORS)}
-CREDIT_INDICATOR_COUNT = len(CBUAE_CREDIT_INDICATORS)
 
 CBUAE_PRIMARY_START = "2020-01"
 
@@ -249,7 +263,6 @@ PAYMENT_UNITS = {
 }
 
 # 2020 起月频连续；更早公报只含季/年度参考列，不入连续月度序列
-PAYMENT_START = "2020-01"
 
 # 表内指标 slug -> CBUAE_INDICATORS 中的名称
 PAYMENT_METRIC_INDICATOR = {
@@ -274,7 +287,7 @@ class Observation:
     银行国外资产, 银行国外负债, 个人信贷)。
 
     政府 4 项始终存在；企业信贷/存款、个人信贷与外币/国外资产负债各项在对应行未单列
-    或 PDF 回退月份为 ``None``。
+    或 PDF 版本公报月份为 ``None``。
     """
 
     period: str
@@ -687,7 +700,7 @@ def extract_payment_rows(path: Path) -> list[dict]:
     """从一份公报工作簿提取 Cheques 与 FTS 两表的逐月累计长表行。
 
     返回 dict 列表：{period: date, indicator, value, source_period, source_file}。
-    仅解析 xlsx；PDF 回退不覆盖支付表（pdf 为主的月份该项留空）。
+    仅解析 xlsx；PDF 版本公报不覆盖支付表（pdf 为主的月份该项留空）。
     """
 
     workbook = load_workbook(path, read_only=True, data_only=True)
@@ -842,7 +855,7 @@ def _last_number(line: str) -> Decimal | None:
     return _to_decimal(matches[-1])
 
 
-def extract_pdf_fallback(path: Path) -> Observation:
+def extract_pdf_bulletin(path: Path) -> Observation:
     """从仅 PDF 公报中提取公报月数值。"""
 
     deposit_values: tuple[Decimal, Decimal] | None = None
@@ -885,7 +898,7 @@ def extract_pdf_fallback(path: Path) -> Observation:
     period = _source_period(path)
     return Observation(
         period=period,
-        # PDF 回退仅政府存贷 4 项；企业/外币/国外资产负债 10 项以 None 占位
+        # PDF 版本公报仅提供政府存贷 4 项；其余 10 项以 None 占位
         values=(
             *deposit_values,
             *credit_values,
@@ -1007,44 +1020,28 @@ def _dictionary_rows() -> list[dict]:
 
 
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
-    """发现公报文件 -> 解析（xlsx 优先，pdf 回退）-> vintage 选择 -> 入库。
+    """Discover and download the newest CBUAE bulletin, then write DuckDB.
 
-    默认从 CBUAE 统计公报页发现最近公报并缓存；官网暂时不可访问时，若本地
-    已有有效公报则继续使用缓存。``skip_download`` 适合离线重算，``force``
-    会重新下载已发现的公报。数据一律直接来自 CBUAE 公报，不依赖 Wind 序列。
+    ``skip_download=True`` is the explicit offline mode. Discovery, download,
+    and parsing errors propagate to the caller.
     """
 
     download_note = ""
     if not skip_download:
-        try:
-            download_note = _download_latest_bulletins(force=force)
-        except (OSError, RuntimeError) as exc:
-            if not any(RAW_DIR.glob("20??-??.*")):
-                raise
-            download_note = f"CBUAE 官网发现失败，使用本地缓存（{exc}）"
+        download_note = _download_latest_bulletins(force=force)
 
     observations: list[Observation] = []
     payment_rows: list[dict] = []
-    errors: list[str] = []
     workbook_paths = sorted(RAW_DIR.glob("20??-??.xlsx"))
     for path in workbook_paths:
-        try:
-            observations.extend(extract_workbook(path))
-        except (OSError, ValueError) as exc:
-            errors.append(f"{path.name}: {exc}")
-        try:
-            payment_rows.extend(extract_payment_rows(path))
-        except (OSError, ValueError) as exc:
-            errors.append(f"{path.name}: {exc}")
+        observations.extend(extract_workbook(path))
+        payment_rows.extend(extract_payment_rows(path))
 
     workbook_periods = {path.stem for path in workbook_paths}
     for path in sorted(RAW_DIR.glob("20??-??.pdf")):
         if path.stem in workbook_periods:
             continue
-        try:
-            observations.append(extract_pdf_fallback(path))
-        except (OSError, ValueError) as exc:
-            errors.append(f"{path.name}: {exc}")
+        observations.append(extract_pdf_bulletin(path))
 
     primary_start = max(START_PERIOD, CBUAE_PRIMARY_START)
     selected, _, revised_periods = select_latest_vintages(
@@ -1067,8 +1064,6 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         f"（{'/'.join((payment_periods[0], payment_periods[-1])) if payment_periods else '无'}）；"
         f"vintage 修订 {revised_periods} 期"
     )
-    if errors:
-        note += f"；源警告 {len(errors)} 条，首条：{errors[0]}"
     if download_note:
         note += f"；{download_note}"
     return {"status": "ok", "rows": len(rows), "note": note}
@@ -1077,7 +1072,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
 def merge(workbook_path: Path) -> dict:
     """把 cbuae_monthly 写回 阿联酋.xlsx 的 月度_CBUAE sheet。
 
-    与旧脚本一致：每次调用都重建该 sheet（无幂等检查），数据来自库中长表，
+    每次调用都重建该 sheet，数据来自库中长表，
     按 CBUAE_INDICATORS 顺序还原宽表记录，最新在前。
     """
 
@@ -1150,11 +1145,3 @@ def merge(workbook_path: Path) -> dict:
         "status": "ok",
         "note": f"{len(observations)} 个月写入 {TARGET_SHEET}",
     }
-
-
-if __name__ == "__main__":
-    print("source_cbuae.py 自检：")
-    print("  update(con, force=, skip_download=) 解析 data/UAE/raw/cbuae/ 下公报")
-    print("    （xlsx 优先、pdf 回退补缺）并入库 cbuae_monthly 长表")
-    print("  merge(workbook_path) 把表写回 月度_CBUAE")
-    print("  本文件直接运行不执行任何下载或工作簿写入。")

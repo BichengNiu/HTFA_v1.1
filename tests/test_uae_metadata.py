@@ -6,6 +6,8 @@ from datetime import date
 import sys
 from pathlib import Path
 
+import pytest
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 from htfa.jobs.uae_data import db  # noqa: E402
@@ -15,17 +17,17 @@ from htfa.jobs.uae_data import uae_metadata  # noqa: E402
 def test_complete_metadata_registers_extended_indicators_and_columns() -> None:
     con = db.connect(":memory:")
     try:
+        con.execute("CREATE SCHEMA detail")
         con.execute(
             """
-            CREATE TABLE portwatch_uae_daily (
+            CREATE TABLE detail.portwatch_uae_daily (
                 date DATE, portcalls BIGINT
             )
             """
         )
-        con.execute("CREATE SCHEMA dld")
         con.execute(
             """
-            CREATE TABLE dld.transactions (
+            CREATE TABLE detail.dld_transactions (
                 transaction_id VARCHAR
             )
             """
@@ -99,27 +101,26 @@ def test_detail_schema_separates_fine_grained_physical_tables() -> None:
                 [table],
             ).fetchone()
             assert physical == ("BASE TABLE",)
-            assert compatibility == ("VIEW",)
+            assert compatibility is None
     finally:
         con.close()
 
 
-def test_legacy_dld_table_is_migrated_to_detail_with_read_only_alias() -> None:
+def test_detail_dld_table_is_preserved_without_legacy_alias() -> None:
     con = db.connect(":memory:")
     try:
-        con.execute("CREATE SCHEMA dld")
+        con.execute("CREATE SCHEMA detail")
         con.execute(
-            "CREATE TABLE dld.transactions "
+            "CREATE TABLE detail.dld_transactions "
             "(transaction_id VARCHAR, instance_date DATE)"
         )
-        con.execute("INSERT INTO dld.transactions VALUES ('t1', DATE '2026-01-01')")
+        con.execute("INSERT INTO detail.dld_transactions VALUES ('t1', DATE '2026-01-01')")
         db.init_schema(con)
         assert con.execute("SELECT count(*) FROM detail.dld_transactions").fetchone() == (1,)
-        assert con.execute("SELECT count(*) FROM dld.transactions").fetchone() == (1,)
         assert con.execute(
             "SELECT table_type FROM information_schema.tables "
             "WHERE table_schema='dld' AND table_name='transactions'"
-        ).fetchone() == ("VIEW",)
+        ).fetchone() is None
     finally:
         con.close()
 
@@ -171,9 +172,9 @@ def test_sync_workbook_dictionary_removes_unbacked_rows(tmp_path, monkeypatch) -
     workbook = Workbook()
     dictionary = workbook.active
     dictionary.title = "指标字典"
-    dictionary.append(["指标名称", "类型", "行业", "数据来源", "预测变量"])
-    dictionary.append(["指标A", "旧类型", "旧行业", "旧来源", None])
-    dictionary.append(["孤立指标", "类型", "行业", "来源", None])
+    dictionary.append(uae_metadata._EXTENDED_DICTIONARY_HEADERS)
+    dictionary.append(["指标A", "旧类型", "旧行业", "月度", None, None, 0, "旧来源", None])
+    dictionary.append(["孤立指标", "类型", "行业", "月度", None, None, 0, "来源", None])
     data = workbook.create_sheet("月度_测试")
     data.append(["测试数据", None])
     data.append(["指标名称", "指标A"])
@@ -203,10 +204,11 @@ def test_sync_workbook_dictionary_removes_unbacked_rows(tmp_path, monkeypatch) -
     loaded = load_workbook(workbook_path, read_only=True, data_only=True)
     rows = list(loaded.worksheets[0].iter_rows(min_row=2, values_only=True))
     assert [row[0] for row in rows if row[0]] == ["指标A"]
-    assert rows[0][1:4] == ("新类型", "新行业", "新来源")
+    assert rows[0][1:3] == ("新类型", "新行业")
+    assert rows[0][7] == "新来源"
 
 
-def test_sync_workbook_dictionary_splits_extended_date_columns(tmp_path, monkeypatch) -> None:
+def test_sync_workbook_dictionary_rejects_legacy_date_columns(tmp_path, monkeypatch) -> None:
     from openpyxl import Workbook, load_workbook
 
     workbook_path = tmp_path / "extended-workbook.xlsx"
@@ -243,14 +245,16 @@ def test_sync_workbook_dictionary_splits_extended_date_columns(tmp_path, monkeyp
             pass
 
     monkeypatch.setattr(uae_metadata.db, "connect", lambda read_only=True: _Connection())
-    uae_metadata.sync_workbook_dictionary(workbook_path, as_of=date(2026, 8, 22))
+    previous = workbook_path.read_bytes()
+    with pytest.raises(ValueError, match="9"):
+        uae_metadata.sync_workbook_dictionary(workbook_path, as_of=date(2026, 8, 22))
+    assert workbook_path.read_bytes() == previous
 
     loaded = load_workbook(workbook_path, read_only=True, data_only=True)
     assert [cell.value for cell in loaded.worksheets[0][1]] == [
-        "指标名称", "类型", "行业", "频率", "开始日期", "最新日期",
-        "缺失期数", "数据来源", "预测变量",
+        "指标名称", "类型", "行业", "频率", "起止时间", "缺失期数",
+        "数据来源", "预测变量",
     ]
     row = next(loaded.worksheets[0].iter_rows(min_row=2, max_row=2, values_only=True))
-    assert row[1:3] == ("新类型", "新行业")
-    assert row[3:7] == ("月度", "2026-07-31", "2026-07-31", 1)
-    assert row[7:9] == ("新来源", "是")
+    assert row[1:3] == ("旧类型", "旧行业")
+    loaded.close()

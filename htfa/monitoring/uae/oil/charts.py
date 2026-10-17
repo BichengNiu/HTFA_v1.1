@@ -213,63 +213,6 @@ def build_war_pressure_index_figure(
     return figure
 
 
-def build_oil_market_figure(
-    production: pd.Series,
-    source_text: str,
-    rig_count: pd.Series | None = None,
-    units: Mapping[str, str | None] | None = None,
-) -> Figure:
-    """构建阿联酋原油产量和石油活跃钻机数的月度图（Ts 模板）。"""
-
-    ten_thousand_bpd = production.dropna().sort_index().div(10_000)
-    rigs = (
-        None
-        if rig_count is None or rig_count.dropna().empty
-        else rig_count.dropna().sort_index()
-    )
-    cutoff_series = [(MARKET_PRODUCTION_LABEL, ten_thousand_bpd)]
-    if rigs is not None:
-        cutoff_series.append((MARKET_RIG_COUNT_LABEL, rigs))
-    last_month = common_latest_month(cutoff_series)
-    ten_thousand_bpd = through_month(ten_thousand_bpd, last_month)
-    if rigs is not None:
-        rigs = through_month(rigs, last_month)
-
-    frame = pd.DataFrame({MARKET_PRODUCTION_LABEL: ten_thousand_bpd})
-    axis_groups = {MARKET_PRODUCTION_LABEL: "left"}
-    if rigs is not None:
-        frame[MARKET_RIG_COUNT_LABEL] = rigs
-        axis_groups[MARKET_RIG_COUNT_LABEL] = "right"
-
-    axis_units = {MARKET_PRODUCTION_LABEL: "万桶/天"}
-    if rigs is not None:
-        axis_units[MARKET_RIG_COUNT_LABEL] = "台"
-    if units is not None:
-        axis_units.update(units)
-
-    figure, returned_axis = plot_series(
-        frame,
-        facet=False,
-        axis_groups=axis_groups,
-        title="原油产量与活动钻机数",
-        xtitle="",
-        ytitle_position="side",
-        year_ruler=True,
-        grid=True,
-        bar_series=[MARKET_PRODUCTION_LABEL],
-        bar_face_color=GRAY,
-        vlines=WAR_START_DATE,
-        show_legend=True,
-        note=source_note(source_text),
-        note_loc="left",
-        figsize=(9.4, 6.2),
-        units=axis_units,
-    )
-    production_axis = normalize_ts_axis(returned_axis)
-    annotate_war(production_axis)
-    apply_htfa_fonts(figure)
-    return figure
-
 
 def _build_oil_single_series_figure(
     series: pd.Series,
@@ -364,70 +307,47 @@ def build_oil_rig_count_figure(
 def build_oil_price_figure(
     revenue: pd.DataFrame,
     source_text: str,
-    units: Mapping[str, str | None] | None = None,
-    dubai_price: pd.Series | None = None,
+    dubai_price: pd.Series,
 ) -> Figure:
-    """构建 Brent 与 Dubai 原油现货月均价格共轴折线图。
+    """构建 Brent 与 Dubai 原油现货月均价格共轴折线图。"""
 
-    ``revenue`` 提供 Brent 月均价；``dubai_price`` 为空时保留单序列
-    兼容行为。两条价格序列均以美元/桶展示，并共享同一 y 轴。
-    """
-
+    brent_price = revenue[PRICE_COLUMN].rename(REVENUE_PRICE_LABEL)
+    dubai_price = dubai_price.rename(DUBAI_PRICE_LABEL)
+    if brent_price.dropna().empty or dubai_price.dropna().empty:
+        raise ValueError("Brent 与 Dubai 原油价格均需包含有效观测")
     frame = pd.DataFrame(
-        {REVENUE_PRICE_LABEL: revenue[PRICE_COLUMN]}
-    )
-    if dubai_price is not None:
-        frame[DUBAI_PRICE_LABEL] = dubai_price.rename(DUBAI_PRICE_LABEL)
-    frame = frame.dropna(how="all").sort_index()
-    if frame.empty:
-        raise ValueError("原油价格没有有效观测，无法绘图")
-
+        {REVENUE_PRICE_LABEL: brent_price, DUBAI_PRICE_LABEL: dubai_price}
+    ).dropna(how="all").sort_index()
     last_month = common_latest_month(
-        [
-            (label, frame[label])
-            for label in frame.columns
-            if frame[label].notna().any()
-        ]
+        [(label, frame[label]) for label in frame.columns]
     )
     frame = through_month(frame, last_month)
-
-    price_units: dict[str, str | None] = {
-        label: "美元/桶" for label in frame.columns
-    }
-    if units is not None:
-        price_units.update(units)
-    # 价格原始值就是美元/桶，不允许外部元数据把它缩放成“百美元/桶”。
-    price_units.update(
-        {label: "美元/桶" for label in frame.columns}
-    )
     figure, returned_axis = plot_series(
         frame,
         facet=False,
-        colors=[DARK_BLUE, DARK_RED][: len(frame.columns)],
-        axis_groups={label: "price" for label in frame.columns},
-        title="石油价格",
+        title="布伦特与迪拜原油现货月均价格",
         xtitle="",
         ytitle_position="side",
         year_ruler=True,
         grid=True,
         vlines=WAR_START_DATE,
         show_legend=True,
-        legend_cols=len(frame.columns),
         note=source_note(source_text),
         note_loc="left",
         figsize=(9.4, 6.2),
-        units=price_units,
+        units={
+            REVENUE_PRICE_LABEL: "美元/桶",
+            DUBAI_PRICE_LABEL: "美元/桶",
+        },
     )
     axis = normalize_ts_axis(returned_axis)
     annotate_war(axis)
-    for label in frame.columns:
-        _annotate_extreme_values(
-            axis,
-            frame,
-            label,
-            bars=False,
-            decimals=2,
-        )
+    _annotate_extreme_values(
+        axis, frame, REVENUE_PRICE_LABEL, bars=False, decimals=1
+    )
+    _annotate_extreme_values(
+        axis, frame, DUBAI_PRICE_LABEL, bars=False, decimals=1
+    )
     apply_htfa_fonts(figure)
     return figure
 
@@ -451,63 +371,13 @@ def build_oil_revenue_only_figure(
     )
 
 
-def build_oil_revenue_figure(
-    revenue: pd.DataFrame,
-    source_text: str,
-    units: Mapping[str, str | None] | None = None,
-) -> Figure:
-    """布伦特月均价线在左轴，石油收入柱在右轴（Ts 模板）。"""
-
-    last_month = common_latest_month(
-        [(REVENUE_LABEL, revenue[REVENUE_COLUMN])]
-    )
-    revenue = through_month(revenue, last_month)
-    price = revenue[PRICE_COLUMN].rename(REVENUE_PRICE_LABEL)
-    frame = pd.DataFrame(
-        {REVENUE_PRICE_LABEL: price, REVENUE_LABEL: revenue[REVENUE_COLUMN]}
-    )
-    axis_units = {
-        REVENUE_PRICE_LABEL: "美元/桶",
-        REVENUE_LABEL: "亿美元",
-    }
-    if units is not None:
-        axis_units.update(units)
-
-    figure, returned_axis = plot_series(
-        frame,
-        facet=False,
-        axis_groups={
-            REVENUE_PRICE_LABEL: "left",
-            REVENUE_LABEL: "right",
-        },
-        title="石油价格与石油收入",
-        xtitle="",
-        ytitle_position="side",
-        year_ruler=True,
-        grid=True,
-        bar_series=[REVENUE_LABEL],
-        bar_face_color=GRAY,
-        vlines=WAR_START_DATE,
-        show_legend=True,
-        note=source_note(source_text),
-        note_loc="left",
-        figsize=(9.4, 6.2),
-        units=axis_units,
-    )
-    price_axis = normalize_ts_axis(returned_axis)
-    annotate_war(price_axis)
-    apply_htfa_fonts(figure)
-    return figure
-
 
 __all__ = [
     "build_war_pressure_index_figure",
     "build_war_pressure_raw_figure",
-    "build_oil_market_figure",
     "build_oil_production_figure",
     "build_oil_rig_count_figure",
     "build_oil_price_figure",
     "DUBAI_PRICE_LABEL",
     "build_oil_revenue_only_figure",
-    "build_oil_revenue_figure",
 ]

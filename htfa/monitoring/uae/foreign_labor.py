@@ -22,9 +22,6 @@ from htfa.monitoring.uae.plot_helpers import (
 from htfa.data.economic_workbook import (
     EconomicWorkbookReader,
     SheetSeriesMetadata,
-    format_updated_at,
-    normalize_indicator_name,
-    optional_text,
 )
 
 
@@ -121,115 +118,14 @@ def load_foreign_labor_from_duckdb() -> ForeignLaborData:
 def _parse_foreign_labor_sheet(
     excel_file: pd.ExcelFile,
 ) -> tuple[pd.DataFrame, dict[str, SheetSeriesMetadata]]:
-    """Parse this sheet's documented date-first metadata layout strictly."""
+    """读取写表器生成的标准元数据布局。"""
 
-    if FOREIGN_LABOR_SHEET not in excel_file.sheet_names:
-        raise ValueError(f"工作簿缺少“{FOREIGN_LABOR_SHEET}”sheet")
-
-    raw = _WORKBOOK_READER.read_raw_sheet(
-        excel_file, sheet_name=FOREIGN_LABOR_SHEET
-    )
-    if raw.shape[0] < 7 or raw.shape[1] < 3:
-        raise ValueError(f"sheet“{FOREIGN_LABOR_SHEET}”不符合前六行元数据协议")
-
-    # 工作簿历史上存在两种正式布局：旧版专用写表器使用 A2=日期，
-    # 当前写表器及 source_extended 的旧版通用写表器使用标准元数据标签。
-    # 两种布局都按目标指标读取，避免已有工作簿在管线修复后失效。
-    if optional_text(raw.iloc[1, 0]) == "指标名称":
-        return _WORKBOOK_READER.read_target_sheet(
-            excel_file,
-            sheet_name=FOREIGN_LABOR_SHEET,
-            targets=(
-                (NEPAL_APPROVALS, NEPAL_APPROVALS),
-                (BANGLADESH_CLEARANCES, BANGLADESH_CLEARANCES),
-            ),
-            allowed_frequencies={"月", "月度"},
-            expected_unit="人",
-        )
-
-    expected_labels = {1: "日期", 2: "月", 3: "日期"}
-    for row_index, expected in expected_labels.items():
-        actual = optional_text(raw.iloc[row_index, 0])
-        if actual != expected:
-            raise ValueError(
-                f"sheet“{FOREIGN_LABOR_SHEET}”第{row_index + 1}行首列应为“{expected}”，"
-                f"实际为“{actual or '空'}”"
-            )
-
-    target_names = {NEPAL_APPROVALS, BANGLADESH_CLEARANCES}
-    candidate_columns: dict[str, list[int]] = {}
-    for column_index in range(1, raw.shape[1]):
-        indicator_name = normalize_indicator_name(raw.iloc[1, column_index])
-        if indicator_name in target_names:
-            candidate_columns.setdefault(indicator_name, []).append(column_index)
-
-    matching_columns: dict[str, int] = {}
-    for indicator_name in target_names:
-        columns = candidate_columns.get(indicator_name, [])
-        compatible = [
-            column_index
-            for column_index in columns
-            if optional_text(raw.iloc[2, column_index]) in {"月", "月度"}
-            and optional_text(raw.iloc[3, column_index]) == "人"
-            and optional_text(raw.iloc[4, column_index])
-        ]
-        if len(compatible) != 1:
-            if not columns:
-                raise ValueError(f"sheet“{FOREIGN_LABOR_SHEET}”缺少指标：{indicator_name}")
-            raise ValueError(
-                f"指标“{indicator_name}”应有唯一一列月度、人、且来源非空的观测"
-            )
-        matching_columns[indicator_name] = compatible[0]
-
-    data_block = raw.iloc[6:, :].dropna(how="all")
-    dates = pd.to_datetime(data_block.iloc[:, 0], errors="coerce")
-    if dates.isna().any():
-        row_number = int(dates[dates.isna()].index[0]) + 1
-        raise ValueError(f"sheet“{FOREIGN_LABOR_SHEET}”第{row_number}行日期无效")
-    if dates.duplicated().any():
-        raise ValueError(f"sheet“{FOREIGN_LABOR_SHEET}”包含重复日期")
-
-    series_map: dict[str, pd.Series] = {}
-    metadata: dict[str, SheetSeriesMetadata] = {}
-    for indicator_name, column_index in matching_columns.items():
-        raw_values = data_block.iloc[:, column_index]
-        numeric = pd.to_numeric(raw_values, errors="coerce")
-        invalid = (
-            raw_values.notna()
-            & raw_values.astype(str).str.strip().ne("")
-            & numeric.isna()
-        )
-        if invalid.any():
-            row_number = int(invalid[invalid].index[0]) + 1
-            raise ValueError(
-                f"sheet“{FOREIGN_LABOR_SHEET}”指标“{indicator_name}”"
-                f"第{row_number}行不是数值"
-            )
-        series = pd.Series(
-            numeric.mask(numeric.eq(0)).to_numpy(),
-            index=pd.DatetimeIndex(dates),
-            name=indicator_name,
-        ).dropna().sort_index()
-        if series.empty:
-            raise ValueError(f"指标“{indicator_name}”没有非零有效观测")
-        series_map[indicator_name] = series
-        metadata[indicator_name] = SheetSeriesMetadata(
-            display_name=indicator_name,
-            indicator_name=indicator_name,
-            frequency=optional_text(raw.iloc[2, column_index]),
-            unit=optional_text(raw.iloc[3, column_index]),
-            source=optional_text(raw.iloc[4, column_index]),
-            updated_at=format_updated_at(raw.iloc[5, column_index]),
-            sheet_name=FOREIGN_LABOR_SHEET,
-        )
-
-    return (
-        pd.concat(
-            [series_map[NEPAL_APPROVALS], series_map[BANGLADESH_CLEARANCES]],
-            axis=1,
-            sort=False,
-        ).sort_index(),
-        metadata,
+    return _WORKBOOK_READER.read_target_sheet(
+        excel_file,
+        sheet_name=FOREIGN_LABOR_SHEET,
+        targets=tuple((name, name) for name in (NEPAL_APPROVALS, BANGLADESH_CLEARANCES)),
+        allowed_frequencies={"月"},
+        expected_unit="人",
     )
 
 

@@ -1,10 +1,11 @@
-"""Tests for the EIBOR / US monthly-mean rates panel (4 series)."""
+"""Tests for the EIBOR / US monthly-mean rates panel (3 official series)."""
 
 from datetime import date
 from io import BytesIO
 
 import pandas as pd
 import pytest
+from openpyxl import load_workbook
 
 from tests.analysis.uae._helpers import data_lines
 from htfa.monitoring.uae.government_finance.rates import (
@@ -15,37 +16,34 @@ from htfa.monitoring.uae.government_finance.rates import (
     RATES_SERIES,
     US_OVERNIGHT_DISPLAY,
     US_OVERNIGHT_INDICATOR,
-    US_SOFR_12M_DISPLAY,
-    US_SOFR_12M_INDICATOR,
     build_rates_figure,
     load_rates_data,
 )
 
 
 def _workbook_bytes() -> bytes:
-    """构造迷你日度_Wind：阿联酋/美国隔夜与 1 年期利率，倒序存放日值。"""
+    """构造迷你日度_Wind：EIBOR隔夜/1年与美国EFFR，倒序存放日值。"""
 
     rows = [
-        ["Wind", None, None, None, None],
+        ["官方利率", None, None, None],
         [
             "指标名称",
             EIBOR_OVERNIGHT_INDICATOR,
             EIBOR_ONEYEAR_INDICATOR,
             US_OVERNIGHT_INDICATOR,
-            US_SOFR_12M_INDICATOR,
         ],
-        ["频率", "日", "日", "月", "日"],
-        ["单位", "%", "%", "%", "%"],
-        ["来源", "阿联酋央行", "阿联酋央行", "根据新闻整理", "根据新闻整理"],
-        ["更新时间", "2026-08-17", "2026-08-17", "2026-08-17", "2026-08-17"],
-        # 新→旧倒序（与真实 sheet 一致），美国两条某日缺值
-        [date(2026, 8, 2), 8.0, 7.0, 5.0, 4.0],
-        [date(2026, 8, 1), 6.0, 5.0, 4.0, 3.0],
-        [date(2026, 7, 20), 5.0, 4.0, 3.5, 2.5],
-        [date(2026, 7, 15), 3.0, 2.0, None, None],
-        [date(2026, 7, 10), 4.0, 3.0, 3.0, 2.0],
+        ["频率", "日", "日", "日"],
+        ["单位", "%", "%", "%"],
+        ["来源", "阿联酋央行", "阿联酋央行", "美联储纽约分行"],
+        ["更新时间", "2026-08-17", "2026-08-17", "2026-08-17"],
+        # 新→旧倒序（与真实 sheet 一致），美国某日缺值
+        [date(2026, 8, 2), 8.0, 7.0, 5.0],
+        [date(2026, 8, 1), 6.0, 5.0, 4.0],
+        [date(2026, 7, 20), 5.0, 4.0, 3.5],
+        [date(2026, 7, 15), 3.0, 2.0, None],
+        [date(2026, 7, 10), 4.0, 3.0, 3.0],
     ]
-    frame = pd.DataFrame(rows, columns=range(5))
+    frame = pd.DataFrame(rows, columns=range(4))
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         frame.to_excel(
@@ -64,19 +62,47 @@ def test_rates_loader_resamples_daily_to_monthly_mean() -> None:
         EIBOR_OVERNIGHT_DISPLAY,
         EIBOR_ONEYEAR_DISPLAY,
         US_OVERNIGHT_DISPLAY,
-        US_SOFR_12M_DISPLAY,
     ]
     assert list(data.values.index) == [
         pd.Timestamp("2026-07-31"),
     ]
-    # 7 月：阿联酋隔夜=(3+4+5)/3=4，1年=(2+3+4)/3=3；美国隔夜/SOFR=(3+3.5)/2、(2+2.5)/2
+    # 7 月：阿联酋隔夜=(3+4+5)/3=4，1年=(2+3+4)/3=3；美国隔夜=(3+3.5)/2
     assert data.values.loc["2026-07-31", EIBOR_OVERNIGHT_DISPLAY] == pytest.approx(4.0)
     assert data.values.loc["2026-07-31", EIBOR_ONEYEAR_DISPLAY] == pytest.approx(3.0)
     assert data.values.loc["2026-07-31", US_OVERNIGHT_DISPLAY] == pytest.approx(3.25)
-    assert data.values.loc["2026-07-31", US_SOFR_12M_DISPLAY] == pytest.approx(2.25)
 
 
-def test_rates_figure_renders_four_monthly_mean_lines() -> None:
+def test_rates_loader_uses_common_complete_month_for_each_source() -> None:
+    workbook = load_workbook(BytesIO(_workbook_bytes()))
+    sheet = workbook["日度_Wind"]
+    sheet.append([date(2026, 8, 31), 7.0, 6.0, 4.5])
+    sheet.append([date(2026, 9, 10), 7.0, 6.0, 4.5])
+    sheet.append([date(2026, 10, 1), 7.0, 6.0, None])
+    payload = BytesIO()
+    workbook.save(payload)
+    workbook.close()
+
+    data = load_rates_data(payload.getvalue(), file_name="test.xlsx")
+
+    assert data.values.index.max() == pd.Timestamp("2026-08-31")
+    assert all(
+        data.values[column].dropna().index.max() == pd.Timestamp("2026-08-31")
+        for column in RATES_SERIES
+    )
+
+
+def test_rates_loader_rejects_old_news_source() -> None:
+    workbook = load_workbook(BytesIO(_workbook_bytes()))
+    workbook["日度_Wind"].cell(5, 4, "根据新闻整理")
+    payload = BytesIO()
+    workbook.save(payload)
+    workbook.close()
+
+    with pytest.raises(ValueError, match="美联储纽约分行"):
+        load_rates_data(payload.getvalue(), file_name="test.xlsx")
+
+
+def test_rates_figure_renders_three_official_monthly_mean_lines() -> None:
     data = load_rates_data(_workbook_bytes(), file_name="test.xlsx")
 
     figure = build_rates_figure(
@@ -89,18 +115,16 @@ def test_rates_figure_renders_four_monthly_mean_lines() -> None:
     axis = figure.axes[0]
     lines = data_lines(axis)
     assert [line.get_label() for line in lines] == list(RATES_SERIES)
-    # 模板色板与线型循环接管：黑/深蓝/灰/深红，实/虚/点划/点
+    # 模板色板与线型循环接管：黑/深蓝/灰，实/虚/点划
     assert [line.get_color() for line in lines] == [
         "#141414",
         "#1f4e79",
         "#888888",
-        "#8b1a1a",
     ]
     assert [line.get_linestyle() for line in lines] == [
         "-",
         "--",
         "-.",
-        ":",
     ]
     assert axis.get_ylabel() == "%"
     assert axis.get_title() == "阿联酋与美国市场利率（隔夜、1年期）"

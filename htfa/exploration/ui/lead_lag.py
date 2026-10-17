@@ -13,8 +13,11 @@ import numpy as np
 import pandas as pd
 
 from htfa.ui_shared.chart_legend import render_pyplot_figure
-# 配置matplotlib中文字体
-matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans', 'Arial Unicode MS', 'sans-serif']
+from htfa.ui_shared.fonts import matplotlib_font_family
+# 配置当前平台可用的 Matplotlib 中文字体
+_MATPLOTLIB_FONT_FAMILY = matplotlib_font_family()
+matplotlib.rcParams["font.family"] = _MATPLOTLIB_FONT_FAMILY
+matplotlib.rcParams["font.sans-serif"] = _MATPLOTLIB_FONT_FAMILY
 matplotlib.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
 
 from htfa.exploration.analysis.lead_lag import (

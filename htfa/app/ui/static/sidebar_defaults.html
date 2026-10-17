@@ -1,0 +1,33 @@
+<script>
+(() => {
+    if (window.__htfaSidebarInitialized) return;
+    window.__htfaSidebarInitialized = true;
+
+    const closeRestoredSidebar = () => {
+        const sidebar = document.querySelector('[data-testid="stSidebar"]');
+        if (!sidebar) return false;
+        if (sidebar.getAttribute("aria-expanded") === "false") return true;
+        const button = sidebar.querySelector(
+            '[data-testid="stSidebarCollapseButton"] button'
+        );
+        if (!button) return false;
+        button.click();
+        return true;
+    };
+
+    if (closeRestoredSidebar()) return;
+    const observer = new MutationObserver(() => {
+        if (closeRestoredSidebar()) {
+            observer.disconnect();
+            clearTimeout(timeout);
+        }
+    });
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["aria-expanded"],
+    });
+    const timeout = setTimeout(() => observer.disconnect(), 30000);
+})();
+</script>

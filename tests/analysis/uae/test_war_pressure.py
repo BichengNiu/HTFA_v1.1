@@ -18,6 +18,7 @@ from htfa.monitoring.uae.oil.war_pressure import (
     CRUISE_LABEL,
     PRESSURE_LABEL,
     UAV_LABEL,
+    OBSERVATION_DAYS_INDICATOR,
     WarPressureData,
     load_war_pressure_data,
 )
@@ -37,17 +38,18 @@ def _wam_workbook_bytes() -> bytes:
     cruise = [0, 1, 2]
     uavs = [0, 17, 4]
     pressure = [0.0, 100.0, 30.0]
+    observation_days = [28, 31, 30]
     rows = [
-        ["WAM / UAE official source registry", None, None, None, None],
-        ["指标名称", *WAM_INDICATOR_NAMES],
-        ["频率", "月", "月", "月", "月"],
-        ["单位", "枚", "枚", "架", "指数"],
-        ["来源", *(["WAM / UAE official source registry"] * 4)],
-        ["更新时间", *([pd.Timestamp("2026-08-22")] * 4)],
+        ["WAM / UAE official source registry", None, None, None, None, None],
+        ["指标名称", *WAM_INDICATOR_NAMES, OBSERVATION_DAYS_INDICATOR],
+        ["频率", "月", "月", "月", "月", "月"],
+        ["单位", "枚", "枚", "架", "指数", "天"],
+        ["来源", *(["WAM / UAE official source registry"] * 5)],
+        ["更新时间", *([pd.Timestamp("2026-08-22")] * 5)],
     ]
     rows.extend(
-        [date, b, c, u, p]
-        for date, b, c, u, p in zip(dates, ballistic, cruise, uavs, pressure)
+        [stamp, b, c, u, p, days]
+        for stamp, b, c, u, p, days in zip(dates, ballistic, cruise, uavs, pressure, observation_days)
     )
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
@@ -124,6 +126,7 @@ def test_war_pressure_metrics_render_latest_month_four_cards() -> None:
     st_obj = MagicMock()
     st_obj.columns.return_value = tuple(MagicMock() for _ in range(4))
     data = WarPressureData(
+        observation_days=pd.Series([28, 31, 30], index=_sample_values().index),
         values=_sample_values(),
         metadata={},
         source_name="test.xlsx",
@@ -187,13 +190,16 @@ def test_war_pressure_section_renders_algorithm_and_interpretation(monkeypatch) 
     renderer._render_war_pressure_section(
         st_obj,
         WarPressureData(
+            observation_days=pd.Series([28, 31, 30], index=_sample_values().index),
             values=_sample_values(),
             metadata={},
             source_name="test.xlsx",
         ),
     )
 
-    st_obj.expander.assert_called_once_with("指标算法与解读", expanded=True)
+    st_obj.expander.assert_called_once_with(
+        "指标算法与解读", expanded=True, key="uae-indicator-explanation-war",
+    )
     explanation = st_obj.markdown.call_args.args[0]
     assert "9×log1p(弹道导弹数量)" in explanation
     assert "min-max 归一化" in explanation
@@ -216,6 +222,7 @@ def test_oil_panel_places_war_pressure_before_revenue(monkeypatch) -> None:
         renderer,
         "load_war_pressure_data",
         lambda *args, **kwargs: WarPressureData(
+            observation_days=pd.Series([28, 31, 30], index=_sample_values().index),
             values=_sample_values(),
             metadata={},
             source_name="test.xlsx",
@@ -241,6 +248,7 @@ def test_oil_panel_places_war_pressure_before_revenue(monkeypatch) -> None:
         "_render_charts",
         lambda *args: events.append("charts"),
     )
+    st_obj.container = lambda *args, **kwargs: _NullContext()
     st_obj.spinner = lambda *args, **kwargs: _NullContext()
     st_obj.expander = lambda *args, **kwargs: _NullContext()
     st_obj.subheader = lambda *args, **kwargs: None

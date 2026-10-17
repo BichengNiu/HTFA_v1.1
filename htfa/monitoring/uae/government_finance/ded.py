@@ -28,7 +28,6 @@ from htfa.monitoring.uae.plot_helpers import (
 )
 from htfa.data.economic_workbook import (
     EconomicWorkbookReader,
-    METADATA_LABELS,
     SheetSeriesMetadata,
     format_updated_at,
     optional_text,
@@ -48,7 +47,10 @@ DED_INDICATORS: tuple[tuple[str, str], ...] = (
     (ENTERPRISES_DISPLAY, ENTERPRISES_INDICATOR),
     (LICENCES_DISPLAY, LICENCES_INDICATOR),
 )
-ALLOWED_UNITS = {"家", "张"}
+EXPECTED_UNITS = {
+    ENTERPRISES_DISPLAY: "家",
+    LICENCES_DISPLAY: "张",
+}
 _WORKBOOK_READER = EconomicWorkbookReader(
     "uae_monitoring",
     "monitoring.uae",
@@ -144,21 +146,12 @@ def _clean_source(value: str) -> str:
 def _parse_ded_sheet(
     excel_file: pd.ExcelFile,
 ) -> tuple[pd.DataFrame, dict[str, SheetSeriesMetadata]]:
-    """按前六行元数据协议严格解析 DED sheet（两列单位分别为家/张）。"""
-
-    if DED_SHEET not in excel_file.sheet_names:
-        raise ValueError(f"工作簿缺少“{DED_SHEET}”sheet")
+    """按标准元数据布局解析 DED 企业数和执照数。"""
 
     raw = _WORKBOOK_READER.read_raw_sheet(excel_file, sheet_name=DED_SHEET)
-    if raw.shape[0] < 7 or raw.shape[1] < 3:
-        raise ValueError(f"sheet“{DED_SHEET}”不符合前六行元数据协议")
-    for row_index, expected in METADATA_LABELS.items():
-        actual = optional_text(raw.iloc[row_index, 0])
-        if actual != expected:
-            raise ValueError(
-                f"sheet“{DED_SHEET}”第{row_index + 1}行首列应为“{expected}”，"
-                f"实际为“{actual or '空'}”"
-            )
+    if raw.shape[1] < 3:
+        raise ValueError(f"sheet“{DED_SHEET}”缺少两条目标指标")
+    _WORKBOOK_READER.validate_target_sheet(raw, DED_SHEET)
 
     normalized_targets = {
         normalize_indicator_name(indicator_name): display_name
@@ -175,20 +168,19 @@ def _parse_ded_sheet(
     matching_columns: dict[str, int] = {}
     for display_name, indicator_name in DED_INDICATORS:
         columns = candidate_columns.get(display_name, [])
-        compatible = [
-            column_index
-            for column_index in columns
-            if optional_text(raw.iloc[2, column_index]) in {"月", "月度"}
-            and optional_text(raw.iloc[3, column_index]) in ALLOWED_UNITS
-            and bool(optional_text(raw.iloc[4, column_index]))
-        ]
-        if len(compatible) != 1:
+        if len(columns) != 1:
             if not columns:
                 raise ValueError(f"sheet“{DED_SHEET}”缺少指标：{indicator_name}")
+            raise ValueError(f"sheet“{DED_SHEET}”包含重复指标：{indicator_name}")
+        column_index = columns[0]
+        frequency = optional_text(raw.iloc[2, column_index])
+        unit = optional_text(raw.iloc[3, column_index])
+        source = optional_text(raw.iloc[4, column_index])
+        if frequency != "月" or unit != EXPECTED_UNITS[display_name] or not source:
             raise ValueError(
-                f"指标“{indicator_name}”应有唯一一列月度、家/张、来源非空的观测"
+                f"指标“{indicator_name}”的频率、单位或来源不符合当前工作簿契约"
             )
-        matching_columns[display_name] = compatible[0]
+        matching_columns[display_name] = column_index
 
     data_block = raw.iloc[6:, :].dropna(how="all")
     dates = pd.to_datetime(data_block.iloc[:, 0], errors="coerce")
@@ -289,7 +281,6 @@ def build_ded_figure(
 
 
 __all__ = [
-    "ALLOWED_UNITS",
     "DED_INDICATORS",
     "DED_SHEET",
     "DedData",

@@ -14,10 +14,10 @@
 | 466217 | marine_passengers_trips_by_station_monthly | 月 | 水运按站点月度人次（detail，全量） |
 | 469849 | taxis_and_number_of_trips_by_carrier_company_month | 月 | 出租车按运营商月度趟次/车队（detail，全量） |
 | 459282 | average_speed_per_line_buses | 日×时段 | 公交线路平均速度（detail，4 片 ≈ 全量） |
-| 466229 | marine_ridership | 日（交易级） | 水运刷卡交易，用于日度聚合 |
+| 466229 | marine_ridership | 日（交易级） | 官方 JSON 日期字段，用于水运日度计数 |
 | 459803 | bus_ridership | 日（交易级） | 公交刷卡交易，原始文件仅保存在 raw，不入库 |
 
-原始 CSV 全部保存在 ``data/UAE/raw/rta/``；DuckDB 只保留
+原始 CSV/JSON 全部保存在 ``data/UAE/raw/rta/``；DuckDB 只保留
 ``rta_transport_monthly`` / ``rta_transport_daily`` 两张聚合指标表。
 这样既保留可追溯的原始数据，又避免把千万级交易明细复制进主库。
 
@@ -30,13 +30,16 @@ from __future__ import annotations
 import calendar
 import csv
 import gzip
-import sys
+import json
+import re
+import shutil
+import tempfile
 from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
 from typing import Iterator
 
-from .paths import DATA_DIR, SCRIPTS_DIR
+from .paths import DATA_DIR
 
 
 import requests
@@ -96,23 +99,15 @@ _MONTH_ABBR = {
     "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
 }
 
-_LEGACY_TABLES = (
-    "rta_bus_trips_route_monthly",
-    "rta_marine_trips_station_monthly",
-    "rta_taxi_trips_monthly",
-    "rta_bus_speed_daily_detail",
-    "rta_marine_ridership_raw",
-    "rta_bus_ridership_raw",
-)
-
-
 # ---------------------------------------------------------------------------
 # 下载
 # ---------------------------------------------------------------------------
 
 
-def _list_csv_files(dataset_id: int, max_files: int | None = None) -> list[dict]:
-    """分页枚举 dataset-download 元数据，按序返回 CSV 条目（含 folder / file_url）。"""
+def _list_raw_files(
+    dataset_id: int, *, extension: str = "csv"
+) -> list[dict]:
+    """List official export files in the format required by this dataset."""
     files: list[dict] = []
     page = 1
     while True:
@@ -126,49 +121,95 @@ def _list_csv_files(dataset_id: int, max_files: int | None = None) -> list[dict]
         data = resp.json()["data"]
         for meta in data["metadata"]:
             for f in meta["files"]:
-                if f.get("file_extension") == "csv":
+                if f.get("file_extension") == extension:
                     item = dict(f)
                     item["folder"] = meta["file_folder"]
                     files.append(item)
         pag = data.get("pagination") or {}
-        if max_files is not None and len(files) >= max_files:
-            return files[:max_files]
         if page >= (pag.get("page_count") or 1) or not data["metadata"]:
             break
         page += 1
     return files
 
 
-def _download_to(url: str, dest: Path, *, retries: int = 3) -> int:
+def _download_to(
+    url: str, dest: Path, *, retries: int = 3, expected_size: int = 0
+) -> int:
     """流式下载；CDN 虽命名 .gz 但多数实际是明文 CSV，按魔数透明解压。"""
     for attempt in range(retries):
+        temporary_paths: list[Path] = []
         try:
             with requests.get(url, headers=HEADERS, timeout=900, stream=True) as resp:
                 resp.raise_for_status()
                 chunks = resp.iter_content(1 << 20)
                 first = next(chunks, b"")
-                payload = first + b"".join(chunks)
-                if payload.startswith(b"\x1f\x8b"):
-                    payload = gzip.decompress(payload)
-                dest.write_bytes(payload)
-                return len(payload)
+                with tempfile.NamedTemporaryFile(
+                    mode="wb", prefix=".rta-download-", suffix=".tmp",
+                    dir=dest.parent, delete=False,
+                ) as output:
+                    temporary = Path(output.name)
+                    temporary_paths.append(temporary)
+                    output.write(first)
+                    for chunk in chunks:
+                        output.write(chunk)
+                if first.startswith(b"\x1f\x8b"):
+                    with tempfile.NamedTemporaryFile(
+                        mode="wb", prefix=".rta-decoded-", suffix=".tmp",
+                        dir=dest.parent, delete=False,
+                    ) as output:
+                        decoded = Path(output.name)
+                        temporary_paths.append(decoded)
+                        with gzip.open(temporary, "rb") as source:
+                            shutil.copyfileobj(source, output, length=1 << 20)
+                    temporary = decoded
+                size = temporary.stat().st_size
+                if expected_size and size != expected_size:
+                    raise OSError(f"Incomplete RTA export: expected {expected_size}, received {size}")
+                temporary.replace(dest)
+                return size
         except (requests.RequestException, OSError) as exc:
             if attempt == retries - 1:
                 raise
-            if dest.exists():
-                dest.unlink()
+        finally:
+            for temporary in temporary_paths:
+                temporary.unlink(missing_ok=True)
     return 0
 
 
-def _download_dataset(dataset_id: int, max_files: int | None, force: bool) -> list[Path]:
-    """下载某数据集前 max_files 个分片到 raw/rta/<name>/，返回本地路径列表。"""
+def _download_dataset(
+    dataset_id: int, *, force: bool, skip_download: bool = False
+) -> list[Path]:
+    """下载某数据集的官方分片；水运使用 JSON，其余指标使用 CSV。"""
     name = DATASETS[dataset_id]
     dest_dir = RAW_DIR / name
     dest_dir.mkdir(parents=True, exist_ok=True)
-    entries = _list_csv_files(dataset_id, max_files=max_files)
+    extension = "json" if dataset_id == 466229 else "csv"
+    manifest = dest_dir / "download_manifest.json"
+    if skip_download:
+        entries = json.loads(manifest.read_text(encoding="utf-8"))
+        if not isinstance(entries, list) or not entries:
+            raise ValueError(f"RTA offline file manifest is invalid: {manifest}")
+        paths = []
+        for entry in entries:
+            filename = entry["name"]
+            if (
+                not isinstance(filename, str)
+                or Path(filename).name != filename
+                or not filename.startswith(name + "_")
+                or not filename.endswith("." + extension)
+            ):
+                raise ValueError(f"RTA offline file name is invalid: {filename!r}")
+            path = dest_dir / filename
+            if path.stat().st_size != entry["bytes"]:
+                raise ValueError(f"RTA offline file size differs from its manifest: {filename}")
+            paths.append(path)
+        return paths
+    entries = _list_raw_files(dataset_id, extension=extension)
+    if not entries:
+        raise ValueError(f"RTA official export listing is empty: {name}")
     paths: list[Path] = []
     for f in entries:
-        out = dest_dir / f"{f['folder']}.csv"
+        out = dest_dir / f"{f['folder']}.{extension}"
         if out.is_file() and not force:
             declared_size = int(f.get("file_size") or 0)
             # Data Dubai publishes timestamped folders, but may also replace
@@ -177,8 +218,22 @@ def _download_dataset(dataset_id: int, max_files: int | None, force: bool) -> li
             if not declared_size or out.stat().st_size == declared_size:
                 paths.append(out)
                 continue
-        _download_to(f["file_url"], out)
+        _download_to(f["file_url"], out, expected_size=int(f.get("file_size") or 0))
         paths.append(out)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", prefix=".rta-manifest-", suffix=".tmp",
+            dir=dest_dir, delete=False,
+        ) as target:
+            temporary = Path(target.name)
+            json.dump(
+                [{"name": path.name, "bytes": path.stat().st_size} for path in paths], target
+            )
+        temporary.replace(manifest)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
     return paths
 
 
@@ -219,7 +274,7 @@ def _month_from_label(month_text: str, year_text: str) -> date | None:
 
 
 def _iter_rows(path: Path):
-    with path.open("r", encoding="utf-8", errors="replace", newline="") as handle:
+    with path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.reader(handle)
         next(reader, None)
         yield from reader
@@ -289,6 +344,7 @@ def _aggregate_taxi_monthly(
             period = _to_date(report_date)
             if period is None or not carrier:
                 continue
+            period = _month_date(period.year, period.month)
             trips_n = _to_bigint(trips)
             if trips_n is None:
                 continue
@@ -307,21 +363,42 @@ def _aggregate_taxi_monthly(
     return trips_by_period, fleet_by_period
 
 
+@contextmanager
+def _normalized_csv(path: Path) -> Iterator[Path]:
+    """Normalize mixed CSV line endings without altering fields or dropping rows."""
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", newline="\n", suffix=".csv",
+            prefix=".rta-normalized-", dir=path.parent, delete=False,
+        ) as target:
+            temporary = Path(target.name)
+            with path.open(encoding="utf-8-sig", newline=None) as source:
+                shutil.copyfileobj(source, target, length=1024 * 1024)
+        yield temporary
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
 def _aggregate_bus_speed(con, paths: list[Path]) -> dict[date, float]:
     totals: dict[date, tuple[float, int]] = {}
     for path in paths:
-        rows = con.execute(
-            "SELECT try_cast(date AS DATE) AS day, "
-            "SUM(try_cast(average_speed AS DOUBLE)) AS total_speed, "
-            "COUNT(try_cast(average_speed AS DOUBLE)) AS speed_count "
-            "FROM read_csv(?, header=true, columns=?, ignore_errors=true) "
-            "WHERE try_cast(date AS DATE) IS NOT NULL "
-            "GROUP BY day",
-            [str(path), {"average_speed": "VARCHAR", "date": "VARCHAR",
-                         "route_direction": "VARCHAR", "route_name": "VARCHAR",
-                         "service_type": "VARCHAR", "time_period": "VARCHAR",
-                         "load_timestamp": "VARCHAR"}],
-        ).fetchall()
+        with _normalized_csv(path) as csv_path:
+            rows = con.execute(
+                "SELECT try_cast(date AS DATE) AS day, "
+                "SUM(try_cast(average_speed AS DOUBLE)) AS total_speed, "
+                "COUNT(try_cast(average_speed AS DOUBLE)) AS speed_count "
+                "FROM read_csv(?, header=true, columns=?, quote='\"', escape='\"') "
+                "WHERE try_cast(date AS DATE) IS NOT NULL "
+                "GROUP BY day",
+                [str(csv_path), {
+                    "average_speed": "VARCHAR", "date": "VARCHAR",
+                    "route_direction": "VARCHAR", "route_name": "VARCHAR",
+                    "service_type": "VARCHAR", "time_period": "VARCHAR",
+                    "load_timestamp": "VARCHAR",
+                }],
+            ).fetchall()
         for day, total_speed, speed_count in rows:
             previous_speed, previous_count = totals.get(day, (0.0, 0))
             totals[day] = (
@@ -335,21 +412,34 @@ def _aggregate_bus_speed(con, paths: list[Path]) -> dict[date, float]:
     }
 
 
-def _aggregate_marine_daily(con, paths: list[Path]) -> dict[date, int]:
+def _aggregate_marine_daily(paths: list[Path]) -> dict[date, int]:
+    """Count the official JSON export's explicit transaction dates.
+
+    The exporter joins NDJSON and JSON array fragments. Some fragments lose
+    unrelated leading fields, but retain their complete txn_date field. The
+    daily indicator needs only that field; each record must contain exactly
+    one valid date. Separator lines contain no records.
+    """
     totals: dict[date, int] = {}
+    date_field = re.compile(r'(?<!\\)"txn_date"\s*:\s*"([^"\\]*)"')
     for path in paths:
-        rows = con.execute(
-            "SELECT try_cast(txn_date AS DATE) AS day, COUNT(*) AS records "
-            "FROM read_csv(?, header=true, columns=?, ignore_errors=true) "
-            "WHERE try_cast(txn_date AS DATE) IS NOT NULL "
-            "GROUP BY day",
-            [str(path), {"line_name": "VARCHAR", "location": "VARCHAR",
-                         "txn_date": "VARCHAR", "txn_time": "VARCHAR",
-                         "txn_type": "VARCHAR", "zone": "VARCHAR",
-                         "load_timestamp": "VARCHAR"}],
-        ).fetchall()
-        for day, records in rows:
-            totals[day] = totals.get(day, 0) + int(records or 0)
+        with path.open(encoding="utf-8-sig") as source:
+            for line_number, line in enumerate(source, 1):
+                if not line.strip(" \t\r\n,[]"):
+                    continue
+                dates = date_field.findall(line)
+                if len(dates) != 1:
+                    raise ValueError(
+                        f"RTA marine JSON contains missing or invalid dates: "
+                        f"{path.name}:{line_number}"
+                    )
+                try:
+                    day = date.fromisoformat(dates[0])
+                except ValueError as exc:
+                    raise ValueError(
+                        f"RTA marine JSON contains invalid dates: {path.name}:{line_number}"
+                    ) from exc
+                totals[day] = totals.get(day, 0) + 1
     return totals
 
 
@@ -441,36 +531,17 @@ def _transaction(con) -> Iterator[None]:
 
 
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
-    """下载 raw CSV -> 聚合指标，全量替换两张 rta_transport_* 表。"""
+    """下载官方 CSV/JSON，聚合后全量替换两张 rta_transport_* 表。"""
     RAW_DIR.mkdir(parents=True, exist_ok=True)
 
-    def has_raw(name: str) -> bool:
-        target = RAW_DIR / name
-        return target.is_dir() and bool(list(target.glob("*.csv")))
-
-    plans = {
-        459793: None,
-        466217: None,
-        469849: None,
-        459282: None,
-        466229: None,
-    }
-    missing = [
-        DATASETS[dataset_id]
-        for dataset_id in plans
-        if not has_raw(DATASETS[dataset_id])
-    ]
-    if skip_download and missing:
-        raise FileNotFoundError("skip-download 但以下 RTA 原始件缺失: " + ", ".join(missing))
+    plans = (459793, 466217, 469849, 459282, 466229)
 
     # 下载：月度小文件、speed、marine 全量；bus 交易原始件不参与任何指标，保留既有 raw 文件但不再下载。
     got: dict[int, list[Path]] = {}
-    for dataset_id, max_files in plans.items():
-        got[dataset_id] = _download_dataset(dataset_id, max_files, force)
+    for dataset_id in plans:
+        got[dataset_id] = _download_dataset(dataset_id, force=force, skip_download=skip_download)
 
     with _transaction(con):
-        for table in _LEGACY_TABLES:
-            con.execute(f"DROP TABLE IF EXISTS {table}")
         for table in _TABLE_DDL:
             db.ensure(con, table, _TABLE_DDL[table])
             con.execute(f"DELETE FROM {table}")
@@ -478,7 +549,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         marine_monthly = _aggregate_marine_station_monthly(got[466217])
         taxi_trips, taxi_fleet = _aggregate_taxi_monthly(got[469849])
         bus_speed_daily = _aggregate_bus_speed(con, got[459282])
-        marine_daily = _aggregate_marine_daily(con, got[466229])
+        marine_daily = _aggregate_marine_daily(got[466229])
         _rebuild_aggregates(
             con,
             monthly={
@@ -497,6 +568,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     note = (
         f"月度聚合 {sum(len(values) for values in (bus_monthly, marine_monthly, taxi_trips, taxi_fleet))} 行；"
         f"日度聚合 {len(bus_speed_daily) + len(marine_daily)} 行；"
+        f"水运按官方 JSON 日期字段完整计数 {sum(marine_daily.values()):,} 条；"
         "raw 明细仅保存在 data/UAE/raw/rta/，不写入 DuckDB"
     )
     return {
@@ -596,10 +668,3 @@ def merge(workbook_path: Path) -> dict:
         "status": "ok",
         "note": f"{len(monthly_obs)} 个月 / {len(daily_obs)} 天写入工作簿",
     }
-
-
-if __name__ == "__main__":
-    print("source_rta.py 自检：")
-    print("  update(con, ...) 从 Data Dubai raw CSV 聚合 5 个 RTA 数据集 →")
-    print("    仅写入 rta_transport_monthly/daily 指标长表")
-    print("  merge(workbook_path) 写回 月度_RTA交通 / 日度_RTA交通")

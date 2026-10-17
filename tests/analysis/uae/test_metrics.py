@@ -144,10 +144,11 @@ def test_render_metric_cards_renders_dash_for_missing() -> None:
             ("C", "3", "较上月 +0.10 个百分点", "help-c"),
             ("D", "4", "环比 +4.0%", "help-d"),
         ],
-        n=4,
     )
 
-    st_obj.columns.assert_called_once_with(4)
+    st_obj.columns.assert_not_called()
+    st_obj.container.assert_called_once_with(horizontal=True, horizontal_alignment="left")
+    assert all(call.kwargs["width"] == 300 for call in st_obj.metric.call_args_list)
     assert st_obj.metric.call_count == 4
     args = [call.args for call in st_obj.metric.call_args_list]
     assert args[0][1] == "1"

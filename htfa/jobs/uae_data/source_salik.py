@@ -10,7 +10,7 @@
 - 入库表：`salik_active_vehicles_quarterly`（period 季末日, value 百万辆, source, note）。
 
 本模块只负责把官方 PDF 提取后写入 DuckDB；Excel 的「季度_Salik」由
-``source_extended.merge`` 统一重建，避免来源模块绕过 DuckDB 直接写表。
+``merge()`` 统一重建，避免来源模块绕过 DuckDB 直接写表。
 
 单位：百万辆（mn）。
 """
@@ -20,16 +20,18 @@ from __future__ import annotations
 import csv
 import os
 import re
-import sys
 import tempfile
 from calendar import monthrange
 from datetime import date
 from pathlib import Path
+from typing import Any
 from urllib.parse import unquote, urljoin, urlparse
 
 from pypdf import PdfReader
 
-from .paths import DATA_DIR, SCRIPTS_DIR
+from .paths import DATA_DIR
+
+from .workbook_sheet_writer import merge_source_sheet
 
 
 from . import db  # noqa: E402
@@ -39,6 +41,7 @@ from ._official_download import download_file, fetch_bytes  # noqa: E402
 # 常量
 # ---------------------------------------------------------------------------
 
+TARGET_SHEET = "季度_Salik"
 RAW_CSV = DATA_DIR / "raw" / "salik" / "registered_active_vehicles_quarterly.csv"
 RAW_DIR = DATA_DIR / "raw" / "salik"
 SALIK_RESULTS_URL = "https://www.salik.ae/en/investors/results-and-reports?download=1"
@@ -63,7 +66,7 @@ _PDF_LINK_RE = re.compile(
     re.I,
 )
 _PERIOD_RE = re.compile(
-    r"(?:(?:q|quarter)[_-]?(?P<q>[1-4])|(?P<h>h1)|(?P<fy>fy))[_-]?(?P<year>20\d{2})",
+    r"(?:(?:q|quarter)[_-]?(?P<q>[1-4])|(?P<h>h[12])|(?P<nine>9m)|(?P<fy>fy))[\W_]*(?P<year>20\d{2})",
     re.I,
 )
 _ACTIVE_VEHICLES_RE = re.compile(
@@ -72,7 +75,6 @@ _ACTIVE_VEHICLES_RE = re.compile(
     r"(?:c\.?\s*)?(?P<value>\d+(?:\.\d+)?)\s*mn",
     re.I,
 )
-_CHART_VALUE_RE = re.compile(r"(?<![\d.])(?P<value>\d+(?:\.\d+)?)\s*mn\b", re.I)
 
 
 def _period_from_filename(name: str) -> date | None:
@@ -80,7 +82,9 @@ def _period_from_filename(name: str) -> date | None:
     if match is None:
         return None
     year = int(match.group("year"))
-    quarter = 2 if match.group("h") else (4 if match.group("fy") else int(match.group("q")))
+    quarter = (int(match.group("h")[1]) * 2 if match.group("h")
+               else 3 if match.group("nine")
+               else 4 if match.group("fy") else int(match.group("q")))
     month = quarter * 3
     return date(year, month, monthrange(year, month)[1])
 
@@ -88,8 +92,8 @@ def _period_from_filename(name: str) -> date | None:
 def _discover_official_pdfs() -> list[tuple[date, str, Path]]:
     """Find Salik investor presentations from the official IR page."""
 
-    html = fetch_bytes(SALIK_RESULTS_URL, referer="https://www.salik.ae/").decode(
-        "utf-8", errors="replace"
+    html = fetch_bytes(SALIK_RESULTS_URL, referer="https://www.salik.ae/", browser_transport=True).decode(
+        "utf-8"
     )
     found: dict[str, tuple[date, str, Path]] = {}
     for match in _PDF_LINK_RE.finditer(html):
@@ -98,67 +102,42 @@ def _discover_official_pdfs() -> list[tuple[date, str, Path]]:
         parsed = urlparse(url)
         filename = unquote(Path(parsed.path).name)
         lower = filename.casefold()
-        if "financial-statements" not in parsed.path.casefold():
+        if not any(folder in parsed.path.casefold() for folder in ("financial-statements", "other-reports")):
             continue
-        if not any(word in lower for word in ("presentation", "investor", "earnings")):
+        if not any(word in lower for word in ("presentation", "investor")):
             continue
         period = _period_from_filename(filename)
         if period is None:
-            # The page path carries the period when a filename is abbreviated.
-            path_match = re.search(r"/(20\d{2})/(Q1|H1|Q2|Q3|Q4)/", parsed.path, re.I)
-            if path_match:
-                suffix = f"{path_match.group(2)}_{path_match.group(1)}"
-                period = _period_from_filename(suffix)
-        if period is None:
-            continue
+            if not re.search(r"(?:q[1-4]|h[12]|9m|fy)[\W_]", lower):
+                # General corporate decks dated by publication month do not
+                # identify a financial reporting quarter.
+                continue
+            raise ValueError(f"Salik investor PDF filename has no reporting period: {filename}")
         found[url] = (period, url, RAW_DIR / filename)
+    if not found:
+        raise ValueError("Salik investor relations page contains no recognized presentation PDFs")
     return sorted(found.values(), key=lambda item: item[0])
 
 
-def _csv_latest_period() -> date | None:
-    if not RAW_CSV.is_file():
-        return None
-    latest: date | None = None
-    with RAW_CSV.open(encoding="utf-8-sig", newline="") as handle:
-        for record in csv.DictReader(handle):
-            text = (record.get("period_end") or "").strip()
-            if not text:
-                continue
-            try:
-                period = date.fromisoformat(text)
-            except ValueError:
-                continue
-            latest = period if latest is None or period > latest else latest
-    return latest
-
-
-def _download_presentations(*, force: bool) -> tuple[int, int, list[str]]:
-    latest = _csv_latest_period()
+def _download_presentations(*, force: bool) -> tuple[int, int]:
     downloaded = 0
     existing = 0
-    errors: list[str] = []
     for period, url, target in _discover_official_pdfs():
-        # Historical values already compiled manually do not need to be
-        # downloaded again. Include the latest known period so a previously
-        # blank value can be filled when Salik later publishes an absolute KPI.
-        if latest is not None and period < latest:
-            continue
-        try:
-            status = download_file(
-                url,
-                target,
-                force=force,
-                min_bytes=1024,
-                referer=SALIK_RESULTS_URL,
-            )
-        except Exception as exc:  # noqa: BLE001 - keep local investor cache usable
-            errors.append(f"{target.name}: {exc}")
-            continue
+        # Backfill missing quarters too; presentations often contain the
+        # absolute vehicle KPI while earnings slides contain only YoY growth.
+        status = download_file(
+            url,
+            target,
+            force=force,
+            min_bytes=1024,
+            referer=SALIK_RESULTS_URL,
+            browser_transport=True,
+        )
         if status == "downloaded":
             downloaded += 1
         else:
             existing += 1
-    return downloaded, existing, errors
+    return downloaded, existing
 
 
 def _extract_absolute_value(path: Path) -> float | None:
@@ -170,19 +149,10 @@ def _extract_absolute_value(path: Path) -> float | None:
     match = _ACTIVE_VEHICLES_RE.search(text)
     if match:
         return float(match.group("value"))
-    # Some older decks expose only the chart label. This fallback is limited
-    # to the local chart block and takes the last explicit ``mn`` number; it
-    # does not convert the Q1 2026 ``+8.4%`` disclosure into an absolute value.
-    marker = re.search(r"registered\s+active\s+vehicles", text, re.I)
-    if marker:
-        block = text[marker.start() : marker.start() + 700]
-        values = [float(item.group("value")) for item in _CHART_VALUE_RE.finditer(block)]
-        if values:
-            return values[-1]
     return None
 
 
-def _refresh_csv_from_pdfs() -> tuple[int, list[str]]:
+def _refresh_csv_from_pdfs() -> int:
     """Merge newly extracted official values into the cached compilation CSV."""
 
     if not RAW_CSV.is_file():
@@ -195,16 +165,11 @@ def _refresh_csv_from_pdfs() -> tuple[int, list[str]]:
         if record.get("period_end", "").strip()
     }
     added = 0
-    warnings: list[str] = []
     for path in sorted(RAW_DIR.glob("*.pdf")):
         period = _period_from_filename(path.name)
         if period is None:
-            continue
-        try:
-            value = _extract_absolute_value(path)
-        except Exception as exc:  # noqa: BLE001 - one malformed PDF must not erase history
-            warnings.append(f"{path.name}: {exc}")
-            continue
+            raise ValueError(f"Salik PDF filename has no reporting period: {path.name}")
+        value = _extract_absolute_value(path)
         if value is None:
             continue
         key = period.isoformat()
@@ -241,7 +206,7 @@ def _refresh_csv_from_pdfs() -> tuple[int, list[str]]:
             os.unlink(temporary_name)
         except FileNotFoundError:
             pass
-    return added, warnings
+    return added
 
 
 # ---------------------------------------------------------------------------
@@ -259,15 +224,27 @@ def _read_rows() -> list[dict]:
         for record in reader:
             period_end = record.get("period_end", "").strip()
             value_text = (record.get("vehicles_mn") or "").strip()
-            if not period_end or not value_text:
+            if not period_end:
+                if value_text:
+                    raise ValueError("Salik CSV row has a value but no period_end")
+                continue
+            try:
+                period = date.fromisoformat(period_end)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Salik CSV row has invalid period_end: {period_end!r}"
+                ) from exc
+            if not value_text:
                 continue
             try:
                 value = float(value_text)
-            except ValueError:
-                continue
+            except ValueError as exc:
+                raise ValueError(
+                    f"Salik CSV row has invalid vehicles_mn: {value_text!r}"
+                ) from exc
             rows.append(
                 {
-                    "period": date.fromisoformat(period_end),
+                    "period": period,
                     "value": value,
                     "source": record.get("source", "").strip(),
                     "note": record.get("note", "").strip(),
@@ -282,19 +259,12 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
 
     download_note = ""
     if not skip_download:
-        try:
-            # Refresh the latest discovered presentation even when its URL is
-            # unchanged; investor decks may be corrected after publication.
-            downloaded, existing, download_errors = _download_presentations(force=True)
-            download_note = f"官网缓存：新增 {downloaded}，复用 {existing}"
-            if download_errors:
-                download_note += f"；下载警告 {len(download_errors)} 条（{download_errors[0]}）"
-        except Exception as exc:  # noqa: BLE001 - cached PDF/CSV remain usable
-            if not RAW_CSV.is_file():
-                raise
-            download_note = f"官网发现失败，使用本地缓存：{exc}"
+        # Refresh the latest discovered presentation even when its URL is
+        # unchanged; investor decks may be corrected after publication.
+        downloaded, existing = _download_presentations(force=True)
+        download_note = f"官网缓存：新增 {downloaded}，复用 {existing}"
 
-    extracted, extraction_warnings = _refresh_csv_from_pdfs()
+    extracted = _refresh_csv_from_pdfs()
     rows = _read_rows()
     if not rows:
         raise ValueError("salik_active_vehicles_quarterly 输入为空，拒绝入库")
@@ -325,27 +295,28 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     periods = [row["period"].isoformat() for row in rows]
     note = (
         f"{len(rows)} 个季末观测（{periods[0]} 至 {periods[-1]}），"
-        "由 source_extended 写入 Excel"
+        "由 merge() 从 DuckDB 写入 Excel"
     )
     if extracted:
         note += f"；PDF 自动补入 {extracted} 期"
-    if extraction_warnings:
-        note += f"；PDF 解析警告 {len(extraction_warnings)} 条（{extraction_warnings[0]}）"
     if download_note:
         note += f"；{download_note}"
     return {"status": "ok", "rows": len(rows), "note": note}
 
 
-def merge(workbook_path: Path) -> dict:
-    """由 ``source_extended.merge`` 统一写季度_Salik。"""
+def _sheet_spec(con) -> dict[str, Any]:
+    indicator = INDICATOR_NAME
+    rows = [(period, {indicator: value}) for period, value in con.execute(
+        "SELECT period, value FROM salik_active_vehicles_quarterly ORDER BY period"
+    ).fetchall()]
     return {
-        "status": "skipped",
-        "note": "Salik 已入 DuckDB；Excel 由 source_extended.merge 统一写入",
+        "name": TARGET_SHEET,
+        "title": "Salik 注册活跃车辆季度指标",
+        "indicators": [indicator],
+        "rows": rows,
     }
 
 
-if __name__ == "__main__":
-    print("source_salik.py 自检：")
-    print("  update(con, ...) 自动下载/解析 Salik 官方投资者演示并刷新编译 CSV")
-    print("    → 入长表 salik_active_vehicles_quarterly（季末日, 百万辆）")
-    print("  merge() 由 source_extended.merge 统一写入 季度_Salik")
+def merge(workbook_path: Path) -> dict:
+    """Rebuild this source's workbook sheet from DuckDB."""
+    return merge_source_sheet(workbook_path, _sheet_spec)

@@ -51,6 +51,49 @@ _DOTT_HEADERS = [
 ]
 
 
+@pytest.mark.parametrize("dual_axis", [False, True])
+def test_transport_charts_render_and_export_with_base_canvas(monkeypatch, dual_axis):
+    from matplotlib.figure import Figure
+    from htfa.monitoring.uae.transport import charts
+
+    original = charts.plot_series
+    figures = []
+
+    def plot_on_base_canvas(*args, **kwargs):
+        figure = Figure(figsize=kwargs["figsize"])
+        figures.append(figure)
+        return original(*args, ax=figure.add_subplot(), **kwargs)
+
+    monkeypatch.setattr(charts, "plot_series", plot_on_base_canvas)
+    values = pd.DataFrame(
+        {"passengers": [100, 120, 140], "freight": [80, 100, 120]},
+        index=pd.date_range("2026-07-01", periods=3, freq="MS"),
+    )
+    options = dict(
+        columns=("passengers", "freight"), title="Transport",
+        source_text="Public data", last_month=pd.Period("2026-09", freq="M"),
+        legend_labels=("Passengers (people)", "Freight (lb)"),
+    )
+    if dual_axis:
+        figure = charts.build_dual_axis_figure(
+            values, **options, left_columns=("passengers",),
+            right_columns=("freight",),
+            units={"passengers": "人次", "freight": "磅"},
+        )
+    else:
+        figure = charts.build_multi_series_figure(values, **options, unit="吨")
+
+    assert figure is figures[0]
+    assert len(figure.axes) == (2 if dual_axis else 1)
+    assert [text.get_text() for text in figure.axes[0].get_legend().get_texts()] == (
+        ["Passengers（左轴）", "Freight（右轴）"]
+        if dual_axis else ["Passengers", "Freight"]
+    )
+    output = BytesIO()
+    figure.savefig(output, format="png")
+    assert output.getvalue().startswith(b"\x89PNG")
+
+
 def _indicator_sheet_rows(
     *,
     title: str,
@@ -454,6 +497,12 @@ def test_dubai_air_figure_combines_awbs_and_total_on_two_axes() -> None:
 
     assert figure.axes[0].get_ylabel() == "万张"
     assert figure.axes[1].get_ylabel() == "万吨"
+    assert [text.get_text() for text in figure.axes[0].get_legend().get_texts()] == [
+        "迪拜航空货运进口运单数（左轴）",
+        "迪拜航空货运出口运单数（左轴）",
+        "迪拜航空货运进口总量（右轴）",
+        "迪拜航空货运出口总量（右轴）",
+    ]
 
 
 def test_us_uae_air_figure_draws_passenger_and_freight_lines() -> None:
@@ -488,8 +537,8 @@ def test_us_uae_air_figure_draws_passenger_and_freight_lines() -> None:
     legend = figure.axes[0].get_legend()
     assert legend is not None
     assert [text.get_text() for text in legend.get_texts()] == [
-        "美国—阿联酋航空旅客",
-        "美国—阿联酋航空货运",
+        "美国—阿联酋航空旅客（左轴）",
+        "美国—阿联酋航空货运（右轴）",
     ]
 
 
@@ -497,8 +546,8 @@ def test_section_renders_two_charts_and_explanation(monkeypatch) -> None:
     data = load_transport_data(_workbook_bytes(), file_name="test.xlsx")
     monkeypatch.setattr(
         renderer,
-        "load_transport_from_duckdb",
-        lambda: data,
+        "load_transport_data",
+        lambda content, file_name, **kwargs: data,
     )
     st_obj = MagicMock()
     metric_columns = tuple(MagicMock() for _ in range(4))
@@ -517,7 +566,11 @@ def test_section_renders_two_charts_and_explanation(monkeypatch) -> None:
 
     monkeypatch.setattr(renderer, "_render_chart", _capture_render)
 
-    result = renderer.render_transport_section(st_obj)
+    result = renderer.render_transport_section(
+        st_obj,
+        b"workbook",
+        "test.xlsx",
+    )
 
     assert result["status"] == "success"
     assert result["as_of"] == "2025-05"
@@ -526,6 +579,9 @@ def test_section_renders_two_charts_and_explanation(monkeypatch) -> None:
     assert calls.count("subheader") == 1
     assert st_obj.subheader.call_args.args[0] == "交通物流"
     assert st_obj.metric.call_count == 8
+    st_obj.container.assert_called_once_with(
+        horizontal=True, horizontal_alignment="left"
+    )
     assert [call.args[0] for call in st_obj.metric.call_args_list] == [
         "阿联酋港口进口量",
         "阿联酋港口出口量",
@@ -541,7 +597,7 @@ def test_section_renders_two_charts_and_explanation(monkeypatch) -> None:
         for call in st_obj.metric.call_args_list
     )
     assert st_obj.columns.call_args.kwargs["gap"] == "small"
-    assert st_obj.columns.call_count == 4
+    assert st_obj.columns.call_count == 2
     assert left.pyplot.call_count == 2
     assert right.pyplot.call_count == 2
     assert left.download_button.call_count == 2
@@ -568,10 +624,14 @@ def test_section_loader_failure_shows_error_and_returns_error_status(
     def _explode(*args, **kwargs):
         raise ValueError("月度_PortWatch 缺少霍尔木兹指标")
 
-    monkeypatch.setattr(renderer, "load_transport_from_duckdb", _explode)
+    monkeypatch.setattr(renderer, "load_transport_data", _explode)
     st_obj = MagicMock()
 
-    result = renderer.render_transport_section(st_obj)
+    result = renderer.render_transport_section(
+        st_obj,
+        b"workbook",
+        "test.xlsx",
+    )
 
     assert result["status"] == "error"
     assert st_obj.error.call_count == 1
@@ -582,8 +642,8 @@ def test_cell_failure_warns_cell_and_keeps_other_chart(monkeypatch) -> None:
     data = load_transport_data(_workbook_bytes(), file_name="test.xlsx")
     monkeypatch.setattr(
         renderer,
-        "load_transport_from_duckdb",
-        lambda: data,
+        "load_transport_data",
+        lambda content, file_name, **kwargs: data,
     )
     st_obj = MagicMock()
     metric_columns = tuple(MagicMock() for _ in range(4))
@@ -619,7 +679,11 @@ def test_cell_failure_warns_cell_and_keeps_other_chart(monkeypatch) -> None:
 
     monkeypatch.setattr(renderer, "_render_chart", _fail_left)
 
-    result = renderer.render_transport_section(st_obj)
+    result = renderer.render_transport_section(
+        st_obj,
+        b"workbook",
+        "test.xlsx",
+    )
 
     assert result["status"] == "success"
     assert left.warning.call_count == 1

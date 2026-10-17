@@ -32,7 +32,7 @@ def test_workspace_does_not_use_process_wide_cache() -> None:
         assert not _cached_functions(path), path
 
 
-def test_only_fixed_weight_resource_uses_streamlit_process_cache() -> None:
+def test_only_fixed_weights_and_versioned_uae_data_use_streamlit_process_cache() -> None:
     cached = {}
     for path in (PROJECT_ROOT / "htfa").rglob("*.py"):
         functions = _cached_functions(path)
@@ -42,5 +42,14 @@ def test_only_fixed_weight_resource_uses_streamlit_process_cache() -> None:
     assert cached == {
         "htfa/monitoring/industrial/utils/data_cache.py": {
             "load_weights_data"
-        }
+        },
+        "htfa/monitoring/uae/renderer.py": {"_build_monitoring_dashboard_cached"},
+        "htfa/monitoring/uae/oil/renderer.py": {"_load_oil_market_cached"},
+        "htfa/monitoring/uae/real_estate/renderer.py": {"_load_real_estate_cached"},
+        "htfa/monitoring/uae/government_finance/renderer.py": {
+            "_load_government_finance_cached", "_load_foreign_labor_cached",
+            "_load_rates_cached", "_load_foreign_inflow_cached",
+            "_load_private_credit_cached", "_load_ded_cached", "_load_pmi_cached",
+            "_load_payment_cached", "_load_search_index_cached",
+        },
     }
