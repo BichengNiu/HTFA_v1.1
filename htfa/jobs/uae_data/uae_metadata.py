@@ -408,6 +408,12 @@ INDICATOR_DEFINITIONS: tuple[dict[str, Any], ...] = (
 # dictionary so that dimensions such as reporter, partner, portid, and
 # transaction_id are documented without becoming selectable workbook series.
 _COLUMN_MEANINGS: dict[str, tuple[str, str, str | None, str | None]] = {
+    "indicator": ("指标维度", "与指标字典一致的报告指标名称", "meta_indicator_dictionary", None),
+    "source_url": ("来源", "官方来源地址，不含 API 密钥", None, None),
+    "source_file": ("来源", "本地原始缓存文件名", None, None),
+    "production_mbd": ("产量", "石油及其他液体日产量，百万桶/天", None,
+                       "季度值按月度有效观测的日数加权；不包含缺月季度"),
+    "data_flag": ("质量标记", "EIA 官方观测质量标记", None, "保留官方估计等标记，不作为数值指标"),
     "period": ("时间", "观测期或月末日期", None, None),
     "month": ("时间", "观测月份或月末日期", None, None),
     "date": ("时间", "观测日期", None, None),
@@ -451,6 +457,9 @@ _COLUMN_MEANINGS: dict[str, tuple[str, str, str | None, str | None]] = {
 }
 
 _DETAIL_OBJECTS = (
+    "fcsc_gdp_quarterly",
+    "eia_liquids_monthly",
+    "eia_liquids_quarterly",
     "foreign_labour_monthly",
     "ded_monthly",
     "ded_monthly_by_type",

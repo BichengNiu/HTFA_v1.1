@@ -401,3 +401,20 @@ def test_industry_diagnostics_preserves_missing_quarters_and_rejects_gaps():
             history_min_periods=2,
             persistence_window=2,
         )
+
+
+def test_industry_weights_honor_absolute_rounding_tolerance_without_rescaling():
+    index = pd.period_range("2024Q1", periods=8, freq="Q")
+    a = pd.Series(range(40, 48), index=index, dtype=float)
+    b = pd.Series(range(60, 68), index=index, dtype=float)
+    total = a + b + 0.001
+    result = calculate_industry_diagnostics(
+        total, {"a": a, "b": b}, absolute_tolerance=0.002,
+    )
+    residual = result.contribution_result.additivity.residual
+    assert residual.iloc[-1] == pytest.approx(0.001)
+    assert result.contribution_result.additivity.within_tolerance.all()
+    with pytest.raises(ValueError, match="行业权重之和"):
+        calculate_industry_diagnostics(
+            total + 0.01, {"a": a, "b": b}, absolute_tolerance=0.002,
+        )

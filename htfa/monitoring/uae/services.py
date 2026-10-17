@@ -27,6 +27,10 @@ from htfa.monitoring.uae.results import (
     MonitoringDashboardResult,
 )
 
+# FCSC historical levels are rounded to million AED. The report uses billion
+# AED: the total and 16 component values each contribute at most 0.0005.
+_GDP_ROUNDING_ABSOLUTE_TOLERANCE = (len(INDUSTRY_NAMES) + 1) * 0.0005
+
 
 def _period_label(value: Any) -> str:
     if isinstance(value, pd.Period):
@@ -158,7 +162,9 @@ def _build_industry_price_volume_quadrant(
     shares = real_frame.div(nonoil, axis=0)
     share_error = shares.sum(axis=1).sub(1).abs()
     max_share_error = float(share_error.max())
-    if max_share_error > 1e-8:
+    outside = ((share_error > 1e-8)
+               & (share_error * nonoil.abs() > _GDP_ROUNDING_ABSOLUTE_TOLERANCE))
+    if outside.any():
         raise ValueError(
             "行业实际GDP占非油实际GDP比例未加总为1："
             f"最大误差为{max_share_error:.12g}"
@@ -175,6 +181,7 @@ def _build_industry_price_volume_quadrant(
                     deflator_growth.loc[period].to_numpy()
                 ),
                 "实际GDP占非油GDP比例": shares.loc[period].to_numpy(),
+                "非油实际GDP（十亿迪拉姆）": float(nonoil.loc[period]),
             }
         ).dropna()
         if len(snapshot) == len(real_frame.columns):
@@ -248,7 +255,7 @@ def build_growth_panel(bundle: UAEDataBundle) -> MacroPanelResult:
             for column in industry_series
         },
         periods=4,
-        absolute_tolerance=1e-5,
+        absolute_tolerance=_GDP_ROUNDING_ABSOLUTE_TOLERANCE,
         relative_tolerance=1e-10,
     )
     industry_contributions = industry_diagnostics.contribution_result
@@ -336,7 +343,7 @@ def build_growth_panel(bundle: UAEDataBundle) -> MacroPanelResult:
         ),
         accounting_sentence=(
             f"最新季度非油行业核算中，{top_name}{driver_word}最大，"
-            f"为{abs(top_value):.1f}个百分点；16个行业拉动之和等于非油GDP同比。"
+            f"为{abs(top_value):.1f}个百分点；16个行业拉动之和与非油GDP同比在公布精度内一致。"
         ),
         mechanism_sentence=(
             "行业拉动用于识别非油增长结构，不作为行业增长的因果机制证据。"

@@ -21,6 +21,7 @@ from urllib.parse import urljoin
 
 from openpyxl import load_workbook
 
+from .workbook_sheet_writer import update_indicator_columns as _update_columns
 from . import db
 from ._official_download import download_file
 from .paths import DATA_DIR
@@ -377,34 +378,3 @@ def merge(workbook_path: Path) -> dict:
             temporary.unlink(missing_ok=True)
     return {"status": "ok", "rows": len(observations),
             "note": "Wind 表名保留兼容；七个日度公开源、四个央行月度存贷款列已更新"}
-
-
-def _update_columns(sheet, observations: list[tuple], indicators: dict,
-                    frequency: str) -> None:
-    """Patch DB-backed columns while preserving unrelated data and dates."""
-    width, height = sheet.max_column, sheet.max_row
-    columns = {sheet.cell(2, i).value: i for i in range(2, width + 1)}
-    missing = set(indicators) - set(columns)
-    if missing:
-        raise ValueError(f"Legacy sheet lacks matched columns: {missing}")
-    data = {sheet.cell(i, 1).value.date(): [sheet.cell(i, j).value
-            for j in range(2, width + 1)]
-            for i in range(7, height + 1)
-            if isinstance(sheet.cell(i, 1).value, datetime)}
-    for name in indicators:
-        periods = [r[0] for r in observations if r[1] == name]
-        if not periods:
-            raise ValueError(f"No DB observations for {name}")
-        first, last = min(periods), max(periods)
-        for stamp, values in data.items():
-            if first <= stamp <= last:
-                values[columns[name] - 2] = None
-        unit, source = indicators[name]
-        for row, value in ((3, frequency), (4, unit), (5, source), (6, str(date.today()))):
-            sheet.cell(row, columns[name], value)
-    for stamp, name, value in observations:
-        data.setdefault(stamp, [None] * (width - 1))[columns[name] - 2] = value
-    for i, (stamp, values) in enumerate(sorted(data.items(), reverse=True), 7):
-        sheet.cell(i, 1, datetime.combine(stamp, datetime.min.time()))
-        for j, value in enumerate(values, 2):
-            sheet.cell(i, j).value = value

@@ -1008,7 +1008,9 @@ def build_industry_price_volume_quadrant_figure(
         raise ValueError(
             "行业量价四象限缺少字段: " + ", ".join(missing_columns)
         )
-    clean = clean[list(required_columns)].dropna()
+    gdp_column = "非油实际GDP（十亿迪拉姆）"
+    optional_columns = [gdp_column] if gdp_column in clean.columns else []
+    clean = clean[[*required_columns, *optional_columns]].dropna()
     if clean.empty:
         raise ValueError("行业量价四象限没有有效观测")
     if clean.duplicated(["季度", "行业"]).any():
@@ -1025,8 +1027,19 @@ def build_industry_price_volume_quadrant_figure(
     share_sums = clean.groupby("季度", sort=False)[
         "实际GDP占非油GDP比例"
     ].sum()
-    max_share_error = float(share_sums.sub(1).abs().max())
-    if max_share_error > 1e-8:
+    share_errors = share_sums.sub(1).abs()
+    tolerances = pd.Series(1e-8, index=share_sums.index)
+    if optional_columns:
+        levels = clean.groupby("季度", sort=False)[gdp_column]
+        if (not clean[gdp_column].map(math.isfinite).all()
+                or (clean[gdp_column] <= 0).any()
+                or (levels.nunique() != 1).any()):
+            raise ValueError("四象限图的非油实际GDP口径异常")
+        # Half a million AED per published term, including the total. Keep
+        # original weights; allow only the corresponding monetary residual.
+        tolerances = ((len(expected_industries) + 1) * 0.0005 / levels.first()).clip(lower=1e-8)
+    max_share_error = float(share_errors.max())
+    if (share_errors > tolerances).any():
         raise ValueError(
             "行业实际GDP占非油实际GDP比例未加总为1："
             f"最大误差为{max_share_error:.12g}"

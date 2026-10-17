@@ -1,6 +1,6 @@
-# UAE 公开来源替代进度（2026-10-15）
+# UAE 公开来源替代进度（2026-10-18）
 
-统一脚本现登记 26 个来源。已自动替代 10 个原 Wind 工作表指标；保留历史表名
+统一脚本现登记 28 个来源。已自动替代 55 个原 Wind 工作表指标；保留历史表名
 仅为兼容现有读取器，不代表这些列仍需要 Wind 更新。其他列尚未全部替代。
 
 | 指标 | 公开来源及处理 | 本次观察期 |
@@ -10,8 +10,12 @@
 | EFFR | [纽约联储 API 文档](https://markets.newyorkfed.org/static/docs/markets-api.html)，effectiveDate 为观察日 | 2026-10-09 |
 | USD/AED、CNY/AED | [CBUAE 汇率](https://www.centralbank.ae/en/forex-eibor/exchange-rates/)，人民币只取在岸 Chinese Yuan；AED/每单位外币 | 2026-10-13 |
 | 政府及政府相关实体存贷款（4 列） | 库内 CBUAE 公报序列，百万 AED 除以 1000 转为十亿 AED | 2026-08 |
+| 季度 GDP、非油 GDP、非金融公司增加值及 16 个行业（44 列） | FCSC UAE.Stat `DF_QGDP_CON` / `DF_QGDP_CUR` → `fcsc_gdp_quarterly`；保留官方修订与同比，百万 AED 转十亿 AED | 不变价 2026Q2；现价 2026Q1 |
+| 石油及其他液体产量（1 列） | EIA International，UAE / product 53 / production → 月表、季度表；季度按日数加权，保留完整季度与原有百万桶/天单位 | 2026Q2 |
 
-以上日度数据保存在 `public_market_daily`，月度存贷款保存在 `cbuae_monthly`。
+以上日度数据保存在 `public_market_daily`，月度存贷款保存在 `cbuae_monthly`，
+季度 GDP 保存在 `fcsc_gdp_quarterly`，EIA 月度和季度产量分别保存在
+`eia_liquids_monthly` 与 `eia_liquids_quarterly`。
 Excel 匹配列只由 merge 从库写入；指标字典由统一合并流程同步。
 
 利率报告只使用阿联酋央行 EIBOR 隔夜/1年及美联储纽约分行 EFFR，按月平均
@@ -20,7 +24,7 @@ Excel 匹配列只由 merge 从库写入；指标字典由统一合并流程同�
 
 | 尚未全部替代的类别 | 已找到的公开来源 | 实际限制 |
 |---|---|---|
-| GDP、行业增加值、CPI | [FCSC NSDP](https://fcsc.gov.ae/national-summary-data/)、[UAE.Stat CPI SDMX](https://releaseeuaestat.fcsc.gov.ae/rest/data/FCSA,DF_CPI/all?startPeriod=2021-01&dimensionAtObservation=AllDimensions) | 全国总体 CPI 与食品饮料 CPI 以月度同比变化（%）接入 `fcsc_monthly`，最新至 2026-06。已发布同比值优先直接采用；FCSC 未给出的 2022 年由同基期指数推算，2026 年由跨越基期更新的最近 12 个月官方环比变化复合计算。UAE.Stat 目前仅发布到 2026-06；GDP 与行业增加值另行评估 |
+| GDP、行业增加值、CPI | [FCSC NSDP](https://fcsc.gov.ae/national-summary-data/)、[UAE.Stat CPI SDMX](https://releaseeuaestat.fcsc.gov.ae/rest/data/FCSA,DF_CPI/all?startPeriod=2021-01&dimensionAtObservation=AllDimensions) | 全国总体 CPI 与食品饮料 CPI 以月度同比变化（%）接入 `fcsc_monthly`，最新至 2026-06。已发布同比值优先直接采用；FCSC 未给出的 2022 年由同基期指数推算，2026 年由跨越基期更新的最近 12 个月官方环比变化复合计算。UAE.Stat 目前仅发布到 2026-06；GDP 与行业增加值已接入，见上表 |
 | 中国与 UAE 双边贸易 | [中国海关月度统计](https://english.customs.gov.cn/statics/report/monthly.html) | 有按国家贸易表，但还没有完成金额单位、累计/当月及重复金额列的映射和自动适配 |
 | DXB 旅客、货邮、起降 | [Dubai Airports 官方媒体页](https://media.dubaiairports.ae/dxb-enters-stronger-second-half-as-capacity-returns-and-investment-continues/) | 部分月份公布旅客数据，货运/起降常给季度或半年数；不能平均分摊冒充月度观察 |
 | 印度对 UAE 咖啡出口 | [Coffee Board](https://coffeeboard.gov.in/database-coffee.html) | 有出口许可/目的地统计，尚未验证与工作簿累计指标完全一致的日期、财年和再出口口径 |

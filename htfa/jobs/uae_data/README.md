@@ -15,6 +15,18 @@ runtime\python.exe -m htfa.jobs.uae_data.merge_workbook   # 单独重跑库→�
 
 常用参数：`--source cbuae,gfs`、`--skip-download`（只用 raw 缓存）、`--force`。
 
+宏观概览与行业分析的季度数据使用 `--source fcsc_gdp,eia_liquids`：
+`source_fcsc_gdp.py` 从 FCSC UAE.Stat 的 `DF_QGDP_CON` / `DF_QGDP_CUR`
+接入 GDP、非油 GDP、非金融公司增加值、16 个行业增加值及官方同比，共 44 项。
+金额由百万 AED 转为工作簿标注的十亿 AED，保留官方历史修订值；同比自官方
+开始发布的 2013Q1 起保留，不补造首年的同比。现价与不变价独立保留发布季度。
+`source_eia_liquids.py` 使用 EIA International 的 UAE / product 53 / production，
+将月度石油及其他液体日产量按每月日数加权为完整季度均值（百万桶/天），
+保留原定义，不以 OPEC 原油产量替代，不发布缺月季度。
+两项任务均先入 DuckDB，再只更新 `季度_Wind` 的对应列、同步指标字典并发布
+完整报告快照；工作簿其他列不变。2026-10-18 核验：不变价及 EIA 季度数据至
+2026Q2，现价至 2026Q1；需要两种价格的量价图只使用共同有效季度。
+
 阿联酋监测页面默认只读 `data/UAE/uae.duckdb`，本地与 Streamlit Cloud 均无需上传
 工作簿。统一合并在全部来源和指标字典成功后，由 `publish_report.py` 将完整工作簿
 按原列位置和日期发布到 `report.sheets`、`report.periods`、`report.observations` 长表，

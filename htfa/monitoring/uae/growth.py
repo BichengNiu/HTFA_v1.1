@@ -240,12 +240,17 @@ def calculate_industry_diagnostics(
         axis=0,
     )
     current_shares = levels.div(aligned_total, axis=0)
-    for shares in (base_year_shares, current_shares):
+    for shares, denominator in (
+        (base_year_shares, aligned_total.shift(periods)),
+        (current_shares, aligned_total),
+    ):
         complete = shares.notna().all(axis=1)
         share_error = (
             shares.sum(axis=1, min_count=industry_count).sub(1).abs()
         )
-        if (share_error.loc[complete] > relative_tolerance).any():
+        outside = ((share_error > relative_tolerance)
+                   & (share_error * denominator.abs() > absolute_tolerance))
+        if outside.loc[complete].any():
             raise ValueError("行业权重之和未在容差内等于1")
 
     historical_mean = (

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import tempfile
 from calendar import monthrange
 from collections import defaultdict
@@ -16,6 +17,44 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from . import db
+
+
+def merge_source_columns(workbook_path: Path, spec_builder) -> dict[str, Any]:
+    """Patch source-owned columns from DuckDB, backing up and atomically replacing Excel."""
+    with db.connect(read_only=True) as con:
+        spec = spec_builder(con)
+        metadata = read_indicator_metadata(con, spec["indicators"])
+    observations = spec["observations"]
+    if not observations:
+        raise ValueError("来源数据表为空")
+    frequencies = {item["frequency"] for item in metadata.values()}
+    if len(frequencies) != 1:
+        raise ValueError("同一列更新任务的指标频率不一致")
+    indicators = {name: (item["unit"], item["source"])
+                  for name, item in metadata.items()}
+    path = Path(workbook_path).resolve()
+    if (path.parent / f"~${path.name}").exists():
+        raise RuntimeError("请先关闭 Excel 工作簿")
+    workbook = load_workbook(path, keep_links=True)
+    temporary = None
+    try:
+        update_indicator_columns(
+            workbook[spec["name"]], observations, indicators, frequencies.pop(),
+        )
+        backups = path.parent / "backups"
+        backups.mkdir(exist_ok=True)
+        shutil.copy2(path, backups / f"columns_{datetime.now():%Y%m%d_%H%M%S_%f}.xlsx")
+        fd, name = tempfile.mkstemp(prefix=".source-columns-", suffix=".tmp.xlsx", dir=path.parent)
+        os.close(fd)
+        temporary = Path(name)
+        workbook.save(temporary)
+        os.replace(temporary, path)
+    finally:
+        workbook.close()
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+    return {"status": "ok", "rows": len(observations),
+            "note": f"{spec['name']} 指定列已从 DuckDB 同步，保留其他指标与历史日期"}
 
 
 def month_end(period: date) -> date:
@@ -203,3 +242,35 @@ def _excel_value(value: Any) -> Any:
     if isinstance(value, (date, datetime, int, float, str)) or value is None:
         return value
     return float(value)
+
+
+def update_indicator_columns(
+    sheet, observations: list[tuple], indicators: dict, frequency: str,
+) -> None:
+    """Patch DB-backed columns while preserving unrelated data and dates."""
+    width, height = sheet.max_column, sheet.max_row
+    columns = {sheet.cell(2, i).value: i for i in range(2, width + 1)}
+    missing = set(indicators) - set(columns)
+    if missing:
+        raise ValueError(f"Legacy sheet lacks matched columns: {missing}")
+    data = {sheet.cell(i, 1).value.date(): [sheet.cell(i, j).value
+            for j in range(2, width + 1)]
+            for i in range(7, height + 1)
+            if isinstance(sheet.cell(i, 1).value, datetime)}
+    for name in indicators:
+        periods = [r[0] for r in observations if r[1] == name]
+        if not periods:
+            raise ValueError(f"No DB observations for {name}")
+        first, last = min(periods), max(periods)
+        for stamp, values in data.items():
+            if first <= stamp <= last:
+                values[columns[name] - 2] = None
+        unit, source = indicators[name]
+        for row, value in ((3, frequency), (4, unit), (5, source), (6, str(date.today()))):
+            sheet.cell(row, columns[name], value)
+    for stamp, name, value in observations:
+        data.setdefault(stamp, [None] * (width - 1))[columns[name] - 2] = value
+    for i, (stamp, values) in enumerate(sorted(data.items(), reverse=True), 7):
+        sheet.cell(i, 1, datetime.combine(stamp, datetime.min.time()))
+        for j, value in enumerate(values, 2):
+            sheet.cell(i, j).value = value

@@ -3,54 +3,19 @@
 from __future__ import annotations
 
 import math
-from functools import lru_cache
-from pathlib import Path
 from typing import Any
 
 import matplotlib.pyplot as plt
-from matplotlib import font_manager
-from matplotlib.font_manager import FontProperties
 from matplotlib.text import Text
 from matplotlib.figure import Figure as MatplotlibFigure
 from plotly.graph_objects import Figure as PlotlyFigure
+from htfa.ui_shared.fonts import matplotlib_font_family
 
 
 PLOTLY_LEGEND_Y = -0.14
 
-# The Linux Streamlit runtime has no Microsoft YaHei/SimHei by default. The
-# deployment installs Noto CJK, then this renderer applies it to all text artists.
-MATPLOTLIB_CJK_FONTS = [
-    "Noto Sans CJK SC",
-    "Noto Sans CJK TC",
-    "Microsoft YaHei",
-    "SimHei",
-    "DejaVu Sans",
-]
-
-
-@lru_cache(maxsize=1)
-def _resolve_matplotlib_cjk_fonts() -> list[str]:
-    """优先注册系统安装的 Noto 字体，避免 Matplotlib 使用过期字体缓存。"""
-
-    font_paths = (
-        Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
-        Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"),
-    )
-    for font_path in font_paths:
-        if not font_path.is_file():
-            continue
-        try:
-            font_manager.fontManager.addfont(str(font_path))
-            family = FontProperties(fname=str(font_path)).get_name()
-        except (OSError, RuntimeError, ValueError):
-            continue
-        if family:
-            return [family, *MATPLOTLIB_CJK_FONTS]
-    return MATPLOTLIB_CJK_FONTS
-
-
 def _apply_cjk_fonts(figure: MatplotlibFigure) -> None:
-    font_families = _resolve_matplotlib_cjk_fonts()
+    font_families = matplotlib_font_family()
     plt.rcParams["font.family"] = font_families
     plt.rcParams["axes.unicode_minus"] = False
     for text_artist in figure.findobj(match=Text):

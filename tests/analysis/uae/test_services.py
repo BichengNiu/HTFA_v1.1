@@ -153,6 +153,29 @@ def test_growth_panel_rejects_industries_that_do_not_sum_to_nonoil() -> None:
         build_growth_panel(bundle)
 
 
+def test_growth_panel_keeps_rounding_residual_and_different_price_release_dates():
+    bundle = _make_bundle()
+    for indicator_id in bundle.series_by_id:
+        if indicator_id.startswith(("growth.", "industry.")) and not indicator_id.endswith("_yoy"):
+            bundle.series_by_id[indicator_id] /= 1000
+    bundle.series_by_id["growth.nonoil_real_gdp"] += 0.003
+    for indicator_id, series in list(bundle.series_by_id.items()):
+        if "nominal" in indicator_id:
+            bundle.series_by_id[indicator_id] = series.iloc[:-1]
+    panel = build_growth_panel(bundle)
+    quadrant = panel.series_groups["行业量价四象限图"]
+    assert str(QUARTERS[-1]) not in quadrant.index.get_level_values("季度").tolist()
+    assert panel.series_groups["非油实际GDP同比及行业拉动"].index[-1] == QUARTERS[-1]
+    from htfa.monitoring.uae.charts import build_industry_price_volume_quadrant_figure
+
+    figure = build_industry_price_volume_quadrant_figure(quadrant, title="量价")
+    assert figure.frames
+    corrupted = quadrant.copy()
+    corrupted.iloc[0, corrupted.columns.get_loc("实际GDP占非油GDP比例")] += 0.1
+    with pytest.raises(ValueError, match="未加总为1"):
+        build_industry_price_volume_quadrant_figure(corrupted, title="量价")
+
+
 def test_growth_panel_reports_missing_required_indicators() -> None:
     bundle = _make_bundle()
     bundle.series_by_id.pop("oil.crude_production")
