@@ -27,7 +27,8 @@ from htfa.monitoring.uae.results import MacroPanelResult
 from htfa.monitoring.uae.report import render_high_frequency_topics
 from htfa.monitoring.uae.services import build_monitoring_dashboard
 from htfa.monitoring.uae.database import published_source
-from htfa.ui_shared.chart_legend import place_chart_legend_at_bottom
+from htfa.monitoring.uae.plot_helpers import translate_source_text
+from htfa.ui_shared.chart_legend import place_chart_legend_at_bottom, render_pyplot_figure
 
 TAB_CONFIG = (
     ("宏观概览", "growth_overview"),
@@ -275,9 +276,15 @@ def _render_panel(
         if section_title is not None:
             st_obj.markdown(f"### {section_title}")
         if group_title in GROWTH_OVERVIEW_GROUPS:
+            source_text = "、".join(dict.fromkeys(
+                translate_source_text(item.source)
+                for indicator_id, item in panel.provenance.items()
+                if indicator_id.startswith("growth.")
+            ))
             figure = build_price_volume_figure(
                 frame,
                 title=group_title,
+                source_text=source_text,
             )
         elif group_title in SERIES_GROUP_FIGURE_BUILDERS:
             builder, display_title = SERIES_GROUP_FIGURE_BUILDERS[group_title]
@@ -295,11 +302,16 @@ def _render_panel(
                 frame,
                 title=group_title,
             )
-        st_obj.plotly_chart(
-            place_chart_legend_at_bottom(figure),
-            width="stretch",
-            key=f"analysis.uae.{panel.key}.series.{group_title}",
-        )
+        if group_title in GROWTH_OVERVIEW_GROUPS:
+            render_pyplot_figure(
+                st_obj, figure, bbox_inches=None, place_legend_bottom=False,
+            )
+        else:
+            st_obj.plotly_chart(
+                place_chart_legend_at_bottom(figure),
+                width="stretch",
+                key=f"analysis.uae.{panel.key}.series.{group_title}",
+            )
         render_chart_download(
             st_obj,
             frame,

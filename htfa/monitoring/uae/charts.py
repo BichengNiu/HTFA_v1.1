@@ -6,6 +6,16 @@ import math
 
 import pandas as pd
 import plotly.graph_objects as go
+from matplotlib.figure import Figure as MatplotlibFigure
+from Ts.TsPlots import plot_series
+
+from htfa.monitoring.uae.plot_helpers import (
+    WAR_START_DATE,
+    annotate_war,
+    apply_htfa_fonts,
+    normalize_ts_axis,
+    source_note,
+)
 
 COLORS = (
     "#0B5CAD",
@@ -191,8 +201,9 @@ def build_price_volume_figure(
     real_column: str | None = None,
     deflator_column: str | None = None,
     max_points: int = 60,
-) -> go.Figure:
-    """在同一百分比坐标轴展示实际GDP与平减指数的季度同比。"""
+    source_text: str = "",
+) -> MatplotlibFigure:
+    """使用高频报告的 Ts 模板，分别保留实际增速与平减指数的末期。"""
 
     if real_column is None:
         real_candidates = [
@@ -218,71 +229,33 @@ def build_price_volume_figure(
     if missing:
         raise ValueError(f"缺少量价关系序列: {', '.join(missing)}")
 
-    clean = frame[list(required)].dropna().tail(max_points)
-    quarter_labels = pd.PeriodIndex(clean.index, freq="Q").astype(str)
-    figure = go.Figure()
-    figure.add_trace(
-        go.Scatter(
-            x=quarter_labels,
-            y=clean[real_column].values,
-            name=real_column,
-            mode="lines+markers",
-            line={"width": 2.8, "color": "#0B5CAD"},
-            marker={"size": 5},
-            hovertemplate=(
-                "%{x}<br>%{y:,.2f}%"
-                "<extra>%{fullData.name}</extra>"
-            ),
-            yaxis="y",
-        )
+    clean = frame[list(required)].dropna(how="all").tail(max_points).copy()
+    if clean.empty:
+        raise ValueError(f"{title}没有可绘制的有效数据")
+    if isinstance(clean.index, pd.PeriodIndex):
+        clean.index = clean.index.to_timestamp(how="end").normalize()
+    else:
+        clean.index = pd.to_datetime(clean.index)
+    figure, returned_axis = plot_series(
+        clean,
+        facet=False,
+        title=title,
+        xtitle="",
+        ytitle_position="side",
+        year_ruler=True,
+        xlabel_count=14,
+        grid=True,
+        axis_groups={name: "left" for name in clean},
+        units={name: "%" for name in clean},
+        hlines=0,
+        vlines=WAR_START_DATE,
+        show_legend=True,
+        note=source_note(source_text) if source_text else None,
+        note_loc="left",
+        figsize=(9.4, 6.2),
     )
-    figure.add_trace(
-        go.Scatter(
-            x=quarter_labels,
-            y=clean[deflator_column].values,
-            name=deflator_column,
-            mode="lines+markers",
-            line={"width": 2.6, "color": "#F28E2B", "dash": "dash"},
-            marker={"size": 5, "symbol": "circle-open"},
-            hovertemplate=(
-                "%{x}<br>%{y:,.2f}%"
-                "<extra>%{fullData.name}</extra>"
-            ),
-            yaxis="y",
-        )
-    )
-    figure.update_layout(
-        title={"text": title, "x": 0.01, "xanchor": "left"},
-        height=420,
-        margin={"l": 65, "r": 25, "t": 60, "b": 45},
-        hovermode="x unified",
-        legend={
-            "orientation": "h",
-            "yanchor": "bottom",
-            "y": 1.02,
-            "xanchor": "right",
-            "x": 1,
-        },
-        xaxis_title="季度",
-        template="plotly_white",
-    )
-    tick_values = quarter_labels[::4]
-    figure.update_xaxes(
-        showgrid=False,
-        type="category",
-        categoryorder="array",
-        categoryarray=quarter_labels.tolist(),
-        tickmode="array",
-        tickvals=tick_values.tolist(),
-        ticktext=tick_values.tolist(),
-        tickangle=0,
-    )
-    figure.update_yaxes(
-        title_text="同比增速（%）",
-        gridcolor="rgba(0,0,0,0.08)",
-        zeroline=True,
-        zerolinecolor="#555",
-    )
+    annotate_war(normalize_ts_axis(returned_axis))
+    apply_htfa_fonts(figure)
     return figure
 
 

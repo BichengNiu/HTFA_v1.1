@@ -92,6 +92,7 @@ SOURCE_DISPLAY_NAMES = {
     "Emirates Post (bayanat.ae)": "阿联酋邮政（bayanat.ae）",
     "SCAD": "沙迦统计与社区发展局",
     "FCSC UAE.Stat SDMX": "阿联酋联邦竞争力与统计中心",
+    "FCSC UAE.Stat Quarterly National Accounts": "阿联酋联邦竞争力与统计中心",
     "TDRA Open Data": "电信和数字政府监管局开放数据",
     "RTA Open Data (Data Dubai)": "迪拜道路与交通管理局开放数据（迪拜数据）",
     "Cloudflare Radar (UAE)": "Cloudflare 雷达（阿联酋）",

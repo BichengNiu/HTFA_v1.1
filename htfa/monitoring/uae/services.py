@@ -125,7 +125,7 @@ def _build_price_volume_series(
         ],
         axis=1,
         sort=False,
-    ).dropna()
+    ).dropna(how="all")
 
 
 def _build_industry_price_volume_quadrant(
