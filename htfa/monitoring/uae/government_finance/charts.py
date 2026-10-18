@@ -11,7 +11,7 @@ from Ts.TsPlots import plot_series
 from htfa.monitoring.uae.government_finance.data import (
     GOVERNMENT_CREDIT,
     GRE_CREDIT,
-    calculate_calendar_yoy,
+    display_calendar_yoy,
 )
 from htfa.monitoring.uae.plot_helpers import (
     WAR_START_DATE,
@@ -37,19 +37,11 @@ def build_government_finance_yoy_figure(
 ) -> Figure:
     """Plot 政府贷款 / 政府控制企业贷款 作为月度同比增长率（不加总）。"""
 
-    selected = (
-        values[[GOVERNMENT_CREDIT, GRE_CREDIT]].dropna(how="all").sort_index()
-    )
-    if selected.empty:
+    frame = display_calendar_yoy(
+        values[[GOVERNMENT_CREDIT, GRE_CREDIT]]
+    ).rename(columns=dict(YOY_SERIES))
+    if frame.empty:
         raise ValueError(f"{title}没有可绘制的有效数据")
-
-    yoy = calculate_calendar_yoy(selected).reindex(selected.index)
-    periods = pd.PeriodIndex(pd.DatetimeIndex(selected.index), freq="M")
-    last_month = periods.max()
-    display_mask = periods >= last_month - 36
-    yoy = yoy.loc[display_mask]
-
-    frame = pd.DataFrame({spec[1]: yoy[spec[0]] for spec in YOY_SERIES})
     axis_units = {spec[1]: "%" for spec in YOY_SERIES}
     if units is not None:
         axis_units.update(units)

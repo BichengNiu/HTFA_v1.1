@@ -626,7 +626,7 @@ def merge(workbook_path: Path) -> dict:
                 self.values = tuple(values)
         return [_Obs(p, v) for p, v in sorted(by_period.items())]
 
-    def payload(sheet, indicators, observations, frequency):
+    def payload(indicators, observations, frequency):
         return {
             "dictionary_sheet_name": DICTIONARY_SHEET,
             "source_label": SOURCE_NAME,
@@ -650,7 +650,7 @@ def merge(workbook_path: Path) -> dict:
     ):
         if not observations:
             continue
-        pld = payload(sheet_name, indicators, observations, freq)
+        pld = payload(indicators, observations, freq)
         with payload_json_file(pld, prefix=prefix, directory=DATA_DIR) as payload_path:
             run_powershell_sheet_writer(helper_path, workbook_path, payload_path, sheet_name)
     return {

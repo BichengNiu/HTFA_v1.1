@@ -290,12 +290,11 @@ def _validate_yoy_rows(rows: list[dict]) -> None:
         raise ValueError("FCSC CPI 同比数据含未来月份，拒绝更新数据库")
 
 
-def _download_csv(*, force: bool) -> str:
+def _download_csv() -> str:
     """Refresh the small live SDMX CSV on every online update."""
 
     # The endpoint is a small mutable national dataflow; always refresh it so
     # a cached raw file cannot silently hide newly released monthly values.
-    del force
     return download_file(
         DATA_URL,
         RAW_CSV,
@@ -327,7 +326,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
 
     download_note = ""
     if not skip_download:
-        _download_csv(force=force)
+        _download_csv()
         download_note = "已在线刷新 FCSC UAE.Stat SDMX"
     if not RAW_CSV.is_file():
         raise FileNotFoundError(f"FCSC CPI 原始 CSV 不存在：{RAW_CSV}")

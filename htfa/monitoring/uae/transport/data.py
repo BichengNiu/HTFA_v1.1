@@ -91,7 +91,6 @@ class TransportData:
 
     values: pd.DataFrame
     metadata: dict[str, SheetSeriesMetadata]
-    source_name: str
     monthly_values: pd.DataFrame
     load_errors: dict[str, str]
 
@@ -132,7 +131,6 @@ def load_transport_data(
     """
 
     source = require_published_source(source)
-    source_name = source.name
     with source.open() as tables:
         port_volume_frame, port_volume_metadata = parse_target_sheet(
             tables,
@@ -225,7 +223,6 @@ def load_transport_data(
     return TransportData(
         values=values,
         metadata=metadata,
-        source_name=source_name,
         monthly_values=monthly_values,
         load_errors=load_errors,
     )

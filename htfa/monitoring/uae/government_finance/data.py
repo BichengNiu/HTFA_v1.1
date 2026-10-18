@@ -33,7 +33,6 @@ class GovernmentFinanceData:
 
     values: pd.DataFrame
     metadata: dict[str, SheetSeriesMetadata]
-    source_name: str
 
 
 def load_government_finance_data(
@@ -42,7 +41,6 @@ def load_government_finance_data(
     """只读取 ``月度_CBUAE`` 的四个目标指标并校验元数据。"""
 
     source = require_published_source(source)
-    source_name = source.name
     with source.open() as tables:
         values, metadata = parse_target_sheet(
             tables,
@@ -55,7 +53,6 @@ def load_government_finance_data(
     return GovernmentFinanceData(
         values=values,
         metadata=metadata,
-        source_name=source_name,
     )
 
 
@@ -76,6 +73,17 @@ def calculate_calendar_yoy(values: pd.DataFrame) -> pd.DataFrame:
     return yoy
 
 
+def display_calendar_yoy(values: pd.DataFrame) -> pd.DataFrame:
+    """先用完整历史计算同比，再取最近三年；图表与下载共用同一窗口。"""
+
+    selected = values.dropna(how="all").sort_index()
+    if selected.empty:
+        return selected
+    yoy = calculate_calendar_yoy(selected).reindex(selected.index)
+    months = pd.DatetimeIndex(selected.index).to_period("M")
+    return yoy.loc[months >= months.max() - 36]
+
+
 def latest_complete_month(values: pd.DataFrame) -> pd.Timestamp:
     """返回四个指标均有有效值的最新月份。"""
 
@@ -94,6 +102,7 @@ __all__ = [
     "GRE_DEPOSITS",
     "GovernmentFinanceData",
     "calculate_calendar_yoy",
+    "display_calendar_yoy",
     "latest_complete_month",
     "load_government_finance_data",
 ]

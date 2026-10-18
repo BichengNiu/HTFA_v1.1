@@ -131,7 +131,6 @@ def test_war_pressure_metrics_render_latest_month_four_cards() -> None:
         observation_days=pd.Series([28, 31, 30], index=_sample_values().index),
         values=_sample_values(),
         metadata={},
-        source_name="test.xlsx",
     )
 
     renderer._render_war_pressure_metrics(st_obj, data)
@@ -195,7 +194,6 @@ def test_war_pressure_section_renders_algorithm_and_interpretation(monkeypatch) 
             observation_days=pd.Series([28, 31, 30], index=_sample_values().index),
             values=_sample_values(),
             metadata={},
-            source_name="test.xlsx",
         ),
     )
 
@@ -227,7 +225,6 @@ def test_oil_panel_places_war_pressure_before_revenue(monkeypatch) -> None:
             observation_days=pd.Series([28, 31, 30], index=_sample_values().index),
             values=_sample_values(),
             metadata={},
-            source_name="test.xlsx",
         ),
     )
     monkeypatch.setattr(

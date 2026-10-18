@@ -59,7 +59,6 @@ class RatesData:
 
     values: pd.DataFrame
     metadata: dict[str, SheetSeriesMetadata]
-    source_name: str
 
 
 def load_rates_data(
@@ -68,7 +67,6 @@ def load_rates_data(
     """读取三条官方利率，聚合为月度均值并统一末期。"""
 
     source = require_published_source(source)
-    source_name = source.name
     with source.open() as tables:
         frame, metadata = parse_target_sheet(
             tables,
@@ -97,7 +95,6 @@ def load_rates_data(
     return RatesData(
         values=monthly,
         metadata=metadata,
-        source_name=source_name,
     )
 
 

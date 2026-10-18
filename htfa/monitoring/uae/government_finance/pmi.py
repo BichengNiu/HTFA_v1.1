@@ -37,7 +37,6 @@ class PmiData:
 
     values: pd.DataFrame
     metadata: dict[str, SheetSeriesMetadata]
-    source_name: str
 
 
 def load_pmi_data(
@@ -46,7 +45,6 @@ def load_pmi_data(
     """只读取 ``月度_LSEG`` 的单一 PMI 指标并校验元数据。"""
 
     source = require_published_source(source)
-    source_name = source.name
     with source.open() as tables:
         values, metadata = parse_target_sheet(
             tables,
@@ -59,7 +57,6 @@ def load_pmi_data(
     return PmiData(
         values=values,
         metadata=metadata,
-        source_name=source_name,
     )
 
 

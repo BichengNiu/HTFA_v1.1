@@ -287,7 +287,7 @@ def _discover_latest_worldwide_report() -> tuple[str, Path]:
     raise ValueError("Baker Hughes 官网未发现 Worldwide Rig Count Report - New Report")
 
 
-def _download_latest_worldwide_report(*, force: bool) -> str:
+def _download_latest_worldwide_report() -> str:
     url, target = _discover_latest_worldwide_report()
     status = download_file(
         url,
@@ -315,7 +315,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
 
     download_note = ""
     if not skip_download:
-        download_note = _download_latest_worldwide_report(force=force)
+        download_note = _download_latest_worldwide_report()
 
     warnings.filterwarnings(
         "ignore",

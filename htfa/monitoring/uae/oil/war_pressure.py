@@ -52,7 +52,6 @@ class WarPressureData:
 
     values: pd.DataFrame
     metadata: dict[str, SheetSeriesMetadata]
-    source_name: str
     observation_days: pd.Series
 
 
@@ -62,7 +61,6 @@ def load_war_pressure_data(
     """读取 WAM 军事打击及观测天数序列。"""
 
     source = require_published_source(source)
-    source_name = source.name
     with source.open() as tables:
         groups = (
             (WAM_INDICATORS[:2], "枚"),
@@ -101,7 +99,6 @@ def load_war_pressure_data(
     return WarPressureData(
         values=values,
         metadata=metadata,
-        source_name=source_name,
         observation_days=observation_frame[OBSERVATION_DAYS_LABEL],
     )
 

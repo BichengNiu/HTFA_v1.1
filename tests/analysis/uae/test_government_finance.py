@@ -1,11 +1,12 @@
 """Tests for the CBUAE government and government-related entity panel."""
 
-from io import BytesIO
+from io import BytesIO, StringIO
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
+from matplotlib import pyplot as plt
 
 from tests.analysis.uae._helpers import data_lines, report_source
 from htfa.monitoring.uae.government_finance import renderer
@@ -54,6 +55,54 @@ from htfa.monitoring.uae.government_finance.search_index import (
     WORK_UAE_COLUMN,
 )
 from htfa.monitoring.uae.government_finance.renderer import _render_charts
+
+
+@pytest.mark.parametrize("render_name", [
+    "_render_charts", "_render_foreign_inflow_chart", "_render_private_credit_chart",
+])
+def test_credit_download_matches_every_plotted_value(render_name):
+    dates = pd.date_range("2021-01-31", periods=61, freq="ME").difference(
+        pd.DatetimeIndex(["2024-06-30"])
+    )
+    columns = [
+        GOVERNMENT_CREDIT, GRE_CREDIT, FOREIGN_LIABILITIES_DISPLAY,
+        FOREIGN_CURRENCIES_DISPLAY, NONRESIDENT_DEPOSITS,
+        PRIVATE_CORPORATE_DISPLAY, INDIVIDUAL_DISPLAY, BUSINESS_INDUSTRIAL_DISPLAY,
+    ]
+    # Each panel receives its own actual loader schema.
+    selected = {
+        "_render_charts": columns[:2],
+        "_render_foreign_inflow_chart": columns[2:5],
+        "_render_private_credit_chart": columns[5:],
+    }[render_name]
+    values = pd.DataFrame(
+        {name: [100.0 + i for i in range(len(dates))] for name in selected},
+        index=dates,
+    )
+    data = SimpleNamespace(
+        values=values,
+        metadata={name: SimpleNamespace(source="CBUAE") for name in selected},
+    )
+    st_obj = MagicMock()
+    getattr(renderer, render_name)(st_obj, data)
+    figure = st_obj.pyplot.call_args.args[0]
+    try:
+        csv = st_obj.download_button.call_args.kwargs["data"].decode("utf-8-sig")
+        downloaded = pd.read_csv(StringIO(csv), index_col=0, parse_dates=True)
+        lines = data_lines(figure.axes[0])
+        assert downloaded.columns.tolist() == [line.get_label() for line in lines]
+        for line in lines:
+            expected = pd.Series(
+                line.get_ydata(), index=pd.DatetimeIndex(line.get_xdata()),
+                name=line.get_label(),
+            )
+            pd.testing.assert_series_equal(
+                downloaded[line.get_label()], expected,
+                check_freq=False, check_names=False,
+            )
+            assert pd.notna(expected.iloc[0])
+    finally:
+        plt.close(figure)
 
 
 def _workbook_bytes() -> bytes:
@@ -206,12 +255,12 @@ def test_chart_row_renders_one_yoy_view_and_downloads_only_yoy_data() -> None:
     )
     st_obj = MagicMock()
 
-    _render_charts(st_obj, data, pd.Timestamp("2025-05-31"))
+    _render_charts(st_obj, data)
 
     assert st_obj.pyplot.call_count == 1
     assert st_obj.download_button.call_count == 1
     chart_data = st_obj.download_button.call_args.kwargs["data"].decode("utf-8-sig")
-    assert "同比（%）" in chart_data
+    assert "同比" in chart_data
     assert "百万迪拉姆" not in chart_data
     figure = st_obj.pyplot.call_args.args[0]
     assert st_obj.pyplot.call_args.kwargs["bbox_inches"] is None
@@ -516,7 +565,6 @@ def test_finance_metrics_row_falls_back_to_warning(monkeypatch) -> None:
         st_obj,
         MagicMock(),
         b"workbook",
-        "test.xlsx",
     )
 
     assert st_obj.warning.call_count == 1
@@ -603,7 +651,6 @@ def test_finance_metrics_cover_all_absolute_series_with_mom_and_yoy(
         st_obj,
         data,
         b"workbook",
-        "test.xlsx",
     )
 
     assert st_obj.metric.call_count == 11
@@ -650,7 +697,6 @@ def test_business_metrics_row_falls_back_to_warning(monkeypatch) -> None:
         st_obj,
         pd.Timestamp("2026-06-30"),
         b"workbook",
-        "test.xlsx",
     )
 
     assert st_obj.warning.call_count == 1
@@ -669,7 +715,6 @@ def test_labor_metrics_row_falls_back_to_warning(monkeypatch) -> None:
     renderer._render_labor_metrics(
         st_obj,
         b"workbook",
-        "test.xlsx",
     )
 
     assert st_obj.warning.call_count == 1
@@ -775,7 +820,6 @@ def test_business_and_labor_metrics_show_mom_and_yoy(monkeypatch) -> None:
         business_st,
         dates[-1],
         b"workbook",
-        "test.xlsx",
     )
     assert business_st.metric.call_count == 7
     business_st.container.assert_called_once_with(
@@ -792,7 +836,7 @@ def test_business_and_labor_metrics_show_mom_and_yoy(monkeypatch) -> None:
 
     labor_st = MagicMock()
     labor_st.columns.return_value = tuple(MagicMock() for _ in range(4))
-    renderer._render_labor_metrics(labor_st, b"workbook", "test.xlsx")
+    renderer._render_labor_metrics(labor_st, b"workbook")
     assert labor_st.metric.call_count == 4
     assert all(
         "环比" in call.kwargs["delta"] and "同比" in call.kwargs["delta"]

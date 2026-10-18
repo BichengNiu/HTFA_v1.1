@@ -21,6 +21,7 @@ from htfa.monitoring.uae.foreign_labor import (
     load_foreign_labor_data,
 )
 from htfa.monitoring.uae.government_finance.charts import (
+    YOY_SERIES,
     build_government_finance_yoy_figure,
 )
 from htfa.monitoring.uae.government_finance.credit import (
@@ -40,7 +41,7 @@ from htfa.monitoring.uae.government_finance.data import (
     GOVERNMENT_CREDIT,
     GRE_CREDIT,
     GovernmentFinanceData,
-    calculate_calendar_yoy,
+    display_calendar_yoy,
     latest_complete_month,
     load_government_finance_data,
 )
@@ -198,7 +199,6 @@ def _render_finance_metrics(
     st_obj: Any,
     data: GovernmentFinanceData,
     content: PublishedUAEData,
-    file_name: str,
 ) -> None:
     """财政金融指标卡：覆盖四类图表序列，主值为绝对量并显示环比和同比。"""
 
@@ -303,7 +303,6 @@ def _render_business_metrics(
     st_obj: Any,
     latest_date: pd.Timestamp,
     content: PublishedUAEData,
-    file_name: str,
 ) -> None:
     """企业活动指标卡：企业活动三项与支付数据四项，均显示环比和同比。"""
 
@@ -375,7 +374,6 @@ def _render_business_metrics(
 def _render_labor_metrics(
     st_obj: Any,
     content: PublishedUAEData,
-    file_name: str,
 ) -> None:
     """劳动就业指标卡：劳工人数与工作搜索热度的环比和同比。"""
 
@@ -418,18 +416,6 @@ def _render_labor_metrics(
         st_obj.warning(f"劳动就业指标未加载：{exc}")
 
 
-def _chart_frame(values: pd.DataFrame) -> pd.DataFrame:
-    """Return only the two government-credit year-on-year series for download."""
-
-    yoy = calculate_calendar_yoy(values[[GOVERNMENT_CREDIT, GRE_CREDIT]])
-    return yoy.rename(
-        columns={
-            GOVERNMENT_CREDIT: "政府贷款同比（%）",
-            GRE_CREDIT: "政府控股企业贷款同比（%）",
-        }
-    ).dropna(how="all")
-
-
 def _render_figure_with_download(
     st_obj: Any,
     figure: Any,
@@ -458,17 +444,12 @@ def _render_figure_with_download(
 def _render_charts(
     st_obj: Any,
     data: GovernmentFinanceData,
-    latest_date: pd.Timestamp,
 ) -> None:
-    first_month = latest_date.to_period("M") - 36
-    display_values = within_month_window(
-        data.values,
-        first_month=first_month,
-        last_month=latest_date.to_period("M"),
-    )
     source_text = source_text_from_metadata(data.metadata)
     title = "政府贷款与政府控股企业贷款同比"
-    chart_frame = _chart_frame(display_values)
+    chart_frame = display_calendar_yoy(
+        data.values[[GOVERNMENT_CREDIT, GRE_CREDIT]]
+    ).rename(columns=dict(YOY_SERIES))
     _render_figure_with_download(
         st_obj,
         build_government_finance_yoy_figure(
@@ -516,14 +497,7 @@ def _render_rates_chart(
 def _render_foreign_inflow_chart(
     st_obj: Any,
     data: CbuaeSeriesData,
-    latest_date: pd.Timestamp,
 ) -> None:
-    last_month = latest_date.to_period("M")
-    display_values = within_month_window(
-        data.values,
-        first_month=last_month - 36,
-        last_month=last_month,
-    )
     source_text = source_text_from_metadata(data.metadata)
     title = "外资流入同比：银行外债、外币存款与外国主体存款"
     figure = build_foreign_inflow_figure(
@@ -531,13 +505,11 @@ def _render_foreign_inflow_chart(
         title=title,
         source_text=source_text,
     )
-    chart_frame = calculate_calendar_yoy(display_values).rename(
-        columns=lambda name: f"{name}同比（%）"
-    )
+    chart_frame = display_calendar_yoy(data.values).add_suffix("同比")
     _render_figure_with_download(
         st_obj,
         figure,
-        chart_frame.dropna(how="all"),
+        chart_frame,
         title=title,
         download_key="analysis.uae.government_finance.foreign_inflow.download",
         place_legend_bottom=False,
@@ -547,19 +519,10 @@ def _render_foreign_inflow_chart(
 def _render_private_credit_chart(
     st_obj: Any,
     data: CbuaeSeriesData,
-    latest_date: pd.Timestamp,
 ) -> None:
-    last_month = latest_date.to_period("M")
-    display_values = within_month_window(
-        data.values,
-        first_month=last_month - 36,
-        last_month=last_month,
-    )
     source_text = source_text_from_metadata(data.metadata)
     title = "企业及居民信贷同比"
-    chart_frame = calculate_calendar_yoy(display_values).rename(
-        columns=lambda name: f"{name}同比（%）"
-    )
+    chart_frame = display_calendar_yoy(data.values).add_suffix("同比")
     _render_figure_with_download(
         st_obj,
         build_private_credit_yoy_figure(
@@ -774,13 +737,11 @@ def render_government_finance_section(
         # 设定稳定的容器 key，供打印媒体查询只压缩财政金融的图表，
         # 不改变企业活动、劳动就业和网页端的图表尺寸。
         with st_obj.container(key="uae-finance-part"):
-            _render_finance_metrics(st_obj, data, content, file_name)
+            _render_finance_metrics(st_obj, data, content)
             _render_quad_finance_charts(
                 st_obj,
                 data,
-                latest_date,
                 content,
-                file_name,
             )
             render_supplemental_charts(st_obj, content, FINANCE_CHARTS)
             with st_obj.expander("指标算法与解读", expanded=True, key="uae-indicator-explanation-finance"):
@@ -794,9 +755,8 @@ def render_government_finance_section(
                 st_obj,
                 latest_date,
                 content,
-                file_name,
             )
-            _render_labor_employment_charts(st_obj, content, file_name)
+            _render_labor_employment_charts(st_obj, content)
     except (KeyError, TypeError, ValueError) as exc:
         st_obj.error(f"政府及国有资本存款与信贷数据加载失败：{exc}")
         return {"status": "error", "message": str(exc)}
@@ -811,13 +771,12 @@ def _render_business_activity_charts(
     st_obj: Any,
     latest_date: pd.Timestamp,
     content: PublishedUAEData,
-    file_name: str,
 ) -> None:
     """企业活动：DED/采购经理指数第一行，客户资金转账/支票清算第二行。"""
 
     st_obj.divider()
     st_obj.subheader("企业活动")
-    _render_business_metrics(st_obj, latest_date, content, file_name)
+    _render_business_metrics(st_obj, latest_date, content)
     ded_column, pmi_column = st_obj.columns(2, gap="small")
     try:
         with st_obj.spinner("正在读取迪拜企业发证与新发执照数据..."):
@@ -863,9 +822,7 @@ def _render_business_activity_charts(
 def _render_quad_finance_charts(
     st_obj: Any,
     data: GovernmentFinanceData,
-    latest_date: pd.Timestamp,
     content: PublishedUAEData,
-    file_name: str,
 ) -> None:
     """财政金融 2×2：利率 / 外资流入 / 政府及国有资本信贷 / 企业及居民信贷。
 
@@ -887,11 +844,11 @@ def _render_quad_finance_charts(
     try:
         with st_obj.spinner("正在读取 CBUAE 外资流入数据..."):
             foreign_inflow = _load_foreign_inflow_cached(content)
-        _render_foreign_inflow_chart(top_right, foreign_inflow, latest_date)
+        _render_foreign_inflow_chart(top_right, foreign_inflow)
     except (KeyError, TypeError, ValueError) as exc:
         top_right.warning(f"外资流入图未加载：{exc}")
 
-    _render_charts(bottom_left, data, latest_date)
+    _render_charts(bottom_left, data)
 
     try:
         with st_obj.spinner("正在读取 CBUAE 企业及居民信贷数据..."):
@@ -899,7 +856,6 @@ def _render_quad_finance_charts(
         _render_private_credit_chart(
             bottom_right,
             private_credit,
-            latest_date,
         )
     except (KeyError, TypeError, ValueError) as exc:
         bottom_right.warning(f"企业及居民信贷图未加载：{exc}")
@@ -908,13 +864,12 @@ def _render_quad_finance_charts(
 def _render_labor_employment_charts(
     st_obj: Any,
     content: PublishedUAEData,
-    file_name: str,
 ) -> None:
     """谷歌工作搜索热度在左，入境阿联酋劳工人数在右。"""
 
     st_obj.divider()
     st_obj.subheader("劳动就业")
-    _render_labor_metrics(st_obj, content, file_name)
+    _render_labor_metrics(st_obj, content)
     search_column, labor_column = st_obj.columns(2, gap="small")
     try:
         with st_obj.spinner("正在读取谷歌工作搜索热度数据..."):

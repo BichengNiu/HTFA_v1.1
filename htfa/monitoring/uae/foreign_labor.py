@@ -46,7 +46,6 @@ class ForeignLaborData:
 
     values: pd.DataFrame
     metadata: dict[str, SheetSeriesMetadata]
-    source_name: str
 
 
 def load_foreign_labor_data(
@@ -55,14 +54,12 @@ def load_foreign_labor_data(
     """Read the two official labour-flow series from the foreign-labour sheet."""
 
     source = require_published_source(source)
-    source_name = source.name
     with source.open() as tables:
         values, metadata = _parse_foreign_labor_sheet(tables)
 
     return ForeignLaborData(
         values=values,
         metadata=metadata,
-        source_name=source_name,
     )
 
 

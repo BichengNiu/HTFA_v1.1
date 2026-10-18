@@ -102,7 +102,6 @@ class RealEstateData:
 
     values: pd.DataFrame
     metadata: dict[str, SheetSeriesMetadata]
-    source_name: str
     raw_values: pd.DataFrame | None = None
     raw_metadata: dict[str, SheetSeriesMetadata] | None = None
 
@@ -113,7 +112,6 @@ def load_real_estate_data(
     """只读取 ``月度_DLD`` 的 8 个销售列并合并为 4 个聚合口径。"""
 
     source = require_published_source(source)
-    source_name = source.name
     with source.open() as tables:
         series_map, raw_metadata = _parse_sales_sheet(tables)
         raw_values = pd.concat(
@@ -126,7 +124,6 @@ def load_real_estate_data(
     return RealEstateData(
         values=values,
         metadata=metadata,
-        source_name=source_name,
         raw_values=raw_values,
         raw_metadata=raw_metadata,
     )

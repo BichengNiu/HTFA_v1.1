@@ -69,7 +69,6 @@ class PaymentData:
 
     values: pd.DataFrame
     metadata: dict[str, SheetSeriesMetadata]
-    source_name: str
 
 
 def load_payment_data(
@@ -78,10 +77,9 @@ def load_payment_data(
     """读取 FTS 客户转账和支票清算四个累计指标。"""
 
     source = require_published_source(source)
-    source_name = source.name
     with source.open() as tables:
         values, metadata = _parse_payment_sheet(tables)
-    return PaymentData(values=values, metadata=metadata, source_name=source_name)
+    return PaymentData(values=values, metadata=metadata)
 
 
 def _parse_payment_sheet(

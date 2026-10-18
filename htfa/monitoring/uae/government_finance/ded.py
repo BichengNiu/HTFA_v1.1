@@ -64,7 +64,6 @@ class DedData:
 
     values: pd.DataFrame
     metadata: dict[str, SheetSeriesMetadata]
-    source_name: str
 
 
 def load_ded_data(
@@ -73,14 +72,12 @@ def load_ded_data(
     """读取 ``月度_DED`` 的有发证活动企业数与当月新发执照数两列。"""
 
     source = require_published_source(source)
-    source_name = source.name
     with source.open() as tables:
         frame, metadata = _parse_ded_sheet(tables)
 
     return DedData(
         values=frame,
         metadata=metadata,
-        source_name=source_name,
     )
 
 

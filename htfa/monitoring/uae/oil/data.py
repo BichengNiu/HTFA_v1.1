@@ -31,7 +31,6 @@ class OilMarketData:
     production: pd.Series
     rig_count: pd.Series
     metadata: dict[str, SheetSeriesMetadata]
-    source_name: str
 
 
 def load_oil_market_data(
@@ -40,7 +39,6 @@ def load_oil_market_data(
     """读取当前 EIA、Dubai、OPEC 与 Baker Hughes 工作表。"""
 
     source = require_published_source(source)
-    source_name = source.name
     with source.open() as tables:
         prices, price_metadata = parse_target_sheet(
             tables,
@@ -101,7 +99,6 @@ def load_oil_market_data(
             **production_metadata,
             **rig_count_metadata,
         },
-        source_name=source_name,
     )
 
 

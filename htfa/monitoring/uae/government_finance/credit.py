@@ -21,7 +21,7 @@ from Ts.TsPlots import plot_series
 from htfa.monitoring.uae.database import PublishedUAEData, require_published_source
 from htfa.data.economic_workbook.shared.target_reader import parse_target_sheet
 
-from htfa.monitoring.uae.government_finance.data import calculate_calendar_yoy
+from htfa.monitoring.uae.government_finance.data import display_calendar_yoy
 from htfa.monitoring.uae.plot_helpers import (
     WAR_START_DATE,
     annotate_war,
@@ -86,7 +86,6 @@ class CbuaeSeriesData:
 
     values: pd.DataFrame
     metadata: dict[str, SheetSeriesMetadata]
-    source_name: str
 
 
 def load_foreign_inflow_data(
@@ -94,16 +93,8 @@ def load_foreign_inflow_data(
 ) -> CbuaeSeriesData:
     """读取外资流入三个指标：银行外债、外币存款与外国主体存款（非居民存款合计）。"""
 
-    source = require_published_source(source)
-    source_name = source.name
-    with source.open() as tables:
-        frame, metadata = parse_target_sheet(
-            tables,
-            sheet_name=CBUAE_SHEET,
-            targets=FOREIGN_INFLOW_INDICATORS,
-            allowed_frequencies={"月", "月度"},
-            expected_unit="百万迪拉姆",
-        )
+    data = _load_cbuae_series(source, targets=FOREIGN_INFLOW_INDICATORS)
+    frame = data.values
     nonresident = frame[
         [
             NONRESIDENT_CORPORATE_DISPLAY,
@@ -115,20 +106,16 @@ def load_foreign_inflow_data(
         [FOREIGN_LIABILITIES_DISPLAY, FOREIGN_CURRENCIES_DISPLAY]
     ].copy()
     frame[NONRESIDENT_DEPOSITS] = nonresident
-    frame = frame.sort_index()
-    if frame.empty:
-        raise ValueError(f"{CBUAE_SHEET} 没有可用的外资流入指标观测")
     return CbuaeSeriesData(
         values=frame,
-        metadata=metadata,
-        source_name=source_name,
+        metadata=data.metadata,
     )
 
 
 def load_private_credit_data(
     source: PublishedUAEData,
 ) -> CbuaeSeriesData:
-    """读取企业及居民信贷两个指标（私人企业信贷、个人信贷）。"""
+    """读取私人企业、个人和工商业贷款三个指标。"""
 
     return _load_cbuae_series(
         source,
@@ -142,7 +129,6 @@ def _load_cbuae_series(
     targets: tuple[tuple[str, str], ...],
 ) -> CbuaeSeriesData:
     source = require_published_source(source)
-    source_name = source.name
     with source.open() as tables:
         frame, metadata = parse_target_sheet(
             tables,
@@ -157,7 +143,6 @@ def _load_cbuae_series(
     return CbuaeSeriesData(
         values=frame,
         metadata=metadata,
-        source_name=source_name,
     )
 
 
@@ -166,15 +151,13 @@ def _common_line_setup(
     *,
     title: str,
     source_text: str,
-    ytitle: str | None,
     units: Mapping[str, str | None] | None,
-) -> tuple[Figure, object]:
+) -> Figure:
     figure, returned_axis = plot_series(
         frame,
         facet=False,
         title=title,
         xtitle="",
-        ytitle=ytitle,
         ytitle_position="side",
         year_ruler=True,
         grid=True,
@@ -188,7 +171,7 @@ def _common_line_setup(
     axis = normalize_ts_axis(returned_axis)
     annotate_war(axis)
     apply_htfa_fonts(figure)
-    return figure, axis
+    return figure
 
 
 def build_foreign_inflow_figure(
@@ -198,36 +181,25 @@ def build_foreign_inflow_figure(
     source_text: str,
     units: Mapping[str, str | None] | None = None,
 ) -> Figure:
-    """绘制银行外债、外币存款与外国主体存款的同比三线图（%），先算同比再取最近 36 个月。"""
+    """绘制银行外债、外币存款与外国主体存款同比，先算同比再取最近三年。"""
 
-    selected = values.dropna(how="all").sort_index()
-    if selected.empty:
-        raise ValueError(f"{title}没有可绘制的有效数据")
     inflow_columns = [
         FOREIGN_LIABILITIES_DISPLAY,
         FOREIGN_CURRENCIES_DISPLAY,
         NONRESIDENT_DEPOSITS,
     ]
-    yoy = calculate_calendar_yoy(selected[inflow_columns]).reindex(
-        selected.index
-    )
-    periods = pd.PeriodIndex(pd.DatetimeIndex(yoy.index), freq="M")
-    last_month = periods.max()
-    display_yoy = yoy.loc[periods >= last_month - 36]
-    frame = pd.DataFrame(
-        {f"{column}同比": display_yoy[column] for column in inflow_columns}
-    )
+    frame = display_calendar_yoy(values[inflow_columns]).add_suffix("同比")
+    if frame.empty:
+        raise ValueError(f"{title}没有可绘制的有效数据")
     axis_units = {name: "%" for name in FOREIGN_SERIES}
     if units is not None:
         axis_units.update(units)
-    figure, axis = _common_line_setup(
+    return _common_line_setup(
         frame,
         title=title,
         source_text=source_text,
-        ytitle=None,
         units=axis_units,
     )
-    return figure
 
 
 def build_private_credit_yoy_figure(
@@ -237,39 +209,25 @@ def build_private_credit_yoy_figure(
     source_text: str,
     units: Mapping[str, str | None] | None = None,
 ) -> Figure:
-    """绘制私人企业信贷与个人信贷的同比双线图（%），先算同比再取最近 36 个月。"""
+    """绘制私人企业、个人及工商业贷款同比，先算同比再取最近三年。"""
 
-    selected = values.dropna(how="all").sort_index()
-    if selected.empty:
-        raise ValueError(f"{title}没有可绘制的有效数据")
     credit_columns = [
         PRIVATE_CORPORATE_DISPLAY,
         INDIVIDUAL_DISPLAY,
         BUSINESS_INDUSTRIAL_DISPLAY,
     ]
-    yoy = calculate_calendar_yoy(
-        selected[credit_columns]
-    ).reindex(selected.index)
-    periods = pd.PeriodIndex(pd.DatetimeIndex(yoy.index), freq="M")
-    last_month = periods.max()
-    display_yoy = yoy.loc[periods >= last_month - 36]
-    frame = pd.DataFrame(
-        {
-            f"{column}同比": display_yoy[column]
-            for column in credit_columns
-        }
-    )
+    frame = display_calendar_yoy(values[credit_columns]).add_suffix("同比")
+    if frame.empty:
+        raise ValueError(f"{title}没有可绘制的有效数据")
     axis_units = {name: "%" for name in PRIVATE_CREDIT_SERIES}
     if units is not None:
         axis_units.update(units)
-    figure, axis = _common_line_setup(
+    return _common_line_setup(
         frame,
         title=title,
         source_text=source_text,
-        ytitle=None,
         units=axis_units,
     )
-    return figure
 
 
 __all__ = [
