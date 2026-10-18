@@ -432,7 +432,7 @@ def build_growth_panel(bundle: UAEDataBundle) -> MacroPanelResult:
         series_groups={
             **price_volume_groups,
             "GDP部门拉动与石油产量同比": trend,
-            "非油实际GDP同比及行业拉动": quarterly_industry_pull,
+            "非油实际GDP行业拉动": quarterly_industry_pull,
             "行业量价四象限图": industry_quadrant,
             "行业扩张广度指数": industry_diagnostics.breadth,
             "行业增长集中度": industry_diagnostics.concentration,

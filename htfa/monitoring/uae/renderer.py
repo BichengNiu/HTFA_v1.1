@@ -154,7 +154,7 @@ GROWTH_OVERVIEW_GROUPS = (
     "实际GDP增速与GDP平减指数同比",
     "GDP部门拉动与石油产量同比",
     "非石油实际GDP增速与非石油GDP平减指数同比",
-    "非油实际GDP同比及行业拉动",
+    "非油实际GDP行业拉动",
 )
 GROWTH_INDUSTRY_GROUPS = (
     "行业扩张广度指数",
@@ -272,7 +272,7 @@ def _render_panel(
             ))
             builder = {
                 "GDP部门拉动与石油产量同比": build_growth_and_sector_pull_figure,
-                "非油实际GDP同比及行业拉动": build_nonoil_industry_pull_figure,
+                "非油实际GDP行业拉动": build_nonoil_industry_pull_figure,
             }.get(group_title, build_price_volume_figure)
             figure = builder(
                 frame,

@@ -119,23 +119,26 @@ def test_macro_ts_chart_has_no_x_title_and_keeps_real_growth_in_q2(monkeypatch):
     plt.close(figure)
 
 
-def test_nonoil_industry_pull_uses_ts_with_axis_roles_and_quarters():
-    frame = pd.DataFrame({
-        "制造业": [2.0, -1.0, 3.0],
-        "其他行业": [1.0, -2.0, 2.0],
-        "非油GDP同比": [3.0, -3.0, 5.0],
-    }, index=pd.date_range("2025-12-31", periods=3, freq="QE"))
+def test_nonoil_industry_pull_has_only_six_bars_and_two_column_legend():
+    industries = ["批发零售", "金融保险", "制造业", "建筑业", "房地产业", "其他行业"]
+    frame = pd.DataFrame({name: [2.0, -1.0, 3.0] for name in industries},
+                         index=pd.date_range("2025-12-31", periods=3, freq="QE"))
+    frame["非油GDP同比"] = frame.sum(axis=1)
     figure = charts.build_nonoil_industry_pull_figure(frame, title="非油行业拉动")
     try:
-        left, right = figure.axes
-        assert left.get_ylabel() == "百分点"
-        assert right.get_ylabel() == "%"
-        assert len(left.containers) == 2
-        growth_line = next(line for line in right.lines if line.get_label() == "非油GDP同比")
-        np.testing.assert_equal(growth_line.get_ydata(), frame["非油GDP同比"].to_numpy())
-        assert [item.get_text() for item in left.get_legend().get_texts()] == [
-            "制造业（左轴）", "其他行业（左轴）", "非油GDP同比（右轴）",
-        ]
-        assert [item.get_text() for item in left.get_xticklabels()] == ["Q4", "Q1", "Q2"]
+        assert len(figure.axes) == 1
+        axis = figure.axes[0]
+        assert axis.get_ylabel() == "百分点"
+        assert len(axis.containers) == 6
+        assert not any(line.get_label() == "非油GDP同比" for line in axis.lines)
+        legend = axis.get_legend()
+        assert [item.get_text() for item in legend.get_texts()] == industries
+        _apply_cjk_fonts(figure)
+        figure.canvas.draw()
+        renderer = figure.canvas.get_renderer()
+        boxes = [item.get_window_extent(renderer) for item in legend.get_texts()]
+        assert len({round(box.x0, 1) for box in boxes}) == 2
+        assert len({round(box.y0, 1) for box in boxes}) == 3
+        assert [item.get_text() for item in axis.get_xticklabels()] == ["Q4", "Q1", "Q2"]
     finally:
         plt.close(figure)

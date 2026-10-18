@@ -88,9 +88,9 @@ def test_macro_data_tab_has_four_charts_without_explanations():
         "实际GDP增速与GDP平减指数同比",
         "GDP部门拉动与石油产量同比",
         "非石油实际GDP增速与非石油GDP平减指数同比",
-        "非油实际GDP同比及行业拉动",
+        "非油实际GDP行业拉动",
     )
-    assert "非油实际GDP同比及行业拉动" not in GROWTH_INDUSTRY_GROUPS
+    assert "非油实际GDP行业拉动" not in GROWTH_INDUSTRY_GROUPS
     app = AppTest.from_string('''
 import streamlit as st
 from htfa.monitoring.uae.renderer import render_uae_monitoring

@@ -1251,13 +1251,13 @@ def build_nonoil_industry_pull_figure(
     max_points: int = 60,
     source_text: str = "",
 ) -> MatplotlibFigure:
-    """用 Ts 模板展示行业拉动堆叠柱和非油实际 GDP 同比。"""
-    if line_column not in frame or other_column not in frame:
-        raise ValueError("缺少非油GDP同比或其他行业拉动序列")
+    """用 Ts 模板展示非油实际 GDP 行业拉动堆叠柱。"""
+    if other_column not in frame:
+        raise ValueError("缺少其他行业拉动序列")
     pull_columns = [column for column in frame if column != line_column]
     if len(pull_columns) < 2:
         raise ValueError("至少需要一个非油行业拉动序列")
-    clean = frame.dropna(how="all").sort_index().tail(max_points).copy()
+    clean = frame[pull_columns].dropna(how="all").sort_index().tail(max_points).copy()
     if clean.empty:
         raise ValueError(f"{title}没有可绘制的有效数据")
     if isinstance(clean.index, pd.PeriodIndex):
@@ -1275,8 +1275,8 @@ def build_nonoil_industry_pull_figure(
         quarterly_ticks=True,
         xlabel_count=12,
         grid=True,
-        axis_groups={name: "left" if name in pull_columns else "right" for name in clean},
-        units={name: "百分点" if name in pull_columns else "%" for name in clean},
+        axis_groups={name: "left" for name in clean},
+        units={name: "百分点" for name in clean},
         bar_series=pull_columns,
         bar_stacked=True,
         colors=[COLORS[i % len(COLORS)] if name != other_column else "#B8BDC6"
