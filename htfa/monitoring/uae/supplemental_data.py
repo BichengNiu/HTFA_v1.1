@@ -1,11 +1,12 @@
 """新增报告图的数据契约与变换，复用已发布的 DuckDB 表。"""
 
 from dataclasses import dataclass
-from typing import Any
 
 import pandas as pd
 
-from htfa.data.economic_workbook import EconomicWorkbookReader
+from htfa.monitoring.uae.database import PublishedUAEData, require_published_source
+from htfa.data.economic_workbook.shared.target_reader import parse_target_sheet
+
 from htfa.monitoring.uae.periods import through_last_complete_month
 
 
@@ -67,18 +68,17 @@ PRICE_CHARTS = (
         window_months=None,
     ),
 )
-READER = EconomicWorkbookReader("uae_monitoring", "monitoring.uae")
 
 
 def load_chart_data(
-    content: Any, file_name: str, spec: ChartSpec,
+    content: PublishedUAEData, spec: ChartSpec,
     *, today: pd.Timestamp | None = None,
 ) -> tuple[pd.DataFrame, dict, dict[str, str]]:
     """校验原始频率与单位，日度和周度序列按有效观测转换为月均。"""
     frames, metadata = [], {}
-    with READER.open_workbook(content, file_name=file_name) as (book, _):
+    with require_published_source(content).open() as book:
         for label, indicator, unit in spec.series:
-            frame, meta = READER.read_target_sheet(
+            frame, meta = parse_target_sheet(
                 book, sheet_name=spec.sheet, targets=((label, indicator),),
                 allowed_frequencies={spec.frequency}, expected_unit=unit,
                 zero_is_missing=spec.sheet == "日度_Wind",

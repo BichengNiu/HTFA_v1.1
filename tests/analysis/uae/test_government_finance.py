@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
-from tests.analysis.uae._helpers import data_lines
+from tests.analysis.uae._helpers import data_lines, report_source
 from htfa.monitoring.uae.government_finance import renderer
 from htfa.monitoring.uae.government_finance.charts import (
     YOY_SERIES,
@@ -113,8 +113,7 @@ def _workbook_bytes() -> bytes:
 
 def test_loader_reads_four_cbuae_indicators_and_ignores_zero_placeholders() -> None:
     data = load_government_finance_data(
-        _workbook_bytes(),
-        file_name="test.xlsx",
+        report_source(_workbook_bytes()),
     )
 
     assert data.values.columns.tolist() == [
@@ -145,8 +144,7 @@ def test_calendar_yoy_uses_the_matching_month_when_an_observation_is_missing() -
 
 def test_yoy_chart_renders_two_government_credit_growth_lines() -> None:
     data = load_government_finance_data(
-        _workbook_bytes(),
-        file_name="test.xlsx",
+        report_source(_workbook_bytes()),
     )
 
     figure = build_government_finance_yoy_figure(
@@ -204,8 +202,7 @@ def test_yoy_chart_calculates_yoy_before_applying_three_year_window() -> None:
 
 def test_chart_row_renders_one_yoy_view_and_downloads_only_yoy_data() -> None:
     data = load_government_finance_data(
-        _workbook_bytes(),
-        file_name="test.xlsx",
+        report_source(_workbook_bytes()),
     )
     st_obj = MagicMock()
 
@@ -229,13 +226,12 @@ def test_section_renders_quad_business_and_labor_employment_subsections(
     monkeypatch,
 ) -> None:
     data = load_government_finance_data(
-        _workbook_bytes(),
-        file_name="test.xlsx",
+        report_source(_workbook_bytes()),
     )
     monkeypatch.setattr(
         renderer,
         "_load_government_finance_cached",
-        lambda content, file_name: data,
+        lambda content: data,
     )
     for loader_name in (
         "_load_rates_cached",
@@ -319,13 +315,12 @@ def test_quad_cell_failure_warns_cell_and_keeps_section(monkeypatch) -> None:
     missing_key = EIBOR_OVERNIGHT_DISPLAY
 
     data = load_government_finance_data(
-        _workbook_bytes(),
-        file_name="test.xlsx",
+        report_source(_workbook_bytes()),
     )
     monkeypatch.setattr(
         renderer,
         "_load_government_finance_cached",
-        lambda content, file_name: data,
+        lambda content: data,
     )
     for loader_name in (
         "_load_rates_cached",
@@ -391,13 +386,12 @@ def test_payment_chart_failure_warns_only_its_business_cell(monkeypatch) -> None
     """支付图单独失败时，另一张支付图和其它分区仍继续渲染。"""
 
     data = load_government_finance_data(
-        _workbook_bytes(),
-        file_name="test.xlsx",
+        report_source(_workbook_bytes()),
     )
     monkeypatch.setattr(
         renderer,
         "_load_government_finance_cached",
-        lambda content, file_name: data,
+        lambda content: data,
     )
     for loader_name in (
         "_load_rates_cached",
@@ -571,7 +565,7 @@ def test_finance_metrics_cover_all_absolute_series_with_mom_and_yoy(
     monkeypatch.setattr(
         renderer,
         "_load_rates_cached",
-        lambda content, file_name: SimpleNamespace(
+        lambda content: SimpleNamespace(
             values=rates_values,
             metadata=_metadata(rates_values.columns),
         ),
@@ -579,7 +573,7 @@ def test_finance_metrics_cover_all_absolute_series_with_mom_and_yoy(
     monkeypatch.setattr(
         renderer,
         "_load_foreign_inflow_cached",
-        lambda content, file_name: SimpleNamespace(
+        lambda content: SimpleNamespace(
             values=foreign_values,
             metadata=_metadata(
                 [
@@ -593,13 +587,13 @@ def test_finance_metrics_cover_all_absolute_series_with_mom_and_yoy(
     monkeypatch.setattr(
         renderer,
         "_load_private_credit_cached",
-        lambda content, file_name: SimpleNamespace(
+        lambda content: SimpleNamespace(
             values=private_values,
             metadata=_metadata(private_values.columns),
         ),
     )
 
-    data = load_government_finance_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_government_finance_data(report_source(_workbook_bytes()))
     st_obj = MagicMock()
     st_obj.columns.side_effect = lambda n: tuple(
         MagicMock() for _ in range(n)
@@ -731,7 +725,7 @@ def test_business_and_labor_metrics_show_mom_and_yoy(monkeypatch) -> None:
     monkeypatch.setattr(
         renderer,
         "_load_pmi_cached",
-        lambda content, file_name: SimpleNamespace(
+        lambda content: SimpleNamespace(
             values=pmi_values,
             metadata=_metadata([PMI_LABEL]),
         ),
@@ -739,7 +733,7 @@ def test_business_and_labor_metrics_show_mom_and_yoy(monkeypatch) -> None:
     monkeypatch.setattr(
         renderer,
         "_load_ded_cached",
-        lambda content, file_name: SimpleNamespace(
+        lambda content: SimpleNamespace(
             values=ded_values,
             metadata=_metadata([ENTERPRISES_DISPLAY, LICENCES_DISPLAY]),
         ),
@@ -747,7 +741,7 @@ def test_business_and_labor_metrics_show_mom_and_yoy(monkeypatch) -> None:
     monkeypatch.setattr(
         renderer,
         "_load_foreign_labor_cached",
-        lambda content, file_name: SimpleNamespace(
+        lambda content: SimpleNamespace(
             values=labor_values,
             metadata=_metadata([NEPAL_APPROVALS, BANGLADESH_CLEARANCES]),
         ),
@@ -755,12 +749,12 @@ def test_business_and_labor_metrics_show_mom_and_yoy(monkeypatch) -> None:
     monkeypatch.setattr(
         renderer,
         "_load_search_index_cached",
-        lambda content, file_name: search_values,
+        lambda content: search_values,
     )
     monkeypatch.setattr(
         renderer,
         "_load_payment_cached",
-        lambda content, file_name: SimpleNamespace(
+        lambda content: SimpleNamespace(
             values=payment_values,
             metadata=_metadata(
                 [

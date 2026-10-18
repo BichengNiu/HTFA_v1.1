@@ -9,6 +9,8 @@ import pandas as pd
 import pytest
 from matplotlib.text import Annotation
 
+from tests.analysis.uae._helpers import report_source
+
 from htfa.monitoring.uae.oil import renderer
 from htfa.monitoring.uae.periods import (
     common_latest_month,
@@ -134,7 +136,7 @@ def _workbook_bytes(
 
 
 def test_targeted_loader_reads_prices_and_production() -> None:
-    data = load_oil_market_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_oil_market_data(report_source(_workbook_bytes()))
 
     assert data.prices.columns.tolist() == [
         "布伦特现货",
@@ -152,8 +154,7 @@ def test_targeted_loader_reads_prices_and_production() -> None:
 
 def test_targeted_loader_selects_matching_unit_from_duplicate_name() -> None:
     data = load_oil_market_data(
-        _workbook_bytes(production_units=("千桶/天", "桶/天")),
-        file_name="duplicate-units.xlsx",
+        report_source(_workbook_bytes(production_units=("千桶/天", "桶/天"))),
     )
 
     assert data.production.iloc[-1] == 3_110_000
@@ -163,13 +164,12 @@ def test_targeted_loader_selects_matching_unit_from_duplicate_name() -> None:
 def test_targeted_loader_rejects_duplicate_matching_production_columns() -> None:
     with pytest.raises(ValueError, match="包含重复目标指标"):
         load_oil_market_data(
-            _workbook_bytes(production_units=("桶/天", "桶/天")),
-            file_name="ambiguous-production.xlsx",
+            report_source(_workbook_bytes(production_units=("桶/天", "桶/天"))),
         )
 
 
 def test_oil_overview_metrics_show_current_three_indicators() -> None:
-    data = load_oil_market_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_oil_market_data(report_source(_workbook_bytes()))
     st_obj = MagicMock()
     st_obj.columns.return_value = [MagicMock() for _ in range(4)]
 
@@ -209,7 +209,7 @@ def test_revenue_metrics_include_year_to_date_yoy() -> None:
 
 
 def test_oil_split_figures_are_single_series() -> None:
-    data = load_oil_market_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_oil_market_data(report_source(_workbook_bytes()))
     revenue = estimate_monthly_oil_revenue(data.prices, data.production)
     figures = [
         (
@@ -329,7 +329,7 @@ def test_oil_price_figure_combines_brent_and_dubai_on_shared_usd_axis() -> None:
 
 
 def test_render_charts_uses_requested_two_by_two_rows(monkeypatch) -> None:
-    data = load_oil_market_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_oil_market_data(report_source(_workbook_bytes()))
     revenue = estimate_monthly_oil_revenue(data.prices, data.production)
     st_obj = MagicMock()
     st_obj.columns.side_effect = [

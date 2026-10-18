@@ -7,6 +7,8 @@ from io import BytesIO
 import pandas as pd
 import pytest
 
+from tests.analysis.uae._helpers import report_source
+
 from htfa.monitoring.uae.contracts import (
     DataProvenance,
     ProvenanceKind,
@@ -298,7 +300,7 @@ def _workbook_bytes() -> bytes:
 
 def test_monitoring_dashboard_builds_growth_panel_from_workbook() -> None:
     dashboard = build_monitoring_dashboard(
-        BytesIO(_workbook_bytes()),
+        report_source(BytesIO(_workbook_bytes())),
     )
 
     assert list(dashboard.panels) == ["growth"]

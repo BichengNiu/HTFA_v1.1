@@ -135,3 +135,40 @@ render_complete_sidebar({"监测分析": {"阿联酋": None}})
     assert not app.exception
     assert not app.get("file_uploader")
     assert not any("无需上传" in item.value for item in app.caption)
+
+
+@pytest.mark.parametrize("module,function", [
+    ("data_adapter", "load_real_uae_bundle"),
+    ("foreign_labor", "load_foreign_labor_data"),
+    ("oil.data", "load_oil_market_data"),
+    ("oil.war_pressure", "load_war_pressure_data"),
+    ("government_finance.data", "load_government_finance_data"),
+    ("government_finance.credit", "load_foreign_inflow_data"),
+    ("government_finance.credit", "load_private_credit_data"),
+    ("government_finance.rates", "load_rates_data"),
+    ("government_finance.search_index", "load_search_index_data"),
+    ("government_finance.pmi", "load_pmi_data"),
+    ("government_finance.ded", "load_ded_data"),
+    ("government_finance.payments", "load_payment_data"),
+    ("real_estate.data", "load_real_estate_data"),
+    ("transport.data", "load_transport_data"),
+    ("supplemental_data", "load_chart_data"),
+])
+@pytest.mark.parametrize("file_input", [b"excel bytes", "data/UAE/阿联酋.xlsx"])
+def test_uae_readers_reject_file_inputs_before_excel_io(monkeypatch, module, function, file_input):
+    import importlib
+    import inspect
+
+    def forbid(*args, **kwargs):
+        raise AssertionError("Excel I/O must never be reached")
+
+    monkeypatch.setattr(pd, "ExcelFile", forbid)
+    monkeypatch.setattr(pd, "read_excel", forbid)
+    loader = getattr(importlib.import_module("htfa.monitoring.uae." + module), function)
+    assert "file_name" not in inspect.signature(loader).parameters
+    args = (file_input,)
+    if function == "load_chart_data":
+        from htfa.monitoring.uae.supplemental_data import PRICE_CHARTS
+        args += (PRICE_CHARTS[0],)
+    with pytest.raises((TypeError, ValueError), match="DuckDB"):
+        loader(*args)

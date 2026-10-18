@@ -1,10 +1,10 @@
-"""把正式工作簿解析结果转换为阿联酋监测语义数据。"""
+"""把 DuckDB 发布快照转换为阿联酋监测语义数据。"""
 
 from __future__ import annotations
 
-from typing import Any
-
 import pandas as pd
+
+from htfa.monitoring.uae.database import PublishedUAEData, require_published_source
 
 from htfa.monitoring.uae.contracts import (
     DataProvenance,
@@ -15,29 +15,28 @@ from htfa.monitoring.uae.indicator_catalog import (
     INDICATOR_SPECS,
     UAE_SIGNATURE_IDS,
 )
-from htfa.data.economic_workbook import EconomicWorkbookReader
+from htfa.data.economic_workbook.core.workbook_parser import parse_economic_workbook
 
 UAE_ANALYSIS_INDICATOR_NAMES = frozenset(
     alias
     for spec in INDICATOR_SPECS
     for alias in spec.aliases
 )
-_UAE_WORKBOOK_READER = EconomicWorkbookReader(
-    "uae_monitoring",
-    "monitoring.uae",
-    indicator_allowlist=UAE_ANALYSIS_INDICATOR_NAMES,
-)
 
 
-def load_real_uae_bundle(file_input: Any) -> UAEDataBundle:
-    """读取真实工作簿；不生成模拟数据。"""
+def load_real_uae_bundle(source: PublishedUAEData) -> UAEDataBundle:
+    """读取已发布的 DuckDB 数据并校验指标协议。"""
 
     try:
-        parsed = _UAE_WORKBOOK_READER.read(file_input)
+        parsed = parse_economic_workbook(
+            require_published_source(source),
+            module_name="uae_monitoring",
+            indicator_allowlist=UAE_ANALYSIS_INDICATOR_NAMES,
+        )
     except (OSError, TypeError, ValueError) as exc:
         raise ValueError(
-            "当前文件不是可识别的阿联酋监测工作簿；"
-            f"工作簿协议校验失败：{exc}"
+            "当前数据不是可识别的阿联酋监测快照；"
+            f"数据协议校验失败：{exc}"
         ) from exc
 
     available = {
@@ -59,10 +58,10 @@ def load_real_uae_bundle(file_input: Any) -> UAEDataBundle:
         if not matches:
             continue
 
-        workbook_name = matches[0]
-        metadata = metadata_map[workbook_name]
+        indicator_name = matches[0]
+        metadata = metadata_map[indicator_name]
         resolved[spec.indicator_id] = (
-            available[workbook_name].dropna().copy()
+            available[indicator_name].dropna().copy()
         )
         provenance[spec.indicator_id] = DataProvenance(
             indicator_id=spec.indicator_id,
@@ -73,13 +72,13 @@ def load_real_uae_bundle(file_input: Any) -> UAEDataBundle:
             unit=metadata.unit,
             coverage=spec.coverage,
             as_of=metadata.updated_at,
-            note=f"工作簿指标：{workbook_name}",
+            note=f"数据库指标：{indicator_name}",
         )
 
     missing_signature = sorted(UAE_SIGNATURE_IDS - set(resolved))
     if missing_signature:
         raise ValueError(
-            "当前文件不是可识别的阿联酋监测工作簿；缺少: "
+            "当前数据不是可识别的阿联酋监测快照；缺少: "
             + ", ".join(missing_signature)
         )
 

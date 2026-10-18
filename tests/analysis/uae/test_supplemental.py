@@ -7,6 +7,8 @@ import pandas as pd
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from tests.analysis.uae._helpers import report_source
+
 from htfa.monitoring.uae import supplemental_renderer as renderer
 from htfa.monitoring.uae.supplemental_data import (
     FINANCE_CHARTS, PRICE_CHARTS, PROPERTY_CHARTS, TRANSPORT_CHARTS,
@@ -53,7 +55,7 @@ def workbook():
 
 def test_monthly_excludes_partial_month_and_transit_share_handles_zero(workbook):
     values, _, units = load_chart_data(
-        workbook, "test.xlsx", TRANSPORT_CHARTS[2], today=pd.Timestamp("2026-10-15"),
+        report_source(workbook),  TRANSPORT_CHARTS[2], today=pd.Timestamp("2026-10-15"),
     )
     assert values.index.max() == pd.Timestamp("2026-09-30")
     assert pd.isna(values.loc["2026-08-31", "转运占比"])
@@ -63,7 +65,7 @@ def test_monthly_excludes_partial_month_and_transit_share_handles_zero(workbook)
 
 def test_federal_cpi_monthly_chart_uses_index_and_complete_months(workbook):
     values, metadata, units = load_chart_data(
-        workbook, "test.xlsx", PRICE_CHARTS[1], today=pd.Timestamp("2026-10-15"),
+        report_source(workbook),  PRICE_CHARTS[1], today=pd.Timestamp("2026-10-15"),
     )
     assert values.index.min() == pd.Timestamp("2022-01-31")
     assert values.index.max() == pd.Timestamp("2026-09-30")
@@ -74,16 +76,16 @@ def test_federal_cpi_monthly_chart_uses_index_and_complete_months(workbook):
 
 def test_daily_and_weekly_monthly_means_preserve_valid_weekly_zero(workbook):
     daily, _, _ = load_chart_data(
-        workbook, "test.xlsx", FINANCE_CHARTS[0], today=pd.Timestamp("2026-10-15"),
+        report_source(workbook),  FINANCE_CHARTS[0], today=pd.Timestamp("2026-10-15"),
     )
     weekly, _, _ = load_chart_data(
-        workbook, "test.xlsx", PROPERTY_CHARTS[0], today=pd.Timestamp("2026-10-15"),
+        report_source(workbook),  PROPERTY_CHARTS[0], today=pd.Timestamp("2026-10-15"),
     )
     assert list(daily.index) == [pd.Timestamp("2026-09-30")]
     assert len(daily.columns) == 2
     assert daily.iloc[0].tolist() == [40.0, 40.0]
     fx, _, _ = load_chart_data(
-        workbook, "test.xlsx", FINANCE_CHARTS[1], today=pd.Timestamp("2026-10-15"),
+        report_source(workbook),  FINANCE_CHARTS[1], today=pd.Timestamp("2026-10-15"),
     )
     assert fx.iloc[0, 0] == 40.0
     assert weekly.loc["2026-08-31"].iloc[0] == 0
@@ -96,7 +98,7 @@ def test_daily_and_weekly_monthly_means_preserve_valid_weekly_zero(workbook):
 def test_failed_extra_chart_does_not_hide_sibling_or_create_subsection(monkeypatch):
     values = pd.DataFrame({"value": [1]}, index=pd.to_datetime(["2026-09-30"]))
 
-    def load(content, name, spec):
+    def load(content, spec):
         if spec.key == "dfm":
             raise ValueError("missing source")
         return values, {}, {"value": "AED/CNY"}
@@ -107,7 +109,7 @@ def test_failed_extra_chart_does_not_hide_sibling_or_create_subsection(monkeypat
     monkeypatch.setattr(renderer, "render_chart_download", lambda *a, **k: None)
     st_obj = MagicMock()
     st_obj.columns.return_value = (MagicMock(), MagicMock())
-    result = renderer.render_supplemental_charts(st_obj, b"", "test.xlsx", FINANCE_CHARTS)
+    result = renderer.render_supplemental_charts(st_obj, b"", FINANCE_CHARTS)
     assert result == {"cny_aed": "2026-09-30"}
     st_obj.warning.assert_called_once()
     st_obj.subheader.assert_not_called()
@@ -124,7 +126,7 @@ from htfa.monitoring.uae.supplemental_data import FINANCE_CHARTS, PROPERTY_CHART
 from htfa.monitoring.uae.supplemental_renderer import render_supplemental_charts, render_prices_section
 p = published_source()
 for specs in (FINANCE_CHARTS, PROPERTY_CHARTS, TRANSPORT_CHARTS):
-    render_supplemental_charts(st, p, p.name, specs)
+    render_supplemental_charts(st, p, specs)
 render_prices_section(st, (p, p.name))
 ''').run(timeout=60)
     assert not app.exception

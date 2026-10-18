@@ -7,6 +7,7 @@ from typing import Any
 
 import pandas as pd
 
+from htfa.monitoring.uae.database import PublishedUAEData
 from htfa.monitoring.uae.downloads import render_chart_download
 from htfa.monitoring.uae.transport.charts import (
     DUBAI_AIR_CARGO_TITLE,
@@ -210,7 +211,7 @@ def _render_transport_metrics(
 
 def render_transport_section(
     st_obj: Any,
-    content: Any,
+    content: PublishedUAEData,
     file_name: str,
 ) -> dict[str, Any]:
     """渲染「交通物流」板块的两张海运图和两张航空运输图。"""
@@ -219,7 +220,7 @@ def render_transport_section(
     st_obj.subheader("交通物流")
     try:
         with st_obj.spinner("正在读取交通物流数据..."):
-            data = load_transport_data(content, file_name=file_name)
+            data = load_transport_data(content)
         last_month = anchor_last_month(data.values)
         try:
             _render_transport_metrics(st_obj, data, last_month)
@@ -358,7 +359,7 @@ def render_transport_section(
                 )
             except (KeyError, TypeError, ValueError) as exc:
                 cell.warning(f"{title}未加载：{exc}")
-        render_supplemental_charts(st_obj, content, file_name, TRANSPORT_CHARTS)
+        render_supplemental_charts(st_obj, content, TRANSPORT_CHARTS)
         with st_obj.expander("指标算法与解读", expanded=True, key="uae-indicator-explanation-transport"):
             st_obj.markdown(TRANSPORT_EXPLANATION)
     except (KeyError, TypeError, ValueError, FileNotFoundError) as exc:

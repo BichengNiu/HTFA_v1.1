@@ -7,6 +7,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+from htfa.monitoring.uae.database import PublishedUAEData
 from htfa.monitoring.uae.downloads import render_chart_download
 from htfa.monitoring.uae.real_estate.charts import (
     AMOUNT_LABEL,
@@ -50,10 +51,9 @@ REAL_ESTATE_EXPLANATION = """
 
 @st.cache_data(show_spinner=False, max_entries=4)
 def _load_real_estate_cached(
-    content: Any,
-    file_name: str,
+    content: PublishedUAEData,
 ) -> RealEstateData:
-    return load_real_estate_data(content, file_name=file_name)
+    return load_real_estate_data(content)
 
 
 def _market_columns(market: str) -> tuple[str, str]:
@@ -156,7 +156,7 @@ def _render_sales_chart(
 
 def render_real_estate_section(
     st_obj: Any,
-    content: Any,
+    content: PublishedUAEData,
     file_name: str,
 ) -> dict[str, Any]:
     """渲染「房地产」板块：四张成交图和一张项目数量图。"""
@@ -165,7 +165,7 @@ def render_real_estate_section(
     st_obj.subheader("房地产")
     try:
         with st_obj.spinner("正在读取 DLD 月度房地产销售数据..."):
-            data = _load_real_estate_cached(content, file_name)
+            data = _load_real_estate_cached(content)
         last_month = anchor_last_month(data.values)
         try:
             _render_real_estate_metrics(st_obj, data, last_month)
@@ -181,7 +181,7 @@ def render_real_estate_section(
                     _render_sales_chart(column, data, last_month, market=market)
                 except (KeyError, TypeError, ValueError) as exc:
                     column.warning(f"{market}销售图未加载：{exc}")
-        render_supplemental_charts(st_obj, content, file_name, PROPERTY_CHARTS)
+        render_supplemental_charts(st_obj, content, PROPERTY_CHARTS)
         with st_obj.expander("指标算法与解读", expanded=True, key="uae-indicator-explanation-property"):
             st_obj.markdown(REAL_ESTATE_EXPLANATION)
     except (KeyError, TypeError, ValueError, FileNotFoundError) as exc:

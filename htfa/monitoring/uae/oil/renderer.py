@@ -7,6 +7,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+from htfa.monitoring.uae.database import PublishedUAEData
 from htfa.monitoring.uae.downloads import render_chart_download
 from htfa.monitoring.uae.periods import (
     common_latest_month,
@@ -74,8 +75,8 @@ WAR_PRESSURE_EXPLANATION = """
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
-def _load_oil_market_cached(content: Any, file_name: str) -> OilMarketData:
-    return load_oil_market_data(content, file_name=file_name)
+def _load_oil_market_cached(content: PublishedUAEData) -> OilMarketData:
+    return load_oil_market_data(content)
 
 
 def _latest_change(
@@ -294,7 +295,6 @@ def _render_war_pressure_section(
     st_obj.divider()
 
 
-
 def _render_charts(
     st_obj: Any,
     data: OilMarketData,
@@ -433,15 +433,15 @@ def _render_charts(
 
 def render_oil_fiscal_panel(
     st_obj: Any,
-    payload: tuple[Any, str],
+    payload: tuple[PublishedUAEData, str],
 ) -> dict[str, Any]:
     """用正式油价、产量和 WAM 数据渲染监测面板。"""
 
     try:
         content, file_name = payload
         with st_obj.spinner("正在读取日度油价与月度原油产量..."):
-            data = _load_oil_market_cached(content, file_name)
-        war_pressure = load_war_pressure_data(content, file_name=file_name)
+            data = _load_oil_market_cached(content)
+        war_pressure = load_war_pressure_data(content)
         st_obj.subheader("战争压力")
         _render_war_pressure_metrics(st_obj, war_pressure)
         _render_war_pressure_section(st_obj, war_pressure)

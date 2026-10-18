@@ -1,16 +1,15 @@
-"""从阿联酋工作簿读取 CBUAE 政府及政府控股企业月度数据。"""
+"""从 DuckDB 发布快照读取 CBUAE 政府及政府控股企业月度数据。"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 import pandas as pd
 
-from htfa.data.economic_workbook import (
-    EconomicWorkbookReader,
-    SheetSeriesMetadata,
-)
+from htfa.monitoring.uae.database import PublishedUAEData, require_published_source
+from htfa.data.economic_workbook.shared.target_reader import parse_target_sheet
+
+from htfa.data.economic_workbook import SheetSeriesMetadata
 from htfa.monitoring.uae.periods import latest_complete_month as _latest_complete_month
 
 
@@ -26,10 +25,6 @@ CBUAE_INDICATORS: tuple[tuple[str, str], ...] = (
     (GRE_DEPOSITS, GRE_DEPOSITS),
     (GRE_CREDIT, GRE_CREDIT),
 )
-_WORKBOOK_READER = EconomicWorkbookReader(
-    "uae_monitoring",
-    "monitoring.uae",
-)
 
 
 @dataclass(frozen=True)
@@ -42,18 +37,15 @@ class GovernmentFinanceData:
 
 
 def load_government_finance_data(
-    file_input: Any,
-    *,
-    file_name: str | None = None,
+    source: PublishedUAEData,
 ) -> GovernmentFinanceData:
     """只读取 ``月度_CBUAE`` 的四个目标指标并校验元数据。"""
 
-    with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
-        excel_file,
-        source_name,
-    ):
-        values, metadata = _WORKBOOK_READER.read_target_sheet(
-            excel_file,
+    source = require_published_source(source)
+    source_name = source.name
+    with source.open() as tables:
+        values, metadata = parse_target_sheet(
+            tables,
             sheet_name=CBUAE_SHEET,
             targets=CBUAE_INDICATORS,
             allowed_frequencies={"月", "月度"},

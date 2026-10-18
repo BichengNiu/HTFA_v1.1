@@ -7,6 +7,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from tests.analysis.uae._helpers import report_source
+
 from htfa.monitoring.uae.transport import renderer
 from htfa.monitoring.uae.transport.charts import (
     DUBAI_AIR_CARGO_TITLE,
@@ -226,7 +228,7 @@ def _workbook_bytes() -> bytes:
 
 
 def test_loader_reads_requested_portwatch_indicators() -> None:
-    data = load_transport_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_transport_data(report_source(_workbook_bytes()))
 
     assert data.values.columns.tolist() == [
         UAE_PORT_IMPORT_TOTAL,
@@ -276,7 +278,7 @@ def test_loader_reads_requested_portwatch_indicators() -> None:
 
 
 def test_latest_complete_month_requires_all_requested_indicators() -> None:
-    data = load_transport_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_transport_data(report_source(_workbook_bytes()))
 
     assert latest_complete_month(data.values) == pd.Timestamp("2025-05-31")
 
@@ -286,7 +288,7 @@ def test_latest_complete_month_requires_all_requested_indicators() -> None:
 
 
 def test_anchor_last_month_skips_the_in_progress_month() -> None:
-    data = load_transport_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_transport_data(report_source(_workbook_bytes()))
 
     # 数据最新月（2025-05）正是“今天”所在月 → 尚未过完，锚定 2025-04
     assert anchor_last_month(
@@ -302,7 +304,7 @@ def test_anchor_last_month_skips_the_in_progress_month() -> None:
 
 
 def test_port_volume_figure_has_four_lines() -> None:
-    data = load_transport_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_transport_data(report_source(_workbook_bytes()))
     last_month = data.values.index.max().to_period("M")
 
     figure = build_multi_series_figure(
@@ -327,7 +329,7 @@ def test_port_volume_figure_has_four_lines() -> None:
 
 
 def test_port_volume_figure_can_display_million_tons_without_scientific_notation() -> None:
-    data = load_transport_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_transport_data(report_source(_workbook_bytes()))
     last_month = data.values.index.max().to_period("M")
     columns = (
         UAE_PORT_IMPORT_TOTAL,
@@ -354,7 +356,7 @@ def test_port_volume_figure_can_display_million_tons_without_scientific_notation
 
 
 def test_hormuz_legend_uses_requested_total_calls_label() -> None:
-    data = load_transport_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_transport_data(report_source(_workbook_bytes()))
     last_month = data.values.index.max().to_period("M")
 
     figure = build_multi_series_figure(
@@ -379,7 +381,7 @@ def test_hormuz_legend_uses_requested_total_calls_label() -> None:
 
 
 def test_hormuz_calls_figure_has_two_lines() -> None:
-    data = load_transport_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_transport_data(report_source(_workbook_bytes()))
     last_month = data.values.index.max().to_period("M")
 
     figure = build_multi_series_figure(
@@ -438,7 +440,7 @@ def test_hormuz_calls_figure_skips_war_line_before_march_2026() -> None:
 
     from Ts.TsPlots.style import REFERENCE_LINE_COLOR
 
-    data = load_transport_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_transport_data(report_source(_workbook_bytes()))
     last_month = data.values.index.max().to_period("M")
 
     figure = build_multi_series_figure(
@@ -461,7 +463,7 @@ def test_hormuz_calls_figure_skips_war_line_before_march_2026() -> None:
 
 
 def test_dubai_air_figure_combines_awbs_and_total_on_two_axes() -> None:
-    data = load_transport_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_transport_data(report_source(_workbook_bytes()))
     last_month = data.monthly_values.index.max().to_period("M")
 
     columns = (
@@ -506,7 +508,7 @@ def test_dubai_air_figure_combines_awbs_and_total_on_two_axes() -> None:
 
 
 def test_us_uae_air_figure_draws_passenger_and_freight_lines() -> None:
-    data = load_transport_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_transport_data(report_source(_workbook_bytes()))
     last_month = data.monthly_values.index.max().to_period("M")
     columns = (US_UAE_AIR_PASSENGERS, US_UAE_AIR_FREIGHT)
 
@@ -543,11 +545,11 @@ def test_us_uae_air_figure_draws_passenger_and_freight_lines() -> None:
 
 
 def test_section_renders_two_charts_and_explanation(monkeypatch) -> None:
-    data = load_transport_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_transport_data(report_source(_workbook_bytes()))
     monkeypatch.setattr(
         renderer,
         "load_transport_data",
-        lambda content, file_name, **kwargs: data,
+        lambda content, **kwargs: data,
     )
     st_obj = MagicMock()
     metric_columns = tuple(MagicMock() for _ in range(4))
@@ -639,11 +641,11 @@ def test_section_loader_failure_shows_error_and_returns_error_status(
 
 
 def test_cell_failure_warns_cell_and_keeps_other_chart(monkeypatch) -> None:
-    data = load_transport_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_transport_data(report_source(_workbook_bytes()))
     monkeypatch.setattr(
         renderer,
         "load_transport_data",
-        lambda content, file_name, **kwargs: data,
+        lambda content, **kwargs: data,
     )
     st_obj = MagicMock()
     metric_columns = tuple(MagicMock() for _ in range(4))
@@ -706,7 +708,7 @@ def test_figures_accept_ts_ndarray_axes(monkeypatch) -> None:
         "htfa.monitoring.uae.transport.charts.plot_series",
         plot_series_with_array_axis,
     )
-    data = load_transport_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_transport_data(report_source(_workbook_bytes()))
     last_month = data.values.index.max().to_period("M")
 
     figure1 = build_multi_series_figure(

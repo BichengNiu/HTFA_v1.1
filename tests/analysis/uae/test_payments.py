@@ -5,7 +5,10 @@ from io import BytesIO
 import pandas as pd
 import pytest
 
+from tests.analysis.uae._helpers import report_source
+
 from htfa.monitoring.uae.government_finance.payments import (
+    PAYMENT_SHEET,
     CHEQUES_AMOUNT,
     CHEQUES_AMOUNT_DISPLAY,
     CHEQUES_NUMBER,
@@ -89,7 +92,7 @@ def _data_lines(figure):
 
 
 def test_payment_loader_reads_mixed_units_and_four_indicators() -> None:
-    data = load_payment_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_payment_data(report_source(_workbook_bytes()))
 
     assert data.values.columns.tolist() == [
         CUSTOMER_TRANSFERS_NUMBER_DISPLAY,
@@ -107,17 +110,19 @@ def test_payment_loader_reads_mixed_units_and_four_indicators() -> None:
 def test_payment_loader_rejects_missing_indicator() -> None:
     with pytest.raises(ValueError, match="缺少指标"):
         load_payment_data(
-            _workbook_bytes(missing_indicator=CHEQUES_AMOUNT),
-            file_name="test.xlsx",
+            report_source(_workbook_bytes(missing_indicator=CHEQUES_AMOUNT)),
         )
 
 
 def test_payment_loader_rejects_invalid_numeric_value() -> None:
     with pytest.raises(ValueError, match="不是数值"):
-        load_payment_data(
-            _workbook_bytes(invalid_amount=True),
-            file_name="test.xlsx",
-        )
+        from htfa.data.economic_workbook.tables import TableWorkbook
+        from htfa.monitoring.uae.government_finance.payments import _parse_payment_sheet
+
+        with pd.ExcelFile(BytesIO(_workbook_bytes(invalid_amount=True))) as book:
+            raw = book.parse(PAYMENT_SHEET, header=None)
+        tables = TableWorkbook([PAYMENT_SHEET], lambda _name: raw)
+        _parse_payment_sheet(tables)
 
 
 def test_cumulative_to_monthly_resets_in_january_and_rejects_gaps() -> None:
@@ -171,7 +176,7 @@ def test_payment_figures_render_two_series_with_dual_units(
     amount_label: str,
     number_unit: str,
 ) -> None:
-    data = load_payment_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_payment_data(report_source(_workbook_bytes()))
 
     figure = builder(
         data.values,

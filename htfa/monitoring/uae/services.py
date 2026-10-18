@@ -7,6 +7,7 @@ from typing import Any
 
 import pandas as pd
 
+from htfa.monitoring.uae.database import PublishedUAEData
 from htfa.monitoring.uae.contracts import (
     DataProvenance,
     EvidenceClass,
@@ -470,12 +471,12 @@ def build_growth_panel(bundle: UAEDataBundle) -> MacroPanelResult:
 
 
 def build_monitoring_dashboard(
-    file_input: Any,
+    source: PublishedUAEData,
 ) -> MonitoringDashboardResult:
-    """基于显式传入的工作簿构建宏观监测结果。"""
+    """基于 DuckDB 发布快照构建宏观监测结果。"""
 
     try:
-        bundle = load_real_uae_bundle(file_input)
+        bundle = load_real_uae_bundle(source)
         panels = {"growth": build_growth_panel(bundle)}
         unavailable: dict[str, str] = {}
     except ValueError as exc:

@@ -140,19 +140,19 @@ def test_government_finance_loader_is_cached_by_database_snapshot(monkeypatch) -
 
     calls: list[str] = []
 
-    def load(content, file_name):
+    def load(content):
         calls.append("loaded")
         return {"source": "uae.duckdb"}
 
     renderer._load_government_finance_cached.clear()
     monkeypatch.setattr(renderer, "load_government_finance_data", load)
 
-    first = renderer._load_government_finance_cached("db-snapshot", "uae.duckdb")
-    second = renderer._load_government_finance_cached("db-snapshot", "uae.duckdb")
+    first = renderer._load_government_finance_cached("db-snapshot")
+    second = renderer._load_government_finance_cached("db-snapshot")
 
     assert first == second
     assert calls == ["loaded"]
-    renderer._load_government_finance_cached("new-db-snapshot", "uae.duckdb")
+    renderer._load_government_finance_cached("new-db-snapshot")
     assert calls == ["loaded", "loaded"]
 
 

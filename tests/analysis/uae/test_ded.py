@@ -6,6 +6,8 @@ import matplotlib.colors
 import pandas as pd
 import pytest
 
+from tests.analysis.uae._helpers import report_source
+
 from htfa.monitoring.uae.government_finance.ded import (
     ENTERPRISES_DISPLAY,
     ENTERPRISES_INDICATOR,
@@ -70,7 +72,7 @@ def _workbook_bytes() -> bytes:
 
 
 def test_ded_loader_reads_both_indicators_with_distinct_units() -> None:
-    data = load_ded_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_ded_data(report_source(_workbook_bytes()))
 
     assert data.values.columns.tolist() == [
         ENTERPRISES_DISPLAY,
@@ -83,7 +85,7 @@ def test_ded_loader_reads_both_indicators_with_distinct_units() -> None:
 
 
 def test_ded_figure_renders_single_licence_bar_without_legend() -> None:
-    data = load_ded_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_ded_data(report_source(_workbook_bytes()))
 
     figure = build_ded_figure(
         data.values,

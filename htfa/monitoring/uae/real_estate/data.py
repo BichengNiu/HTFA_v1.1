@@ -1,4 +1,4 @@
-"""从阿联酋工作簿读取 DLD 迪拜房地产月度销售数据。
+"""从 DuckDB 发布快照读取 DLD 迪拜房地产月度销售数据。
 
 ``月度_DLD`` 沿用页面前六行元数据协议，但 8 个销售列单位混合
 （笔数“笔”、金额“百万AED”），因此用定制解析（与 ``ded`` 一致），
@@ -9,12 +9,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 import pandas as pd
 
+from htfa.monitoring.uae.database import (
+    PublishedUAEData,
+    require_published_source,
+    read_raw_table,
+)
+from htfa.data.economic_workbook.shared.target_reader import validate_sheet
+from htfa.data.economic_workbook.tables import TableWorkbook
+
 from htfa.data.economic_workbook import (
-    EconomicWorkbookReader,
     SheetSeriesMetadata,
     format_updated_at,
     optional_text,
@@ -89,10 +95,6 @@ AGGREGATE_TARGETS: tuple[tuple[str, tuple[str, str], str], ...] = (
         "百万AED",
     ),
 )
-_WORKBOOK_READER = EconomicWorkbookReader(
-    "uae_monitoring",
-    "monitoring.uae",
-)
 
 @dataclass(frozen=True)
 class RealEstateData:
@@ -106,17 +108,14 @@ class RealEstateData:
 
 
 def load_real_estate_data(
-    file_input: Any,
-    *,
-    file_name: str | None = None,
+    source: PublishedUAEData,
 ) -> RealEstateData:
     """只读取 ``月度_DLD`` 的 8 个销售列并合并为 4 个聚合口径。"""
 
-    with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
-        excel_file,
-        source_name,
-    ):
-        series_map, raw_metadata = _parse_sales_sheet(excel_file)
+    source = require_published_source(source)
+    source_name = source.name
+    with source.open() as tables:
+        series_map, raw_metadata = _parse_sales_sheet(tables)
         raw_values = pd.concat(
             [series_map[name] for name, _, _ in SALES_COLUMNS],
             axis=1,
@@ -134,12 +133,12 @@ def load_real_estate_data(
 
 
 def _parse_sales_sheet(
-    excel_file: pd.ExcelFile,
+    tables: TableWorkbook,
 ) -> tuple[dict[str, pd.Series], dict[str, SheetSeriesMetadata]]:
     """按标准元数据布局解析 DLD 的八个销售指标。"""
 
-    raw = _WORKBOOK_READER.read_raw_sheet(excel_file, sheet_name=DLD_SHEET)
-    _WORKBOOK_READER.validate_target_sheet(raw, DLD_SHEET)
+    raw = read_raw_table(tables, sheet_name=DLD_SHEET)
+    validate_sheet(raw, DLD_SHEET)
 
     normalized_targets = {
         normalize_indicator_name(indicator_name): display_name
@@ -166,7 +165,7 @@ def _parse_sales_sheet(
         source = optional_text(raw.iloc[4, column_index])
         if frequency != "月" or actual_unit != unit or not source:
             raise ValueError(
-                f"指标“{indicator_name}”的频率、单位或来源不符合当前工作簿契约"
+                f"指标“{indicator_name}”的频率、单位或来源不符合当前报告数据契约"
             )
         matching_columns[display_name] = column_index
 

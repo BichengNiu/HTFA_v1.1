@@ -102,3 +102,17 @@ def published_source(database: Path | None = None) -> PublishedUAEData:
     return PublishedUAEData(
         str(path), version, published_at.strftime("%Y-%m-%d %H:%M:%S")
     )
+
+
+def require_published_source(source: PublishedUAEData) -> PublishedUAEData:
+    """Reject file inputs before any UAE report reader can open them."""
+    if not isinstance(source, PublishedUAEData):
+        raise TypeError("UAE 页面仅接受 DuckDB 发布快照，不支持 Excel 输入")
+    return source
+
+
+def read_raw_table(tables: TableWorkbook, *, sheet_name: str) -> pd.DataFrame:
+    """Read a report table while preserving missing-table diagnostics."""
+    if sheet_name not in tables.sheet_names:
+        raise ValueError(f"数据库缺少“{sheet_name}”报告表")
+    return tables.parse(sheet_name=sheet_name, header=None)

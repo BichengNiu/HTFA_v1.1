@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 import pandas as pd
 
-from htfa.data.economic_workbook import (
-    EconomicWorkbookReader,
-    SheetSeriesMetadata,
-)
+from htfa.monitoring.uae.database import PublishedUAEData, require_published_source
+from htfa.data.economic_workbook.shared.target_reader import parse_target_sheet
+
+from htfa.data.economic_workbook import SheetSeriesMetadata
 
 
 WAM_SHEET = "月度_WAM"
@@ -45,10 +44,6 @@ WAM_INDICATORS: tuple[tuple[str, str, str], ...] = (
         "指数",
     ),
 )
-_WORKBOOK_READER = EconomicWorkbookReader(
-    "uae_monitoring",
-    "monitoring.uae",
-)
 
 
 @dataclass(frozen=True)
@@ -62,16 +57,13 @@ class WarPressureData:
 
 
 def load_war_pressure_data(
-    file_input: Any,
-    *,
-    file_name: str | None = None,
+    source: PublishedUAEData,
 ) -> WarPressureData:
     """读取 WAM 军事打击及观测天数序列。"""
 
-    with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
-        excel_file,
-        source_name,
-    ):
+    source = require_published_source(source)
+    source_name = source.name
+    with source.open() as tables:
         groups = (
             (WAM_INDICATORS[:2], "枚"),
             (WAM_INDICATORS[2:3], "架"),
@@ -84,8 +76,8 @@ def load_war_pressure_data(
                 (display_name, indicator_name)
                 for display_name, indicator_name, _ in specifications
             )
-            frame, group_metadata = _WORKBOOK_READER.read_target_sheet(
-                excel_file,
+            frame, group_metadata = parse_target_sheet(
+                tables,
                 sheet_name=WAM_SHEET,
                 targets=targets,
                 allowed_frequencies={"月"},
@@ -95,8 +87,8 @@ def load_war_pressure_data(
             frames.append(frame)
             metadata.update(group_metadata)
 
-        observation_frame, observation_metadata = _WORKBOOK_READER.read_target_sheet(
-            excel_file,
+        observation_frame, observation_metadata = parse_target_sheet(
+            tables,
             sheet_name=WAM_SHEET,
             targets=((OBSERVATION_DAYS_LABEL, OBSERVATION_DAYS_INDICATOR),),
             allowed_frequencies={"月"},

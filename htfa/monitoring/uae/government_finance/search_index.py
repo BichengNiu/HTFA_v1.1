@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import pandas as pd
 from matplotlib.figure import Figure
 from Ts.TsPlots import plot_series
 from scipy.signal import savgol_filter
+
+from htfa.monitoring.uae.database import PublishedUAEData, require_published_source
+from htfa.data.economic_workbook.shared.target_reader import parse_target_sheet
 
 from htfa.monitoring.uae.plot_helpers import (
     WAR_START_DATE,
@@ -16,13 +17,7 @@ from htfa.monitoring.uae.plot_helpers import (
     normalize_ts_axis,
     source_note,
 )
-from htfa.data.economic_workbook import EconomicWorkbookReader
 
-
-_WORKBOOK_READER = EconomicWorkbookReader(
-    "uae_monitoring",
-    "monitoring.uae",
-)
 
 SMOOTH_WINDOW = 7
 SMOOTH_POLYORDER = 2
@@ -50,18 +45,13 @@ SOURCE_TEXT = "谷歌趋势"
 
 
 def load_search_index_data(
-    file_input: Any,
-    *,
-    file_name: str | None = None,
+    source: PublishedUAEData,
 ) -> pd.DataFrame:
-    """从工作簿的 ``月度_工作搜索热度`` 读取谷歌趋势序列。"""
+    """从 DuckDB 的 ``月度_工作搜索热度`` 读取谷歌趋势序列。"""
 
-    with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
-        excel_file,
-        _,
-    ):
-        values, _ = _WORKBOOK_READER.read_target_sheet(
-            excel_file,
+    with require_published_source(source).open() as tables:
+        values, _ = parse_target_sheet(
+            tables,
             sheet_name=SEARCH_SHEET,
             targets=SEARCH_INDICATORS,
             allowed_frequencies={"月", "月度"},

@@ -5,7 +5,7 @@ from io import BytesIO
 import pandas as pd
 import pytest
 
-from tests.analysis.uae._helpers import data_lines
+from tests.analysis.uae._helpers import data_lines, report_source
 from htfa.monitoring.uae.government_finance.credit import (
     BUSINESS_INDUSTRIAL,
     BUSINESS_INDUSTRIAL_DISPLAY,
@@ -89,7 +89,7 @@ def _workbook_bytes() -> bytes:
 
 
 def test_foreign_inflow_loader_reads_three_indicators() -> None:
-    data = load_foreign_inflow_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_foreign_inflow_data(report_source(_workbook_bytes()))
 
     assert data.values.columns.tolist() == [
         FOREIGN_LIABILITIES_DISPLAY,
@@ -107,7 +107,7 @@ def test_foreign_inflow_loader_reads_three_indicators() -> None:
 
 
 def test_private_credit_loader_reads_corporate_individual_and_business() -> None:
-    data = load_private_credit_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_private_credit_data(report_source(_workbook_bytes()))
 
     assert data.values.columns.tolist() == [
         PRIVATE_CORPORATE_DISPLAY,
@@ -118,7 +118,7 @@ def test_private_credit_loader_reads_corporate_individual_and_business() -> None
 
 
 def test_foreign_inflow_figure_renders_yoy() -> None:
-    data = load_foreign_inflow_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_foreign_inflow_data(report_source(_workbook_bytes()))
 
     figure = build_foreign_inflow_figure(
         data.values,
@@ -155,7 +155,7 @@ def test_foreign_inflow_figure_renders_yoy() -> None:
 
 
 def test_private_credit_figure_renders_yoy() -> None:
-    data = load_private_credit_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_private_credit_data(report_source(_workbook_bytes()))
 
     figure = build_private_credit_yoy_figure(
         data.values,

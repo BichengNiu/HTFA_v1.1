@@ -5,6 +5,8 @@ from io import BytesIO
 import pandas as pd
 import pytest
 
+from tests.analysis.uae._helpers import report_source
+
 from htfa.monitoring.uae.government_finance.pmi import (
     PMI_INDICATOR,
     build_pmi_figure,
@@ -56,7 +58,7 @@ def _pmi_workbook_bytes() -> bytes:
 
 
 def test_pmi_loader_reads_headline_index() -> None:
-    data = load_pmi_data(_pmi_workbook_bytes(), file_name="test.xlsx")
+    data = load_pmi_data(report_source(_pmi_workbook_bytes()))
 
     assert data.values.columns.tolist() == [PMI_INDICATOR]
     assert data.values.index.max() == pd.Timestamp("2025-05-31")
@@ -64,7 +66,7 @@ def test_pmi_loader_reads_headline_index() -> None:
 
 
 def test_pmi_display_windows_to_recent_months() -> None:
-    data = load_pmi_data(_pmi_workbook_bytes(), file_name="test.xlsx")
+    data = load_pmi_data(report_source(_pmi_workbook_bytes()))
 
     display = display_pmi_values(data.values)
 
@@ -73,7 +75,7 @@ def test_pmi_display_windows_to_recent_months() -> None:
 
 
 def test_pmi_figure_plots_single_line() -> None:
-    data = load_pmi_data(_pmi_workbook_bytes(), file_name="test.xlsx")
+    data = load_pmi_data(report_source(_pmi_workbook_bytes()))
 
     figure = build_pmi_figure(
         data.values,
@@ -132,8 +134,7 @@ def _search_index_workbook_bytes() -> bytes:
 
 def test_search_index_loader_reads_workbook_sheet_and_preserves_zero() -> None:
     data = load_search_index_data(
-        _search_index_workbook_bytes(),
-        file_name="阿联酋.xlsx",
+        report_source(_search_index_workbook_bytes()),
     )
 
     assert data.columns.tolist() == [WORK_DUBAI_COLUMN, WORK_UAE_COLUMN]

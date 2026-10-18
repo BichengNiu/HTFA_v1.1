@@ -11,11 +11,18 @@ from __future__ import annotations
 from collections.abc import Mapping
 import re
 from dataclasses import dataclass
-from typing import Any
 
 import pandas as pd
 from matplotlib.figure import Figure
 from Ts.TsPlots import plot_series
+
+from htfa.monitoring.uae.database import (
+    PublishedUAEData,
+    require_published_source,
+    read_raw_table,
+)
+from htfa.data.economic_workbook.shared.target_reader import validate_sheet
+from htfa.data.economic_workbook.tables import TableWorkbook
 
 from htfa.monitoring.uae.periods import within_month_window
 from htfa.monitoring.uae.plot_helpers import (
@@ -26,7 +33,6 @@ from htfa.monitoring.uae.plot_helpers import (
     source_note,
 )
 from htfa.data.economic_workbook import (
-    EconomicWorkbookReader,
     SheetSeriesMetadata,
     format_updated_at,
     optional_text,
@@ -50,10 +56,6 @@ EXPECTED_UNITS = {
     ENTERPRISES_DISPLAY: "家",
     LICENCES_DISPLAY: "张",
 }
-_WORKBOOK_READER = EconomicWorkbookReader(
-    "uae_monitoring",
-    "monitoring.uae",
-)
 
 
 @dataclass(frozen=True)
@@ -66,17 +68,14 @@ class DedData:
 
 
 def load_ded_data(
-    file_input: Any,
-    *,
-    file_name: str | None = None,
+    source: PublishedUAEData,
 ) -> DedData:
     """读取 ``月度_DED`` 的有发证活动企业数与当月新发执照数两列。"""
 
-    with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
-        excel_file,
-        source_name,
-    ):
-        frame, metadata = _parse_ded_sheet(excel_file)
+    source = require_published_source(source)
+    source_name = source.name
+    with source.open() as tables:
+        frame, metadata = _parse_ded_sheet(tables)
 
     return DedData(
         values=frame,
@@ -92,14 +91,14 @@ def _clean_source(value: str) -> str:
 
 
 def _parse_ded_sheet(
-    excel_file: pd.ExcelFile,
+    tables: TableWorkbook,
 ) -> tuple[pd.DataFrame, dict[str, SheetSeriesMetadata]]:
     """按标准元数据布局解析 DED 企业数和执照数。"""
 
-    raw = _WORKBOOK_READER.read_raw_sheet(excel_file, sheet_name=DED_SHEET)
+    raw = read_raw_table(tables, sheet_name=DED_SHEET)
     if raw.shape[1] < 3:
         raise ValueError(f"sheet“{DED_SHEET}”缺少两条目标指标")
-    _WORKBOOK_READER.validate_target_sheet(raw, DED_SHEET)
+    validate_sheet(raw, DED_SHEET)
 
     normalized_targets = {
         normalize_indicator_name(indicator_name): display_name
@@ -126,7 +125,7 @@ def _parse_ded_sheet(
         source = optional_text(raw.iloc[4, column_index])
         if frequency != "月" or unit != EXPECTED_UNITS[display_name] or not source:
             raise ValueError(
-                f"指标“{indicator_name}”的频率、单位或来源不符合当前工作簿契约"
+                f"指标“{indicator_name}”的频率、单位或来源不符合当前报告数据契约"
             )
         matching_columns[display_name] = column_index
 

@@ -9,6 +9,8 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
+from tests.analysis.uae._helpers import report_source
+
 from htfa.monitoring.uae.oil.charts import (
     build_war_pressure_index_figure,
     build_war_pressure_raw_figure,
@@ -76,7 +78,7 @@ def _sample_values() -> pd.DataFrame:
 
 
 def test_wam_loader_keeps_zero_counts_and_reads_metadata() -> None:
-    data = load_war_pressure_data(_wam_workbook_bytes(), file_name="test.xlsx")
+    data = load_war_pressure_data(report_source(_wam_workbook_bytes()))
 
     assert data.values.columns.tolist() == [
         BALLISTIC_LABEL,

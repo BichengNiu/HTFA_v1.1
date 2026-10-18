@@ -4,11 +4,18 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
 
 import pandas as pd
 from matplotlib.figure import Figure
 from Ts.TsPlots import plot_series
+
+from htfa.monitoring.uae.database import (
+    PublishedUAEData,
+    require_published_source,
+    read_raw_table,
+)
+from htfa.data.economic_workbook.shared.target_reader import validate_sheet
+from htfa.data.economic_workbook.tables import TableWorkbook
 
 from htfa.monitoring.uae.periods import within_month_window
 from htfa.monitoring.uae.plot_helpers import (
@@ -19,7 +26,6 @@ from htfa.monitoring.uae.plot_helpers import (
     source_note,
 )
 from htfa.data.economic_workbook import (
-    EconomicWorkbookReader,
     SheetSeriesMetadata,
     format_updated_at,
     normalize_indicator_name,
@@ -55,10 +61,6 @@ CUSTOMER_TRANSFER_SERIES = (
     CUSTOMER_TRANSFERS_AMOUNT_DISPLAY,
 )
 CHEQUE_SERIES = (CHEQUES_NUMBER_DISPLAY, CHEQUES_AMOUNT_DISPLAY)
-_WORKBOOK_READER = EconomicWorkbookReader(
-    "uae_monitoring",
-    "monitoring.uae",
-)
 
 
 @dataclass(frozen=True)
@@ -71,32 +73,29 @@ class PaymentData:
 
 
 def load_payment_data(
-    file_input: Any,
-    *,
-    file_name: str | None = None,
+    source: PublishedUAEData,
 ) -> PaymentData:
     """读取 FTS 客户转账和支票清算四个累计指标。"""
 
-    with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
-        excel_file,
-        source_name,
-    ):
-        values, metadata = _parse_payment_sheet(excel_file)
+    source = require_published_source(source)
+    source_name = source.name
+    with source.open() as tables:
+        values, metadata = _parse_payment_sheet(tables)
     return PaymentData(values=values, metadata=metadata, source_name=source_name)
 
 
 def _parse_payment_sheet(
-    excel_file: pd.ExcelFile,
+    tables: TableWorkbook,
 ) -> tuple[pd.DataFrame, dict[str, SheetSeriesMetadata]]:
     """严格解析月度_CBUAE 中四个不同单位的支付指标。"""
 
-    if PAYMENT_SHEET not in excel_file.sheet_names:
+    if PAYMENT_SHEET not in tables.sheet_names:
         raise ValueError(f"工作簿缺少“{PAYMENT_SHEET}”sheet")
 
-    raw = _WORKBOOK_READER.read_raw_sheet(
-        excel_file, sheet_name=PAYMENT_SHEET
+    raw = read_raw_table(
+        tables, sheet_name=PAYMENT_SHEET
     )
-    _WORKBOOK_READER.validate_target_sheet(raw, PAYMENT_SHEET)
+    validate_sheet(raw, PAYMENT_SHEET)
 
     normalized_targets = {
         normalize_indicator_name(indicator_name): (display_name, unit)

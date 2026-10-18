@@ -8,7 +8,14 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from htfa.data.economic_workbook import EconomicWorkbookReader
+from htfa.monitoring.uae.database import (
+    PublishedUAEData,
+    require_published_source,
+    read_raw_table,
+    published_source,
+)
+from htfa.data.economic_workbook.shared.target_reader import validate_sheet
+
 from htfa.data.temporal import last_complete_month_end
 from htfa.monitoring.uae.charts import (
     build_growth_and_sector_pull_figure,
@@ -26,7 +33,6 @@ from htfa.monitoring.uae.downloads import render_chart_download
 from htfa.monitoring.uae.results import MacroPanelResult
 from htfa.monitoring.uae.report import render_high_frequency_topics
 from htfa.monitoring.uae.services import build_monitoring_dashboard
-from htfa.monitoring.uae.database import published_source
 from htfa.monitoring.uae.plot_helpers import translate_source_text
 from htfa.ui_shared.chart_legend import place_chart_legend_at_bottom, render_pyplot_figure
 
@@ -49,10 +55,6 @@ _HIGH_FREQUENCY_LABELS = frozenset(
         "月度",
     }
 )
-_REPORT_WORKBOOK_READER = EconomicWorkbookReader(
-    "uae_monitoring_report",
-    "monitoring.uae.report",
-)
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
@@ -62,7 +64,7 @@ def _build_monitoring_dashboard_cached(source):
 
 
 def _latest_high_frequency_month(
-    payload: tuple[Any, str],
+    payload: tuple[PublishedUAEData, str],
     *,
     today: pd.Timestamp | None = None,
 ) -> pd.Period:
@@ -72,17 +74,14 @@ def _latest_high_frequency_month(
         else pd.Timestamp(today).normalize()
     )
     latest_months: list[pd.Period] = []
-    content, file_name = payload
-    with _REPORT_WORKBOOK_READER.open_workbook(
-        content,
-        file_name=file_name,
-    ) as (excel_file, _):
-        for sheet_name in excel_file.sheet_names[1:]:
-            raw = _REPORT_WORKBOOK_READER.read_raw_sheet(
-                excel_file,
+    content, _ = payload
+    with require_published_source(content).open() as tables:
+        for sheet_name in tables.sheet_names[1:]:
+            raw = read_raw_table(
+                tables,
                 sheet_name=sheet_name,
             )
-            _REPORT_WORKBOOK_READER.validate_target_sheet(raw, sheet_name)
+            validate_sheet(raw, sheet_name)
             frequencies = {
                 str(value).strip()
                 for value in raw.iloc[2, 1:].tolist()
@@ -121,7 +120,7 @@ def _latest_high_frequency_month(
                 latest_months.append(candidate_month)
 
     if not latest_months:
-        raise ValueError("工作簿没有可用于报告标题的完整高频月份")
+        raise ValueError("数据库报告没有可用于报告标题的完整高频月份")
     return max(latest_months)
 
 
@@ -381,7 +380,7 @@ def _render_growth_tab(
 ) -> None:
     if dashboard.unavailable_panels:
         st_obj.info(
-            "当前工作簿不足以构建宏观监测主题："
+            "当前数据库报告不足以构建宏观监测主题："
             f"{dashboard.unavailable_panels['growth']}"
         )
         return
@@ -395,7 +394,7 @@ def _render_growth_tab(
 def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
     """从只读 DuckDB 发布版本渲染阿联酋监测，无需上传文件。"""
     try:
-        file_input = published_source()
+        source = published_source()
     except (OSError, ValueError) as exc:
         _render_report_header(st_obj)
         message = f"阿联酋数据库未就绪：{exc}"
@@ -406,12 +405,12 @@ def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
             "panel_count": 0,
         }
 
-    source_name = file_input.name
-    payload = (file_input, source_name)
+    source_name = source.name
+    payload = (source, source_name)
     try:
         _render_report_header(st_obj, _latest_high_frequency_month(payload))
-        st_obj.caption(f"数据库发布于 {file_input.published_at} UTC")
-    except Exception as exc:  # noqa: BLE001 - 页面边界需展示工作簿解析错误
+        st_obj.caption(f"数据库发布于 {source.published_at} UTC")
+    except Exception as exc:  # noqa: BLE001 - 页面边界需展示数据库解析错误
         for key in list(st.session_state):
             if str(key).startswith("analysis.uae."):
                 del st.session_state[key]
@@ -439,7 +438,7 @@ def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
                     topic_results = render_high_frequency_topics(st_obj, payload)
             else:
                 with st_obj.spinner("正在构建宏观监测页面..."):
-                    dashboard = _build_monitoring_dashboard_cached(file_input)
+                    dashboard = _build_monitoring_dashboard_cached(source)
                 panel_count = len(dashboard.panels)
                 _render_growth_tab(
                     st_obj,

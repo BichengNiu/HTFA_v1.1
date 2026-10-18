@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 from openpyxl import load_workbook
 
-from tests.analysis.uae._helpers import data_lines
+from tests.analysis.uae._helpers import data_lines, report_source
 from htfa.monitoring.uae.government_finance.rates import (
     EIBOR_ONEYEAR_DISPLAY,
     EIBOR_ONEYEAR_INDICATOR,
@@ -56,7 +56,7 @@ def _workbook_bytes() -> bytes:
 
 
 def test_rates_loader_resamples_daily_to_monthly_mean() -> None:
-    data = load_rates_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_rates_data(report_source(_workbook_bytes()))
 
     assert data.values.columns.tolist() == [
         EIBOR_OVERNIGHT_DISPLAY,
@@ -82,7 +82,7 @@ def test_rates_loader_uses_common_complete_month_for_each_source() -> None:
     workbook.save(payload)
     workbook.close()
 
-    data = load_rates_data(payload.getvalue(), file_name="test.xlsx")
+    data = load_rates_data(report_source(payload.getvalue()))
 
     assert data.values.index.max() == pd.Timestamp("2026-08-31")
     assert all(
@@ -99,11 +99,11 @@ def test_rates_loader_rejects_old_news_source() -> None:
     workbook.close()
 
     with pytest.raises(ValueError, match="美联储纽约分行"):
-        load_rates_data(payload.getvalue(), file_name="test.xlsx")
+        load_rates_data(report_source(payload.getvalue()))
 
 
 def test_rates_figure_renders_three_official_monthly_mean_lines() -> None:
-    data = load_rates_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_rates_data(report_source(_workbook_bytes()))
 
     figure = build_rates_figure(
         data.values,

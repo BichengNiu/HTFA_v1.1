@@ -1,14 +1,16 @@
-"""从阿联酋工作簿读取月度_LSEG 的阿联酋非油私营部门 PMI。"""
+"""从 DuckDB 发布快照读取月度_LSEG 的阿联酋非油私营部门 PMI。"""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
 
 import pandas as pd
 from matplotlib.figure import Figure
 from Ts.TsPlots import plot_series
+
+from htfa.monitoring.uae.database import PublishedUAEData, require_published_source
+from htfa.data.economic_workbook.shared.target_reader import parse_target_sheet
 
 from htfa.monitoring.uae.periods import within_month_window
 from htfa.monitoring.uae.plot_helpers import (
@@ -18,10 +20,7 @@ from htfa.monitoring.uae.plot_helpers import (
     normalize_ts_axis,
     source_note,
 )
-from htfa.data.economic_workbook import (
-    EconomicWorkbookReader,
-    SheetSeriesMetadata,
-)
+from htfa.data.economic_workbook import SheetSeriesMetadata
 
 
 PMI_SHEET = "月度_LSEG"
@@ -30,10 +29,6 @@ PMI_INDICATOR = PMI_LABEL
 PMI_DISPLAY_NAME = "非油私营部门采购经理指数（PMI）"
 
 DISPLAY_MONTHS = 37
-_WORKBOOK_READER = EconomicWorkbookReader(
-    "uae_monitoring",
-    "monitoring.uae",
-)
 
 
 @dataclass(frozen=True)
@@ -46,18 +41,15 @@ class PmiData:
 
 
 def load_pmi_data(
-    file_input: Any,
-    *,
-    file_name: str | None = None,
+    source: PublishedUAEData,
 ) -> PmiData:
     """只读取 ``月度_LSEG`` 的单一 PMI 指标并校验元数据。"""
 
-    with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
-        excel_file,
-        source_name,
-    ):
-        values, metadata = _WORKBOOK_READER.read_target_sheet(
-            excel_file,
+    source = require_published_source(source)
+    source_name = source.name
+    with source.open() as tables:
+        values, metadata = parse_target_sheet(
+            tables,
             sheet_name=PMI_SHEET,
             targets=((PMI_LABEL, PMI_INDICATOR),),
             allowed_frequencies={"月", "月度"},

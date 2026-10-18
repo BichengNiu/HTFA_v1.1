@@ -8,11 +8,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
 
 import pandas as pd
 from matplotlib.figure import Figure
 from Ts.TsPlots import plot_series
+
+from htfa.monitoring.uae.database import PublishedUAEData, require_published_source
+from htfa.data.economic_workbook.shared.target_reader import parse_target_sheet
 
 from htfa.monitoring.uae.plot_helpers import (
     WAR_START_DATE,
@@ -23,10 +25,7 @@ from htfa.monitoring.uae.plot_helpers import (
     translate_source_text,
 )
 from htfa.monitoring.uae.periods import through_last_complete_month
-from htfa.data.economic_workbook import (
-    EconomicWorkbookReader,
-    SheetSeriesMetadata,
-)
+from htfa.data.economic_workbook import SheetSeriesMetadata
 
 
 RATES_SHEET = "日度_Wind"
@@ -52,10 +51,6 @@ RATES_SERIES = (
 )
 
 ALLOWED_FREQUENCIES = {"日", "日度", "月", "月度"}
-_WORKBOOK_READER = EconomicWorkbookReader(
-    "uae_monitoring",
-    "monitoring.uae",
-)
 
 
 @dataclass(frozen=True)
@@ -68,18 +63,15 @@ class RatesData:
 
 
 def load_rates_data(
-    file_input: Any,
-    *,
-    file_name: str | None = None,
+    source: PublishedUAEData,
 ) -> RatesData:
     """读取三条官方利率，聚合为月度均值并统一末期。"""
 
-    with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
-        excel_file,
-        source_name,
-    ):
-        frame, metadata = _WORKBOOK_READER.read_target_sheet(
-            excel_file,
+    source = require_published_source(source)
+    source_name = source.name
+    with source.open() as tables:
+        frame, metadata = parse_target_sheet(
+            tables,
             sheet_name=RATES_SHEET,
             targets=RATES_INDICATORS,
             allowed_frequencies=ALLOWED_FREQUENCIES,
@@ -90,7 +82,7 @@ def load_rates_data(
             "美联储纽约分行" if label == US_OVERNIGHT_DISPLAY else "阿联酋央行"
         )
         if translate_source_text(metadata[label].source) != expected_source:
-            raise ValueError(f"{label}须使用{expected_source}数据，请更新工作簿")
+            raise ValueError(f"{label}须使用{expected_source}数据，请更新数据库报告")
     monthly = pd.DataFrame(
         {
             label: through_last_complete_month(frame[label]).resample("ME").mean()

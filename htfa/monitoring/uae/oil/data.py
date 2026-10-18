@@ -1,16 +1,14 @@
-"""阿联酋 V2 油价与原油产量的窄范围工作簿适配器。"""
+"""阿联酋 V2 油价与原油产量的DuckDB 报告适配器。"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 import pandas as pd
 
-from htfa.data.economic_workbook import (
-    EconomicWorkbookReader,
-    SheetSeriesMetadata,
-)
+from htfa.monitoring.uae.database import PublishedUAEData, require_published_source
+from htfa.data.economic_workbook.shared.target_reader import parse_target_sheet
+
 from htfa.data.economic_workbook import SheetSeriesMetadata
 
 
@@ -23,10 +21,6 @@ RIG_COUNT_INDICATOR = ("阿联酋石油活跃钻机数", "阿联酋石油活跃�
 EIA_PRICE_INDICATORS = (("布伦特现货", "布伦特现货"),)
 DUBAI_PRICE_INDICATOR = ("迪拜现货", "全球: 名义商品价格: 迪拜原油")
 OPEC_PRODUCTION_INDICATOR = ("阿联酋原油产量", "阿联酋原油产量")
-_WORKBOOK_READER = EconomicWorkbookReader(
-    "uae_monitoring",
-    "monitoring.uae",
-)
 
 
 @dataclass(frozen=True)
@@ -41,40 +35,37 @@ class OilMarketData:
 
 
 def load_oil_market_data(
-    file_input: Any,
-    *,
-    file_name: str | None = None,
+    source: PublishedUAEData,
 ) -> OilMarketData:
     """读取当前 EIA、Dubai、OPEC 与 Baker Hughes 工作表。"""
 
-    with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
-        excel_file,
-        source_name,
-    ):
-        prices, price_metadata = _WORKBOOK_READER.read_target_sheet(
-            excel_file,
+    source = require_published_source(source)
+    source_name = source.name
+    with source.open() as tables:
+        prices, price_metadata = parse_target_sheet(
+            tables,
             sheet_name=EIA_DAILY_SHEET,
             targets=EIA_PRICE_INDICATORS,
             allowed_frequencies={"日度"},
             expected_unit="美元/桶",
         )
-        dubai_prices, dubai_metadata = _WORKBOOK_READER.read_target_sheet(
-            excel_file,
+        dubai_prices, dubai_metadata = parse_target_sheet(
+            tables,
             sheet_name=DUBAI_MONTHLY_SHEET,
             targets=(DUBAI_PRICE_INDICATOR,),
             allowed_frequencies={"月度"},
             expected_unit="美元/桶",
         )
         prices = prices.join(dubai_prices, how="outer")
-        production_frame, production_metadata = _WORKBOOK_READER.read_target_sheet(
-            excel_file,
+        production_frame, production_metadata = parse_target_sheet(
+            tables,
             sheet_name=OPEC_MONTHLY_SHEET,
             targets=(OPEC_PRODUCTION_INDICATOR,),
             allowed_frequencies={"月度"},
             expected_unit="桶/天",
         )
-        rig_count_frame, rig_count_metadata = _WORKBOOK_READER.read_target_sheet(
-            excel_file,
+        rig_count_frame, rig_count_metadata = parse_target_sheet(
+            tables,
             sheet_name=RIG_COUNT_SHEET,
             targets=(RIG_COUNT_INDICATOR,),
             allowed_frequencies={"月"},
@@ -98,7 +89,7 @@ def load_oil_market_data(
         if series.dropna().empty
     ]
     if empty:
-        raise ValueError(f"石油监测工作簿缺少有效观测：{empty}")
+        raise ValueError(f"石油监测数据库缺少有效观测：{empty}")
 
     return OilMarketData(
         prices=prices,

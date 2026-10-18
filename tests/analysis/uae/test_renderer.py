@@ -6,6 +6,8 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 
+from tests.analysis.uae._helpers import report_source
+
 from htfa.monitoring.uae.renderer import (
     _latest_high_frequency_month,
     _render_report_header,
@@ -52,7 +54,7 @@ def _high_frequency_workbook() -> bytes:
 
 def test_latest_high_frequency_month_ignores_future_observations() -> None:
     latest = _latest_high_frequency_month(
-        (_high_frequency_workbook(), "测试.xlsx"),
+        (report_source(_high_frequency_workbook()), "uae.duckdb"),
         today=pd.Timestamp("2026-08-31"),
     )
 

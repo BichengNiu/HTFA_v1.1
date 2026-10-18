@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from htfa.monitoring.uae.database import PublishedUAEData
 from htfa.monitoring.uae.downloads import render_chart_download
 from htfa.monitoring.uae.metrics import (
     _source_note_from_metadata,
@@ -18,13 +19,13 @@ from htfa.ui_shared.chart_legend import render_pyplot_figure
 
 
 def _load_charts(
-    st_obj: Any, content: Any, file_name: str, specs: tuple[ChartSpec, ...],
+    st_obj: Any, content: PublishedUAEData, specs: tuple[ChartSpec, ...],
 ) -> list:
     """独立加载各图数据，供指标卡和图表使用同一份展示序列。"""
     loaded = []
     for spec in specs:
         try:
-            values, metadata, units = load_chart_data(content, file_name, spec)
+            values, metadata, units = load_chart_data(content, spec)
             loaded.append((spec, values, metadata, units))
         except (KeyError, TypeError, ValueError, FileNotFoundError) as exc:
             st_obj.warning(f"{spec.title}未加载：{exc}")
@@ -55,10 +56,10 @@ def _render_loaded_charts(st_obj: Any, loaded: list) -> dict[str, str]:
 
 
 def render_supplemental_charts(
-    st_obj: Any, content: Any, file_name: str, specs: tuple[ChartSpec, ...],
+    st_obj: Any, content: PublishedUAEData, specs: tuple[ChartSpec, ...],
 ) -> dict[str, str]:
     """追加双列图表，不新增小节；缺失数据或单图错误独立提示。"""
-    loaded = _load_charts(st_obj, content, file_name, specs)
+    loaded = _load_charts(st_obj, content, specs)
     return _render_loaded_charts(st_obj, loaded)
 
 
@@ -95,7 +96,7 @@ def render_prices_section(st_obj: Any, payload: tuple[Any, str]) -> dict[str, An
     """渲染物价 Part 的最新完整月指标卡、钢材报价与 CPI 图。"""
     st_obj.divider()
     st_obj.subheader("物价")
-    loaded = _load_charts(st_obj, *payload, PRICE_CHARTS)
+    loaded = _load_charts(st_obj, payload[0], PRICE_CHARTS)
     _render_price_metrics(st_obj, loaded)
     rendered = _render_loaded_charts(st_obj, loaded)
     return {"status": "success" if rendered else "no_data", "charts": rendered}

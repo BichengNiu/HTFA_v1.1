@@ -6,6 +6,8 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
+from tests.analysis.uae._helpers import report_source
+
 from htfa.monitoring.uae.real_estate import renderer
 from htfa.monitoring.uae.real_estate.charts import (
     AMOUNT_LABEL,
@@ -100,7 +102,7 @@ def _workbook_bytes() -> bytes:
 
 
 def test_loader_aggregates_offplan_and_ready_sales() -> None:
-    data = load_real_estate_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_real_estate_data(report_source(_workbook_bytes()))
 
     assert data.values.columns.tolist() == [
         OFFPLAN_COUNT,
@@ -125,7 +127,7 @@ def test_loader_aggregates_offplan_and_ready_sales() -> None:
 
 
 def test_latest_complete_month_requires_all_four_aggregates() -> None:
-    data = load_real_estate_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_real_estate_data(report_source(_workbook_bytes()))
 
     assert latest_complete_month(data.values) == pd.Timestamp("2025-05-31")
 
@@ -139,7 +141,7 @@ def test_anchor_last_month_skips_the_in_progress_month() -> None:
 
     from htfa.monitoring.uae.real_estate.data import anchor_last_month
 
-    data = load_real_estate_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_real_estate_data(report_source(_workbook_bytes()))
 
     # 数据最新月（2025-05）正是“今天”所在月 → 尚未过完，锚定 2025-04
     assert anchor_last_month(
@@ -162,7 +164,7 @@ def test_build_sales_figure_renders_bar_and_amount_line_for_both_markets() -> No
 
     from Ts.TsPlots.style import DEFAULT_PALETTE, GRAY
 
-    data = load_real_estate_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_real_estate_data(report_source(_workbook_bytes()))
     last_month = data.values.index.max().to_period("M")
 
     for market in ("期房", "现房"):
@@ -207,7 +209,7 @@ def test_build_sales_figure_renders_bar_and_amount_line_for_both_markets() -> No
 
 
 def test_build_sales_figure_renders_each_property_segment() -> None:
-    data = load_real_estate_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_real_estate_data(report_source(_workbook_bytes()))
     last_month = data.values.index.max().to_period("M")
 
     assert {
@@ -248,7 +250,7 @@ def test_sales_display_values_converts_amount_to_yi_aed() -> None:
 
     from htfa.monitoring.uae.real_estate.charts import sales_display_values
 
-    data = load_real_estate_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_real_estate_data(report_source(_workbook_bytes()))
     last_month = data.values.index.max().to_period("M")
 
     frame = sales_display_values(data.values, last_month=last_month)
@@ -261,11 +263,11 @@ def test_sales_display_values_converts_amount_to_yi_aed() -> None:
 def test_section_renders_four_cross_segment_charts_and_explanation(
     monkeypatch,
 ) -> None:
-    data = load_real_estate_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_real_estate_data(report_source(_workbook_bytes()))
     monkeypatch.setattr(
         renderer,
         "_load_real_estate_cached",
-        lambda content, file_name: data,
+        lambda content: data,
     )
     st_obj = MagicMock()
     metric_columns = tuple(MagicMock() for _ in range(4))
@@ -360,11 +362,11 @@ def test_section_loader_failure_shows_error_and_returns_error_status(
 
 
 def test_cell_failure_warns_cell_and_keeps_other_charts(monkeypatch) -> None:
-    data = load_real_estate_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_real_estate_data(report_source(_workbook_bytes()))
     monkeypatch.setattr(
         renderer,
         "_load_real_estate_cached",
-        lambda content, file_name: data,
+        lambda content: data,
     )
     st_obj = MagicMock()
     metric_columns = tuple(MagicMock() for _ in range(4))

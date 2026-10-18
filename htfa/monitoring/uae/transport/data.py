@@ -17,14 +17,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 import pandas as pd
 
-from htfa.data.economic_workbook import (
-    EconomicWorkbookReader,
-    SheetSeriesMetadata,
-)
+from htfa.monitoring.uae.database import PublishedUAEData, require_published_source
+from htfa.data.economic_workbook.shared.target_reader import parse_target_sheet
+from htfa.data.economic_workbook.tables import TableWorkbook
+
+from htfa.data.economic_workbook import SheetSeriesMetadata
 from htfa.monitoring.uae.periods import (
     anchor_last_month as _anchor_last_month,
     latest_complete_month as _latest_complete_month,
@@ -80,10 +80,6 @@ DOTT100_PASSENGER_TARGETS: tuple[tuple[str, str], ...] = (
 DOTT100_FREIGHT_TARGETS: tuple[tuple[str, str], ...] = (
     (US_UAE_AIR_FREIGHT, US_UAE_AIR_FREIGHT),
 )
-_WORKBOOK_READER = EconomicWorkbookReader(
-    "uae_monitoring",
-    "monitoring.uae",
-)
 
 
 @dataclass(frozen=True)
@@ -101,7 +97,7 @@ class TransportData:
 
 
 def _try_parse_target_sheet(
-    excel_file: pd.ExcelFile,
+    tables: TableWorkbook,
     *,
     sheet_name: str,
     targets: tuple[tuple[str, str], ...],
@@ -114,8 +110,8 @@ def _try_parse_target_sheet(
     """读取扩展指标；缺失或协议错误只影响对应图表。"""
 
     try:
-        frame, metadata = _WORKBOOK_READER.read_target_sheet(
-            excel_file,
+        frame, metadata = parse_target_sheet(
+            tables,
             sheet_name=sheet_name,
             targets=targets,
             allowed_frequencies={"月", "月度"},
@@ -127,9 +123,7 @@ def _try_parse_target_sheet(
 
 
 def load_transport_data(
-    file_input: Any,
-    *,
-    file_name: str | None = None,
+    source: PublishedUAEData,
 ) -> TransportData:
     """读取交通物流板块所需的海运、迪拜航空和美国↔阿联酋航空指标。
 
@@ -137,19 +131,18 @@ def load_transport_data(
     并把错误写入 ``load_errors``，由页面对对应图表显示警告。
     """
 
-    with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
-        excel_file,
-        source_name,
-    ):
-        port_volume_frame, port_volume_metadata = _WORKBOOK_READER.read_target_sheet(
-            excel_file,
+    source = require_published_source(source)
+    source_name = source.name
+    with source.open() as tables:
+        port_volume_frame, port_volume_metadata = parse_target_sheet(
+            tables,
             sheet_name=PORTWATCH_SHEET,
             targets=PORT_VOLUME_TARGETS,
             allowed_frequencies={"月", "月度"},
             expected_unit="吨",
         )
-        calls_frame, calls_metadata = _WORKBOOK_READER.read_target_sheet(
-            excel_file,
+        calls_frame, calls_metadata = parse_target_sheet(
+            tables,
             sheet_name=PORTWATCH_SHEET,
             targets=CALLS_TARGETS,
             allowed_frequencies={"月", "月度"},
@@ -164,7 +157,7 @@ def load_transport_data(
         load_errors: dict[str, str] = {}
 
         customs_awb_frame, customs_awb_metadata, error = _try_parse_target_sheet(
-            excel_file,
+            tables,
             sheet_name=DUBAI_CUSTOMS_AIR_SHEET,
             targets=DUBAI_CUSTOMS_AIR_AWB_TARGETS,
             expected_unit="张",
@@ -175,7 +168,7 @@ def load_transport_data(
 
         customs_total_frame, customs_total_metadata, error = (
             _try_parse_target_sheet(
-                excel_file,
+                tables,
                 sheet_name=DUBAI_CUSTOMS_AIR_SHEET,
                 targets=DUBAI_CUSTOMS_AIR_TOTAL_TARGETS,
                 expected_unit="吨",
@@ -193,7 +186,7 @@ def load_transport_data(
 
         dot_passenger_frame, dot_passenger_metadata, error = (
             _try_parse_target_sheet(
-                excel_file,
+                tables,
                 sheet_name=DOTT100_SHEET,
                 targets=DOTT100_PASSENGER_TARGETS,
                 expected_unit="人次",
@@ -206,7 +199,7 @@ def load_transport_data(
 
         dot_freight_mail_frame, dot_freight_mail_metadata, error = (
             _try_parse_target_sheet(
-                excel_file,
+                tables,
                 sheet_name=DOTT100_SHEET,
                 targets=DOTT100_FREIGHT_TARGETS,
                 expected_unit="磅",

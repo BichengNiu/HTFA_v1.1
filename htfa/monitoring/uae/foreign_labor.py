@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
 
 import pandas as pd
 from matplotlib.figure import Figure
 from Ts.TsPlots import plot_series
+
+from htfa.monitoring.uae.database import PublishedUAEData, require_published_source
+from htfa.data.economic_workbook.shared.target_reader import parse_target_sheet
+from htfa.data.economic_workbook.tables import TableWorkbook
 
 from htfa.monitoring.uae.periods import within_month_window
 from htfa.monitoring.uae.plot_helpers import (
@@ -18,10 +21,7 @@ from htfa.monitoring.uae.plot_helpers import (
     normalize_ts_axis,
     source_note,
 )
-from htfa.data.economic_workbook import (
-    EconomicWorkbookReader,
-    SheetSeriesMetadata,
-)
+from htfa.data.economic_workbook import SheetSeriesMetadata
 
 
 FOREIGN_LABOR_SHEET = "月度_外籍劳动力"
@@ -38,10 +38,6 @@ SERIES_SPECS = (
 )
 
 DISPLAY_MONTHS = 37
-_WORKBOOK_READER = EconomicWorkbookReader(
-    "uae_monitoring",
-    "monitoring.uae",
-)
 
 
 @dataclass(frozen=True)
@@ -54,17 +50,14 @@ class ForeignLaborData:
 
 
 def load_foreign_labor_data(
-    file_input: Any,
-    *,
-    file_name: str | None = None,
+    source: PublishedUAEData,
 ) -> ForeignLaborData:
     """Read the two official labour-flow series from the foreign-labour sheet."""
 
-    with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
-        excel_file,
-        source_name,
-    ):
-        values, metadata = _parse_foreign_labor_sheet(excel_file)
+    source = require_published_source(source)
+    source_name = source.name
+    with source.open() as tables:
+        values, metadata = _parse_foreign_labor_sheet(tables)
 
     return ForeignLaborData(
         values=values,
@@ -74,12 +67,12 @@ def load_foreign_labor_data(
 
 
 def _parse_foreign_labor_sheet(
-    excel_file: pd.ExcelFile,
+    tables: TableWorkbook,
 ) -> tuple[pd.DataFrame, dict[str, SheetSeriesMetadata]]:
     """读取写表器生成的标准元数据布局。"""
 
-    return _WORKBOOK_READER.read_target_sheet(
-        excel_file,
+    return parse_target_sheet(
+        tables,
         sheet_name=FOREIGN_LABOR_SHEET,
         targets=tuple((name, name) for name in (NEPAL_APPROVALS, BANGLADESH_CLEARANCES)),
         allowed_frequencies={"月"},

@@ -13,11 +13,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
 
 import pandas as pd
 from matplotlib.figure import Figure
 from Ts.TsPlots import plot_series
+
+from htfa.monitoring.uae.database import PublishedUAEData, require_published_source
+from htfa.data.economic_workbook.shared.target_reader import parse_target_sheet
 
 from htfa.monitoring.uae.government_finance.data import calculate_calendar_yoy
 from htfa.monitoring.uae.plot_helpers import (
@@ -27,17 +29,10 @@ from htfa.monitoring.uae.plot_helpers import (
     normalize_ts_axis,
     source_note,
 )
-from htfa.data.economic_workbook import (
-    EconomicWorkbookReader,
-    SheetSeriesMetadata,
-)
+from htfa.data.economic_workbook import SheetSeriesMetadata
 
 
 CBUAE_SHEET = "月度_CBUAE"
-_WORKBOOK_READER = EconomicWorkbookReader(
-    "uae_monitoring",
-    "monitoring.uae",
-)
 
 FOREIGN_LIABILITIES = "阿联酋:银行国外负债(Foreign Liabilities)"
 FOREIGN_LIABILITIES_DISPLAY = "银行外债"
@@ -95,18 +90,15 @@ class CbuaeSeriesData:
 
 
 def load_foreign_inflow_data(
-    file_input: Any,
-    *,
-    file_name: str | None = None,
+    source: PublishedUAEData,
 ) -> CbuaeSeriesData:
     """读取外资流入三个指标：银行外债、外币存款与外国主体存款（非居民存款合计）。"""
 
-    with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
-        excel_file,
-        source_name,
-    ):
-        frame, metadata = _WORKBOOK_READER.read_target_sheet(
-            excel_file,
+    source = require_published_source(source)
+    source_name = source.name
+    with source.open() as tables:
+        frame, metadata = parse_target_sheet(
+            tables,
             sheet_name=CBUAE_SHEET,
             targets=FOREIGN_INFLOW_INDICATORS,
             allowed_frequencies={"月", "月度"},
@@ -134,31 +126,26 @@ def load_foreign_inflow_data(
 
 
 def load_private_credit_data(
-    file_input: Any,
-    *,
-    file_name: str | None = None,
+    source: PublishedUAEData,
 ) -> CbuaeSeriesData:
     """读取企业及居民信贷两个指标（私人企业信贷、个人信贷）。"""
 
     return _load_cbuae_series(
-        file_input,
+        source,
         targets=PRIVATE_CREDIT_INDICATORS,
-        file_name=file_name,
     )
 
 
 def _load_cbuae_series(
-    file_input: Any,
+    source: PublishedUAEData,
     *,
     targets: tuple[tuple[str, str], ...],
-    file_name: str | None,
 ) -> CbuaeSeriesData:
-    with _WORKBOOK_READER.open_workbook(file_input, file_name=file_name) as (
-        excel_file,
-        source_name,
-    ):
-        frame, metadata = _WORKBOOK_READER.read_target_sheet(
-            excel_file,
+    source = require_published_source(source)
+    source_name = source.name
+    with source.open() as tables:
+        frame, metadata = parse_target_sheet(
+            tables,
             sheet_name=CBUAE_SHEET,
             targets=targets,
             allowed_frequencies={"月", "月度"},

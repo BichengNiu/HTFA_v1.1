@@ -4,6 +4,8 @@ from io import BytesIO
 
 import pandas as pd
 
+from tests.analysis.uae._helpers import report_source
+
 from htfa.monitoring.uae.foreign_labor import (
     BANGLADESH_CLEARANCES,
     BANGLADESH_LABEL,
@@ -63,8 +65,7 @@ def _workbook_bytes() -> bytes:
 
 def test_loader_accepts_standard_workbook_protocol() -> None:
     data = load_foreign_labor_data(
-        _workbook_bytes(),
-        file_name="standard.xlsx",
+        report_source(_workbook_bytes()),
     )
 
     assert data.values.columns.tolist() == [
@@ -74,7 +75,7 @@ def test_loader_accepts_standard_workbook_protocol() -> None:
 
 
 def test_loader_reads_the_two_requested_monthly_labour_series() -> None:
-    data = load_foreign_labor_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_foreign_labor_data(report_source(_workbook_bytes()))
 
     assert data.values.columns.tolist() == [
         NEPAL_APPROVALS,
@@ -89,7 +90,7 @@ def test_loader_reads_the_two_requested_monthly_labour_series() -> None:
 
 
 def test_chart_uses_the_latest_common_month_and_two_requested_lines() -> None:
-    data = load_foreign_labor_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_foreign_labor_data(report_source(_workbook_bytes()))
 
     assert latest_common_month(data.values) == pd.Period("2026-07", freq="M")
     figure = build_foreign_labor_figure(
@@ -137,7 +138,7 @@ def _bars_side_by_side(left_axis, right_axis) -> bool:
 
 
 def test_bottom_legend_keeps_both_dual_axis_bar_series() -> None:
-    data = load_foreign_labor_data(_workbook_bytes(), file_name="test.xlsx")
+    data = load_foreign_labor_data(report_source(_workbook_bytes()))
     figure = build_foreign_labor_figure(
         data.values,
         title="鍔冲伐浜烘暟",
