@@ -49,7 +49,7 @@ if str(PROJECT_ROOT) not in sys.path:
 PINNED_TS = {
     "repository": "https://github.com/BichengNiu/Ts",
     "branch": "main",
-    "commit": "bec57a2610b38be3a8f78071d7e03850b53ca25e",
+    "commit": "dcdf0cc15afc2fbdb8d82e27a1f5932d0f3bac1e",
 }
 PORTABLE_RUNTIME = {
     "python_version": "3.13.4",

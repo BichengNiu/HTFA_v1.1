@@ -220,6 +220,16 @@ def test_embedded_runtime_specs_are_valid():
     assert len(portable["pip_wheel_sha256"]) == 64
 
 
+def test_cloud_and_new_local_runtimes_use_the_same_ts_commit():
+    requirements = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8")
+    dependency = next(
+        line for line in requirements.splitlines()
+        if line.startswith("git+https://github.com/BichengNiu/Ts.git@")
+    )
+    cloud_commit = dependency.split("@", 1)[1].split("#", 1)[0]
+    assert cloud_commit == load_pinned_metadata()["commit"]
+
+
 def test_streamlit_arguments_are_preserved():
     assert build_streamlit_argv(
         PROJECT_ROOT,

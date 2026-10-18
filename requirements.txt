@@ -13,4 +13,4 @@ curl_cffi>=0.16.3,<0.17
 tensorflow>=2.20,<3
 
 # HTFA's internal time-series toolkit, pinned to a tested public commit.
-git+https://github.com/BichengNiu/Ts.git@167ec2a133608640ecb2d89925902cafb32daee5#egg=Ts
+git+https://github.com/BichengNiu/Ts.git@dcdf0cc15afc2fbdb8d82e27a1f5932d0f3bac1e#egg=Ts
