@@ -142,6 +142,27 @@ def test_growth_panel_returns_all_expected_series_groups() -> None:
     assert panel.headline.uses_simulated_data is False
 
 
+@pytest.mark.parametrize("prefix, title", [
+    ("", "实际GDP增速与GDP平减指数同比"),
+    ("nonoil_", "非石油实际GDP增速与非石油GDP平减指数同比"),
+    ("nonfinancial_", "非金融公司实际增加值增速与平减指数同比"),
+])
+def test_deflator_yoy_uses_nominal_to_real_gdp_ratio(prefix, title):
+    bundle = _make_bundle()
+    nominal_id = f"growth.{prefix}nominal_gdp"
+    real_id = f"growth.{prefix}real_gdp"
+    nominal = bundle.series_by_id[nominal_id].copy()
+    real = bundle.series_by_id[real_id]
+    nominal.iloc[-1] = real.iloc[-1] * 1.10
+    bundle.series_by_id[nominal_id] = nominal
+
+    frame = build_growth_panel(bundle).series_groups[title]
+    deflator = frame.loc[:, frame.columns.str.contains("平减指数同比")].iloc[:, 0]
+    expected = ((nominal.iloc[-1] / real.iloc[-1])
+                / (nominal.iloc[-5] / real.iloc[-5]) - 1) * 100
+    assert deflator.iloc[-1] == pytest.approx(expected)
+
+
 def test_growth_panel_rejects_industries_that_do_not_sum_to_nonoil() -> None:
     bundle = _make_bundle()
     first_industry = f"industry.{list(INDUSTRY_NAMES)[0]}.real"

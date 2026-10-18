@@ -268,10 +268,17 @@ def _render_panel(
     *,
     series_group_titles: tuple[str, ...] | None = None,
 ) -> None:
+    macro_index = 0
     for group_title, frame in _ordered_series_groups(
         panel.series_groups,
         series_group_titles,
     ):
+        chart_container = st_obj
+        if group_title in GROWTH_OVERVIEW_GROUPS:
+            if macro_index % 2 == 0:
+                macro_columns = st_obj.columns(2, gap="small")
+            chart_container = macro_columns[macro_index % 2]
+            macro_index += 1
         section_title = INDUSTRY_SECTION_TITLES.get(group_title)
         if section_title is not None:
             st_obj.markdown(f"### {section_title}")
@@ -304,7 +311,7 @@ def _render_panel(
             )
         if group_title in GROWTH_OVERVIEW_GROUPS:
             render_pyplot_figure(
-                st_obj, figure, bbox_inches=None, place_legend_bottom=False,
+                chart_container, figure, bbox_inches=None, place_legend_bottom=False,
             )
         else:
             st_obj.plotly_chart(
@@ -313,12 +320,12 @@ def _render_panel(
                 key=f"analysis.uae.{panel.key}.series.{group_title}",
             )
         render_chart_download(
-            st_obj,
+            chart_container,
             frame,
             title=group_title,
             key=f"analysis.uae.{panel.key}.series.{group_title}.download",
         )
-        _render_series_group_explanation(st_obj, group_title)
+        _render_series_group_explanation(chart_container, group_title)
 
     for table_title, frame in panel.decomposition_tables.items():
         st_obj.plotly_chart(

@@ -243,13 +243,16 @@ def build_price_volume_figure(
         xtitle="",
         ytitle_position="side",
         year_ruler=True,
-        xlabel_count=14,
+        xlabel_count=12,
         grid=True,
         axis_groups={name: "left" for name in clean},
         units={name: "%" for name in clean},
-        hlines=0,
         vlines=WAR_START_DATE,
         show_legend=True,
+        legend_labels=[
+            name.removeprefix("【真实】").replace("【模拟】", "模拟：")
+            for name in clean
+        ],
         note=source_note(source_text) if source_text else None,
         note_loc="left",
         figsize=(9.4, 6.2),
