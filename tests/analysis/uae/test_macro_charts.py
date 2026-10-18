@@ -58,7 +58,9 @@ def test_long_macro_year_labels_remain_visible_with_final_cjk_fonts(sector):
         renderer = figure.canvas.get_renderer()
         labels = [text for axis in figure.axes for text in axis.texts
                   if text.get_gid() == "ts-year-ruler-label"]
-        assert [text.get_text() for text in labels] == [f"{y}年" for y in range(2013, 2027)]
+        assert [text.get_text() for text in labels] == [
+            "2013–2015", "2016–2018", "2019–2021", "2022–2024", "2025", "2026",
+        ]
         boxes = [text.get_bbox_patch().get_window_extent(renderer) for text in labels]
         assert all(left.x1 < right.x0 for left, right in zip(boxes, boxes[1:]))
         assert all(figure.bbox.contains(box.x0, box.y0)
@@ -95,11 +97,12 @@ def test_macro_ts_chart_has_no_x_title_and_keeps_real_growth_in_q2(monkeypatch):
     assert captured["xtitle"] == ""
     assert captured["facet"] is False
     assert captured["year_ruler"] is True
+    assert captured["year_ruler_span"] == 3
     assert all(
         label.get_text().endswith("月")
         for label in axis.get_xticklabels() if label.get_text()
     )
-    assert any(text.get_text().strip() == "2026年" for text in axis.texts)
+    assert any(text.get_text().strip() == "2026" for text in axis.texts)
     assert "hlines" not in captured
     assert captured["legend_labels"] == ["实际GDP当季同比", "GDP平减指数同比"]
     assert [text.get_text() for text in axis.get_legend().get_texts()] == captured["legend_labels"]

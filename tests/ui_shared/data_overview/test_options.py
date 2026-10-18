@@ -30,6 +30,7 @@ _NON_USER_TS_PARAMETERS = {
     "bar_alpha",
     "bar_face_color",
     "monthly_ticks",
+    "year_ruler_span",
 }
 
 # UI 层键名 → Ts plot_series 参数名的别名（draw_series_plot 内转换）。
