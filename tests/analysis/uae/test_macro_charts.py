@@ -5,9 +5,11 @@ import inspect
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import pytest
 from matplotlib.figure import Figure
 
 from htfa.monitoring.uae import charts
+from htfa.ui_shared.chart_legend import _apply_cjk_fonts
 
 
 def test_sector_pull_ts_chart_keeps_negative_stacks_and_separate_units():
@@ -29,6 +31,41 @@ def test_sector_pull_ts_chart_keeps_negative_stacks_and_separate_units():
         assert all(axis.get_xlabel() == "" for axis in figure.axes)
         np.testing.assert_equal(right.lines[0].get_ydata(), [10.0, -4.0])
         assert [text.get_text() for text in left.get_legend().get_texts()] == list(frame.columns[:3])
+    finally:
+        plt.close(figure)
+
+
+@pytest.mark.parametrize("sector", [False, True])
+def test_long_macro_year_labels_remain_visible_with_final_cjk_fonts(sector):
+    dates = pd.date_range("2013-03-31", "2026-06-30", freq="QE")
+    if sector:
+        frame = pd.DataFrame({
+            "非石油经济部门拉动": np.ones(len(dates)),
+            "石油经济部门拉动": -np.ones(len(dates)),
+            "石油及其他液体产量季度同比": np.arange(len(dates)),
+        }, index=dates)
+        builder = charts.build_growth_and_sector_pull_figure
+    else:
+        frame = pd.DataFrame({
+            "实际GDP当季同比": np.ones(len(dates)),
+            "GDP平减指数同比": np.arange(len(dates)),
+        }, index=dates)
+        builder = charts.build_price_volume_figure
+    figure = builder(frame, title="宏观概览")
+    try:
+        _apply_cjk_fonts(figure)
+        figure.canvas.draw()
+        renderer = figure.canvas.get_renderer()
+        labels = [text for axis in figure.axes for text in axis.texts
+                  if text.get_gid() == "ts-year-ruler-label"]
+        assert [text.get_text() for text in labels] == [f"{y}年" for y in range(2013, 2027)]
+        boxes = [text.get_bbox_patch().get_window_extent(renderer) for text in labels]
+        assert all(left.x1 < right.x0 for left, right in zip(boxes, boxes[1:]))
+        assert all(figure.bbox.contains(box.x0, box.y0)
+                   and figure.bbox.contains(box.x1, box.y1) for box in boxes)
+        legends = [axis.get_legend() for axis in figure.axes if axis.get_legend()]
+        assert not any(box.overlaps(legend.get_window_extent(renderer))
+                       for box in boxes for legend in legends)
     finally:
         plt.close(figure)
 
