@@ -37,7 +37,7 @@ from htfa.monitoring.uae.plot_helpers import translate_source_text
 from htfa.ui_shared.chart_legend import place_chart_legend_at_bottom, render_pyplot_figure
 
 TAB_CONFIG = (
-    ("宏观概览", "growth_overview"),
+    ("宏观数据", "growth_overview"),
     ("行业分析", "growth_industry"),
     ("高频数据", "oil_fiscal"),
 )
@@ -154,10 +154,9 @@ GROWTH_OVERVIEW_GROUPS = (
     "实际GDP增速与GDP平减指数同比",
     "GDP部门拉动与石油产量同比",
     "非石油实际GDP增速与非石油GDP平减指数同比",
-    "非油非金融实际GDP增速与平减指数同比",
+    "非油实际GDP同比及行业拉动",
 )
 GROWTH_INDUSTRY_GROUPS = (
-    "非油实际GDP同比及行业拉动",
     "行业扩张广度指数",
     "行业增长集中度",
     "行业增长持续性与状态矩阵",
@@ -166,24 +165,11 @@ GROWTH_INDUSTRY_GROUPS = (
 INDUSTRY_BREADTH_DISPLAY_TITLE = "行业增长广度与持续性"
 
 INDUSTRY_SECTION_TITLES = {
-    "非油实际GDP同比及行业拉动": "一、长期趋势：总量与增长来源",
-    "行业扩张广度指数": "二、中长期结构：行业增长质量",
+    "行业扩张广度指数": "一、中长期结构：行业增长质量",
     "行业增长持续性与状态矩阵": (
-        "三、短期动能：行业状态与量价表现"
+        "二、短期动能：行业状态与量价表现"
     ),
 }
-
-GDP_SECTOR_PULL_EXPLANATION = """
-- **部门拉动**：`(本季部门实际GDP－上年同期部门实际GDP)÷上年同期总体实际GDP×100`，单位为百分点；正值为拉动，负值为拖累。
-- **加总关系**：非石油与石油部门拉动逐季相加等于实际GDP同比。
-- **石油产量同比**：反映实物产量相对上年同期的变化率，只用于对照石油部门走势，不能与贡献柱相加，也不代表因果关系。
-""".strip()
-
-NONOIL_INDUSTRY_PULL_EXPLANATION = """
-- **行业拉动**：`(本季行业实际增加值－上年同期行业实际增加值)÷上年同期非油实际GDP×100`，单位为百分点；正值为拉动，负值为拖累。
-- **行业展示**：按完整样本期平均实际GDP占比固定选取前5个行业，其他11个行业合并为“其他行业”。
-- **加总关系**：全部柱形逐季相加等于非油GDP同比折线；这是增长核算分解，用于判断增长来自哪里，不解释增长原因。
-""".strip()
 
 INDUSTRY_BREADTH_EXPLANATION = """
 - **正增长行业比例**：当季同比增速大于0的行业数÷16个行业×100%，每个行业权重相同。
@@ -219,15 +205,9 @@ SERIES_GROUP_FIGURE_BUILDERS = {
         build_industry_state_matrix_figure,
         None,
     ),
-    "非油实际GDP同比及行业拉动": (
-        build_nonoil_industry_pull_figure,
-        None,
-    ),
 }
 
 SERIES_GROUP_EXPLANATIONS = {
-    "GDP部门拉动与石油产量同比": GDP_SECTOR_PULL_EXPLANATION,
-    "非油实际GDP同比及行业拉动": NONOIL_INDUSTRY_PULL_EXPLANATION,
     "行业扩张广度指数": INDUSTRY_BREADTH_EXPLANATION,
     "行业增长集中度": INDUSTRY_CONCENTRATION_EXPLANATION,
 }
@@ -290,11 +270,10 @@ def _render_panel(
                     and indicator_id == "oil.crude_production"
                 )
             ))
-            builder = (
-                build_growth_and_sector_pull_figure
-                if group_title == "GDP部门拉动与石油产量同比"
-                else build_price_volume_figure
-            )
+            builder = {
+                "GDP部门拉动与石油产量同比": build_growth_and_sector_pull_figure,
+                "非油实际GDP同比及行业拉动": build_nonoil_industry_pull_figure,
+            }.get(group_title, build_price_volume_figure)
             figure = builder(
                 frame,
                 title=group_title,
@@ -324,7 +303,8 @@ def _render_panel(
             title=group_title,
             key=f"analysis.uae.{panel.key}.series.{group_title}.download",
         )
-        _render_series_group_explanation(chart_container, group_title)
+        if group_title not in GROWTH_OVERVIEW_GROUPS:
+            _render_series_group_explanation(chart_container, group_title)
 
     for table_title, frame in panel.decomposition_tables.items():
         st_obj.plotly_chart(

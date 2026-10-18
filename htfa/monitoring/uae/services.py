@@ -406,7 +406,7 @@ def build_growth_panel(bundle: UAEDataBundle) -> MacroPanelResult:
             top_five_pull,
             other_pull,
             industry_contributions.total_growth.rename(
-                "【真实】非油GDP同比"
+                "非油GDP同比"
             ),
         ],
         axis=1,

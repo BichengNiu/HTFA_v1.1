@@ -30,6 +30,7 @@ _NON_USER_TS_PARAMETERS = {
     "bar_alpha",
     "bar_face_color",
     "monthly_ticks",
+    "quarterly_ticks",
     "year_ruler_span",
 }
 

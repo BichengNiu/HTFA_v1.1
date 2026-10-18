@@ -138,7 +138,7 @@ def test_growth_panel_returns_all_expected_series_groups() -> None:
     assert "石油经济部门拉动" in trend.columns
     assert "石油及其他液体产量季度同比" in trend.columns
     pull = panel.series_groups["非油实际GDP同比及行业拉动"]
-    assert "【真实】非油GDP同比" in pull.columns
+    assert "非油GDP同比" in pull.columns
     assert "其他行业" in pull.columns
     assert len(pull.columns) == 7
     assert panel.headline.uses_simulated_data is False

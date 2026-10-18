@@ -127,6 +127,7 @@ def build_growth_and_sector_pull_figure(
         ytitle_position="side",
         year_ruler=True,
         year_ruler_span=3,
+        quarterly_ticks=True,
         xlabel_count=12,
         grid=True,
         axis_groups={name: "left" if name in pull_columns else "right" for name in clean},
@@ -196,6 +197,7 @@ def build_price_volume_figure(
         ytitle_position="side",
         year_ruler=True,
         year_ruler_span=3,
+        quarterly_ticks=True,
         xlabel_count=12,
         grid=True,
         axis_groups={name: "left" for name in clean},
@@ -1244,113 +1246,50 @@ def build_nonoil_industry_pull_figure(
     frame: pd.DataFrame,
     *,
     title: str,
-    line_column: str = "【真实】非油GDP同比",
+    line_column: str = "非油GDP同比",
     other_column: str = "其他行业",
     max_points: int = 60,
-) -> go.Figure:
-    """绘制季度非油行业拉动堆叠柱和非油GDP同比折线。"""
-
-    if line_column not in frame.columns:
-        raise ValueError(f"缺少非油GDP同比序列: {line_column}")
-    industry_columns = [
-        column
-        for column in frame.columns
-        if column not in {line_column, other_column}
-    ]
-    if not industry_columns:
+    source_text: str = "",
+) -> MatplotlibFigure:
+    """用 Ts 模板展示行业拉动堆叠柱和非油实际 GDP 同比。"""
+    if line_column not in frame or other_column not in frame:
+        raise ValueError("缺少非油GDP同比或其他行业拉动序列")
+    pull_columns = [column for column in frame if column != line_column]
+    if len(pull_columns) < 2:
         raise ValueError("至少需要一个非油行业拉动序列")
-    if other_column not in frame.columns:
-        raise ValueError(f"缺少其他行业拉动序列: {other_column}")
-
-    clean = frame.dropna(how="all").tail(max_points)
-    quarter_labels = pd.PeriodIndex(clean.index, freq="Q").astype(str)
-    figure = go.Figure()
-    for position, column in enumerate(industry_columns):
-        series = clean[column]
-        if series.empty:
-            continue
-        figure.add_trace(
-            go.Bar(
-                x=quarter_labels,
-                y=series.values,
-                name=str(column),
-                marker_color=COLORS[position % len(COLORS)],
-                opacity=0.78,
-                legendrank=100 + position,
-                hovertemplate=(
-                    "%{x}<br>%{y:,.2f}个百分点"
-                    "<extra>%{fullData.name}</extra>"
-                ),
-            )
-        )
-
-    other = clean[other_column]
-    figure.add_trace(
-        go.Bar(
-            x=quarter_labels,
-            y=other.values,
-            name=other_column,
-            marker_color="#B8BDC6",
-            opacity=0.78,
-            legendrank=100 + len(industry_columns),
-            hovertemplate=(
-                "%{x}<br>%{y:,.2f}个百分点"
-                "<extra>%{fullData.name}</extra>"
-            ),
-        )
+    clean = frame.dropna(how="all").sort_index().tail(max_points).copy()
+    if clean.empty:
+        raise ValueError(f"{title}没有可绘制的有效数据")
+    if isinstance(clean.index, pd.PeriodIndex):
+        clean.index = clean.index.to_timestamp(how="end").normalize()
+    else:
+        clean.index = pd.to_datetime(clean.index)
+    figure, axis = plot_series(
+        clean,
+        facet=False,
+        title=title,
+        xtitle="",
+        ytitle_position="side",
+        year_ruler=True,
+        year_ruler_span=3,
+        quarterly_ticks=True,
+        xlabel_count=12,
+        grid=True,
+        axis_groups={name: "left" if name in pull_columns else "right" for name in clean},
+        units={name: "百分点" if name in pull_columns else "%" for name in clean},
+        bar_series=pull_columns,
+        bar_stacked=True,
+        colors=[COLORS[i % len(COLORS)] if name != other_column else "#B8BDC6"
+                for i, name in enumerate(clean)],
+        vlines=WAR_START_DATE,
+        show_legend=True,
+        legend_cols=2,
+        note=source_note(source_text) if source_text else None,
+        note_loc="left",
+        figsize=(9.4, 6.2),
     )
-
-    line = clean[line_column].dropna()
-    if not line.empty:
-        figure.add_trace(
-            go.Scatter(
-                x=quarter_labels[clean.index.get_indexer(line.index)],
-                y=line.values,
-                name=line_column,
-                mode="lines+markers",
-                line={"width": 3.0, "color": "#1F2937"},
-                marker={"size": 6},
-                legendrank=0,
-                hovertemplate=(
-                    "%{x}<br>%{y:,.2f}%"
-                    "<extra>%{fullData.name}</extra>"
-                ),
-            )
-        )
-
-    figure.update_layout(
-        title={"text": title, "x": 0.01, "xanchor": "left"},
-        height=560,
-        margin={"l": 55, "r": 210, "t": 60, "b": 45},
-        hovermode="x unified",
-        legend={
-            "orientation": "v",
-            "yanchor": "top",
-            "y": 1,
-            "xanchor": "left",
-            "x": 1.01,
-        },
-        xaxis_title="季度",
-        yaxis_title="同比增速（%）/ 行业拉动（百分点）",
-        template="plotly_white",
-        barmode="relative",
-    )
-    tick_values = quarter_labels[::4]
-    figure.update_xaxes(
-        showgrid=False,
-        type="category",
-        categoryorder="array",
-        categoryarray=quarter_labels.tolist(),
-        tickmode="array",
-        tickvals=tick_values.tolist(),
-        ticktext=tick_values.tolist(),
-        tickangle=0,
-    )
-    figure.update_yaxes(
-        gridcolor="rgba(0,0,0,0.08)",
-        zeroline=True,
-        zerolinecolor="#555",
-    )
+    annotate_war(normalize_ts_axis(axis))
+    apply_htfa_fonts(figure)
     return figure
 
 

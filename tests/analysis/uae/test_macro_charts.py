@@ -30,7 +30,7 @@ def test_sector_pull_ts_chart_keeps_negative_stacks_and_separate_units():
         assert right.get_ylabel() == "%"
         assert all(axis.get_xlabel() == "" for axis in figure.axes)
         np.testing.assert_equal(right.lines[0].get_ydata(), [10.0, -4.0])
-        assert [text.get_text() for text in left.get_legend().get_texts()] == list(frame.columns[:3])
+        assert [text.get_text() for text in left.get_legend().get_texts()] == [f"{name}（左轴）" for name in frame.columns[:2]] + [f"{frame.columns[2]}（右轴）"]
     finally:
         plt.close(figure)
 
@@ -56,6 +56,13 @@ def test_long_macro_year_labels_remain_visible_with_final_cjk_fonts(sector):
         _apply_cjk_fonts(figure)
         figure.canvas.draw()
         renderer = figure.canvas.get_renderer()
+        quarter_labels = figure.axes[0].get_xticklabels()
+        assert quarter_labels
+        assert all(label.get_text() in {"Q1", "Q2", "Q3", "Q4"}
+                   for label in quarter_labels if label.get_text())
+        tick_boxes = [label.get_window_extent(renderer) for label in quarter_labels
+                      if label.get_text()]
+        assert all(left.x1 < right.x0 for left, right in zip(tick_boxes, tick_boxes[1:]))
         labels = [text for axis in figure.axes for text in axis.texts
                   if text.get_gid() == "ts-year-ruler-label"]
         assert [text.get_text() for text in labels] == [
@@ -98,8 +105,9 @@ def test_macro_ts_chart_has_no_x_title_and_keeps_real_growth_in_q2(monkeypatch):
     assert captured["facet"] is False
     assert captured["year_ruler"] is True
     assert captured["year_ruler_span"] == 3
+    assert captured["quarterly_ticks"] is True
     assert all(
-        label.get_text().endswith("月")
+        label.get_text() in {"Q1", "Q2", "Q3", "Q4"}
         for label in axis.get_xticklabels() if label.get_text()
     )
     assert any(text.get_text().strip() == "2026" for text in axis.texts)
@@ -109,3 +117,25 @@ def test_macro_ts_chart_has_no_x_title_and_keeps_real_growth_in_q2(monkeypatch):
     assert captured["figsize"] == (9.4, 6.2)
     assert captured["units"] == {name: "%" for name in frame}
     plt.close(figure)
+
+
+def test_nonoil_industry_pull_uses_ts_with_axis_roles_and_quarters():
+    frame = pd.DataFrame({
+        "制造业": [2.0, -1.0, 3.0],
+        "其他行业": [1.0, -2.0, 2.0],
+        "非油GDP同比": [3.0, -3.0, 5.0],
+    }, index=pd.date_range("2025-12-31", periods=3, freq="QE"))
+    figure = charts.build_nonoil_industry_pull_figure(frame, title="非油行业拉动")
+    try:
+        left, right = figure.axes
+        assert left.get_ylabel() == "百分点"
+        assert right.get_ylabel() == "%"
+        assert len(left.containers) == 2
+        growth_line = next(line for line in right.lines if line.get_label() == "非油GDP同比")
+        np.testing.assert_equal(growth_line.get_ydata(), frame["非油GDP同比"].to_numpy())
+        assert [item.get_text() for item in left.get_legend().get_texts()] == [
+            "制造业（左轴）", "其他行业（左轴）", "非油GDP同比（右轴）",
+        ]
+        assert [item.get_text() for item in left.get_xticklabels()] == ["Q4", "Q1", "Q2"]
+    finally:
+        plt.close(figure)

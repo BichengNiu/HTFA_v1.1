@@ -78,3 +78,29 @@ def test_report_header_places_organization_and_data_month_on_meta_line() -> None
     )
     assert "2026年8月" in html
     assert "uae-print-page-number" not in html
+
+
+def test_macro_data_tab_has_four_charts_without_explanations():
+    from streamlit.testing.v1 import AppTest
+    from htfa.monitoring.uae.renderer import GROWTH_OVERVIEW_GROUPS, GROWTH_INDUSTRY_GROUPS
+
+    assert GROWTH_OVERVIEW_GROUPS == (
+        "实际GDP增速与GDP平减指数同比",
+        "GDP部门拉动与石油产量同比",
+        "非石油实际GDP增速与非石油GDP平减指数同比",
+        "非油实际GDP同比及行业拉动",
+    )
+    assert "非油实际GDP同比及行业拉动" not in GROWTH_INDUSTRY_GROUPS
+    app = AppTest.from_string('''
+import streamlit as st
+from htfa.monitoring.uae.renderer import render_uae_monitoring
+st.session_state["analysis.uae.active_tab"] = "宏观数据"
+render_uae_monitoring()
+''').run(timeout=90)
+    assert not app.exception
+    assert not app.error
+    assert [tab.label for tab in app.tabs] == ["宏观数据", "行业分析", "高频数据"]
+    assert len(app.get("image")) == 4
+    assert not app.get("plotly_chart")
+    assert not app.expander
+    assert len(app.get("column")) == 4
