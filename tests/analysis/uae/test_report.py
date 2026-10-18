@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -38,7 +39,7 @@ def test_high_frequency_topics_are_isolated_when_oil_fails(monkeypatch) -> None:
 
     results = report.render_high_frequency_topics(
         st_obj,
-        (b"workbook", "test.xlsx"),
+        SimpleNamespace(name="test.xlsx"),
     )
 
     assert events == ["oil", "government_finance", "real_estate", "transport"]
@@ -57,7 +58,7 @@ def test_invalid_topic_status_fails_only_that_topic(monkeypatch, payload):
         ("valid", "有效主题", lambda *args: {"status": "success"}),
     ))
     st_obj = MagicMock()
-    results = report.render_high_frequency_topics(st_obj, (object(), "uae.duckdb"))
+    results = report.render_high_frequency_topics(st_obj, object())
     assert results["invalid"].status == "failed"
     assert "无效状态" in results["invalid"].error
     assert results["valid"].status == "ok"

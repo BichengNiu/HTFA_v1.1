@@ -256,7 +256,7 @@ def test_oil_panel_places_war_pressure_before_revenue(monkeypatch) -> None:
     st_obj.metric = lambda *args, **kwargs: None
     st_obj.caption = lambda *args, **kwargs: None
 
-    result = renderer.render_oil_fiscal_panel(st_obj, (b"workbook", "test.xlsx"))
+    result = renderer.render_oil_fiscal_panel(st_obj, SimpleNamespace(name="test.xlsx"))
 
     assert result["status"] == "success"
     assert events[:2] == ["war", "revenue_metrics"]

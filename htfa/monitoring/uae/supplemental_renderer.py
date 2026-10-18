@@ -92,11 +92,11 @@ def _render_price_metrics(st_obj: Any, loaded: list) -> None:
         render_metric_cards(st_obj, cards)
 
 
-def render_prices_section(st_obj: Any, payload: tuple[Any, str]) -> dict[str, Any]:
+def render_prices_section(st_obj: Any, content: PublishedUAEData) -> dict[str, Any]:
     """渲染物价 Part 的最新完整月指标卡、钢材报价与 CPI 图。"""
     st_obj.divider()
     st_obj.subheader("物价")
-    loaded = _load_charts(st_obj, payload[0], PRICE_CHARTS)
+    loaded = _load_charts(st_obj, content, PRICE_CHARTS)
     _render_price_metrics(st_obj, loaded)
     rendered = _render_loaded_charts(st_obj, loaded)
     return {"status": "success" if rendered else "no_data", "charts": rendered}

@@ -30,6 +30,7 @@ from pypdf import PdfReader
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+from htfa.data.temporal import calendar_month_end
 from .db import transaction
 from .paths import DATA_DIR
 
@@ -454,10 +455,6 @@ def download_all(refresh: bool = False) -> None:
 # ---------------------------------------------------------------------------
 
 
-def month_end(year: int, month: int) -> date:
-    return date(year, month, calendar.monthrange(year, month)[1])
-
-
 def numeric(value: Any) -> int:
     if value in (None, "", "-"):
         return 0
@@ -648,7 +645,7 @@ def build_rows() -> list[dict[str, Any]]:
             )
         rows.append(
             {
-                "date": month_end(year, month_number),
+                "date": calendar_month_end(year, month_number),
                 "philippines_total": ph["total"] if ph else None,
                 "philippines_new_hires": ph["new_hires"] if ph else None,
                 "philippines_rehires": ph["rehires"] if ph else None,

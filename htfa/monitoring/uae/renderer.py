@@ -30,7 +30,7 @@ from htfa.monitoring.uae.contracts import ProvenanceKind
 from htfa.monitoring.uae.downloads import render_chart_download
 from htfa.monitoring.uae.results import MacroPanelResult
 from htfa.monitoring.uae.report import render_high_frequency_topics
-from htfa.monitoring.uae.services import build_monitoring_dashboard
+from htfa.monitoring.uae.services import load_growth_panel
 from htfa.monitoring.uae.plot_helpers import translate_source_text
 from htfa.ui_shared.chart_legend import place_chart_legend_at_bottom, render_pyplot_figure
 
@@ -56,13 +56,13 @@ _HIGH_FREQUENCY_LABELS = frozenset(
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
-def _build_monitoring_dashboard_cached(source):
+def _load_growth_panel_cached(source):
     """按已发布的数据版本缓存宏观监测计算。"""
-    return build_monitoring_dashboard(source)
+    return load_growth_panel(source)
 
 
 def _latest_high_frequency_month(
-    payload: tuple[PublishedUAEData, str],
+    source: PublishedUAEData,
     *,
     today: pd.Timestamp | None = None,
 ) -> pd.Period:
@@ -72,8 +72,7 @@ def _latest_high_frequency_month(
         else pd.Timestamp(today).normalize()
     )
     latest_months: list[pd.Period] = []
-    content, _ = payload
-    with require_published_source(content).open() as tables:
+    with require_published_source(source).open() as tables:
         for sheet_name in tables.sheet_names[1:]:
             raw = read_raw_table(
                 tables,
@@ -323,24 +322,6 @@ def _render_panel(
             )
 
 
-def _render_growth_tab(
-    st_obj,
-    dashboard,
-    series_group_titles: tuple[str, ...],
-) -> None:
-    if dashboard.unavailable_panels:
-        st_obj.info(
-            "当前数据库报告不足以构建宏观监测主题："
-            f"{dashboard.unavailable_panels['growth']}"
-        )
-        return
-    _render_panel(
-        st_obj,
-        dashboard.require_panel("growth"),
-        series_group_titles=series_group_titles,
-    )
-
-
 def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
     """从只读 DuckDB 发布版本渲染阿联酋监测，无需上传文件。"""
     try:
@@ -356,9 +337,8 @@ def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
         }
 
     source_name = source.name
-    payload = (source, source_name)
     try:
-        _render_report_header(st_obj, _latest_high_frequency_month(payload))
+        _render_report_header(st_obj, _latest_high_frequency_month(source))
         st_obj.caption(f"数据库发布于 {source.published_at} UTC")
     except Exception as exc:  # noqa: BLE001 - 页面边界需展示数据库解析错误
         for key in list(st.session_state):
@@ -385,15 +365,19 @@ def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
         with tab:
             if view_key == "oil_fiscal":
                 with st_obj.container(key="uae-high-frequency-print"):
-                    topic_results = render_high_frequency_topics(st_obj, payload)
+                    topic_results = render_high_frequency_topics(st_obj, source)
             else:
-                with st_obj.spinner("正在构建宏观监测页面..."):
-                    dashboard = _build_monitoring_dashboard_cached(source)
-                panel_count = len(dashboard.panels)
-                _render_growth_tab(
+                try:
+                    with st_obj.spinner("正在构建宏观监测页面..."):
+                        panel = _load_growth_panel_cached(source)
+                except ValueError as exc:
+                    st_obj.info(f"当前数据库报告不足以构建宏观监测主题：{exc}")
+                    continue
+                panel_count = 1
+                _render_panel(
                     st_obj,
-                    dashboard,
-                    GROWTH_OVERVIEW_GROUPS
+                    panel,
+                    series_group_titles=GROWTH_OVERVIEW_GROUPS
                     if view_key == "growth_overview"
                     else GROWTH_INDUSTRY_GROUPS,
                 )

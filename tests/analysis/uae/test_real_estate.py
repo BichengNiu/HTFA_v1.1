@@ -1,6 +1,7 @@
 """Tests for the DLD Dubai real-estate monthly sales panel (期房/现房)."""
 
 from io import BytesIO
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -296,8 +297,7 @@ def test_section_renders_four_cross_segment_charts_and_explanation(
 
     result = renderer.render_real_estate_section(
         st_obj,
-        b"workbook",
-        "test.xlsx",
+        SimpleNamespace(name="test.xlsx"),
     )
 
     assert result["status"] == "success"
@@ -352,8 +352,7 @@ def test_section_loader_failure_shows_error_and_returns_error_status(
 
     result = renderer.render_real_estate_section(
         st_obj,
-        b"workbook",
-        "test.xlsx",
+        SimpleNamespace(name="test.xlsx"),
     )
 
     assert result["status"] == "error"
@@ -390,8 +389,7 @@ def test_cell_failure_warns_cell_and_keeps_other_charts(monkeypatch) -> None:
 
     result = renderer.render_real_estate_section(
         st_obj,
-        b"workbook",
-        "test.xlsx",
+        SimpleNamespace(name="test.xlsx"),
     )
 
     assert result["status"] == "success"

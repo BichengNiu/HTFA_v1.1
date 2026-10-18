@@ -212,7 +212,6 @@ def _render_transport_metrics(
 def render_transport_section(
     st_obj: Any,
     content: PublishedUAEData,
-    file_name: str,
 ) -> dict[str, Any]:
     """渲染「交通物流」板块的两张海运图和两张航空运输图。"""
 
@@ -367,7 +366,7 @@ def render_transport_section(
         return {"status": "error", "message": str(exc)}
     return {
         "status": "success",
-        "source": file_name,
+        "source": content.name,
         "as_of": last_month.strftime("%Y-%m"),
     }
 

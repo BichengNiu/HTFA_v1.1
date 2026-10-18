@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import json
 import ssl
-import tempfile
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -29,6 +28,7 @@ from urllib.request import Request, urlopen
 
 import certifi
 
+from ._official_download import write_json_atomic
 from .db import transaction
 from .paths import DATA_DIR
 from .workbook_sheet_writer import merge_source_sheet, month_end, pivot_indicator_rows
@@ -97,22 +97,6 @@ def _members_url(code: str, unit: str) -> str:
     )
 
 
-def atomic_json_dump(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w", prefix=f".{path.name}.", suffix=".tmp",
-            dir=path.parent, encoding="utf-8", delete=False,
-        ) as temporary:
-            temporary_path = Path(temporary.name)
-            json.dump(payload, temporary, ensure_ascii=False)
-        temporary_path.replace(path)
-    finally:
-        if temporary_path is not None and temporary_path.exists():
-            temporary_path.unlink()
-
-
 def download(output_dir: Path) -> dict[str, Path]:
     """下载两个数据集的过滤查询 JSON 并写缓存（聚合 + 27 成员国共 4 个文件）。"""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -120,13 +104,13 @@ def download(output_dir: Path) -> dict[str, Path]:
     for code, unit, agg_filename, members_filename in DATASETS:
         agg = fetch_json(_dataset_url(code, unit))
         agg_path = output_dir / agg_filename
-        atomic_json_dump(agg_path, agg)
+        write_json_atomic(agg_path, agg, indent=None)
         paths[f"{code}:agg"] = agg_path
         members = fetch_json(_members_url(code, unit))
         members_path = output_dir / members_filename
-        atomic_json_dump(members_path, members)
+        write_json_atomic(members_path, members, indent=None)
         paths[f"{code}:members"] = members_path
-    atomic_json_dump(
+    write_json_atomic(
         METADATA_PATH,
         {
             "downloaded_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -156,6 +140,7 @@ def download(output_dir: Path) -> dict[str, Path]:
                 "零差。早于 2008 的 EU 总量见 avia_paoc。"
             ),
         },
+        indent=None,
     )
     return paths
 

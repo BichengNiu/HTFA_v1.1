@@ -20,7 +20,7 @@ from htfa.monitoring.uae.indicator_catalog import (
 )
 from htfa.monitoring.uae.services import (
     build_growth_panel,
-    build_monitoring_dashboard,
+    load_growth_panel,
 )
 
 QUARTERS = pd.period_range("2022Q1", periods=16, freq="Q")
@@ -260,20 +260,18 @@ def _workbook_bytes() -> bytes:
     return buffer.getvalue()
 
 
-def test_monitoring_dashboard_builds_growth_panel_from_workbook() -> None:
-    dashboard = build_monitoring_dashboard(
+def test_growth_loader_builds_visible_groups_from_publication() -> None:
+    panel = load_growth_panel(
         report_source(BytesIO(_workbook_bytes())),
     )
 
-    assert list(dashboard.panels) == ["growth"]
-    assert dashboard.unavailable_panels == {}
+    assert panel.key == "growth"
+    assert len(panel.series_groups) == 8
 
 
-def test_monitoring_dashboard_reports_unavailable_for_bad_workbook() -> None:
-    dashboard = build_monitoring_dashboard(BytesIO(b"not an xlsx"))
-
-    assert dashboard.panels == {}
-    assert "growth" in dashboard.unavailable_panels
+def test_growth_loader_rejects_nonpublished_input() -> None:
+    with pytest.raises(ValueError, match="数据协议校验失败"):
+        load_growth_panel(BytesIO(b"not an xlsx"))
 
 
 def test_growth_panel_reports_missing_nonoil_gdp() -> None:
@@ -306,6 +304,5 @@ def test_macro_adapter_does_not_substitute_crude_for_petroleum_and_other_liquids
     output = BytesIO()
     workbook.save(output)
     workbook.close()
-    result = build_monitoring_dashboard(report_source(output.getvalue()))
-    assert not result.panels
-    assert "oil.crude_production" in result.unavailable_panels["growth"]
+    with pytest.raises(ValueError, match="oil.crude_production"):
+        load_growth_panel(report_source(output.getvalue()))

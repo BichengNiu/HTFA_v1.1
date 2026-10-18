@@ -1,6 +1,7 @@
 """Tests for the IMF PortWatch 交通物流 panel (霍尔木兹通道 + UAE 港口)."""
 
 from io import BytesIO
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -570,8 +571,7 @@ def test_section_renders_two_charts_and_explanation(monkeypatch) -> None:
 
     result = renderer.render_transport_section(
         st_obj,
-        b"workbook",
-        "test.xlsx",
+        SimpleNamespace(name="test.xlsx"),
     )
 
     assert result["status"] == "success"
@@ -631,8 +631,7 @@ def test_section_loader_failure_shows_error_and_returns_error_status(
 
     result = renderer.render_transport_section(
         st_obj,
-        b"workbook",
-        "test.xlsx",
+        SimpleNamespace(name="test.xlsx"),
     )
 
     assert result["status"] == "error"
@@ -683,8 +682,7 @@ def test_cell_failure_warns_cell_and_keeps_other_chart(monkeypatch) -> None:
 
     result = renderer.render_transport_section(
         st_obj,
-        b"workbook",
-        "test.xlsx",
+        SimpleNamespace(name="test.xlsx"),
     )
 
     assert result["status"] == "success"

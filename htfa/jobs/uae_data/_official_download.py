@@ -7,6 +7,7 @@ check; source-specific discovery and parsing stay in their own modules.
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 from collections.abc import Mapping
@@ -110,4 +111,26 @@ def download_file(
     return "downloaded"
 
 
-__all__ = ["USER_AGENT", "download_file", "fetch_bytes"]
+def write_json_atomic(path: Path, payload: object, *, indent: int | None = 2) -> None:
+    """Write UTF-8 JSON via a unique sibling file, preserving old data on failure.
+
+    ``path`` is the destination, ``payload`` must be JSON serializable, and
+    ``indent=None`` keeps large raw API responses compact.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", prefix=f".{path.name}.", suffix=".tmp",
+            dir=path.parent, encoding="utf-8", delete=False,
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+            json.dump(payload, temporary, ensure_ascii=False, indent=indent)
+            temporary.write("\n")
+        temporary_path.replace(path)
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+
+__all__ = ["USER_AGENT", "download_file", "fetch_bytes", "write_json_atomic"]

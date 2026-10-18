@@ -15,7 +15,7 @@ Economic Review, QER）正文的「Employment and Wages」小节**，每期公�
 
 流程与 source_cbuae.py 一致：``update()`` 解析 PDF 原文 → 与期望值表逐期校验
 （防解析漂移）→ 入长表 ``uaewps_monthly``（(period, indicator)，单位同比%）；
-``merge()`` 从库读取并调用 ``write_uaewps_sheet.ps1`` 重建 Excel
+``merge()`` 从库读取并调用 ``write_indicator_sheet.ps1`` 重建 Excel
 「季度_UAEWPS」 sheet（并删除遗留的「月度_UAEWPS」旧 sheet）；缺失值
 （如 2024-06 员工数为“几乎持平”，未给具体增速）以 ``None`` 写入并留空单元格，
 不臆造数字。频率为「季」，日期使用正文观察月份，不把报告季度冒充观察季度。
@@ -425,7 +425,7 @@ def merge(workbook_path: Path) -> dict:
 
     if not workbook_path.is_file():
         raise FileNotFoundError(f"Destination workbook not found: {workbook_path}")
-    helper_path = Path(__file__).with_name("write_uaewps_sheet.ps1")
+    helper_path = Path(__file__).with_name("write_indicator_sheet.ps1")
     if not helper_path.is_file():
         raise FileNotFoundError(f"Excel writer helper not found: {helper_path}")
 
@@ -466,6 +466,9 @@ def merge(workbook_path: Path) -> dict:
 
     payload = {
         "source_label": SOURCE_NAME,
+        "number_format": "0.0",
+        "column_width": 42,
+        "period_format": "month",
         "dictionary_sheet_name": DICTIONARY_SHEET,
         "metadata_labels": ["指标名称", "频率", "单位", "来源", "更新时间"],
         "frequency": FREQUENCY,

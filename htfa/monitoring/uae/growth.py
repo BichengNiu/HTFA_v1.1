@@ -14,7 +14,6 @@ class AdditivityResult:
     """总量与分项的可加总性检查。"""
 
     residual: pd.Series
-    residual_ratio: pd.Series
     within_tolerance: pd.Series
 
 
@@ -25,7 +24,6 @@ class ContributionResult:
     total_growth: pd.Series
     contributions: pd.DataFrame
     additivity: AdditivityResult
-    periods: int
 
 
 @dataclass(frozen=True)
@@ -83,7 +81,6 @@ def validate_additivity(
     ).rename("within_tolerance")
     return AdditivityResult(
         residual=residual,
-        residual_ratio=residual_ratio,
         within_tolerance=within_tolerance,
     )
 
@@ -124,7 +121,6 @@ def calculate_growth_contributions(
         total_growth=total_growth,
         contributions=contributions,
         additivity=additivity,
-        periods=periods,
     )
 
 

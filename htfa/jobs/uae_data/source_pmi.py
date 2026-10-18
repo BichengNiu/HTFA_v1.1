@@ -10,7 +10,6 @@ tradingeconomics_chart.json、source_metadata.json、quality_report.json。
 from __future__ import annotations
 
 import base64
-import calendar
 import gzip
 import html
 import json
@@ -27,6 +26,8 @@ from urllib.request import Request, urlopen
 
 from openpyxl import load_workbook
 
+from htfa.data.temporal import month_end_from_period
+from ._official_download import write_json_atomic
 from .db import transaction
 from .paths import DATA_DIR
 
@@ -202,29 +203,6 @@ def find_latest_official_release(index_html: str) -> dict[str, str] | None:
     return None
 
 
-def atomic_json_dump(path: Path, payload: Any) -> None:
-    """原子写 JSON，避免失败的刷新截断既有数据。"""
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-            dir=path.parent,
-            encoding="utf-8",
-            delete=False,
-        ) as temporary:
-            temporary_path = Path(temporary.name)
-            json.dump(payload, temporary, ensure_ascii=False, indent=2)
-            temporary.write("\n")
-        temporary_path.replace(path)
-    finally:
-        if temporary_path is not None and temporary_path.exists():
-            temporary_path.unlink()
-
-
 def download(output_dir: Path) -> tuple[Path, Path]:
     """下载公开图表样本及其溯源元数据。"""
 
@@ -249,8 +227,8 @@ def download(output_dir: Path) -> tuple[Path, Path]:
 
     raw_path = output_dir / "tradingeconomics_chart.json"
     metadata_path = output_dir / "source_metadata.json"
-    atomic_json_dump(raw_path, payload)
-    atomic_json_dump(
+    write_json_atomic(raw_path, payload)
+    write_json_atomic(
         metadata_path,
         {
             "downloaded_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -310,30 +288,15 @@ def _expected_periods(start: str, end: str) -> list[str]:
     return periods
 
 
-def extract_series_from_payload(payload: Any) -> dict[str, Any]:
-    """从原始图表 payload 中提取唯一的公开 UAE PMI 序列。"""
-
-    try:
-        return payload[0]["series"][0]["serie"]
-    except (IndexError, KeyError, TypeError) as exc:
-        raise ValueError("Raw file does not contain a UAE PMI chart series") from exc
-
-
 def load_observations(path: Path) -> list[PmiObservation]:
     """加载、规范化并校验观测级数值。"""
 
     payload = json.loads(path.read_text(encoding="utf-8"))
-    series = extract_series_from_payload(payload)
-    if series.get("country") != "United Arab Emirates":
-        raise ValueError(f"Unexpected country: {series.get('country')!r}")
-    if str(series.get("frequency", "")).lower() != "monthly":
-        raise ValueError(f"Unexpected frequency: {series.get('frequency')!r}")
-    if "S&P" not in str(series.get("source", "")):
-        raise ValueError(f"Unexpected source: {series.get('source')!r}")
+    series = extract_series(payload)
 
     observations: list[PmiObservation] = []
     seen: set[str] = set()
-    for index, item in enumerate(series.get("data", []), start=1):
+    for index, item in enumerate(series["data"], start=1):
         if not isinstance(item, list) or len(item) < 4:
             raise ValueError(f"Malformed observation at source row {index}")
         raw_value, raw_date = item[0], item[3]
@@ -449,27 +412,6 @@ def build_quality_report(
         "checks": checks,
         "limitation": metadata.get("coverage_note"),
     }
-
-
-def _atomic_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-            dir=path.parent,
-            encoding="utf-8",
-            delete=False,
-        ) as temporary:
-            temporary_path = Path(temporary.name)
-            json.dump(payload, temporary, ensure_ascii=False, indent=2)
-            temporary.write("\n")
-        temporary_path.replace(path)
-    finally:
-        if temporary_path is not None and temporary_path.exists():
-            temporary_path.unlink()
 
 
 def target_is_current(path: Path, observations: Iterable[PmiObservation]) -> bool:
@@ -591,13 +533,6 @@ def write_workbook(path: Path, observations: list[PmiObservation]) -> None:
                 backup_path.unlink()
 
 
-def _month_end(period: str) -> date:
-    """'YYYY-MM' -> 该月最后一天的 date。"""
-
-    year, month = (int(part) for part in period.split("-"))
-    return date(year, month, calendar.monthrange(year, month)[1])
-
-
 def _dictionary_rows() -> list[dict]:
     return [
         {
@@ -642,14 +577,14 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     metadata = json.loads(METADATA_PATH.read_text(encoding="utf-8"))
     observations = load_observations(CHART_PATH)
     report = build_quality_report(observations, metadata)
-    _atomic_json(REPORT_PATH, report)
+    write_json_atomic(REPORT_PATH, report)
     if report["status"] != "passed":
         failed = [item["name"] for item in report["checks"] if not item["passed"]]
         raise ValueError("UAE PMI quality checks failed: " + ", ".join(failed))
 
     rows = [
         {
-            "period": _month_end(observation.period),
+            "period": month_end_from_period(observation.period),
             "value": round(observation.value, 1),
             "source_label": SOURCE_LABEL,
             "source_url": SOURCE_URL,

@@ -12,10 +12,8 @@ from Ts.TsPlots import plot_series
 from htfa.monitoring.uae.database import (
     PublishedUAEData,
     require_published_source,
-    read_raw_table,
 )
-from htfa.data.economic_workbook.shared.target_reader import validate_sheet
-from htfa.data.economic_workbook.tables import TableWorkbook
+from htfa.data.economic_workbook.shared.target_reader import parse_target_sheet
 
 from htfa.monitoring.uae.periods import within_month_window
 from htfa.monitoring.uae.plot_helpers import (
@@ -27,9 +25,6 @@ from htfa.monitoring.uae.plot_helpers import (
 )
 from htfa.data.economic_workbook import (
     SheetSeriesMetadata,
-    format_updated_at,
-    normalize_indicator_name,
-    optional_text,
 )
 
 
@@ -78,105 +73,13 @@ def load_payment_data(
 
     source = require_published_source(source)
     with source.open() as tables:
-        values, metadata = _parse_payment_sheet(tables)
+        values, metadata = parse_target_sheet(
+            tables, sheet_name=PAYMENT_SHEET,
+            targets=tuple((label, indicator) for label, indicator, _ in PAYMENT_INDICATORS),
+            allowed_frequencies={"月"},
+            expected_unit={label: unit for label, _, unit in PAYMENT_INDICATORS},
+        )
     return PaymentData(values=values, metadata=metadata)
-
-
-def _parse_payment_sheet(
-    tables: TableWorkbook,
-) -> tuple[pd.DataFrame, dict[str, SheetSeriesMetadata]]:
-    """严格解析月度_CBUAE 中四个不同单位的支付指标。"""
-
-    if PAYMENT_SHEET not in tables.sheet_names:
-        raise ValueError(f"工作簿缺少“{PAYMENT_SHEET}”sheet")
-
-    raw = read_raw_table(
-        tables, sheet_name=PAYMENT_SHEET
-    )
-    validate_sheet(raw, PAYMENT_SHEET)
-
-    normalized_targets = {
-        normalize_indicator_name(indicator_name): (display_name, unit)
-        for display_name, indicator_name, unit in PAYMENT_INDICATORS
-    }
-    candidate_columns: dict[str, list[int]] = {}
-    for column_index in range(1, raw.shape[1]):
-        indicator_name = normalize_indicator_name(raw.iloc[1, column_index])
-        if indicator_name in normalized_targets:
-            display_name, _ = normalized_targets[indicator_name]
-            candidate_columns.setdefault(display_name, []).append(column_index)
-
-    matching_columns: dict[str, int] = {}
-    for display_name, indicator_name, unit in PAYMENT_INDICATORS:
-        columns = candidate_columns.get(display_name, [])
-        valid_columns = [
-            column_index
-            for column_index in columns
-            if optional_text(raw.iloc[2, column_index]) == "月"
-            and optional_text(raw.iloc[3, column_index]) == unit
-            and bool(optional_text(raw.iloc[4, column_index]))
-        ]
-        if len(valid_columns) != 1:
-            if not columns:
-                raise ValueError(f"sheet“{PAYMENT_SHEET}”缺少指标：{indicator_name}")
-            raise ValueError(
-                f"指标“{indicator_name}”应有唯一一列月度、{unit}、且来源非空的观测"
-            )
-        matching_columns[display_name] = valid_columns[0]
-
-    data_block = raw.iloc[6:, :].dropna(how="all")
-    dates = pd.to_datetime(data_block.iloc[:, 0], errors="coerce")
-    if dates.isna().any():
-        row_number = int(dates[dates.isna()].index[0]) + 1
-        raise ValueError(f"sheet“{PAYMENT_SHEET}”第{row_number}行日期无效")
-    if dates.duplicated().any():
-        raise ValueError(f"sheet“{PAYMENT_SHEET}”包含重复日期")
-
-    series_map: dict[str, pd.Series] = {}
-    metadata: dict[str, SheetSeriesMetadata] = {}
-    for display_name, indicator_name, _ in PAYMENT_INDICATORS:
-        column_index = matching_columns[display_name]
-        raw_values = data_block.iloc[:, column_index]
-        numeric = pd.to_numeric(raw_values, errors="coerce")
-        invalid = (
-            raw_values.notna()
-            & raw_values.astype(str).str.strip().ne("")
-            & numeric.isna()
-        )
-        if invalid.any():
-            row_number = int(invalid[invalid].index[0]) + 1
-            raise ValueError(
-                f"sheet“{PAYMENT_SHEET}”指标“{indicator_name}”"
-                f"第{row_number}行不是数值"
-            )
-        series = pd.Series(
-            numeric.mask(numeric.eq(0)).to_numpy(),
-            index=pd.DatetimeIndex(dates),
-            name=display_name,
-        ).dropna().sort_index()
-        if series.empty:
-            raise ValueError(f"指标“{indicator_name}”没有非零有效观测")
-        series_map[display_name] = series
-        metadata[display_name] = SheetSeriesMetadata(
-            display_name=display_name,
-            indicator_name=normalize_indicator_name(
-                raw.iloc[1, column_index]
-            ),
-            frequency=optional_text(raw.iloc[2, column_index]),
-            unit=optional_text(raw.iloc[3, column_index]),
-            source=optional_text(raw.iloc[4, column_index]),
-            updated_at=format_updated_at(raw.iloc[5, column_index]),
-            sheet_name=PAYMENT_SHEET,
-        )
-
-    return (
-        pd.concat(
-            [series_map[display_name] for display_name, *_ in PAYMENT_INDICATORS],
-            axis=1,
-            sort=False,
-        ).sort_index(),
-        metadata,
-    )
 
 
 def cumulative_to_monthly(values: pd.DataFrame) -> pd.DataFrame:

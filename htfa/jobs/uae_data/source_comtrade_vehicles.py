@@ -287,7 +287,7 @@ def merge(workbook_path: Path) -> dict:
     """
     if not workbook_path.is_file():
         raise FileNotFoundError(f"Destination workbook not found: {workbook_path}")
-    helper_path = Path(__file__).with_name("write_comtrade_vehicles_sheet.ps1")
+    helper_path = Path(__file__).with_name("write_indicator_sheet.ps1")
     if not helper_path.is_file():
         raise FileNotFoundError(f"Excel writer helper not found: {helper_path}")
 
@@ -332,6 +332,9 @@ def merge(workbook_path: Path) -> dict:
 
     payload = {
         "source_label": SOURCE_NAME,
+        "number_format": "#,##0",
+        "column_width": 42,
+        "period_format": "month",
         "dictionary_sheet_name": DICTIONARY_SHEET,
         "metadata_labels": ["指标名称", "频率", "单位", "来源", "更新时间"],
         "frequency": FREQUENCY,

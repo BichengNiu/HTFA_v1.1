@@ -433,12 +433,11 @@ def _render_charts(
 
 def render_oil_fiscal_panel(
     st_obj: Any,
-    payload: tuple[PublishedUAEData, str],
+    content: PublishedUAEData,
 ) -> dict[str, Any]:
     """用正式油价、产量和 WAM 数据渲染监测面板。"""
 
     try:
-        content, file_name = payload
         with st_obj.spinner("正在读取日度油价与月度原油产量..."):
             data = _load_oil_market_cached(content)
         war_pressure = load_war_pressure_data(content)
@@ -456,7 +455,7 @@ def render_oil_fiscal_panel(
     except (KeyError, TypeError, ValueError) as exc:
         st_obj.error(f"油价、产量或战争压力数据加载失败：{exc}")
         return {"status": "error", "message": str(exc)}
-    return {"status": "success", "source": file_name, "war_pressure": True}
+    return {"status": "success", "source": content.name, "war_pressure": True}
 
 
 __all__ = ["render_oil_fiscal_panel"]

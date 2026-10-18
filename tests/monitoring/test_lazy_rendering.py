@@ -52,7 +52,7 @@ def test_high_frequency_topics_render_all_sections_in_order(monkeypatch) -> None
     )
     host = _TabsHost(open_index=1)
 
-    result = report.render_high_frequency_topics(host, (object(), "uae.duckdb"))
+    result = report.render_high_frequency_topics(host, object())
 
     assert called == ["oil", "finance", "property"]
     assert set(result) == {"oil", "finance", "property"}
@@ -103,9 +103,6 @@ def test_uae_monitoring_only_renders_the_open_top_level_tab(monkeypatch) -> None
         def caption(self, _message: str) -> None:
             return None
 
-    class _Dashboard:
-        panels = {"growth": object()}
-
     source = SimpleNamespace(name="uae.duckdb", published_at="2026-10-15")
     host = _MonitoringHost(open_index=0)
     rendered: list[tuple[str, ...]] = []
@@ -114,13 +111,13 @@ def test_uae_monitoring_only_renders_the_open_top_level_tab(monkeypatch) -> None
     monkeypatch.setattr(renderer, "_render_report_header", lambda *_args: None)
     monkeypatch.setattr(
         renderer,
-        "_build_monitoring_dashboard_cached",
-        lambda *_args: _Dashboard(),
+        "_load_growth_panel_cached",
+        lambda *_args: object(),
     )
     monkeypatch.setattr(
         renderer,
-        "_render_growth_tab",
-        lambda _st, _dashboard, titles: rendered.append(tuple(titles)),
+        "_render_panel",
+        lambda _st, _panel, *, series_group_titles: rendered.append(tuple(series_group_titles)),
     )
     monkeypatch.setattr(
         renderer,
@@ -181,7 +178,7 @@ def test_high_frequency_tab_never_reads_shared_workbook(monkeypatch) -> None:
     monkeypatch.setattr(renderer, "_latest_high_frequency_month", lambda *_args: None)
     monkeypatch.setattr(
         renderer,
-        "_build_monitoring_dashboard_cached",
+        "_load_growth_panel_cached",
         lambda *_args: (_ for _ in ()).throw(AssertionError("workbook parsed")),
     )
 

@@ -27,7 +27,6 @@
 
 from __future__ import annotations
 
-import calendar
 import csv
 import gzip
 import json
@@ -45,7 +44,7 @@ from .paths import DATA_DIR
 
 import requests
 
-from htfa.data.temporal import last_complete_month_end
+from htfa.data.temporal import calendar_month_end, last_complete_month_end
 
 from . import db  # noqa: E402
 
@@ -243,10 +242,6 @@ def _download_dataset(
 # ---------------------------------------------------------------------------
 
 
-def _month_date(year: int, month: int) -> date:
-    return date(year, month, calendar.monthrange(year, month)[1])
-
-
 def _to_date(v: object) -> date | None:
     if v is None or v == "":
         return None
@@ -271,7 +266,7 @@ def _month_from_label(month_text: str, year_text: str) -> date | None:
         m = _MONTH_ABBR.get(mt[:3].lower())
     if not m or not 1 <= m <= 12:
         return None
-    return _month_date(y, m)
+    return calendar_month_end(y, m)
 
 
 def _iter_rows(path: Path):
@@ -345,7 +340,7 @@ def _aggregate_taxi_monthly(
             period = _to_date(report_date)
             if period is None or not carrier:
                 continue
-            period = _month_date(period.year, period.month)
+            period = calendar_month_end(period.year, period.month)
             trips_n = _to_bigint(trips)
             if trips_n is None:
                 continue
@@ -586,7 +581,7 @@ def merge(workbook_path: Path) -> dict:
     """把 rta_transport_monthly / rta_transport_daily 写回工作簿两张 sheet。"""
     if not workbook_path.is_file():
         raise FileNotFoundError(f"Destination workbook not found: {workbook_path}")
-    helper_path = Path(__file__).with_name("write_rta_transport_sheet.ps1")
+    helper_path = Path(__file__).with_name("write_indicator_sheet.ps1")
     if not helper_path.is_file():
         raise FileNotFoundError(f"Excel writer helper not found: {helper_path}")
 
@@ -630,6 +625,9 @@ def merge(workbook_path: Path) -> dict:
         return {
             "dictionary_sheet_name": DICTIONARY_SHEET,
             "source_label": SOURCE_NAME,
+            "number_format": "#,##0.0",
+            "column_width": 30,
+            "period_format": "auto",
             "metadata_labels": ["指标名称", "频率", "单位", "来源", "更新时间"],
             "frequency": frequency,
             "unit": "见各列",

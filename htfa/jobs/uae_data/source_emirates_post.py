@@ -18,7 +18,7 @@ Domestic_Volume_2022_2025：月度、按 寄出城市 × 寄达城市 × 服务�
 解析 xlsx → 与期望值校验（表头、年份集合、服务集合、非负整数，fail loud
 防解析漂移）→ 入明细表 ``emirates_post_monthly``（(period, origin_city,
 destn_city, service) 粒度）；``merge()`` 从库按 (period, service) 聚合全国
-月度总量与 7 类服务分解，调用 ``write_emirates_post_sheet.ps1`` 重建 Excel
+月度总量与 7 类服务分解，调用 ``write_indicator_sheet.ps1`` 重建 Excel
 「月度_邮政」sheet 并同步「指标字典」。城市对维度保留在库内明细表，Excel
 不展开（7×7 组合 × 48 月过大）；缺失值以 ``None`` 写入并留空单元格，不臆造。
 """
@@ -397,7 +397,7 @@ def merge(workbook_path: Path) -> dict:
 
     if not workbook_path.is_file():
         raise FileNotFoundError(f"Destination workbook not found: {workbook_path}")
-    helper_path = Path(__file__).with_name("write_emirates_post_sheet.ps1")
+    helper_path = Path(__file__).with_name("write_indicator_sheet.ps1")
     if not helper_path.is_file():
         raise FileNotFoundError(f"Excel writer helper not found: {helper_path}")
 
@@ -429,6 +429,9 @@ def merge(workbook_path: Path) -> dict:
 
     payload = {
         "source_label": SOURCE_NAME,
+        "number_format": "0.0",
+        "column_width": 42,
+        "period_format": "month",
         "dictionary_sheet_name": DICTIONARY_SHEET,
         "metadata_labels": ["指标名称", "频率", "单位", "来源", "更新时间"],
         "frequency": FREQUENCY,

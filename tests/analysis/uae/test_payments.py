@@ -117,12 +117,18 @@ def test_payment_loader_rejects_missing_indicator() -> None:
 def test_payment_loader_rejects_invalid_numeric_value() -> None:
     with pytest.raises(ValueError, match="不是数值"):
         from htfa.data.economic_workbook.tables import TableWorkbook
-        from htfa.monitoring.uae.government_finance.payments import _parse_payment_sheet
+        from htfa.data.economic_workbook.shared.target_reader import parse_target_sheet
+        from htfa.monitoring.uae.government_finance.payments import PAYMENT_INDICATORS
 
         with pd.ExcelFile(BytesIO(_workbook_bytes(invalid_amount=True))) as book:
             raw = book.parse(PAYMENT_SHEET, header=None)
         tables = TableWorkbook([PAYMENT_SHEET], lambda _name: raw)
-        _parse_payment_sheet(tables)
+        parse_target_sheet(
+            tables, sheet_name=PAYMENT_SHEET,
+            targets=tuple((label, indicator) for label, indicator, _ in PAYMENT_INDICATORS),
+            allowed_frequencies={"月"},
+            expected_unit={label: unit for label, _, unit in PAYMENT_INDICATORS},
+        )
 
 
 def test_cumulative_to_monthly_resets_in_january_and_rejects_gaps() -> None:

@@ -14,7 +14,7 @@
 - 值口径：国家级网络流量（流量字节/包量）相对基准的**百分比变化**，非绝对流量。
   百分比与 HTTP 请求变化量同属 Radar「数字活动」高频代理系列。
 - 入库表：`cloudflare_radar_daily`（period, indicator, value, source_file 长表）。
-- 目标 sheet：`日度_CloudflareRadar`（经 write_cloudflare_radar_sheet.ps1 重建）。
+- 目标 sheet：`日度_CloudflareRadar`（经 write_indicator_sheet.ps1 重建）。
 """
 
 from __future__ import annotations
@@ -380,7 +380,7 @@ def merge(workbook_path: Path) -> dict:
     """把 cloudflare_radar_daily 两个指标写回 日度/周度_CloudflareRadar 两个 sheet。"""
     if not workbook_path.is_file():
         raise FileNotFoundError(f"Destination workbook not found: {workbook_path}")
-    helper_path = Path(__file__).with_name("write_cloudflare_radar_sheet.ps1")
+    helper_path = Path(__file__).with_name("write_indicator_sheet.ps1")
     if not helper_path.is_file():
         raise FileNotFoundError(f"Excel writer helper not found: {helper_path}")
 
@@ -424,6 +424,9 @@ def merge(workbook_path: Path) -> dict:
         payload = {
             "dictionary_sheet_name": DICTIONARY_SHEET,
             "source_label": SOURCE_NAME,
+            "number_format": "0.0",
+            "column_width": 34,
+            "period_format": "day",
             "metadata_labels": ["指标名称", "频率", "单位", "来源", "更新时间"],
             "frequency": frequency,
             "unit": unit,

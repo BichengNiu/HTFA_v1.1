@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import pandas as pd
 from matplotlib.figure import Figure
@@ -19,10 +19,8 @@ from Ts.TsPlots import plot_series
 from htfa.monitoring.uae.database import (
     PublishedUAEData,
     require_published_source,
-    read_raw_table,
 )
-from htfa.data.economic_workbook.shared.target_reader import validate_sheet
-from htfa.data.economic_workbook.tables import TableWorkbook
+from htfa.data.economic_workbook.shared.target_reader import parse_target_sheet
 
 from htfa.monitoring.uae.periods import within_month_window
 from htfa.monitoring.uae.plot_helpers import (
@@ -34,9 +32,6 @@ from htfa.monitoring.uae.plot_helpers import (
 )
 from htfa.data.economic_workbook import (
     SheetSeriesMetadata,
-    format_updated_at,
-    optional_text,
-    normalize_indicator_name,
 )
 from Ts.TsPlots.style import GRAY
 
@@ -73,7 +68,15 @@ def load_ded_data(
 
     source = require_published_source(source)
     with source.open() as tables:
-        frame, metadata = _parse_ded_sheet(tables)
+        frame, metadata = parse_target_sheet(
+            tables, sheet_name=DED_SHEET, targets=DED_INDICATORS,
+            allowed_frequencies={"月"}, expected_unit=EXPECTED_UNITS,
+            strict_duplicates=True,
+        )
+    metadata = {
+        name: replace(item, source=_clean_source(item.source))
+        for name, item in metadata.items()
+    }
 
     return DedData(
         values=frame,
@@ -85,98 +88,6 @@ def _clean_source(value: str) -> str:
     """去掉来源里的括号及括号内说明（如 "(commerce_number 按发照月去重)"）。"""
 
     return re.sub(r"[（(][^）)]*[）)]", "", value).strip()
-
-
-def _parse_ded_sheet(
-    tables: TableWorkbook,
-) -> tuple[pd.DataFrame, dict[str, SheetSeriesMetadata]]:
-    """按标准元数据布局解析 DED 企业数和执照数。"""
-
-    raw = read_raw_table(tables, sheet_name=DED_SHEET)
-    if raw.shape[1] < 3:
-        raise ValueError(f"sheet“{DED_SHEET}”缺少两条目标指标")
-    validate_sheet(raw, DED_SHEET)
-
-    normalized_targets = {
-        normalize_indicator_name(indicator_name): display_name
-        for display_name, indicator_name in DED_INDICATORS
-    }
-    candidate_columns: dict[str, list[int]] = {}
-    for column_index in range(1, raw.shape[1]):
-        normalized_name = normalize_indicator_name(raw.iloc[1, column_index])
-        if normalized_name in normalized_targets:
-            candidate_columns.setdefault(
-                normalized_targets[normalized_name], []
-            ).append(column_index)
-
-    matching_columns: dict[str, int] = {}
-    for display_name, indicator_name in DED_INDICATORS:
-        columns = candidate_columns.get(display_name, [])
-        if len(columns) != 1:
-            if not columns:
-                raise ValueError(f"sheet“{DED_SHEET}”缺少指标：{indicator_name}")
-            raise ValueError(f"sheet“{DED_SHEET}”包含重复指标：{indicator_name}")
-        column_index = columns[0]
-        frequency = optional_text(raw.iloc[2, column_index])
-        unit = optional_text(raw.iloc[3, column_index])
-        source = optional_text(raw.iloc[4, column_index])
-        if frequency != "月" or unit != EXPECTED_UNITS[display_name] or not source:
-            raise ValueError(
-                f"指标“{indicator_name}”的频率、单位或来源不符合当前报告数据契约"
-            )
-        matching_columns[display_name] = column_index
-
-    data_block = raw.iloc[6:, :].dropna(how="all")
-    dates = pd.to_datetime(data_block.iloc[:, 0], errors="coerce")
-    if dates.isna().any():
-        row_number = int(dates[dates.isna()].index[0]) + 1
-        raise ValueError(f"sheet“{DED_SHEET}”第{row_number}行日期无效")
-    if dates.duplicated().any():
-        raise ValueError(f"sheet“{DED_SHEET}”包含重复日期")
-
-    series_map: dict[str, pd.Series] = {}
-    metadata: dict[str, SheetSeriesMetadata] = {}
-    for display_name, column_index in matching_columns.items():
-        raw_values = data_block.iloc[:, column_index]
-        numeric = pd.to_numeric(raw_values, errors="coerce")
-        invalid = (
-            raw_values.notna()
-            & raw_values.astype(str).str.strip().ne("")
-            & numeric.isna()
-        )
-        if invalid.any():
-            row_number = int(invalid[invalid].index[0]) + 1
-            raise ValueError(
-                f"sheet“{DED_SHEET}”指标“{display_name}”"
-                f"第{row_number}行不是数值"
-            )
-        series = pd.Series(
-            numeric.mask(numeric.eq(0)).to_numpy(),
-            index=pd.DatetimeIndex(dates),
-            name=display_name,
-        ).dropna().sort_index()
-        if series.empty:
-            raise ValueError(f"指标“{display_name}”没有非零有效观测")
-        series_map[display_name] = series
-        metadata[display_name] = SheetSeriesMetadata(
-            display_name=display_name,
-            indicator_name=normalize_indicator_name(
-                raw.iloc[1, column_index]
-            ),
-            frequency=optional_text(raw.iloc[2, column_index]),
-            unit=optional_text(raw.iloc[3, column_index]),
-            source=_clean_source(optional_text(raw.iloc[4, column_index])),
-            updated_at=format_updated_at(raw.iloc[5, column_index]),
-            sheet_name=DED_SHEET,
-        )
-
-    ordered_names = [display_name for display_name, _ in DED_INDICATORS]
-    frame = pd.concat(
-        [series_map[name] for name in ordered_names],
-        axis=1,
-        sort=False,
-    ).sort_index()
-    return frame, metadata
 
 
 def build_ded_figure(

@@ -724,7 +724,6 @@ def _render_cheques_chart(
 def render_government_finance_section(
     st_obj: Any,
     content: PublishedUAEData,
-    file_name: str,
 ) -> dict[str, Any]:
     """Render official rates, credit, DED and labour comparisons."""
 
@@ -762,7 +761,7 @@ def render_government_finance_section(
         return {"status": "error", "message": str(exc)}
     return {
         "status": "success",
-        "source": file_name,
+        "source": content.name,
         "as_of": latest_date.strftime("%Y-%m"),
     }
 

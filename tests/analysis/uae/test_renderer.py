@@ -2,6 +2,7 @@
 
 import re
 from io import BytesIO
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -54,7 +55,7 @@ def _high_frequency_workbook() -> bytes:
 
 def test_latest_high_frequency_month_ignores_future_observations() -> None:
     latest = _latest_high_frequency_month(
-        (report_source(_high_frequency_workbook()), "uae.duckdb"),
+        report_source(_high_frequency_workbook()),
         today=pd.Timestamp("2026-08-31"),
     )
 
@@ -111,3 +112,28 @@ def test_missing_configured_chart_is_not_silently_skipped():
     from htfa.monitoring.uae.renderer import _ordered_series_groups
     with pytest.raises(KeyError, match="required chart"):
         _ordered_series_groups({}, ("required chart",))
+
+
+def test_unavailable_macro_result_is_reported_without_rendering(monkeypatch):
+    from htfa.monitoring.uae import renderer
+
+    host = MagicMock()
+    tabs = [MagicMock() for _ in range(3)]
+    for index, tab in enumerate(tabs):
+        tab.open = index == 0
+    host.tabs.return_value = tabs
+    monkeypatch.setattr(renderer, "published_source", lambda: SimpleNamespace(
+        name="uae.duckdb", published_at="2026-10-19",
+    ))
+    monkeypatch.setattr(renderer, "_render_report_header", lambda *args: None)
+    monkeypatch.setattr(renderer, "_latest_high_frequency_month", lambda *args: None)
+    def unavailable(*args):
+        raise ValueError("缺少所需指标")
+    monkeypatch.setattr(renderer, "_load_growth_panel_cached", unavailable)
+    draw = MagicMock()
+    monkeypatch.setattr(renderer, "_render_panel", draw)
+    result = renderer.render_uae_monitoring(host)
+    assert result["panel_count"] == 0
+    assert result["high_frequency"] == {}
+    host.info.assert_called_once_with("当前数据库报告不足以构建宏观监测主题：缺少所需指标")
+    draw.assert_not_called()

@@ -22,7 +22,6 @@ import pandas as pd
 
 from htfa.monitoring.uae.database import PublishedUAEData, require_published_source
 from htfa.data.economic_workbook.shared.target_reader import parse_target_sheet
-from htfa.data.economic_workbook.tables import TableWorkbook
 
 from htfa.data.economic_workbook import SheetSeriesMetadata
 from htfa.monitoring.uae.periods import (
@@ -95,32 +94,6 @@ class TransportData:
     load_errors: dict[str, str]
 
 
-def _try_parse_target_sheet(
-    tables: TableWorkbook,
-    *,
-    sheet_name: str,
-    targets: tuple[tuple[str, str], ...],
-    expected_unit: str,
-) -> tuple[
-    pd.DataFrame,
-    dict[str, SheetSeriesMetadata],
-    str | None,
-]:
-    """读取扩展指标；缺失或协议错误只影响对应图表。"""
-
-    try:
-        frame, metadata = parse_target_sheet(
-            tables,
-            sheet_name=sheet_name,
-            targets=targets,
-            allowed_frequencies={"月", "月度"},
-            expected_unit=expected_unit,
-        )
-    except (KeyError, TypeError, ValueError) as exc:
-        return pd.DataFrame(), {}, str(exc)
-    return frame, metadata, None
-
-
 def load_transport_data(
     source: PublishedUAEData,
 ) -> TransportData:
@@ -154,71 +127,28 @@ def load_transport_data(
         metadata = {**port_volume_metadata, **calls_metadata}
         load_errors: dict[str, str] = {}
 
-        customs_awb_frame, customs_awb_metadata, error = _try_parse_target_sheet(
-            tables,
-            sheet_name=DUBAI_CUSTOMS_AIR_SHEET,
-            targets=DUBAI_CUSTOMS_AIR_AWB_TARGETS,
-            expected_unit="张",
-        )
-        if error:
-            load_errors[DUBAI_CUSTOMS_AIR_AWB_ERROR_KEY] = error
-        metadata.update(customs_awb_metadata)
-
-        customs_total_frame, customs_total_metadata, error = (
-            _try_parse_target_sheet(
-                tables,
-                sheet_name=DUBAI_CUSTOMS_AIR_SHEET,
-                targets=DUBAI_CUSTOMS_AIR_TOTAL_TARGETS,
-                expected_unit="吨",
-            )
-        )
-        if error:
-            load_errors[DUBAI_CUSTOMS_AIR_TOTAL_ERROR_KEY] = error
-        metadata.update(customs_total_metadata)
-
-        customs_frame = pd.concat(
-            [customs_awb_frame, customs_total_frame],
-            axis=1,
-            sort=False,
-        ).sort_index()
-
-        dot_passenger_frame, dot_passenger_metadata, error = (
-            _try_parse_target_sheet(
-                tables,
-                sheet_name=DOTT100_SHEET,
-                targets=DOTT100_PASSENGER_TARGETS,
-                expected_unit="人次",
-            )
-        )
-        dot_errors: list[str] = []
-        if error:
-            dot_errors.append(error)
-        metadata.update(dot_passenger_metadata)
-
-        dot_freight_mail_frame, dot_freight_mail_metadata, error = (
-            _try_parse_target_sheet(
-                tables,
-                sheet_name=DOTT100_SHEET,
-                targets=DOTT100_FREIGHT_TARGETS,
-                expected_unit="磅",
-            )
-        )
-        if error:
-            dot_errors.append(error)
-        metadata.update(dot_freight_mail_metadata)
-        if dot_errors:
-            load_errors[DOTT100_ERROR_KEY] = "；".join(dot_errors)
-        dot_frame = pd.concat(
-            [dot_passenger_frame, dot_freight_mail_frame],
-            axis=1,
-            sort=False,
-        ).sort_index()
-
-        monthly_values = pd.concat(
-            [values, customs_frame, dot_frame],
-            axis=1,
-            sort=False,
-        ).sort_index()
+        monthly_frames = [values]
+        for sheet_name, targets, unit, error_key in (
+            (DUBAI_CUSTOMS_AIR_SHEET, DUBAI_CUSTOMS_AIR_AWB_TARGETS,
+             "张", DUBAI_CUSTOMS_AIR_AWB_ERROR_KEY),
+            (DUBAI_CUSTOMS_AIR_SHEET, DUBAI_CUSTOMS_AIR_TOTAL_TARGETS,
+             "吨", DUBAI_CUSTOMS_AIR_TOTAL_ERROR_KEY),
+            (DOTT100_SHEET, DOTT100_PASSENGER_TARGETS, "人次", DOTT100_ERROR_KEY),
+            (DOTT100_SHEET, DOTT100_FREIGHT_TARGETS, "磅", DOTT100_ERROR_KEY),
+        ):
+            try:
+                frame, group_metadata = parse_target_sheet(
+                    tables, sheet_name=sheet_name, targets=targets,
+                    allowed_frequencies={"月", "月度"}, expected_unit=unit,
+                )
+            except (KeyError, TypeError, ValueError) as exc:
+                load_errors[error_key] = "；".join(
+                    text for text in (load_errors.get(error_key), str(exc)) if text
+                )
+                continue
+            monthly_frames.append(frame)
+            metadata.update(group_metadata)
+        monthly_values = pd.concat(monthly_frames, axis=1, sort=False).sort_index()
 
     return TransportData(
         values=values,

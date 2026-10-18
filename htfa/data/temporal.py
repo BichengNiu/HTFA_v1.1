@@ -7,7 +7,8 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from calendar import monthrange
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -36,13 +37,13 @@ def last_complete_month_end(
     observed = min(observed, reference)
 
     year, month = observed.year, observed.month
-    month_end = _month_end(year, month)
+    month_end = calendar_month_end(year, month)
     if observed < month_end:
         year, month = _previous_month(year, month)
-    result = _month_end(year, month)
+    result = calendar_month_end(year, month)
     if result > reference:
         year, month = _previous_month(year, month)
-        result = _month_end(year, month)
+        result = calendar_month_end(year, month)
     return result
 
 
@@ -89,12 +90,15 @@ def _as_date(value: object) -> date | None:
         return None
 
 
-def _month_end(year: int, month: int) -> date:
-    if month == 12:
-        next_month = date(year + 1, 1, 1)
-    else:
-        next_month = date(year, month + 1, 1)
-    return next_month - timedelta(days=1)
+def calendar_month_end(year: int, month: int) -> date:
+    """返回给定 ``year``、``month`` 的自然月末日期。"""
+    return date(year, month, monthrange(year, month)[1])
+
+
+def month_end_from_period(period: str) -> date:
+    """将来源的 ``YYYY-MM`` 月份标识转换为自然月末日期。"""
+    year, month = (int(part) for part in period.split("-"))
+    return calendar_month_end(year, month)
 
 
 def _previous_month(year: int, month: int) -> tuple[int, int]:
@@ -102,6 +106,8 @@ def _previous_month(year: int, month: int) -> tuple[int, int]:
 
 
 __all__ = [
+    "calendar_month_end",
+    "month_end_from_period",
     "last_complete_month_end",
     "latest_complete_month_end_from_values",
 ]

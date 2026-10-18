@@ -32,6 +32,7 @@ from urllib.parse import urljoin
 
 from openpyxl import load_workbook
 
+from htfa.data.temporal import calendar_month_end
 from .paths import DATA_DIR
 
 
@@ -100,13 +101,6 @@ _SCAD_MONTHS = {
     "november": 11,
     "december": 12,
 }
-
-
-def _month_end(year: int, month: int) -> date:
-    year_next = year + (month == 12)
-    month_next = 1 if month == 12 else month + 1
-    first = date(year_next, month_next, 1)
-    return date.fromordinal(first.toordinal() - 1)
 
 
 def parse_hotel_stats_rows(rows: list) -> dict[str, float | None]:
@@ -203,7 +197,7 @@ def _long_rows(paths: Iterable[Path]) -> list[dict]:
     rows: list[dict] = []
     for path in sorted(paths):
         year, month = _FILE_PERIOD.search(path.name).groups()
-        period = _month_end(int(year), int(month))
+        period = calendar_month_end(int(year), int(month))
         parsed = _parse_workbook(path)
         for name, value in parsed.items():
             if value is None:
@@ -347,7 +341,7 @@ def merge(workbook_path: Path) -> dict:
 
     if not workbook_path.is_file():
         raise FileNotFoundError(f"Destination workbook not found: {workbook_path}")
-    helper_path = Path(__file__).with_name("write_scad_sheet.ps1")
+    helper_path = Path(__file__).with_name("write_indicator_sheet.ps1")
     if not helper_path.is_file():
         raise FileNotFoundError(f"Excel writer helper not found: {helper_path}")
 
@@ -378,6 +372,10 @@ def merge(workbook_path: Path) -> dict:
         raise ValueError("scad_monthly is empty; nothing to merge")
 
     payload = {
+        "source_label": "SCAD",
+        "number_format": "#,##0.000",
+        "column_width": 34,
+        "period_format": "month",
         "dictionary_sheet_name": DICTIONARY_SHEET,
         "metadata_labels": ["指标名称", "频率", "单位", "来源", "更新时间"],
         "frequency": "月",

@@ -43,7 +43,7 @@ def test_only_fixed_weights_and_versioned_uae_data_use_streamlit_process_cache()
         "htfa/monitoring/industrial/utils/data_cache.py": {
             "load_weights_data"
         },
-        "htfa/monitoring/uae/renderer.py": {"_build_monitoring_dashboard_cached"},
+        "htfa/monitoring/uae/renderer.py": {"_load_growth_panel_cached"},
         "htfa/monitoring/uae/oil/renderer.py": {"_load_oil_market_cached"},
         "htfa/monitoring/uae/real_estate/renderer.py": {"_load_real_estate_cached"},
         "htfa/monitoring/uae/government_finance/renderer.py": {

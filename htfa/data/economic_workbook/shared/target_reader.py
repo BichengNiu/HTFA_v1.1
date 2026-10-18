@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from io import BytesIO
@@ -117,10 +118,16 @@ def parse_target_sheet(
     sheet_name: str,
     targets: tuple[tuple[str, str], ...],
     allowed_frequencies: set[str],
-    expected_unit: str,
+    expected_unit: str | Mapping[str, str],
     zero_is_missing: bool = True,
+    strict_duplicates: bool = False,
 ) -> tuple[pd.DataFrame, dict[str, SheetSeriesMetadata]]:
-    """按目标、频率和单位从一个正式数据 sheet 提取序列。"""
+    """按目标、频率和单位从一个正式数据 sheet 提取序列。
+
+    ``expected_unit`` 可以是统一单位或按展示名称指定的单位映射。
+    ``strict_duplicates`` 拒绝任何同名重复列；默认仅拒绝多条均符合元数据
+    的列。``zero_is_missing`` 决定零值是否按缺失处理。
+    """
     if sheet_name not in excel_file.sheet_names:
         raise ValueError(f"工作簿缺少“{sheet_name}”sheet")
 
@@ -130,6 +137,13 @@ def parse_target_sheet(
     normalized_targets = {
         normalize_indicator_name(indicator_name): display_name
         for display_name, indicator_name in targets
+    }
+    expected_units = {
+        display_name: (
+            expected_unit if isinstance(expected_unit, str)
+            else expected_unit[display_name]
+        )
+        for display_name, _ in targets
     }
     candidate_columns: dict[str, list[int]] = {}
     for column_index in range(1, raw.shape[1]):
@@ -141,11 +155,16 @@ def parse_target_sheet(
 
     matching_columns: dict[str, int] = {}
     for display_name, columns in candidate_columns.items():
+        if strict_duplicates and len(columns) > 1:
+            raise ValueError(
+                f"sheet“{sheet_name}”包含重复目标指标："
+                f"{normalize_indicator_name(raw.iloc[1, columns[0]])}"
+            )
         compatible_columns = [
             column_index
             for column_index in columns
             if optional_text(raw.iloc[2, column_index]) in allowed_frequencies
-            and optional_text(raw.iloc[3, column_index]) == expected_unit
+            and optional_text(raw.iloc[3, column_index]) == expected_units[display_name]
             and bool(optional_text(raw.iloc[4, column_index]))
         ]
         if len(compatible_columns) > 1:
@@ -194,9 +213,9 @@ def parse_target_sheet(
                 f"指标“{indicator_name}”频率应为"
                 f"{'/'.join(sorted(allowed_frequencies))}，实际为“{frequency}”"
             )
-        if unit != expected_unit:
+        if unit != expected_units[display_name]:
             raise ValueError(
-                f"指标“{indicator_name}”单位应为“{expected_unit}”，"
+                f"指标“{indicator_name}”单位应为“{expected_units[display_name]}”，"
                 f"实际为“{unit or '空'}”"
             )
         if not source:

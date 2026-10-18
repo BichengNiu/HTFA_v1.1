@@ -22,6 +22,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+from ._official_download import write_json_atomic
 from .db import transaction
 from .paths import DATA_DIR
 
@@ -548,16 +549,6 @@ def _dictionary_rows() -> list[dict]:
     return rows
 
 
-def _atomic_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    temporary.replace(path)
-
-
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     """下载（缓存恢复）→ 聚合 → 三表事务内入库。"""
 
@@ -594,7 +585,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         db.upsert_dictionary_rows(con, _dictionary_rows())
 
     quality = _quality_report(rows, detail, sources, quantity_detail, None)
-    _atomic_json(QUALITY_PATH, quality)
+    write_json_atomic(QUALITY_PATH, quality)
     note = (
         f"{len(rows)} 个月（{rows[-1]['month']} 至 {rows[0]['month']}），"
         f"明细 {len(detail_rows)} 行"

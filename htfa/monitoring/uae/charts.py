@@ -287,6 +287,50 @@ def build_industry_breadth_figure(
     return figure
 
 
+def _quarter_animation_controls(
+    quarters: list[str], *, frame_duration_ms: int, transition_ms: int,
+) -> dict[str, object]:
+    """共享两张行业图的季度滑块、从头播放和暂停设置。"""
+    instant = {
+        "mode": "immediate", "frame": {"duration": 0, "redraw": True},
+        "transition": {"duration": 0},
+    }
+    slider_steps = [
+        {"label": quarter if quarter.endswith("Q4") else "", "method": "animate",
+         "args": [[quarter], instant]}
+        for quarter in quarters
+    ]
+    return {
+        "sliders": [{
+            "active": len(quarters) - 1, "steps": slider_steps,
+            "x": 0.08, "len": 0.9, "y": -0.13,
+            "pad": {"t": 25, "b": 0}, "currentvalue": {"visible": False},
+            "tickcolor": "#9CA3AF", "font": {"size": 10},
+        }],
+        "updatemenus": [{
+            "type": "buttons", "direction": "left", "showactive": False,
+            "x": 0, "y": -0.19, "xanchor": "left", "yanchor": "top",
+            "buttons": [
+                {
+                    "label": "▶ 从头播放", "method": "animate",
+                    "args": [quarters, {
+                        "mode": "immediate", "fromcurrent": False,
+                        "frame": {"duration": frame_duration_ms, "redraw": True},
+                        "transition": {"duration": transition_ms},
+                    }],
+                },
+                {
+                    "label": "⏸ 暂停", "method": "animate",
+                    "args": [[None], {
+                        "mode": "immediate", "frame": {"duration": 0, "redraw": False},
+                        "transition": {"duration": 0},
+                    }],
+                },
+            ],
+        }],
+    }
+
+
 def build_industry_concentration_figure(
     frame: pd.DataFrame,
     *,
@@ -499,21 +543,6 @@ def build_industry_concentration_figure(
         data=quarter_traces(latest_position),
         frames=animation_frames,
     )
-    slider_steps = [
-        {
-            "label": quarter if quarter.endswith("Q4") else "",
-            "method": "animate",
-            "args": [
-                [quarter],
-                {
-                    "mode": "immediate",
-                    "frame": {"duration": 0, "redraw": True},
-                    "transition": {"duration": 0},
-                },
-            ],
-        }
-        for quarter in quarter_values
-    ]
     figure.update_layout(
         title={
             "text": (
@@ -548,60 +577,9 @@ def build_industry_concentration_figure(
             }
         ],
         annotations=quarter_annotations(quarter_values[-1]),
-        sliders=[
-            {
-                "active": latest_position,
-                "steps": slider_steps,
-                "x": 0.08,
-                "len": 0.9,
-                "y": -0.13,
-                "pad": {"t": 25, "b": 0},
-                "currentvalue": {"visible": False},
-                "tickcolor": "#9CA3AF",
-                "font": {"size": 10},
-            }
-        ],
-        updatemenus=[
-            {
-                "type": "buttons",
-                "direction": "left",
-                "showactive": False,
-                "x": 0,
-                "y": -0.19,
-                "xanchor": "left",
-                "yanchor": "top",
-                "buttons": [
-                    {
-                        "label": "▶ 从头播放",
-                        "method": "animate",
-                        "args": [
-                            quarter_values,
-                            {
-                                "mode": "immediate",
-                                "fromcurrent": False,
-                                "frame": {
-                                    "duration": frame_duration_ms,
-                                    "redraw": True,
-                                },
-                                "transition": {"duration": 180},
-                            },
-                        ],
-                    },
-                    {
-                        "label": "⏸ 暂停",
-                        "method": "animate",
-                        "args": [
-                            [None],
-                            {
-                                "mode": "immediate",
-                                "frame": {"duration": 0, "redraw": False},
-                                "transition": {"duration": 0},
-                            },
-                        ],
-                    },
-                ],
-            }
-        ],
+        **_quarter_animation_controls(
+            quarter_values, frame_duration_ms=frame_duration_ms, transition_ms=180,
+        ),
     )
     figure.update_xaxes(
         title_text="贡献平衡指数（%）",
@@ -1058,21 +1036,6 @@ def build_industry_price_volume_quadrant_figure(
         data=quarter_traces(latest_quarter),
         frames=animation_frames,
     )
-    slider_steps = [
-        {
-            "label": quarter if quarter.endswith("Q4") else "",
-            "method": "animate",
-            "args": [
-                [quarter],
-                {
-                    "mode": "immediate",
-                    "frame": {"duration": 0, "redraw": True},
-                    "transition": {"duration": 0},
-                },
-            ],
-        }
-        for quarter in quarter_labels
-    ]
     figure.update_layout(
         title={"text": title, "x": 0.01, "xanchor": "left"},
         height=700,
@@ -1113,60 +1076,9 @@ def build_industry_price_volume_quadrant_figure(
             "font": {"size": 11},
             "tracegroupgap": 2,
         },
-        sliders=[
-            {
-                "active": len(quarter_labels) - 1,
-                "steps": slider_steps,
-                "x": 0.08,
-                "len": 0.9,
-                "y": -0.13,
-                "pad": {"t": 25, "b": 0},
-                "currentvalue": {"visible": False},
-                "tickcolor": "#9CA3AF",
-                "font": {"size": 10},
-            }
-        ],
-        updatemenus=[
-            {
-                "type": "buttons",
-                "direction": "left",
-                "showactive": False,
-                "x": 0,
-                "y": -0.19,
-                "xanchor": "left",
-                "yanchor": "top",
-                "buttons": [
-                    {
-                        "label": "▶ 从头播放",
-                        "method": "animate",
-                        "args": [
-                            quarter_labels,
-                            {
-                                "mode": "immediate",
-                                "fromcurrent": False,
-                                "frame": {
-                                    "duration": frame_duration_ms,
-                                    "redraw": True,
-                                },
-                                "transition": {"duration": 220},
-                            },
-                        ],
-                    },
-                    {
-                        "label": "⏸ 暂停",
-                        "method": "animate",
-                        "args": [
-                            [None],
-                            {
-                                "mode": "immediate",
-                                "frame": {"duration": 0, "redraw": False},
-                                "transition": {"duration": 0},
-                            },
-                        ],
-                    },
-                ],
-            }
-        ],
+        **_quarter_animation_controls(
+            quarter_labels, frame_duration_ms=frame_duration_ms, transition_ms=220,
+        ),
     )
     figure.update_xaxes(
         title_text="实际增加值同比增速（%）",

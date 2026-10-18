@@ -157,7 +157,6 @@ def _render_sales_chart(
 def render_real_estate_section(
     st_obj: Any,
     content: PublishedUAEData,
-    file_name: str,
 ) -> dict[str, Any]:
     """渲染「房地产」板块：四张成交图和一张项目数量图。"""
 
@@ -189,7 +188,7 @@ def render_real_estate_section(
         return {"status": "error", "message": str(exc)}
     return {
         "status": "success",
-        "source": file_name,
+        "source": content.name,
         "as_of": last_month.strftime("%Y-%m"),
     }
 

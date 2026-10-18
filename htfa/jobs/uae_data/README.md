@@ -84,9 +84,12 @@ EIA Brent 同时读取官方 XLS 和 RBRTE daily API 完整分页，校验系列
 - `fetch_wam.py` / `source_wam.py`：从 WAM 官方 sitemap 自动发现公告、解析每日导弹/无人机数字；没有人工登记表时从 `2026-02-28` 引导，补齐至阿联酋昨日并先写 DuckDB，再由合并流程写入 `月度_WAM`；累计值和区间值不分摊到单日；
 - `source_registry.py`：更新和合并共用的数据源清单与名称校验；
 - `db.py`：共享 DuckDB 连接 / 建表 / 事务 / 运行日志；`_excel_helpers.py`：COM 写表基础设施；
+- `_official_download.py`：显式下载传输及原子 JSON 写入；失败保留旧文件并清理临时文件；
 - `source_*.py`：每源一个模块（download → parse → load → merge）；
-- `write_*.ps1`：Excel COM 写表助手（baker_hughes/cbuae/emirates_post/portwatch/
-  uaewps/pmi）；
+- `write_indicator_sheet.ps1`：8 个来源共用的 Excel COM 宽表写入，载荷显式提供
+  `number_format`、`column_width`、`period_format`（`month` / `day` / `auto`），保留各源原有格式；
+- `write_baker_hughes_sheet.ps1` / `write_cbuae_sheet.ps1` / `write_uae_pmi_sheet.ps1`：
+  保留各自的字典更新、工作簿修复打开和校验回滚契约；
 - `merge_workbook.ps1`（steel）、
   `merge_dld_indices_into_uae_workbook.ps1`（dld）：各来源的写表通道脚本；
   `processed/` 中间产物仍落在 `data/UAE/processed/`；

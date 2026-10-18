@@ -79,6 +79,16 @@ def test_load_observations_parses_and_sorts(tmp_path) -> None:
     assert observations[0].value == 51.0  # 默认值 50.0 + 输入位置 1
 
 
+@pytest.mark.parametrize("missing", ["country", "frequency", "source", "unit", "data"])
+def test_cached_pmi_requires_the_same_metadata_as_live_download(tmp_path, missing):
+    payload = _make_payload(["2026-01"])
+    del payload[0]["series"][0]["serie"][missing]
+    chart = tmp_path / "chart.json"
+    chart.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="metadata is incomplete"):
+        source.load_observations(chart)
+
+
 def test_load_observations_rejects_duplicate_period(tmp_path) -> None:
     chart = tmp_path / "chart.json"
     chart.write_text(

@@ -33,7 +33,7 @@ def test_baker_discovers_current_official_file_without_manual_input(monkeypatch,
         return "downloaded"
 
     monkeypatch.setattr(source_baker_hughes, "download_file", download)
-    note = source_baker_hughes._download_latest_worldwide_report(force=False)
+    note = source_baker_hughes._download_latest_worldwide_report()
 
     assert len(calls) == 1
     assert calls[0][0] == url

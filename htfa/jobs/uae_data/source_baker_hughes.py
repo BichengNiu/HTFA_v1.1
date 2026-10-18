@@ -9,7 +9,6 @@
 
 from __future__ import annotations
 
-import calendar
 import re
 import warnings
 from dataclasses import dataclass
@@ -21,6 +20,7 @@ from urllib.parse import urljoin, urlparse
 
 from openpyxl import load_workbook
 
+from htfa.data.temporal import month_end_from_period
 from .db import transaction
 from .paths import DATA_DIR
 
@@ -242,13 +242,6 @@ def target_is_current(path: Path, observations: Iterable[RigObservation]) -> boo
         workbook.close()
 
 
-def _month_end(period: str) -> date:
-    """'YYYY-MM' -> 该月最后一天的 date。"""
-
-    year, month = (int(part) for part in period.split("-"))
-    return date(year, month, calendar.monthrange(year, month)[1])
-
-
 def _dictionary_rows() -> list[dict]:
     return [
         {
@@ -325,7 +318,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     source_path, observations = select_latest_workbook(RAW_DIR)
     rows = [
         {
-            "period": _month_end(observation.period),
+            "period": month_end_from_period(observation.period),
             "oil_rigs": int(observation.oil),
         }
         for observation in observations

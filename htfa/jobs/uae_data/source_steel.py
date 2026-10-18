@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 from urllib.request import Request, urlopen
 
+from ._official_download import write_json_atomic
 from .db import transaction
 from .paths import DATA_DIR, SCRIPTS_DIR
 
@@ -327,16 +328,6 @@ def _dictionary_rows() -> list[dict]:
     ]
 
 
-def _atomic_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    temporary.replace(path)
-
-
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     """下载（按需）→ 清洗 → 事务内入库 mesteel_monthly。"""
 
@@ -355,7 +346,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     payload = load_payload(RAW_PATH)
     long_rows, wide_rows, quality = clean_payload(payload)
     quality["raw_sha256"] = hashlib.sha256(RAW_PATH.read_bytes()).hexdigest()
-    _atomic_json(QUALITY_PATH, quality)
+    write_json_atomic(QUALITY_PATH, quality)
 
     rows = [
         {

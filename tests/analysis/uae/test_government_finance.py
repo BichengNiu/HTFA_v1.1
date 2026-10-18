@@ -316,8 +316,7 @@ def test_section_renders_quad_business_and_labor_employment_subsections(
 
     result = renderer.render_government_finance_section(
         st_obj,
-        b"workbook",
-        "test.xlsx",
+        SimpleNamespace(name="test.xlsx"),
     )
 
     assert result["status"] == "success"
@@ -418,8 +417,7 @@ def test_quad_cell_failure_warns_cell_and_keeps_section(monkeypatch) -> None:
 
     result = renderer.render_government_finance_section(
         st_obj,
-        b"workbook",
-        "test.xlsx",
+        SimpleNamespace(name="test.xlsx"),
     )
 
     assert result["status"] == "success"
@@ -493,8 +491,7 @@ def test_payment_chart_failure_warns_only_its_business_cell(monkeypatch) -> None
 
     result = renderer.render_government_finance_section(
         st_obj,
-        b"workbook",
-        "test.xlsx",
+        SimpleNamespace(name="test.xlsx"),
     )
 
     assert result["status"] == "success"

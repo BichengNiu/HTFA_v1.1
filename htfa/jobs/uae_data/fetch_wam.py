@@ -22,6 +22,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
+from ._official_download import write_json_atomic
 from .paths import DATA_DIR
 
 
@@ -262,7 +263,7 @@ def discover_auto_articles(
                 "sitemap_published_at": published,
                 "sitemap_last_modified": last_modified,
             }
-    _write_json(RAW_DIR / "sitemaps" / "scan.json", {
+    write_json_atomic(RAW_DIR / "sitemaps" / "scan.json", {
         "retrieved_at_utc": datetime.now(timezone.utc).isoformat(),
         "start": start.isoformat(),
         "end": end.isoformat(),
@@ -308,8 +309,6 @@ def _render_article(url: str) -> str:
     if result.returncode != 0 or not result.stdout:
         raise RuntimeError(f"WAM browser rendering failed: {url} (exit={result.returncode})")
     return result.stdout.decode("utf-8")
-
-
 
 
 def _extract_news_article(dom: str) -> dict | None:
@@ -444,7 +443,7 @@ def refresh_auto_articles(
         }
         counts["downloaded"] += 1
 
-    _write_json(
+    write_json_atomic(
         AUTO_ARTICLES_PATH,
         {
             "retrieved_at_utc": retrieved_at,
@@ -455,21 +454,6 @@ def refresh_auto_articles(
         },
     )
     return counts
-
-def _write_json(path: Path, payload: object) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", suffix=".tmp", delete=False, dir=path.parent
-        ) as handle:
-            temporary_path = Path(handle.name)
-            json.dump(payload, handle, ensure_ascii=False, indent=2)
-            handle.write("\n")
-        os.replace(temporary_path, path)
-    finally:
-        if temporary_path is not None and temporary_path.exists():
-            temporary_path.unlink()
 
 
 def _write_bytes(path: Path, payload: bytes) -> None:
@@ -543,7 +527,7 @@ def refresh_source_manifest(*, force: bool = False) -> dict[str, int]:
         counts["downloaded"] += 1
         manifest[url] = entry
 
-    _write_json(
+    write_json_atomic(
         MANIFEST_PATH,
         {
             "retrieved_at_utc": retrieved_at,

@@ -2,14 +2,49 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from types import SimpleNamespace
 from contextlib import nullcontext
 
 import pytest
 
+from htfa.jobs.uae_data._official_download import write_json_atomic
+
 from htfa.jobs.uae_data import db
 
 from htfa.jobs.uae_data import merge_workbook, update_data
+
+
+@pytest.mark.parametrize("indent", [None, 2])
+def test_atomic_json_roundtrip_keeps_unicode_and_missing_values(tmp_path, indent):
+    destination = tmp_path / "nested" / "cache.json"
+    payload = {"来源": "官方", "values": [1.5, None]}
+    write_json_atomic(destination, payload, indent=indent)
+    assert json.loads(destination.read_text(encoding="utf-8")) == payload
+    assert set(destination.parent.iterdir()) == {destination}
+
+
+@pytest.mark.parametrize("failure", ["serialize", "replace"])
+def test_atomic_json_failure_preserves_previous_file_and_cleans_temp(
+    tmp_path, monkeypatch, failure,
+):
+    destination = tmp_path / "cache.json"
+    previous = b'{"validated": true}'
+    destination.write_bytes(previous)
+    if failure == "replace":
+        def fail_replace(*args):
+            raise OSError("replacement interrupted")
+        monkeypatch.setattr(Path, "replace", fail_replace)
+        payload = {"new": 1}
+        expected = OSError
+    else:
+        payload = {"new": object()}
+        expected = TypeError
+    with pytest.raises(expected):
+        write_json_atomic(destination, payload)
+    assert destination.read_bytes() == previous
+    assert set(tmp_path.iterdir()) == {destination}
 
 
 def test_update_sources_use_package_imports_and_isolate_failures(monkeypatch) -> None:

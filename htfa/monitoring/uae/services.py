@@ -21,10 +21,7 @@ from htfa.monitoring.uae.indicator_catalog import (
     NOMINAL_INDUSTRY_IDS,
     REAL_INDUSTRY_IDS,
 )
-from htfa.monitoring.uae.results import (
-    MacroPanelResult,
-    MonitoringDashboardResult,
-)
+from htfa.monitoring.uae.results import MacroPanelResult
 
 # FCSC historical levels are rounded to million AED. The report uses billion
 # AED: the total and 16 component values each contribute at most 0.0005.
@@ -395,19 +392,9 @@ def build_growth_panel(bundle: UAEDataBundle) -> MacroPanelResult:
     )
 
 
-def build_monitoring_dashboard(
+def load_growth_panel(
     source: PublishedUAEData,
-) -> MonitoringDashboardResult:
+) -> MacroPanelResult:
     """基于 DuckDB 发布快照构建宏观监测结果。"""
 
-    try:
-        bundle = load_real_uae_bundle(source)
-        panels = {"growth": build_growth_panel(bundle)}
-        unavailable: dict[str, str] = {}
-    except ValueError as exc:
-        panels = {}
-        unavailable = {"growth": str(exc)}
-    return MonitoringDashboardResult(
-        panels=panels,
-        unavailable_panels=unavailable,
-    )
+    return build_growth_panel(load_real_uae_bundle(source))

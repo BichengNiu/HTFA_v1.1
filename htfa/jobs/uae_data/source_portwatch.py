@@ -25,7 +25,7 @@
 其中替代方案不存在：全部海峡仅保留霍尔木兹（chokepoint6），UAE 港口与霍尔木兹
 合并到单一 sheet ``月度_PortWatch``（每月一行 × 13 指标 = UAE 9 + 霍尔木兹 4）。
 写表走
-``write_portwatch_sheet.ps1``（Excel COM），并在指标字典 sheet 补录指标名；
+``write_indicator_sheet.ps1``（Excel COM），并在指标字典 sheet 补录指标名；
 与其它源一致，数据永远先入 duckdb 再从库读取聚合写 Excel。
 """
 
@@ -46,6 +46,7 @@ from .paths import DATA_DIR
 from . import db  # noqa: E402
 from ._excel_helpers import (  # noqa: E402
     payload_json_file,
+    records_latest_first,
     run_powershell_sheet_writer,
 )
 
@@ -435,30 +436,16 @@ def _monthly_observations(con) -> list["Observation"]:
     ]
 
 
-def _serialize_records(observations: list["Observation"]) -> list[dict]:
-    """按 period 倒序序列化记录（每月一行，13 个指标值）。"""
-
-    return [
-        {
-            "period": observation.period,
-            "values": [
-                None if value is None else float(value)
-                for value in observation.values
-            ],
-        }
-        for observation in sorted(
-            observations, key=lambda item: item.period, reverse=True
-        )
-    ]
-
-
 def _sheet_payload(
     observations: list["Observation"],
 ) -> dict:
-    """构造 write_portwatch_sheet.ps1 的 payload（含指标字典同步信息）。"""
+    """构造 write_indicator_sheet.ps1 的 payload（含指标字典同步信息）。"""
 
     return {
         "source_label": SOURCE_LABEL,
+        "number_format": "#,##0",
+        "column_width": 42,
+        "period_format": "month",
         "dictionary_sheet_name": DICTIONARY_SHEET,
         "metadata_labels": ["指标名称", "频率", "单位", "来源", "更新时间"],
         "frequency": FREQUENCY_EXCEL,
@@ -469,7 +456,7 @@ def _sheet_payload(
             {"name": name, "type": indicator_type, "industry": INDUSTRY, "unit": unit}
             for name, indicator_type, unit in ALL_INDICATORS
         ],
-        "records": _serialize_records(observations),
+        "records": records_latest_first(observations),
     }
 
 
@@ -478,12 +465,12 @@ def merge(workbook_path: Path) -> dict:
 
     数据全部从 uae.duckdb 读取（先 duckdb 后 Excel）；每次调用重建该 sheet，
     写表走
-    write_portwatch_sheet.ps1（Excel COM），失败即抛错。
+    write_indicator_sheet.ps1（Excel COM），失败即抛错。
     """
 
     if not workbook_path.is_file():
         raise FileNotFoundError(f"Destination workbook not found: {workbook_path}")
-    helper_path = Path(__file__).with_name("write_portwatch_sheet.ps1")
+    helper_path = Path(__file__).with_name("write_indicator_sheet.ps1")
     if not helper_path.is_file():
         raise FileNotFoundError(f"Excel writer helper not found: {helper_path}")
 

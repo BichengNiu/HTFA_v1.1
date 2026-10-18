@@ -19,7 +19,6 @@
 
 from __future__ import annotations
 
-import calendar
 import json
 import os
 import re
@@ -36,6 +35,7 @@ from openpyxl import load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 from pypdf import PdfReader
 
+from htfa.data.temporal import month_end_from_period
 from .db import transaction
 from .paths import DATA_DIR
 
@@ -738,7 +738,7 @@ def extract_payment_rows(path: Path) -> list[dict]:
                 continue
             rows.append(
                 {
-                    "period": _month_end(period),
+                    "period": month_end_from_period(period),
                     "indicator": indicator,
                     "value": value,
                     "source_period": source_period,
@@ -954,13 +954,6 @@ def select_latest_vintages(
     return selected, missing, revised_periods
 
 
-def _month_end(period: str) -> date:
-    """'YYYY-MM' -> 该月最后一天的 date。"""
-
-    year, month = (int(part) for part in period.split("-"))
-    return date(year, month, calendar.monthrange(year, month)[1])
-
-
 def _long_rows(observations: Iterable[Observation]) -> list[dict]:
     """把宽表观测展开为 (period, indicator) 长表入库行（仅信贷/存贷款组）。"""
 
@@ -974,7 +967,7 @@ def _long_rows(observations: Iterable[Observation]) -> list[dict]:
                 continue
             rows.append(
                 {
-                    "period": _month_end(observation.period),
+                    "period": month_end_from_period(observation.period),
                     "indicator": indicator,
                     "value": value,
                     "source_period": observation.source_period,

@@ -9,7 +9,7 @@
 
 - 原始件：`data/UAE/raw/tdra/<slug>.xlsx`（9 个文件，脚本自动从目录页发现并下载）。
 - 入库表：`tdra_telecom_monthly`（period, indicator, value, source_file 长表）。
-- 目标 sheet：`月度_TDRA`（经 write_tdra_sheet.ps1 重建）。
+- 目标 sheet：`月度_TDRA`（经 write_indicator_sheet.ps1 重建）。
 
 单位：订阅数/线数为「户/条」，per-100-inhabitants 为「户/百人」。
 """
@@ -312,7 +312,7 @@ def merge(workbook_path: Path) -> dict:
     """把 tdra_telecom_monthly 写回 阿联酋.xlsx 的 月度_TDRA sheet。"""
     if not workbook_path.is_file():
         raise FileNotFoundError(f"Destination workbook not found: {workbook_path}")
-    helper_path = Path(__file__).with_name("write_tdra_sheet.ps1")
+    helper_path = Path(__file__).with_name("write_indicator_sheet.ps1")
     if not helper_path.is_file():
         raise FileNotFoundError(f"Excel writer helper not found: {helper_path}")
 
@@ -347,6 +347,9 @@ def merge(workbook_path: Path) -> dict:
     payload = {
         "dictionary_sheet_name": DICTIONARY_SHEET,
         "source_label": SOURCE_NAME,
+        "number_format": "#,##0.##",
+        "column_width": 34,
+        "period_format": "month",
         "metadata_labels": ["指标名称", "频率", "单位", "来源", "更新时间"],
         "frequency": FREQUENCY,
         "unit": "见各列",

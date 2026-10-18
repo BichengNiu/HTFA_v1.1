@@ -15,9 +15,23 @@ $workbook = $null
 $sheet = $null
 $dictionarySheet = $null
 $range = $null
+$header = $null
 
 try {
     $payload = Get-Content -Raw -LiteralPath $DataPath | ConvertFrom-Json
+    foreach ($name in @("number_format", "column_width", "period_format")) {
+        if ($null -eq $payload.PSObject.Properties[$name]) {
+            throw "Missing sheet writer option: $name"
+        }
+    }
+    if ($payload.period_format -notin @("month", "day", "auto")) {
+        throw "Unsupported period format: $($payload.period_format)"
+    }
+    $numberFormat = [string]$payload.number_format
+    $columnWidth = [double]$payload.column_width
+    if ([string]::IsNullOrWhiteSpace($numberFormat) -or $columnWidth -le 0) {
+        throw "Invalid number format or column width"
+    }
     $records = @(foreach ($record in $payload.records) { $record })
     $indicatorNames = @($payload.indicators | ForEach-Object { $_.name })
     $indicatorCount = $indicatorNames.Count
@@ -77,15 +91,28 @@ try {
         )
     }
 
-    # 日度数据：A 列直接存真实日期（yyyy-MM-dd），不做月度月底换算
+    $isDaily = ($payload.period_format -eq "day" -or (
+        $payload.period_format -eq "auto" -and $records.Count -gt 0 -and
+        ([string]$records[0].period).Length -eq 10
+    ))
     for ($index = 0; $index -lt $records.Count; $index++) {
         $record = $records[$index]
-        $day = [datetime]::ParseExact(
-            $record.period,
-            "yyyy-MM-dd",
-            [Globalization.CultureInfo]::InvariantCulture
-        )
-        $values[($index + 6), 0] = $day.ToOADate()
+        $periodText = [string]$record.period
+        if ($isDaily) {
+            $day = [datetime]::ParseExact(
+                $periodText,
+                "yyyy-MM-dd",
+                [Globalization.CultureInfo]::InvariantCulture
+            )
+            $values[($index + 6), 0] = $day.ToOADate()
+        } else {
+            $monthStart = [datetime]::ParseExact(
+                "$($periodText)-01",
+                "yyyy-MM-dd",
+                [Globalization.CultureInfo]::InvariantCulture
+            )
+            $values[($index + 6), 0] = $monthStart.AddMonths(1).AddDays(-1).ToOADate()
+        }
         for ($column = 0; $column -lt $indicatorCount; $column++) {
             $value = $record.values[$column]
             if ($null -ne $value) {
@@ -105,10 +132,14 @@ try {
     $header.Interior.Color = 0x784E1F
     $header.HorizontalAlignment = -4108
     $sheet.Range("B6:$($lastColumnLetter)6").NumberFormat = "yyyy-mm-dd"
-    $sheet.Range("A7:A$rowCount").NumberFormat = "yyyy-mm-dd"
-    $sheet.Range("B7:$($lastColumnLetter)$rowCount").NumberFormat = "0.0"
+    if ($isDaily) {
+        $sheet.Range("A7:A$rowCount").NumberFormat = "yyyy-mm-dd"
+    } else {
+        $sheet.Range("A7:A$rowCount").NumberFormat = "yyyy-mm"
+    }
+    $sheet.Range("B7:$($lastColumnLetter)$rowCount").NumberFormat = $numberFormat
     $sheet.Columns.Item("A").ColumnWidth = 13
-    $sheet.Columns.Item("B:$($lastColumnLetter)").ColumnWidth = 34
+    $sheet.Columns.Item("B:$($lastColumnLetter)").ColumnWidth = $columnWidth
 
     $dictionarySheet = $workbook.Worksheets.Item(
         $payload.dictionary_sheet_name
@@ -155,6 +186,7 @@ finally {
     }
     foreach ($comObject in @(
         $range,
+        $header,
         $dictionarySheet,
         $sheet,
         $workbook,

@@ -127,7 +127,7 @@ from htfa.monitoring.uae.supplemental_renderer import render_supplemental_charts
 p = published_source()
 for specs in (FINANCE_CHARTS, PROPERTY_CHARTS, TRANSPORT_CHARTS):
     render_supplemental_charts(st, p, specs)
-render_prices_section(st, (p, p.name))
+render_prices_section(st, p)
 ''').run(timeout=60)
     assert not app.exception
     assert not app.warning
@@ -172,7 +172,7 @@ import streamlit as st
 from htfa.monitoring.uae.database import published_source
 from htfa.monitoring.uae.real_estate.renderer import render_real_estate_section
 p = published_source()
-render_real_estate_section(st, p, p.name)
+render_real_estate_section(st, p)
 ''').run(timeout=60)
     assert not app.exception
     assert not app.warning

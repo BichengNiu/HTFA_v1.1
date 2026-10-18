@@ -17,72 +17,48 @@ from htfa.monitoring.uae.supplemental_renderer import render_prices_section
 
 
 TopicStatus = Literal["ok", "empty", "failed"]
-TopicRenderer = Callable[[Any, tuple[PublishedUAEData, str]], Mapping[str, Any]]
+TopicRenderer = Callable[[Any, PublishedUAEData], Mapping[str, Any]]
 
 
 @dataclass(frozen=True)
 class TopicResult:
     """一次监测主题渲染的明确结果。"""
 
-    topic: str
     status: TopicStatus
     payload: Mapping[str, Any] | None = None
     error: str | None = None
 
 
-def _render_government_finance(
-    st_obj: Any,
-    payload: tuple[PublishedUAEData, str],
-) -> Mapping[str, Any]:
-    return render_government_finance_section(st_obj, *payload)
-
-
-def _render_real_estate(
-    st_obj: Any,
-    payload: tuple[PublishedUAEData, str],
-) -> Mapping[str, Any]:
-    return render_real_estate_section(st_obj, *payload)
-
-
-def _render_transport(
-    st_obj: Any,
-    payload: tuple[PublishedUAEData, str],
-) -> Mapping[str, Any]:
-    return render_transport_section(st_obj, *payload)
-
-
 TOPIC_RENDERERS: tuple[tuple[str, str, TopicRenderer], ...] = (
     ("oil", "石油生产与收入", render_oil_fiscal_panel),
-    ("government_finance", "政府金融", _render_government_finance),
-    ("real_estate", "房地产", _render_real_estate),
-    ("transport", "交通物流", _render_transport),
+    ("government_finance", "政府金融", render_government_finance_section),
+    ("real_estate", "房地产", render_real_estate_section),
+    ("transport", "交通物流", render_transport_section),
     ("prices", "物价", render_prices_section),
 )
 
 
 def render_high_frequency_topics(
     st_obj: Any,
-    payload: tuple[PublishedUAEData, str],
+    source: PublishedUAEData,
 ) -> dict[str, TopicResult]:
     """独立渲染高频主题；单主题失败不阻断其他主题。"""
 
     results: dict[str, TopicResult] = {}
     for topic, label, renderer in TOPIC_RENDERERS:
         try:
-            rendered = renderer(st_obj, payload)
+            rendered = renderer(st_obj, source)
             status = _status_from_payload(rendered)
         except Exception as exc:  # noqa: BLE001 - 主题隔离边界
             message = f"{label}主题渲染失败：{exc}"
             st_obj.error(message)
             results[topic] = TopicResult(
-                topic=topic,
                 status="failed",
                 error=str(exc),
             )
             continue
 
         results[topic] = TopicResult(
-            topic=topic,
             status=status,
             payload=dict(rendered),
             error=(
