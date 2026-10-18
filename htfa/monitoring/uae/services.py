@@ -113,7 +113,7 @@ def _build_price_volume_series(
         ],
         axis=1,
         sort=False,
-    ).dropna(how="all")
+    ).dropna(how="all").sort_index()
 
 
 def _build_nonoil_nonfinancial_price_volume_series(
@@ -155,7 +155,7 @@ def _build_nonoil_nonfinancial_price_volume_series(
         ],
         axis=1,
         sort=False,
-    ).dropna(how="all")
+    ).dropna(how="all").sort_index()
 
 
 def _build_industry_price_volume_quadrant(

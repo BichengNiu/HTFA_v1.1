@@ -179,6 +179,26 @@ def test_deflator_yoy_uses_nominal_to_real_gdp_ratio(prefix, title):
     assert deflator.iloc[-1] == pytest.approx(expected)
 
 
+def test_macro_download_keeps_level_history_in_chronological_order() -> None:
+    bundle = _make_bundle()
+    for indicator_id in (
+        "growth.real_gdp_yoy", "growth.nonoil_real_gdp_yoy",
+    ):
+        bundle.series_by_id[indicator_id] = bundle.series_by_id[indicator_id].iloc[4:]
+    panel = build_growth_panel(bundle)
+    for title in (
+        "实际GDP增速与GDP平减指数同比",
+        "非石油实际GDP增速与非石油GDP平减指数同比",
+        "非油非金融实际GDP增速与平减指数同比",
+    ):
+        frame = panel.series_groups[title]
+        assert frame.index.is_monotonic_increasing
+        assert frame.index[0] == QUARTERS[0]
+        assert frame.index[-1] == QUARTERS[-1]
+        assert pd.isna(frame.iloc[0, 0])
+        assert frame.iloc[0, 2:].notna().all()
+
+
 def test_growth_panel_rejects_industries_that_do_not_sum_to_nonoil() -> None:
     bundle = _make_bundle()
     first_industry = f"industry.{list(INDUSTRY_NAMES)[0]}.real"

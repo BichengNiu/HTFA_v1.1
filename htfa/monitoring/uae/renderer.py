@@ -347,6 +347,9 @@ def _render_panel(
             key=f"analysis.uae.{panel.key}.decomposition.{table_title}.download",
         )
 
+    if series_group_titles == GROWTH_OVERVIEW_GROUPS:
+        return
+
     with st_obj.expander("证据、来源与方法限制", expanded=False):
         st_obj.markdown("**数据与解释限制**")
         st_obj.write(panel.headline.limitation)
