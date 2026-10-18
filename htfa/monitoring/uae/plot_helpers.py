@@ -69,6 +69,7 @@ SOURCE_DISPLAY_NAMES = {
     "Wind": "万得",
     "EIA": "美国能源信息署",
     "U.S. EIA": "美国能源信息署（EIA）",
+    "U.S. EIA International Energy Statistics (product 53, production)": "美国能源信息署",
     "IMF Primary Commodity Price System (PCPS)": "国际货币基金组织初级商品价格体系（PCPS）",
     "Baker Hughes": "贝克休斯",
     "CBUAE": "阿联酋央行",
