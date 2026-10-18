@@ -153,11 +153,11 @@ def _render_report_header(
 
 GROWTH_OVERVIEW_GROUPS = (
     "实际GDP增速与GDP平减指数同比",
+    "GDP部门拉动与石油产量同比",
     "非石油实际GDP增速与非石油GDP平减指数同比",
     "非油非金融实际GDP增速与平减指数同比",
 )
 GROWTH_INDUSTRY_GROUPS = (
-    "GDP部门拉动与石油产量同比",
     "非油实际GDP同比及行业拉动",
     "行业扩张广度指数",
     "行业增长集中度",
@@ -167,7 +167,7 @@ GROWTH_INDUSTRY_GROUPS = (
 INDUSTRY_BREADTH_DISPLAY_TITLE = "行业增长广度与持续性"
 
 INDUSTRY_SECTION_TITLES = {
-    "GDP部门拉动与石油产量同比": "一、长期趋势：总量与增长来源",
+    "非油实际GDP同比及行业拉动": "一、长期趋势：总量与增长来源",
     "行业扩张广度指数": "二、中长期结构：行业增长质量",
     "行业增长持续性与状态矩阵": (
         "三、短期动能：行业状态与量价表现"
@@ -275,11 +275,9 @@ def _render_panel(
     ):
         chart_container = st_obj
         if group_title in GROWTH_OVERVIEW_GROUPS:
-            if macro_index == 1:
+            if macro_index % 2 == 0:
                 macro_columns = st_obj.columns(2, gap="small")
-                chart_container = macro_columns[0]
-            elif macro_index > 1:
-                chart_container = macro_columns[1]
+            chart_container = macro_columns[macro_index % 2]
             macro_index += 1
         section_title = INDUSTRY_SECTION_TITLES.get(group_title)
         if section_title is not None:
@@ -288,9 +286,17 @@ def _render_panel(
             source_text = "、".join(dict.fromkeys(
                 translate_source_text(item.source)
                 for indicator_id, item in panel.provenance.items()
-                if indicator_id.startswith("growth.")
+                if indicator_id.startswith("growth.") or (
+                    group_title == "GDP部门拉动与石油产量同比"
+                    and indicator_id == "oil.crude_production"
+                )
             ))
-            figure = build_price_volume_figure(
+            builder = (
+                build_growth_and_sector_pull_figure
+                if group_title == "GDP部门拉动与石油产量同比"
+                else build_price_volume_figure
+            )
+            figure = builder(
                 frame,
                 title=group_title,
                 source_text=source_text,
@@ -298,14 +304,6 @@ def _render_panel(
         elif group_title in SERIES_GROUP_FIGURE_BUILDERS:
             builder, display_title = SERIES_GROUP_FIGURE_BUILDERS[group_title]
             figure = builder(frame, title=display_title or group_title)
-        elif {
-            "【真实】非石油经济部门拉动",
-            "【真实】石油经济部门拉动",
-        }.issubset(frame.columns):
-            figure = build_growth_and_sector_pull_figure(
-                frame,
-                title=group_title,
-            )
         else:
             figure = build_line_figure(
                 frame,

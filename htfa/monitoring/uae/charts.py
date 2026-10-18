@@ -1,4 +1,4 @@
-"""阿联酋监测页面的纯 Plotly 图表构造函数。"""
+"""阿联酋监测页面的 Ts 时间序列与 Plotly 行业图表。"""
 
 from __future__ import annotations
 
@@ -99,98 +99,49 @@ def build_growth_and_sector_pull_figure(
     *,
     title: str,
     pull_columns: tuple[str, str] = (
-        "【真实】非石油经济部门拉动",
-        "【真实】石油经济部门拉动",
+        "非石油经济部门拉动",
+        "石油经济部门拉动",
     ),
-    max_points: int = 160,
-) -> go.Figure:
-    """将石油、非油拉动堆叠柱形与石油产量同比线绘制在同一坐标系。"""
+    max_points: int = 60,
+    source_text: str = "",
+) -> MatplotlibFigure:
+    """Ts 时间序列模板：左轴正负堆叠部门拉动，右轴石油产量同比。"""
 
-    missing_columns = [
-        column for column in pull_columns if column not in frame.columns
-    ]
-    if missing_columns:
-        raise ValueError(f"缺少部门拉动序列: {', '.join(missing_columns)}")
-
-    clean = frame.dropna(how="all").tail(max_points)
-    quarter_labels = pd.PeriodIndex(clean.index, freq="Q").astype(str)
-    figure = go.Figure()
-    pull_colors = ("#00A6A6", "#F28E2B")
-    for pull_column, color in zip(pull_columns, pull_colors):
-        pull = clean[pull_column].dropna()
-        if pull.empty:
-            continue
-        figure.add_trace(
-            go.Bar(
-                x=quarter_labels[clean.index.get_indexer(pull.index)],
-                y=pull.values,
-                name=pull_column,
-                marker_color=color,
-                opacity=0.72,
-                hovertemplate=(
-                    "%{x}<br>%{y:,.2f}个百分点"
-                    "<extra>%{fullData.name}</extra>"
-                ),
-            )
-        )
-
-    line_columns = [
-        column for column in clean.columns if column not in pull_columns
-    ]
-    for position, column in enumerate(line_columns):
-        series = clean[column].dropna()
-        if series.empty:
-            continue
-        figure.add_trace(
-            go.Scatter(
-                x=quarter_labels[clean.index.get_indexer(series.index)],
-                y=series.values,
-                name=str(column),
-                mode="lines",
-                line={
-                    "width": 2.2,
-                    "color": COLORS[position % len(COLORS)],
-                },
-                hovertemplate=(
-                    "%{x}<br>%{y:,.2f}%"
-                    "<extra>%{fullData.name}</extra>"
-                ),
-            )
-        )
-
-    figure.update_layout(
-        title={"text": title, "x": 0.01, "xanchor": "left"},
-        height=420,
-        margin={"l": 55, "r": 20, "t": 55, "b": 45},
-        hovermode="x unified",
-        legend={
-            "orientation": "h",
-            "yanchor": "bottom",
-            "y": 1.02,
-            "xanchor": "right",
-            "x": 1,
-        },
-        xaxis_title="季度",
-        yaxis_title="同比增速（%）/ 拉动（百分点）",
-        template="plotly_white",
-        barmode="relative",
+    production_column = "石油及其他液体产量季度同比"
+    plotted = [*pull_columns, production_column]
+    missing = [column for column in plotted if column not in frame]
+    if missing:
+        raise ValueError(f"缺少部门拉动序列: {', '.join(missing)}")
+    clean = frame[plotted].dropna(how="all").sort_index().tail(max_points).copy()
+    if clean.empty:
+        raise ValueError(f"{title}没有可绘制的有效数据")
+    if isinstance(clean.index, pd.PeriodIndex):
+        clean.index = clean.index.to_timestamp(how="end").normalize()
+    else:
+        clean.index = pd.to_datetime(clean.index)
+    figure, returned_axis = plot_series(
+        clean,
+        facet=False,
+        title=title,
+        xtitle="",
+        ytitle_position="side",
+        year_ruler=True,
+        xlabel_count=12,
+        grid=True,
+        axis_groups={name: "left" if name in pull_columns else "right" for name in clean},
+        units={name: "百分点" if name in pull_columns else "%" for name in clean},
+        bar_series=list(pull_columns),
+        bar_stacked=True,
+        vlines=WAR_START_DATE,
+        show_legend=True,
+        legend_labels=plotted,
+        legend_cols=2,
+        note=source_note(source_text) if source_text else None,
+        note_loc="left",
+        figsize=(9.4, 6.2),
     )
-    tick_values = quarter_labels[::4]
-    figure.update_xaxes(
-        showgrid=False,
-        type="category",
-        categoryorder="array",
-        categoryarray=quarter_labels.tolist(),
-        tickmode="array",
-        tickvals=tick_values.tolist(),
-        ticktext=tick_values.tolist(),
-        tickangle=0,
-    )
-    figure.update_yaxes(
-        gridcolor="rgba(0,0,0,0.08)",
-        zeroline=True,
-        zerolinecolor="#555",
-    )
+    annotate_war(normalize_ts_axis(returned_axis))
+    apply_htfa_fonts(figure)
     return figure
 
 

@@ -132,9 +132,9 @@ def test_growth_panel_returns_all_expected_series_groups() -> None:
         "行业增长持续性与状态矩阵",
     ]
     trend = panel.series_groups["GDP部门拉动与石油产量同比"]
-    assert "【真实】非石油经济部门拉动" in trend.columns
-    assert "【真实】石油经济部门拉动" in trend.columns
-    assert "【真实】石油及其他液体产量季度同比" in trend.columns
+    assert "非石油经济部门拉动" in trend.columns
+    assert "石油经济部门拉动" in trend.columns
+    assert "石油及其他液体产量季度同比" in trend.columns
     pull = panel.series_groups["非油实际GDP同比及行业拉动"]
     assert "【真实】非油GDP同比" in pull.columns
     assert "其他行业" in pull.columns

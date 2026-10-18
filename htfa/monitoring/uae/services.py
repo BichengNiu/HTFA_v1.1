@@ -315,13 +315,8 @@ def build_growth_panel(bundle: UAEDataBundle) -> MacroPanelResult:
     nonoil_growth = _growth(nonoil, 4).rename("非油GDP同比")
     oil_production_id = "oil.crude_production"
     oil_production = bundle.require_series(oil_production_id).dropna()
-    oil_production_prefix = (
-        "【模拟】"
-        if bundle.is_simulated(oil_production_id)
-        else "【真实】"
-    )
     oil_production_yoy = _growth(oil_production, 4).rename(
-        f"{oil_production_prefix}石油及其他液体产量季度同比"
+        "石油及其他液体产量季度同比"
     )
     nonoil_pull = (
         (nonoil - nonoil.shift(4))
@@ -389,13 +384,22 @@ def build_growth_panel(bundle: UAEDataBundle) -> MacroPanelResult:
 
     trend = pd.concat(
         [
-            nonoil_pull.rename("【真实】非石油经济部门拉动"),
-            oil_pull.rename("【真实】石油经济部门拉动"),
-            oil_production_yoy,
+            nonoil_pull,
+            oil_pull,
+            oil_production_yoy.reindex(real_gdp.index).where(
+                real_gdp.shift(4).notna()
+            ),
+            real_gdp.rename("实际GDP（十亿阿联酋迪拉姆）"),
+            nonoil.rename("非油实际GDP（十亿阿联酋迪拉姆）"),
+            oil.rename("石油实际GDP（十亿阿联酋迪拉姆）"),
+            oil_production.rename(
+                "石油及其他液体产量（"
+                + bundle.require_provenance(oil_production_id).unit + "）"
+            ),
         ],
         axis=1,
         sort=False,
-    ).reindex(real_gdp.index).dropna()
+    ).reindex(real_gdp.index).dropna(how="all").sort_index()
     quarterly_industry_pull = pd.concat(
         [
             top_five_pull,

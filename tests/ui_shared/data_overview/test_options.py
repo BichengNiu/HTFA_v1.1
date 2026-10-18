@@ -23,6 +23,7 @@ _NON_USER_TS_PARAMETERS = {
     "labels",
     "ax",
     "bar_series",
+    "bar_stacked",
     "bar_width",
     "bar_edge_color",
     "bar_edge_linewidth",
