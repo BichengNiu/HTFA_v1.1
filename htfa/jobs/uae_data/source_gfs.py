@@ -23,7 +23,6 @@ import re
 import time
 import uuid
 import zipfile
-from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -35,6 +34,7 @@ from xml.etree import ElementTree as ET
 from openpyxl import load_workbook
 from pypdf import PdfReader
 
+from .db import transaction
 from .paths import DATA_DIR
 from ._excel_helpers import cleanup_excel_automation
 from ._official_download import download_file, fetch_bytes
@@ -1269,22 +1269,6 @@ def build_validation_report(
 # 事务上下文
 # --------------------------------------------------------------------------
 
-@contextmanager
-def _transaction(con):
-    """显式事务上下文（BEGIN/COMMIT/ROLLBACK）。
-
-    注意：duckdb 1.5.5 的 con.begin() 上下文管理器在退出时会关闭连接，
-    与 update_data.py 在同一连接上继续 log_run 的约定冲突，因此自行管理事务。
-    """
-
-    con.execute("BEGIN TRANSACTION")
-    try:
-        yield con
-        con.execute("COMMIT")
-    except BaseException:
-        con.execute("ROLLBACK")
-        raise
-
 
 # --------------------------------------------------------------------------
 # 库查询 → 记录（merge 的输入）
@@ -1343,7 +1327,7 @@ def update(
         download_note = _download_releases(force=force)
     releases = extract_sources(source_dir)
     quarterly_rows, annual_rows = _records_to_db_rows(releases)
-    with _transaction(con):
+    with transaction(con):
         replace(con, QUARTERLY_TABLE, quarterly_rows)
         replace(con, ANNUAL_TABLE, annual_rows)
         upsert_dictionary_rows(con, _dictionary_rows())

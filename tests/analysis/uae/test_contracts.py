@@ -2,11 +2,7 @@ import pandas as pd
 import pytest
 
 from htfa.monitoring.uae.contracts import (
-    ConfidenceLevel,
     DataProvenance,
-    DiagnosticResult,
-    EvidenceClass,
-    EvidenceItem,
     ProvenanceKind,
     UAEDataBundle,
 )
@@ -53,45 +49,3 @@ def test_bundle_reports_missing_semantic_ids_together():
         bundle.require_ids(
             {"growth.real_gdp", "growth.nonoil_real_gdp"}
         )
-
-
-def test_bundle_exposes_simulated_provenance():
-    indicator_id = "inflation.cpi_all"
-    bundle = UAEDataBundle(
-        series_by_id={
-            indicator_id: pd.Series(
-                [100.0],
-                index=pd.period_range("2025-01", periods=1, freq="M"),
-            )
-        },
-        provenance_by_id={
-            indicator_id: _provenance(
-                indicator_id,
-                ProvenanceKind.SIMULATED,
-            )
-        },
-    )
-
-    assert bundle.is_simulated(indicator_id)
-
-
-def test_diagnostic_detects_simulated_evidence():
-    result = DiagnosticResult(
-        title="通胀",
-        summary="通胀回落。",
-        confidence=ConfidenceLevel.LOW,
-        confidence_reasons=("使用模拟数据",),
-        evidence=(
-            EvidenceItem(
-                label="总体CPI",
-                value=2.0,
-                unit="%",
-                evidence_class=EvidenceClass.ACCOUNTING,
-                provenance_kind=ProvenanceKind.SIMULATED,
-                as_of="2025-12",
-            ),
-        ),
-        limitation="模拟数据仅用于页面开发。",
-    )
-
-    assert result.uses_simulated_data

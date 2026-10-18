@@ -18,11 +18,11 @@ import urllib.parse
 import urllib.request
 from calendar import monthrange
 from collections import Counter, defaultdict
-from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
+from .db import transaction
 from .paths import DATA_DIR
 
 
@@ -460,18 +460,6 @@ def aggregate() -> tuple[
 # ---------------------------------------------------------------------------
 
 
-@contextmanager
-def _transaction(con) -> Iterator[None]:
-    transaction = con.begin()
-    try:
-        yield
-    except BaseException:
-        transaction.rollback()
-        raise
-    else:
-        transaction.commit()
-
-
 def _period_end(period: str) -> date:
     year = int(period[:4])
     month = int(period[4:])
@@ -599,7 +587,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     monthly_rows, detail_rows, quantity_rows = _to_db_rows(
         rows, detail, quantity_detail
     )
-    with _transaction(con):
+    with transaction(con):
         db.replace(con, "main.comtrade_monthly", monthly_rows)
         db.replace(con, "detail.comtrade_partner_detail", detail_rows)
         db.replace(con, "detail.comtrade_quantity_detail", quantity_rows)

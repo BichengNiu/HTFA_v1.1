@@ -82,7 +82,8 @@ EIA Brent 同时读取官方 XLS 和 RBRTE daily API 完整分页，校验系列
 - `merge_workbook.py` / `merge_workbook.bat`：合并总控（写回工作簿各 sheet）；
 - `workbook_sheet_writer.py`：共享长表透视、元数据读取和原子写表；各来源自己的 `merge()` 独占对应工作表，不存在跨来源的 extended 合并阶段；
 - `fetch_wam.py` / `source_wam.py`：从 WAM 官方 sitemap 自动发现公告、解析每日导弹/无人机数字；没有人工登记表时从 `2026-02-28` 引导，补齐至阿联酋昨日并先写 DuckDB，再由合并流程写入 `月度_WAM`；累计值和区间值不分摊到单日；
-- `db.py`：共享 DuckDB 连接 / 建表 / 运行日志；`_excel_helpers.py`：COM 写表基础设施；
+- `source_registry.py`：更新和合并共用的数据源清单与名称校验；
+- `db.py`：共享 DuckDB 连接 / 建表 / 事务 / 运行日志；`_excel_helpers.py`：COM 写表基础设施；
 - `source_*.py`：每源一个模块（download → parse → load → merge）；
 - `write_*.ps1`：Excel COM 写表助手（baker_hughes/cbuae/emirates_post/portwatch/
   uaewps/pmi）；

@@ -30,12 +30,12 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import Counter
-from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 
+from .db import transaction
 from .paths import DATA_DIR
 
 
@@ -47,9 +47,6 @@ from . import fetch_official_news  # noqa: E402
 from .workbook_sheet_writer import read_indicator_metadata, write_indicator_sheets
 
 DATA_DUBAI = "https://data.dubai"
-DATASET_PAGE = (
-    "https://data.dubai/en/l/460521?com_dda_data_and_statistics_ThemeId=36962"
-)
 DATASET_ID = "460521"
 DOWNLOAD_API = f"{DATA_DUBAI}/o/dda/data-services/dataset-download"
 UA = (
@@ -789,22 +786,6 @@ def _ded_by_type_rows(stats) -> list[dict[str, object]]:
 # 事务上下文
 # --------------------------------------------------------------------------
 
-@contextmanager
-def _transaction(con):
-    """显式事务上下文（BEGIN/COMMIT/ROLLBACK）。
-
-    注意：duckdb 1.5.5 的 con.begin() 上下文管理器在退出时会关闭连接，
-    与 update_data.py 在同一连接上继续 log_run 的约定冲突，因此自行管理事务。
-    """
-
-    con.execute("BEGIN TRANSACTION")
-    try:
-        yield con
-        con.execute("COMMIT")
-    except BaseException:
-        con.execute("ROLLBACK")
-        raise
-
 
 # --------------------------------------------------------------------------
 # 库查询 → 月度_DED 输入（merge 用）
@@ -937,7 +918,7 @@ def update(
     )
 
     by_type_rows = _ded_by_type_rows(stats)
-    with _transaction(con):
+    with transaction(con):
         _ensure_official_news_tables(con)
         if news_scan is not None:
             _store_official_news_candidates(con, news_scan["observations"])

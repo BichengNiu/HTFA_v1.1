@@ -104,3 +104,10 @@ render_uae_monitoring()
     assert not app.get("plotly_chart")
     assert not app.expander
     assert len(app.get("column")) == 4
+
+
+def test_missing_configured_chart_is_not_silently_skipped():
+    import pytest
+    from htfa.monitoring.uae.renderer import _ordered_series_groups
+    with pytest.raises(KeyError, match="required chart"):
+        _ordered_series_groups({}, ("required chart",))

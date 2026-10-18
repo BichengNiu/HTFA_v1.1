@@ -23,8 +23,6 @@ from htfa.monitoring.uae.charts import (
     build_industry_concentration_figure,
     build_industry_price_volume_quadrant_figure,
     build_industry_state_matrix_figure,
-    build_latest_contribution_figure,
-    build_line_figure,
     build_nonoil_industry_pull_figure,
     build_price_volume_figure,
 )
@@ -150,12 +148,13 @@ def _render_report_header(
     )
 
 
-GROWTH_OVERVIEW_GROUPS = (
-    "实际GDP增速与GDP平减指数同比",
-    "GDP部门拉动与石油产量同比",
-    "非石油实际GDP增速与非石油GDP平减指数同比",
-    "非油实际GDP行业拉动",
-)
+MACRO_FIGURE_BUILDERS = {
+    "实际GDP增速与GDP平减指数同比": build_price_volume_figure,
+    "GDP部门拉动与石油产量同比": build_growth_and_sector_pull_figure,
+    "非石油实际GDP增速与非石油GDP平减指数同比": build_price_volume_figure,
+    "非油实际GDP行业拉动": build_nonoil_industry_pull_figure,
+}
+GROWTH_OVERVIEW_GROUPS = tuple(MACRO_FIGURE_BUILDERS)
 GROWTH_INDUSTRY_GROUPS = (
     "行业扩张广度指数",
     "行业增长集中度",
@@ -228,16 +227,13 @@ def _render_series_group_explanation(st_obj, group_title: str) -> None:
 
 def _ordered_series_groups(
     series_groups: Mapping[str, Any],
-    series_group_titles: tuple[str, ...] | None,
+    series_group_titles: tuple[str, ...],
 ) -> tuple[tuple[str, Any], ...]:
-    """按显式标题顺序选择序列组，未指定时保留原始顺序。"""
+    """按页面配置选择序列组；缺失结果必须暴露配置或计算错误。"""
 
-    if series_group_titles is None:
-        return tuple(series_groups.items())
     return tuple(
         (title, series_groups[title])
         for title in series_group_titles
-        if title in series_groups
     )
 
 
@@ -245,7 +241,7 @@ def _render_panel(
     st_obj,
     panel: MacroPanelResult,
     *,
-    series_group_titles: tuple[str, ...] | None = None,
+    series_group_titles: tuple[str, ...],
 ) -> None:
     macro_index = 0
     for group_title, frame in _ordered_series_groups(
@@ -270,23 +266,15 @@ def _render_panel(
                     and indicator_id == "oil.crude_production"
                 )
             ))
-            builder = {
-                "GDP部门拉动与石油产量同比": build_growth_and_sector_pull_figure,
-                "非油实际GDP行业拉动": build_nonoil_industry_pull_figure,
-            }.get(group_title, build_price_volume_figure)
+            builder = MACRO_FIGURE_BUILDERS[group_title]
             figure = builder(
                 frame,
                 title=group_title,
                 source_text=source_text,
             )
-        elif group_title in SERIES_GROUP_FIGURE_BUILDERS:
+        else:
             builder, display_title = SERIES_GROUP_FIGURE_BUILDERS[group_title]
             figure = builder(frame, title=display_title or group_title)
-        else:
-            figure = build_line_figure(
-                frame,
-                title=group_title,
-            )
         if group_title in GROWTH_OVERVIEW_GROUPS:
             render_pyplot_figure(
                 chart_container, figure, bbox_inches=None, place_legend_bottom=False,
@@ -306,32 +294,14 @@ def _render_panel(
         if group_title not in GROWTH_OVERVIEW_GROUPS:
             _render_series_group_explanation(chart_container, group_title)
 
-    for table_title, frame in panel.decomposition_tables.items():
-        st_obj.plotly_chart(
-            place_chart_legend_at_bottom(
-                build_latest_contribution_figure(
-                    frame,
-                    title=table_title,
-                )
-            ),
-            width="stretch",
-            key=f"analysis.uae.{panel.key}.decomposition.{table_title}",
-        )
-        render_chart_download(
-            st_obj,
-            frame,
-            title=table_title,
-            key=f"analysis.uae.{panel.key}.decomposition.{table_title}.download",
-        )
-
     if series_group_titles == GROWTH_OVERVIEW_GROUPS:
         return
 
     with st_obj.expander("证据、来源与方法限制", expanded=False):
         st_obj.markdown("**数据与解释限制**")
-        st_obj.write(panel.headline.limitation)
+        st_obj.write(panel.limitation)
         st_obj.markdown("**证据类型**")
-        for item in panel.headline.evidence:
+        for item in panel.evidence:
             source_tag = (
                 "模拟"
                 if item.provenance_kind is ProvenanceKind.SIMULATED

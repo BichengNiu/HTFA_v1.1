@@ -16,12 +16,12 @@ import re
 import tempfile
 from calendar import monthrange
 from collections import Counter, defaultdict
-from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any, Iterator, NamedTuple
+from typing import Any, NamedTuple
 from urllib.request import Request, urlopen
 
+from .db import transaction
 from .paths import DATA_DIR, SCRIPTS_DIR
 
 
@@ -327,18 +327,6 @@ def _dictionary_rows() -> list[dict]:
     ]
 
 
-@contextmanager
-def _transaction(con) -> Iterator[None]:
-    transaction = con.begin()
-    try:
-        yield
-    except BaseException:
-        transaction.rollback()
-        raise
-    else:
-        transaction.commit()
-
-
 def _atomic_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".tmp")
@@ -380,7 +368,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         }
         for row in long_rows
     ]
-    with _transaction(con):
+    with transaction(con):
         db.replace(con, "mesteel_monthly", rows)
         db.upsert_dictionary_rows(con, _dictionary_rows())
 

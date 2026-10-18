@@ -9,7 +9,7 @@ import pandas as pd
 
 from htfa.monitoring.uae.contracts import (
     DataProvenance,
-    DiagnosticResult,
+    EvidenceItem,
 )
 
 
@@ -18,16 +18,11 @@ class MacroPanelResult:
     """一个宏观结果系统的完整页面数据。"""
 
     key: str
-    title: str
-    headline: DiagnosticResult
+    evidence: tuple[EvidenceItem, ...]
+    limitation: str
     series_groups: Mapping[str, pd.DataFrame]
-    decomposition_tables: Mapping[str, pd.DataFrame]
     provenance: Mapping[str, DataProvenance]
     methodology_notes: tuple[str, ...]
-
-    @property
-    def uses_simulated_data(self) -> bool:
-        return any(item.is_simulated for item in self.provenance.values())
 
 
 @dataclass(frozen=True)

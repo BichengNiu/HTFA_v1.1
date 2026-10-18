@@ -12,16 +12,16 @@ from __future__ import annotations
 import calendar
 import re
 import warnings
-from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Iterable
 from urllib.parse import urljoin, urlparse
 
 from openpyxl import load_workbook
 
+from .db import transaction
 from .paths import DATA_DIR
 
 
@@ -249,21 +249,6 @@ def _month_end(period: str) -> date:
     return date(year, month, calendar.monthrange(year, month)[1])
 
 
-@contextmanager
-def _transaction(con) -> Iterator[None]:
-    """事务上下文：duckdb 1.5.5 的 `with con.begin():` 退出时会把连接一并
-    关闭（begin 返回的是子连接），因此手动管理提交/回滚。"""
-
-    transaction = con.begin()
-    try:
-        yield
-    except BaseException:
-        transaction.rollback()
-        raise
-    else:
-        transaction.commit()
-
-
 def _dictionary_rows() -> list[dict]:
     return [
         {
@@ -345,7 +330,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         }
         for observation in observations
     ]
-    with _transaction(con):
+    with transaction(con):
         db.replace(con, "baker_hughes_monthly", rows)
         db.upsert_dictionary_rows(con, _dictionary_rows())
 

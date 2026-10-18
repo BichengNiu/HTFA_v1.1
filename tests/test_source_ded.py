@@ -88,7 +88,7 @@ def test_db_roundtrip_with_unknown_excluded(tmp_path) -> None:
 
     con = db.connect(":memory:")
     db.init_schema(con)
-    with sd._transaction(con):
+    with db.transaction(con):
         db.replace(con, "ded_monthly", monthly_rows)
         db.replace(con, "ded_monthly_by_type", by_type_rows)
 

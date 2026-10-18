@@ -102,7 +102,7 @@ def test_db_holds_exact_month_dates() -> None:
     ]
     con = db.connect(":memory:")
     db.init_schema(con)
-    with se._transaction(con):
+    with db.transaction(con):
         db.replace(con, "employment_search_index", rows)
     stored = con.execute(
         "SELECT month, keyword, value FROM employment_search_index ORDER BY keyword"

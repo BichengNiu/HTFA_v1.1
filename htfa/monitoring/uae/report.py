@@ -70,6 +70,7 @@ def render_high_frequency_topics(
     for topic, label, renderer in TOPIC_RENDERERS:
         try:
             rendered = renderer(st_obj, payload)
+            status = _status_from_payload(rendered)
         except Exception as exc:  # noqa: BLE001 - 主题隔离边界
             message = f"{label}主题渲染失败：{exc}"
             st_obj.error(message)
@@ -80,7 +81,6 @@ def render_high_frequency_topics(
             )
             continue
 
-        status = _status_from_payload(rendered)
         results[topic] = TopicResult(
             topic=topic,
             status=status,
@@ -95,12 +95,14 @@ def render_high_frequency_topics(
 
 
 def _status_from_payload(payload: Mapping[str, Any]) -> TopicStatus:
-    status = payload.get("status", "success")
-    if status in {"success", "ok"}:
+    status = payload.get("status")
+    if status == "success":
         return "ok"
-    if status in {"no_data", "empty"}:
+    if status == "no_data":
         return "empty"
-    return "failed"
+    if status == "error":
+        return "failed"
+    raise ValueError(f"主题返回了无效状态：{status!r}")
 
 
 __all__ = ["TOPIC_RENDERERS", "TopicResult", "render_high_frequency_topics"]

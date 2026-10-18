@@ -25,18 +25,18 @@ import os
 import re
 import tempfile
 from collections import defaultdict
-from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Iterable
 from urllib.parse import unquote, urlencode, urljoin, urlparse
 
 from openpyxl import load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 from pypdf import PdfReader
 
+from .db import transaction
 from .paths import DATA_DIR
 
 
@@ -961,21 +961,6 @@ def _month_end(period: str) -> date:
     return date(year, month, calendar.monthrange(year, month)[1])
 
 
-@contextmanager
-def _transaction(con) -> Iterator[None]:
-    """事务上下文：duckdb 1.5.5 的 `with con.begin():` 退出时会把连接一并
-    关闭（begin 返回的是子连接），因此手动管理提交/回滚。"""
-
-    transaction = con.begin()
-    try:
-        yield
-    except BaseException:
-        transaction.rollback()
-        raise
-    else:
-        transaction.commit()
-
-
 def _long_rows(observations: Iterable[Observation]) -> list[dict]:
     """把宽表观测展开为 (period, indicator) 长表入库行（仅信贷/存贷款组）。"""
 
@@ -1052,7 +1037,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
 
     payment_selected = _payment_rows_selected(payment_rows, primary_start)
     rows = _long_rows(selected) + payment_selected
-    with _transaction(con):
+    with transaction(con):
         db.replace(con, "cbuae_monthly", rows)
         db.upsert_dictionary_rows(con, _dictionary_rows())
 

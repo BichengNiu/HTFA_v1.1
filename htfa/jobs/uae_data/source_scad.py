@@ -65,7 +65,6 @@ HPI_INDICATORS = (
     ("阿布扎比:酒店价格指数(HPI)", "Hotel Price Index", "月", "指数"),
 )
 
-_INDICATOR_KEY = {row[0]: row for row in HS_INDICATORS + HPI_INDICATORS}
 _INDICATOR_ORDER = {
     name: index for index, (name, *_) in enumerate(HS_INDICATORS + HPI_INDICATORS)
 }

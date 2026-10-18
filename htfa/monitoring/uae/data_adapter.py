@@ -18,9 +18,7 @@ from htfa.monitoring.uae.indicator_catalog import (
 from htfa.data.economic_workbook.core.workbook_parser import parse_economic_workbook
 
 UAE_ANALYSIS_INDICATOR_NAMES = frozenset(
-    alias
-    for spec in INDICATOR_SPECS
-    for alias in spec.aliases
+    spec.indicator_name for spec in INDICATOR_SPECS
 )
 
 
@@ -49,16 +47,10 @@ def load_real_uae_bundle(source: PublishedUAEData) -> UAEDataBundle:
     provenance: dict[str, DataProvenance] = {}
 
     for spec in INDICATOR_SPECS:
-        matches = [alias for alias in spec.aliases if alias in available]
-        if len(matches) > 1:
-            raise ValueError(
-                f"指标{spec.indicator_id}匹配到多个真实序列: "
-                + ", ".join(matches)
-            )
-        if not matches:
+        indicator_name = spec.indicator_name
+        if indicator_name not in available:
             continue
 
-        indicator_name = matches[0]
         metadata = metadata_map[indicator_name]
         resolved[spec.indicator_id] = (
             available[indicator_name].dropna().copy()

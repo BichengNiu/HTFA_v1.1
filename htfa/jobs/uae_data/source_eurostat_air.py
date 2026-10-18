@@ -21,15 +21,15 @@ from __future__ import annotations
 import json
 import ssl
 import tempfile
-from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from urllib.request import Request, urlopen
 
 import certifi
 
+from .db import transaction
 from .paths import DATA_DIR
 from .workbook_sheet_writer import merge_source_sheet, month_end, pivot_indicator_rows
 
@@ -311,18 +311,6 @@ def load_and_validate(
     return records, coverage
 
 
-@contextmanager
-def _transaction(con) -> Iterator[None]:
-    transaction = con.begin()
-    try:
-        yield
-    except BaseException:
-        transaction.rollback()
-        raise
-    else:
-        transaction.commit()
-
-
 def _month_end(period_int: int) -> date:
     year, month = divmod(period_int, 100)
     if month == 12:
@@ -481,7 +469,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
             f"{worst} diff={cross[worst] - sum_by_month[worst]:.0f}"
         )
 
-    with _transaction(con):
+    with transaction(con):
         db.replace(con, "detail.eurostat_air_monthly", rows)
         db.upsert_dictionary_rows(con, _dictionary_rows())
 

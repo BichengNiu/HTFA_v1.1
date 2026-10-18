@@ -29,11 +29,8 @@ SOURCE_IDS = {
     "growth.nominal_gdp",
     "growth.nonoil_real_gdp",
     "growth.nonoil_nominal_gdp",
-    "growth.nonfinancial_real_gdp",
-    "growth.nonfinancial_nominal_gdp",
     "growth.real_gdp_yoy",
     "growth.nonoil_real_gdp_yoy",
-    "growth.nonfinancial_real_gdp_yoy",
     "oil.crude_production",
 }
 
@@ -54,18 +51,11 @@ def _series_by_id() -> dict[str, pd.Series]:
         dtype=float,
     )
     real_gdp = (nonoil + oil).rename("real_gdp")
-    nonfinancial = pd.Series(
-        [4000 + 300 * t for t in range(len(QUARTERS))],
-        index=QUARTERS,
-        dtype=float,
-    )
     series_by_id = {
         "growth.real_gdp": real_gdp,
         "growth.nominal_gdp": real_gdp * 1.05,
         "growth.nonoil_real_gdp": nonoil,
         "growth.nonoil_nominal_gdp": nonoil * 1.08,
-        "growth.nonfinancial_real_gdp": nonfinancial,
-        "growth.nonfinancial_nominal_gdp": nonfinancial * 1.06,
         "oil.crude_production": pd.Series(
             [3000 + 100 * t for t in range(len(QUARTERS))],
             index=QUARTERS,
@@ -75,14 +65,6 @@ def _series_by_id() -> dict[str, pd.Series]:
     for indicator_id in (
         "growth.real_gdp_yoy",
         "growth.nonoil_real_gdp_yoy",
-        "growth.nonfinancial_real_gdp_yoy",
-        "growth.nominal_gdp_yoy",
-        "growth.nonoil_nominal_gdp_yoy",
-        "growth.nonfinancial_nominal_gdp_yoy",
-        "oil.dubai_crude_price",
-        "market.dfm_index",
-        "bilateral.china_odi_flow",
-        "bilateral.china_odi_stock",
     ):
         series_by_id[indicator_id] = pd.Series(
             [5.0] * len(QUARTERS),
@@ -125,7 +107,6 @@ def test_growth_panel_returns_all_expected_series_groups() -> None:
     assert list(panel.series_groups) == [
         "实际GDP增速与GDP平减指数同比",
         "非石油实际GDP增速与非石油GDP平减指数同比",
-        "非油非金融实际GDP增速与平减指数同比",
         "GDP部门拉动与石油产量同比",
         "非油实际GDP行业拉动",
         "行业量价四象限图",
@@ -141,32 +122,15 @@ def test_growth_panel_returns_all_expected_series_groups() -> None:
     assert "非油GDP同比" in pull.columns
     assert "其他行业" in pull.columns
     assert len(pull.columns) == 7
-    assert panel.headline.uses_simulated_data is False
+    assert all(item.kind is ProvenanceKind.REAL for item in panel.provenance.values())
 
 
 @pytest.mark.parametrize("prefix, title", [
     ("", "实际GDP增速与GDP平减指数同比"),
     ("nonoil_", "非石油实际GDP增速与非石油GDP平减指数同比"),
-    ("derived", "非油非金融实际GDP增速与平减指数同比"),
 ])
 def test_deflator_yoy_uses_nominal_to_real_gdp_ratio(prefix, title):
     bundle = _make_bundle()
-    if prefix == "derived":
-        frame = build_growth_panel(bundle).series_groups[title]
-        nonoil_real = bundle.series_by_id["growth.nonoil_real_gdp"]
-        finance_real = bundle.series_by_id["industry.finance_insurance.real"]
-        nonoil_nominal = bundle.series_by_id["growth.nonoil_nominal_gdp"]
-        finance_nominal = bundle.series_by_id["industry.finance_insurance.nominal"]
-        real = nonoil_real.sub(finance_real)
-        nominal = nonoil_nominal.sub(finance_nominal)
-        deflator_yoy = frame["非油非金融GDP平减指数同比"]
-        expected = ((nominal.iloc[-1] / real.iloc[-1])
-                    / (nominal.iloc[-5] / real.iloc[-5]) - 1) * 100
-        assert deflator_yoy.iloc[-1] == pytest.approx(expected)
-        assert frame["非油非金融实际GDP当季同比"].iloc[-1] == pytest.approx(
-            (real.iloc[-1] / real.iloc[-5] - 1) * 100
-        )
-        return
     nominal_id = f"growth.{prefix}nominal_gdp"
     real_id = f"growth.{prefix}real_gdp"
     nominal = bundle.series_by_id[nominal_id].copy()
@@ -191,7 +155,6 @@ def test_macro_download_keeps_level_history_in_chronological_order() -> None:
     for title in (
         "实际GDP增速与GDP平减指数同比",
         "非石油实际GDP增速与非石油GDP平减指数同比",
-        "非油非金融实际GDP增速与平减指数同比",
     ):
         frame = panel.series_groups[title]
         assert frame.index.is_monotonic_increasing
@@ -228,7 +191,6 @@ def test_growth_panel_keeps_rounding_residual_and_different_price_release_dates(
     for title in (
         "实际GDP增速与GDP平减指数同比",
         "非石油实际GDP增速与非石油GDP平减指数同比",
-        "非油非金融实际GDP增速与平减指数同比",
     ):
         values = panel.series_groups[title]
         assert values.index[-1] == QUARTERS[-1]
@@ -254,9 +216,9 @@ def test_growth_panel_reports_missing_required_indicators() -> None:
 
 def _workbook_bytes() -> bytes:
     series_by_id = _series_by_id()
-    aliases = [spec.aliases[0] for spec in INDICATOR_SPECS]
+    aliases = [spec.indicator_name for spec in INDICATOR_SPECS]
     values_by_alias = {
-        spec.aliases[0]: series_by_id[spec.indicator_id]
+        spec.indicator_name: series_by_id[spec.indicator_id]
         for spec in INDICATOR_SPECS
     }
     dates = [
@@ -328,3 +290,22 @@ def test_growth_panel_reports_missing_nonoil_gdp() -> None:
                 },
             )
         )
+
+
+def test_macro_adapter_does_not_substitute_crude_for_petroleum_and_other_liquids():
+    from openpyxl import load_workbook
+
+    canonical = next(spec.indicator_name for spec in INDICATOR_SPECS
+                     if spec.indicator_id == "oil.crude_production")
+    workbook = load_workbook(BytesIO(_workbook_bytes()))
+    for sheet in workbook:
+        for row in sheet:
+            for cell in row:
+                if cell.value == canonical:
+                    cell.value = "阿联酋: 产量: 原油"
+    output = BytesIO()
+    workbook.save(output)
+    workbook.close()
+    result = build_monitoring_dashboard(report_source(output.getvalue()))
+    assert not result.panels
+    assert "oil.crude_production" in result.unavailable_panels["growth"]

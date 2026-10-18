@@ -18,12 +18,11 @@ from __future__ import annotations
 
 import html
 import re
-from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
-from typing import Iterator
 from urllib.parse import urljoin
 
+from .db import transaction
 from .paths import DATA_DIR
 
 
@@ -273,18 +272,6 @@ def _dictionary_rows() -> list[dict]:
     ]
 
 
-@contextmanager
-def _transaction(con) -> Iterator[None]:
-    transaction = con.begin()
-    try:
-        yield
-    except BaseException:
-        transaction.rollback()
-        raise
-    else:
-        transaction.commit()
-
-
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     """下载 -> 解析 -> 整表替换入 tdra_telecom_monthly。"""
     download_note = ""
@@ -297,7 +284,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     if not rows:
         raise ValueError("tdra_telecom_monthly 输入为空，拒绝入库")
 
-    with _transaction(con):
+    with transaction(con):
         db.ensure(con, TABLE, _TABLE_DDL)
         db.replace(con, TABLE, rows)
         db.upsert_dictionary_rows(con, _dictionary_rows())

@@ -28,11 +28,11 @@ import os
 import shutil
 import subprocess
 import zipfile
-from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
-from typing import Any, Iterator, TextIO
+from typing import Any, TextIO
 
+from .db import transaction
 from .paths import DATA_DIR
 from .workbook_sheet_writer import merge_source_sheet, month_end, pivot_indicator_rows
 
@@ -278,18 +278,6 @@ odata_years``：transtats 表单在该年份返回空（美阿航线尚未开航
     }
 
 
-@contextmanager
-def _transaction(con) -> Iterator[None]:
-    transaction = con.begin()
-    try:
-        yield
-    except BaseException:
-        transaction.rollback()
-        raise
-    else:
-        transaction.commit()
-
-
 def _dictionary_rows() -> list[dict[str, Any]]:
     rows = []
     for indicator in INDICATOR_TPL.values():
@@ -410,7 +398,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         failed = [c["name"] for c in report["checks"] if not c["passed"]]
         raise ValueError("US↔UAE T-100 quality checks failed: " + ", ".join(failed))
 
-    with _transaction(con):
+    with transaction(con):
         db.replace(con, "dot_t100_monthly", rows)
         db.upsert_dictionary_rows(con, _dictionary_rows())
 

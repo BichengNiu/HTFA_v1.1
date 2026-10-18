@@ -16,11 +16,10 @@ import re
 import shutil
 import time
 from collections import defaultdict
-from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
 from statistics import mean
-from typing import Any, Iterator
+from typing import Any
 from urllib.parse import urljoin
 
 import requests
@@ -31,6 +30,7 @@ from pypdf import PdfReader
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+from .db import transaction
 from .paths import DATA_DIR
 
 
@@ -671,18 +671,6 @@ def build_rows() -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
-@contextmanager
-def _transaction(con) -> Iterator[None]:
-    transaction = con.begin()
-    try:
-        yield
-    except BaseException:
-        transaction.rollback()
-        raise
-    else:
-        transaction.commit()
-
-
 def _rows_to_long(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """宽行 → (period, series, value[, quality_flag]) 长行，仅存非空值。
 
@@ -726,7 +714,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         download_all(refresh=True)
     rows = build_rows()
     long_rows = _rows_to_long(rows)
-    with _transaction(con):
+    with transaction(con):
         db.replace(con, "foreign_labour_monthly", long_rows)
     note = f"{len(long_rows)} 条序列观测（{rows[-1]['date']} 至 {rows[0]['date']}）"
     return {"status": "ok", "rows": len(long_rows), "note": note}

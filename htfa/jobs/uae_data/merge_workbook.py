@@ -26,6 +26,7 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
+from .source_registry import resolve_source_names
 from .paths import DATA_DIR
 from ._excel_helpers import cleanup_excel_automation
 
@@ -35,37 +36,6 @@ from . import db
 from .publish_report import publish_workbook
 
 WORKBOOK_PATH = DATA_DIR / "阿联酋.xlsx"
-
-SOURCES = (
-    "baker_hughes",
-    "oil",
-    "cbuae",
-    "cloudflare_radar",
-    "comtrade",
-    "comtrade_vehicles",
-    "ded",
-    "dld",
-    "dot_t100",
-    "dubai_customs_air",
-    "employment",
-    "emirates_post",
-    "eurostat_air",
-    "eia_liquids",
-    "fcsc",
-    "fcsc_gdp",
-    "foreign_labour",
-    "gfs",
-    "pmi",
-    "portwatch",
-    "public_market",
-    "rta",
-    "salik",
-    "scad",
-    "steel",
-    "tdra",
-    "uaewps",
-    "wam",
-)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -84,16 +54,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def resolve_source_names(specifier: str) -> list[str]:
-    if specifier.strip().casefold() == "all":
-        return list(SOURCES)
-    names = [name.strip() for name in specifier.split(",") if name.strip()]
-    unknown = [name for name in names if name not in SOURCES]
-    if unknown:
-        raise ValueError(f"Unknown source(s): {', '.join(unknown)}")
-    return names
-
-
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     names = resolve_source_names(args.source)
@@ -108,14 +68,14 @@ def main(argv: list[str] | None = None) -> int:
         try:
             module = importlib.import_module(f".source_{name}", package=__package__)
             outcome = module.merge(workbook_path)
+            if outcome.get("status") not in {"ok", "skipped"}:
+                raise ValueError(f"合并未报告成功：{outcome.get('status')!r}")
             print(
                 f"[merge_workbook] {name:<16} "
-                f"{str(outcome.get('status', 'ok')):<8} "
+                f"{outcome['status']:<8} "
                 f"{outcome.get('note', '')}",
                 flush=True,
             )
-            if outcome.get("status") == "failed":
-                failures += 1
         except Exception as exc:  # noqa: BLE001 - per-source isolation
             failures += 1
             detail = "".join(

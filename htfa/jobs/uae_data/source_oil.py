@@ -13,7 +13,6 @@ import math
 import os
 import re
 import tempfile
-from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone
 from html.parser import HTMLParser
@@ -23,6 +22,7 @@ from urllib.parse import urlencode, urljoin
 
 import pandas as pd
 
+from .db import transaction
 from . import db
 from ._official_download import download_file, fetch_bytes
 from .paths import DATA_DIR
@@ -535,17 +535,6 @@ def parse_imf_dubai_xml(payload: bytes | str) -> list[DubaiPriceObservation]:
     return [observations[key] for key in sorted(observations)]
 
 
-@contextmanager
-def _transaction(con):
-    con.execute("BEGIN TRANSACTION")
-    try:
-        yield
-        con.execute("COMMIT")
-    except BaseException:
-        con.execute("ROLLBACK")
-        raise
-
-
 def _dictionary_rows() -> list[dict[str, object]]:
     return [
         {
@@ -701,7 +690,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict[str
         }
         for item in dubai_prices
     ]
-    with _transaction(con):
+    with transaction(con):
         db.replace(con, OPEC_PRODUCTION_TABLE, production_rows)
         db.replace(con, EIA_PRICE_TABLE, price_rows)
         db.replace(con, DUBAI_PRICE_TABLE, dubai_price_rows)

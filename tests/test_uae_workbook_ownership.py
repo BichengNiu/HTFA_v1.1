@@ -16,7 +16,7 @@ from htfa.jobs.uae_data import (
 
 
 def test_all_update_sources_have_exactly_one_merge_owner():
-    assert set(merge_workbook.SOURCES) == set(update_data.SOURCES)
+    assert merge_workbook.resolve_source_names("all") == list(update_data.SOURCES)
     for source in update_data.SOURCES:
         assert update_data.workbook_merge_sources([source]) == [source]
 

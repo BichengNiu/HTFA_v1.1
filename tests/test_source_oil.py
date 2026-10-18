@@ -6,9 +6,11 @@ import json
 from io import BytesIO
 
 import pandas as pd
+import pytest
 from openpyxl import load_workbook
 
-from htfa.jobs.uae_data import db, source_oil
+from htfa.jobs.uae_data import db, source_oil, publish_report
+from htfa.monitoring.uae.database import published_source
 from htfa.monitoring.uae.oil.data import load_oil_market_data
 
 
@@ -169,8 +171,11 @@ def test_update_merge_and_oil_loader_use_duckdb_as_source_of_truth(tmp_path, mon
 
     workbook_path = tmp_path / "阿联酋.xlsx"
     with pd.ExcelWriter(workbook_path, engine="openpyxl") as writer:
-        pd.DataFrame({"placeholder": [1]}).to_excel(
-            writer, sheet_name="placeholder", index=False
+        names = ["阿联酋石油活跃钻机数", source_oil.PRODUCTION_INDICATOR,
+                 source_oil.PRICE_INDICATOR, source_oil.DUBAI_PRICE_INDICATOR]
+        pd.DataFrame({"指标名称": names, "类型": ["指标"] * 4, "行业": ["能源"] * 4,
+                      "数据来源": ["测试官方"] * 4, "预测变量": ["否"] * 4}).to_excel(
+            writer, sheet_name="指标字典", index=False
         )
         # The oil page also requires the independently maintained rig series.
         rig_sheet = writer.book.create_sheet("月度_贝克休斯")
@@ -187,7 +192,11 @@ def test_update_merge_and_oil_loader_use_duckdb_as_source_of_truth(tmp_path, mon
     merge_result = source_oil.merge(workbook_path)
 
     assert merge_result["status"] == "ok"
-    data = load_oil_market_data(workbook_path, file_name=workbook_path.name)
+    with db.connect(database_path) as con:
+        publish_report.publish_workbook(con, workbook_path)
+    with monkeypatch.context() as no_excel:
+        no_excel.setattr(pd, "ExcelFile", lambda *args, **kwargs: pytest.fail("Excel I/O forbidden"))
+        data = load_oil_market_data(published_source(database_path))
     assert data.prices.columns.tolist() == ["布伦特现货", "迪拜现货"]
     assert data.production.iloc[-1] == 3_835_000.0
     assert data.metadata["布伦特现货"].source == "U.S. EIA"

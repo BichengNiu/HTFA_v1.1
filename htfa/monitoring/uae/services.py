@@ -15,7 +15,6 @@ from htfa.monitoring.uae.contracts import (
     UAEDataBundle,
 )
 from htfa.monitoring.uae.data_adapter import load_real_uae_bundle
-from htfa.monitoring.uae.diagnostics import build_diagnostic
 from htfa.monitoring.uae.growth import calculate_industry_diagnostics
 from htfa.monitoring.uae.indicator_catalog import (
     INDUSTRY_NAMES,
@@ -117,48 +116,6 @@ def _build_price_volume_series(
     ).dropna(how="all").sort_index()
 
 
-def _build_nonoil_nonfinancial_price_volume_series(
-    bundle: UAEDataBundle,
-) -> pd.DataFrame:
-    """从非油总量扣除金融保险业，构造非油非金融量价序列。"""
-
-    nonoil_real = bundle.require_series("growth.nonoil_real_gdp")
-    finance_real = bundle.require_series("industry.finance_insurance.real")
-    nonoil_nominal = bundle.require_series("growth.nonoil_nominal_gdp")
-    finance_nominal = bundle.require_series("industry.finance_insurance.nominal")
-    components = pd.concat(
-        [
-            nonoil_real.rename("非油实际GDP（十亿阿联酋迪拉姆）"),
-            finance_real.rename("金融保险业实际增加值（十亿阿联酋迪拉姆）"),
-            nonoil_nominal.rename("非油名义GDP（十亿阿联酋迪拉姆）"),
-            finance_nominal.rename("金融保险业名义增加值（十亿阿联酋迪拉姆）"),
-        ],
-        axis=1,
-        sort=False,
-    )
-    real = components["非油实际GDP（十亿阿联酋迪拉姆）"].sub(
-        components["金融保险业实际增加值（十亿阿联酋迪拉姆）"]
-    )
-    nominal = components["非油名义GDP（十亿阿联酋迪拉姆）"].sub(
-        components["金融保险业名义增加值（十亿阿联酋迪拉姆）"]
-    )
-    if (real.dropna() <= 0).any() or (nominal.dropna() <= 0).any():
-        raise ValueError("非油非金融GDP水平必须为正数")
-    deflator = nominal.div(real).mul(100)
-    return pd.concat(
-        [
-            _growth(real, 4).rename("非油非金融实际GDP当季同比"),
-            _growth(deflator, 4).rename("非油非金融GDP平减指数同比"),
-            components,
-            real.rename("非油非金融实际GDP（十亿阿联酋迪拉姆）"),
-            nominal.rename("非油非金融名义GDP（十亿阿联酋迪拉姆）"),
-            deflator.rename("非油非金融GDP平减指数（现价/不变价×100）"),
-        ],
-        axis=1,
-        sort=False,
-    ).dropna(how="all").sort_index()
-
-
 def _build_industry_price_volume_quadrant(
     *,
     nonoil_real_gdp: pd.Series,
@@ -252,9 +209,6 @@ def build_growth_panel(bundle: UAEDataBundle) -> MacroPanelResult:
             real_level_label="实际非石油GDP（十亿阿联酋迪拉姆）",
             deflator_level_label="非石油GDP平减指数（现价/不变价×100）",
         ),
-        "非油非金融实际GDP增速与平减指数同比": (
-            _build_nonoil_nonfinancial_price_volume_series(bundle)
-        ),
     }
 
     industry_series = {
@@ -332,12 +286,6 @@ def build_growth_panel(bundle: UAEDataBundle) -> MacroPanelResult:
         .rename("石油经济部门拉动")
     )
 
-    latest_contributions = (
-        top_five_pull.dropna(how="all").iloc[-1]
-    )
-    top_name = latest_contributions.abs().idxmax()
-    top_value = float(latest_contributions[top_name])
-    driver_word = "拉动" if top_value >= 0 else "拖累"
     total_period, total_value = _latest(total_growth)
     nonoil_period, nonoil_value = _latest(nonoil_growth)
 
@@ -361,28 +309,6 @@ def build_growth_panel(bundle: UAEDataBundle) -> MacroPanelResult:
             as_of=_period_label(nonoil_period),
         ),
     )
-    direction = "扩张" if total_value >= 0 else "收缩"
-    headline = build_diagnostic(
-        title="经济增长与结构",
-        result_sentence=(
-            f"实际GDP在{_period_label(total_period)}同比"
-            f"{direction}{abs(total_value):.1f}%。"
-        ),
-        accounting_sentence=(
-            f"最新季度非油行业核算中，{top_name}{driver_word}最大，"
-            f"为{abs(top_value):.1f}个百分点；16个行业拉动之和与非油GDP同比在公布精度内一致。"
-        ),
-        mechanism_sentence=(
-            "行业拉动用于识别非油增长结构，不作为行业增长的因果机制证据。"
-        ),
-        evidence=evidence,
-        limitation=(
-            "行业拉动是基于不变价增加值的核算分解，"
-            "说明增长来自哪些行业，不解释这些行业为何增长。"
-        ),
-        accounting_complete=True,
-    )
-
     trend = pd.concat(
         [
             nonoil_pull,
@@ -416,19 +342,19 @@ def build_growth_panel(bundle: UAEDataBundle) -> MacroPanelResult:
         "growth.nominal_gdp",
         "growth.nonoil_real_gdp",
         "growth.nonoil_nominal_gdp",
-        "growth.nonfinancial_real_gdp",
-        "growth.nonfinancial_nominal_gdp",
         "growth.real_gdp_yoy",
         "growth.nonoil_real_gdp_yoy",
-        "growth.nonfinancial_real_gdp_yoy",
         oil_production_id,
         *REAL_INDUSTRY_IDS,
         *NOMINAL_INDUSTRY_IDS,
     )
     return MacroPanelResult(
         key="growth",
-        title="经济增长与结构",
-        headline=headline,
+        evidence=evidence,
+        limitation=(
+            "行业拉动是基于不变价增加值的核算分解，"
+            "说明增长来自哪些行业，不解释这些行业为何增长。"
+        ),
         series_groups={
             **price_volume_groups,
             "GDP部门拉动与石油产量同比": trend,
@@ -440,7 +366,6 @@ def build_growth_panel(bundle: UAEDataBundle) -> MacroPanelResult:
                 industry_diagnostics.persistence
             ),
         },
-        decomposition_tables={},
         provenance=_provenance_subset(bundle, source_ids),
         methodology_notes=(
             "GDP平减指数按现价GDP除以不变价GDP并乘以100构造，再计算季度同比增速；图表下载同时包含两种GDP水平和所用平减指数序列。",
@@ -454,9 +379,9 @@ def build_growth_panel(bundle: UAEDataBundle) -> MacroPanelResult:
             "季度行业拉动使用各行业本季度与上年同季度的不变价增加值之差，除以上年同季度非油实际GDP，单位为百分点。",
             "在完整数据范围内逐季度计算各行业实际GDP占非油实际GDP的比例，并按季度占比的算术平均值固定选取前5个行业。",
             "前5个行业在所有季度保持不变，其余11个行业合并为“其他行业”。",
-            "全部16个非油行业在季度层面加总等于非油实际GDP；柱形总高度与非油GDP同比折线一致，不设置残差。",
+            "全部16个非油行业在季度层面加总等于非油实际GDP；各行业拉动之和与非油GDP同比核算值一致，不设置残差。",
             "行业隐含平减指数按各行业现价增加值除以不变价增加值并乘以100构造；横纵轴均使用季度同比增速。",
-            "气泡面积表示行业实际GDP占当季非油实际GDP比例；每个季度16个行业占比之和必须在1e-8容差内等于1。",
+            "气泡面积表示行业实际GDP占当季非油实际GDP比例；各季度占比须通过1e-8相对容差或FCSC百万AED公布精度的加总校验。",
             "四象限动画对所有季度使用固定坐标范围、固定行业颜色和统一气泡面积尺度，保证跨期视觉可比。",
             "行业广度后台保留等权与加权派生结果；图表仅展示不加权的正增长行业比例和连续四季度正增长行业比例。",
             "行业增长集中度地图对16个行业的正负贡献绝对值统一归一化，不再只对正向贡献计算HHI。",

@@ -10,13 +10,13 @@ from __future__ import annotations
 import json
 import math
 import time
-from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 from curl_cffi import requests
 
+from .db import transaction
 from .db import replace
 from .paths import DATA_DIR
 from .workbook_sheet_writer import merge_source_sheet, pivot_indicator_rows
@@ -37,23 +37,6 @@ _GOOGLE_HEADERS = {
     "Accept": "application/json, text/plain, */*",
     "Referer": "https://trends.google.com/trends/explore?geo=AE",
 }
-
-
-@contextmanager
-def _transaction(con):
-    """显式事务上下文（BEGIN/COMMIT/ROLLBACK）。
-
-    注意：duckdb 1.5.5 的 con.begin() 上下文管理器在退出时会关闭连接，
-    与 update_data.py 在同一连接上继续 log_run 的约定冲突，因此自行管理事务。
-    """
-
-    con.execute("BEGIN TRANSACTION")
-    try:
-        yield con
-        con.execute("COMMIT")
-    except BaseException:
-        con.execute("ROLLBACK")
-        raise
 
 
 def _decode_google_json(response_text: str) -> dict:
@@ -247,7 +230,7 @@ def update(
     else:
         rows, note = _fetch_google_trends()
 
-    with _transaction(con):
+    with transaction(con):
         replace(con, SEARCH_TABLE, rows)
     return {
         "status": "ok",

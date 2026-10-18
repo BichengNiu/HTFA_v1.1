@@ -41,12 +41,12 @@ import json
 import subprocess
 import sys
 from collections import Counter
-from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Iterator
+from typing import Any
 
+from .db import transaction
 from .paths import DATA_DIR
 from .workbook_sheet_writer import merge_source_sheet, month_end, pivot_indicator_rows
 
@@ -468,18 +468,6 @@ def _dictionary_rows() -> list[dict[str, Any]]:
     return rows
 
 
-@contextmanager
-def _transaction(con) -> Iterator[None]:
-    transaction = con.begin()
-    try:
-        yield
-    except BaseException:
-        transaction.rollback()
-        raise
-    else:
-        transaction.commit()
-
-
 # ---------------------------------------------------------------------------
 # 统一入口
 # ---------------------------------------------------------------------------
@@ -555,7 +543,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         failed = [c["name"] for c in report["checks"] if not c["passed"]]
         raise ValueError("Dubai Customs airway bill checks failed: " + ", ".join(failed))
 
-    with _transaction(con):
+    with transaction(con):
         db.replace(con, "main.dubai_airway_bill_monthly", rows)
         db.upsert_dictionary_rows(con, _dictionary_rows())
 

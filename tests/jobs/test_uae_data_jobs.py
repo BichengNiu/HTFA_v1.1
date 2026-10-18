@@ -5,6 +5,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 from contextlib import nullcontext
 
+import pytest
+
+from htfa.jobs.uae_data import db
+
 from htfa.jobs.uae_data import merge_workbook, update_data
 
 
@@ -87,12 +91,13 @@ def test_merge_does_not_sync_dictionary_after_source_failure(monkeypatch, tmp_pa
     assert imported == [".source_baker_hughes", ".source_cbuae"]
 
 
-def test_merge_publishes_once_after_all_sources_and_dictionary(monkeypatch, tmp_path):
+@pytest.mark.parametrize("source_status", ["ok", "skipped"])
+def test_merge_publishes_once_after_all_sources_and_dictionary(monkeypatch, tmp_path, source_status):
     calls = []
 
     def import_source(name, *, package=None):
         return SimpleNamespace(merge=lambda path: (
-            calls.append(name) or {"status": "ok"}
+            calls.append(name) or {"status": source_status}
         ))
 
     monkeypatch.setattr(merge_workbook.importlib, "import_module", import_source)
@@ -111,3 +116,90 @@ def test_merge_publishes_once_after_all_sources_and_dictionary(monkeypatch, tmp_
         "--source", "salik,employment", "--workbook", str(tmp_path / "book.xlsx")
     ]) == 0
     assert calls == [".source_salik", ".source_employment", "dictionary", "publish"]
+
+
+@pytest.mark.parametrize("error_type", [RuntimeError, KeyboardInterrupt])
+def test_shared_transaction_rolls_back_atomically_and_keeps_connection_open(error_type):
+    con = db.connect(":memory:")
+    try:
+        con.execute("CREATE TABLE first_table (value INTEGER)")
+        con.execute("CREATE TABLE second_table (value INTEGER)")
+        with pytest.raises(error_type):
+            with db.transaction(con):
+                con.execute("INSERT INTO first_table VALUES (1)")
+                con.execute("INSERT INTO second_table VALUES (2)")
+                raise error_type("interrupted")
+        assert con.execute("SELECT count(*) FROM first_table").fetchone() == (0,)
+        assert con.execute("SELECT count(*) FROM second_table").fetchone() == (0,)
+        with db.transaction(con):
+            con.execute("INSERT INTO first_table VALUES (3)")
+        assert con.execute("SELECT value FROM first_table").fetchone() == (3,)
+    finally:
+        con.close()
+
+
+@pytest.mark.parametrize("result", [{}, {"status": "unknown"}])
+def test_merge_does_not_publish_a_source_without_explicit_success(monkeypatch, tmp_path, result):
+    monkeypatch.setattr(merge_workbook, "cleanup_excel_automation", lambda: None)
+    monkeypatch.setattr(merge_workbook.importlib, "import_module", lambda *args, **kwargs:
+                        SimpleNamespace(merge=lambda path: result))
+    monkeypatch.setattr(merge_workbook, "sync_workbook_dictionary", lambda path:
+                        pytest.fail("invalid merge must not reach publication"))
+    assert merge_workbook.main(["--source", "cbuae", "--workbook", str(tmp_path / "test.xlsx")]) == 1
+
+
+def test_update_rejects_missing_success_and_always_closes_connection(monkeypatch):
+    closed = []
+    connection = SimpleNamespace(close=lambda: closed.append(True))
+    monkeypatch.setattr(update_data.db, "connect", lambda: connection)
+    monkeypatch.setattr(update_data.db, "init_schema", lambda con: None)
+    monkeypatch.setattr(update_data.db, "log_run", lambda *args, **kwargs: None)
+    monkeypatch.setattr(update_data, "complete_metadata", lambda con: {"indicator_rows": 0, "column_rows": 0})
+    monkeypatch.setattr(update_data.importlib, "import_module", lambda *args, **kwargs:
+                        SimpleNamespace(update=lambda *args, **kwargs: {"rows": 1}))
+    result = update_data.run_sources(["cbuae"])
+    assert result["cbuae"]["status"] == "failed"
+    assert closed == [True]
+
+
+def test_update_closes_connection_when_schema_initialization_fails(monkeypatch):
+    closed = []
+    monkeypatch.setattr(update_data.db, "connect", lambda: SimpleNamespace(close=lambda: closed.append(True)))
+    def fail(con):
+        raise RuntimeError("bad schema")
+    monkeypatch.setattr(update_data.db, "init_schema", fail)
+    with pytest.raises(RuntimeError, match="bad schema"):
+        update_data.run_sources(["cbuae"])
+    assert closed == [True]
+
+
+def test_source_selection_rejects_an_empty_request():
+    with pytest.raises(ValueError, match="At least one"):
+        update_data.resolve_source_names(" , ")
+    with pytest.raises(ValueError, match="At least one"):
+        merge_workbook.resolve_source_names(" , ")
+
+
+@pytest.mark.parametrize("metadata", [None, {"status": "failed", "note": "metadata invalid"}])
+def test_update_main_never_merges_without_successful_metadata(monkeypatch, metadata):
+    results = {"cbuae": {"status": "ok", "rows": 1}}
+    if metadata is not None:
+        results["_metadata"] = metadata
+    monkeypatch.setattr(update_data, "run_sources", lambda *args, **kwargs: results)
+    monkeypatch.setattr(update_data.importlib, "import_module", lambda *args, **kwargs:
+                        pytest.fail("metadata failure must stop the merge"))
+    with pytest.raises(KeyError if metadata is None else RuntimeError):
+        update_data.main(["--source", "cbuae"])
+
+
+def test_update_main_merges_the_requested_sources_after_metadata(monkeypatch):
+    calls = []
+    monkeypatch.setattr(update_data, "run_sources", lambda *args, **kwargs: {
+        "cbuae": {"status": "ok", "rows": 1}, "_metadata": {"status": "ok"},
+    })
+    def import_merge(name, **kwargs):
+        assert name == ".merge_workbook"
+        return SimpleNamespace(main=lambda args: calls.append(args) or 0)
+    monkeypatch.setattr(update_data.importlib, "import_module", import_merge)
+    assert update_data.main(["--source", "cbuae"]) == 0
+    assert calls == [["--source", "cbuae"]]

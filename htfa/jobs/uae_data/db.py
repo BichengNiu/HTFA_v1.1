@@ -7,15 +7,15 @@ convention. The production database is tracked through Git LFS.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator
 
 import duckdb
 
-from .paths import DATA_DIR
+from .paths import DATA_DIR, DB_PATH
 
-DB_PATH = DATA_DIR / "uae.duckdb"
 
 # 这些表保留的是可追溯的细粒度派生数据，而不是仪表盘最终指标。
 # --------------------------------------------------------------------------
@@ -375,8 +375,7 @@ def init_schema(con) -> None:
 
 
 def table_exists(con, name: str) -> bool:
-    """Return whether `
-ame`` (optionally schema-qualified) exists."""
+    """Return whether a possibly schema-qualified table exists."""
 
     if "." in name:
         schema, table = name.split(".", 1)
@@ -399,6 +398,18 @@ def ensure(con, name: str, ddl: str) -> None:
 
     if not table_exists(con, name):
         con.execute(ddl)
+
+
+@contextmanager
+def transaction(con) -> Iterator[Any]:
+    """Commit or roll back a source update without closing its shared connection."""
+    con.execute("BEGIN TRANSACTION")
+    try:
+        yield con
+        con.execute("COMMIT")
+    except BaseException:
+        con.execute("ROLLBACK")
+        raise
 
 
 def replace(con, table: str, rows: Iterable[dict[str, Any]]) -> int:
@@ -484,5 +495,6 @@ __all__ = [
     "log_run",
     "replace",
     "table_exists",
+    "transaction",
     "upsert_dictionary_rows",
 ]

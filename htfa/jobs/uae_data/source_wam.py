@@ -21,15 +21,14 @@ import math
 import os
 import re
 import tempfile
-from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
-from typing import Iterator
 from urllib.parse import urlparse
 
 from htfa.data.temporal import last_complete_month_end
 
+from .db import transaction
 from .paths import DATA_DIR
 
 RAW_DIR = DATA_DIR / "raw" / "wam"
@@ -698,18 +697,6 @@ def _dictionary_rows() -> list[dict]:
     ]
 
 
-@contextmanager
-def _transaction(con) -> Iterator[None]:
-    transaction = con.begin()
-    try:
-        yield
-    except BaseException:
-        transaction.rollback()
-        raise
-    else:
-        transaction.commit()
-
-
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     """Refresh source archives when requested, then validate and load WAM data."""
 
@@ -773,7 +760,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         }
         for row in monthly
     ]
-    with _transaction(con):
+    with transaction(con):
         db.replace(con, "detail.wam_military_strike_daily", daily_rows)
         db.replace(con, "wam_military_strike_monthly", monthly_rows)
         con.execute(

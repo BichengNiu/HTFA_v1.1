@@ -11,7 +11,7 @@ class IndicatorSpec:
     """一个工作簿指标的语义映射。"""
 
     indicator_id: str
-    aliases: tuple[str, ...]
+    indicator_name: str
     display_name: str
     coverage: str = "阿联酋全国"
 
@@ -26,95 +26,38 @@ class IndustryName(NamedTuple):
 BASE_INDICATOR_SPECS = (
     IndicatorSpec(
         "growth.real_gdp",
-        ("阿联酋: GDP: 不变价",),
+        "阿联酋: GDP: 不变价",
         "实际GDP",
     ),
     IndicatorSpec(
         "growth.nominal_gdp",
-        ("阿联酋: GDP: 现价",),
+        "阿联酋: GDP: 现价",
         "名义GDP",
     ),
     IndicatorSpec(
         "growth.nonoil_real_gdp",
-        ("阿联酋: GDP: 不变价: 非石油",),
+        "阿联酋: GDP: 不变价: 非石油",
         "实际非油GDP",
     ),
     IndicatorSpec(
         "growth.nonoil_nominal_gdp",
-        ("阿联酋: GDP: 现价: 非石油",),
+        "阿联酋: GDP: 现价: 非石油",
         "名义非油GDP",
     ),
     IndicatorSpec(
-        "growth.nonfinancial_real_gdp",
-        ("阿联酋: GDP: 不变价: 非金融公司",),
-        "实际非金融公司增加值",
-    ),
-    IndicatorSpec(
-        "growth.nonfinancial_nominal_gdp",
-        ("阿联酋: GDP: 现价: 非金融公司",),
-        "名义非金融公司增加值",
-    ),
-    IndicatorSpec(
-        "growth.nominal_gdp_yoy",
-        ("阿联酋: GDP: 现价: 当季同比",),
-        "名义GDP当季同比",
-    ),
-    IndicatorSpec(
         "growth.real_gdp_yoy",
-        ("阿联酋: GDP: 不变价: 当季同比",),
+        "阿联酋: GDP: 不变价: 当季同比",
         "实际GDP当季同比",
     ),
     IndicatorSpec(
-        "growth.nonoil_nominal_gdp_yoy",
-        ("阿联酋: GDP: 现价: 非石油: 当季同比",),
-        "名义非石油GDP当季同比",
-    ),
-    IndicatorSpec(
         "growth.nonoil_real_gdp_yoy",
-        ("阿联酋: GDP: 不变价: 非石油: 当季同比",),
+        "阿联酋: GDP: 不变价: 非石油: 当季同比",
         "实际非石油GDP当季同比",
     ),
     IndicatorSpec(
-        "growth.nonfinancial_nominal_gdp_yoy",
-        ("阿联酋: GDP: 现价: 非金融公司: 当季同比",),
-        "名义非金融公司增加值当季同比",
-    ),
-    IndicatorSpec(
-        "growth.nonfinancial_real_gdp_yoy",
-        ("阿联酋: GDP: 不变价: 非金融公司: 当季同比",),
-        "实际非金融公司增加值当季同比",
-    ),
-    IndicatorSpec(
         "oil.crude_production",
-        (
-            "阿联酋: 产量: 石油及其他液体",
-            "阿联酋: 产量: 原油",
-        ),
+        "阿联酋: 产量: 石油及其他液体",
         "石油及其他液体产量",
-    ),
-    IndicatorSpec(
-        "oil.dubai_crude_price",
-        ("全球: 名义商品价格: 迪拜原油",),
-        "迪拜原油价格",
-        coverage="全球",
-    ),
-    IndicatorSpec(
-        "market.dfm_index",
-        ("阿联酋DFM综合股票指数",),
-        "DFM综合股票指数",
-        coverage="迪拜金融市场",
-    ),
-    IndicatorSpec(
-        "bilateral.china_odi_flow",
-        ("中国: 对外直接投资流量: 亚洲: 阿联酋",),
-        "中国对阿联酋直接投资流量",
-        coverage="中国至阿联酋双边",
-    ),
-    IndicatorSpec(
-        "bilateral.china_odi_stock",
-        ("中国: 对外直接投资存量: 亚洲: 阿联酋",),
-        "中国对阿联酋直接投资存量",
-        coverage="中国至阿联酋双边",
     ),
 )
 
@@ -160,7 +103,7 @@ INDUSTRY_NAMES = {
 REAL_INDUSTRY_INDICATOR_SPECS = tuple(
     IndicatorSpec(
         f"industry.{industry_id}.real",
-        (f"阿联酋: GDP: 不变价: {name.workbook_name}",),
+        f"阿联酋: GDP: 不变价: {name.workbook_name}",
         f"{name.display_name}实际增加值",
     )
     for industry_id, name in INDUSTRY_NAMES.items()
@@ -168,7 +111,7 @@ REAL_INDUSTRY_INDICATOR_SPECS = tuple(
 NOMINAL_INDUSTRY_INDICATOR_SPECS = tuple(
     IndicatorSpec(
         f"industry.{industry_id}.nominal",
-        (f"阿联酋: GDP: 现价: {name.workbook_name}",),
+        f"阿联酋: GDP: 现价: {name.workbook_name}",
         f"{name.display_name}现价增加值",
     )
     for industry_id, name in INDUSTRY_NAMES.items()

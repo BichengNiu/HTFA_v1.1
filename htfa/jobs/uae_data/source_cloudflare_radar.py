@@ -21,13 +21,12 @@ from __future__ import annotations
 
 import json
 import os
-from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Iterator
 
 from htfa.data.temporal import last_complete_month_end
 
+from .db import transaction
 from .paths import DATA_DIR
 
 
@@ -334,18 +333,6 @@ def _dictionary_rows() -> list[dict]:
     ]
 
 
-@contextmanager
-def _transaction(con) -> Iterator[None]:
-    transaction = con.begin()
-    try:
-        yield
-    except BaseException:
-        transaction.rollback()
-        raise
-    else:
-        transaction.commit()
-
-
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     """Cloudflare Radar 网络流量入库（增量合并，不整表替换）。
 
@@ -376,7 +363,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
             "cloudflare_radar_daily 输入为空：没有可用 API 或历史 JSON。"
         )
 
-    with _transaction(con):
+    with transaction(con):
         db.ensure(con, TABLE, _TABLE_DDL)
         _ingest(con, rows)
         db.upsert_dictionary_rows(con, _dictionary_rows())

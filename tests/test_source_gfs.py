@@ -153,7 +153,7 @@ def test_records_split_and_db_roundtrip(tmp_path) -> None:
 
     con = db.connect(":memory:")
     db.init_schema(con)
-    with sg._transaction(con):
+    with db.transaction(con):
         db.replace(con, "gfs_quarterly", quarterly_rows)
         db.replace(con, "gfs_annual", annual_rows)
 

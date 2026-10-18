@@ -39,6 +39,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Iterator
 
+from .db import transaction
 from .paths import DATA_DIR
 
 
@@ -513,18 +514,6 @@ def _dictionary_rows() -> list[dict]:
     return rows
 
 
-@contextmanager
-def _transaction(con) -> Iterator[None]:
-    transaction = con.begin()
-    try:
-        yield
-    except BaseException:
-        transaction.rollback()
-        raise
-    else:
-        transaction.commit()
-
-
 # ---------------------------------------------------------------------------
 # 统一入口 update()
 # ---------------------------------------------------------------------------
@@ -541,7 +530,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     for dataset_id in plans:
         got[dataset_id] = _download_dataset(dataset_id, force=force, skip_download=skip_download)
 
-    with _transaction(con):
+    with transaction(con):
         for table in _TABLE_DDL:
             db.ensure(con, table, _TABLE_DDL[table])
             con.execute(f"DELETE FROM {table}")
