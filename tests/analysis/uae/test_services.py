@@ -123,7 +123,7 @@ def test_growth_panel_returns_all_expected_series_groups() -> None:
     assert list(panel.series_groups) == [
         "实际GDP增速与GDP平减指数同比",
         "非石油实际GDP增速与非石油GDP平减指数同比",
-        "非金融公司实际增加值增速与平减指数同比",
+        "非油非金融实际GDP增速与平减指数同比",
         "GDP部门拉动与石油产量同比",
         "非油实际GDP同比及行业拉动",
         "行业量价四象限图",
@@ -145,10 +145,26 @@ def test_growth_panel_returns_all_expected_series_groups() -> None:
 @pytest.mark.parametrize("prefix, title", [
     ("", "实际GDP增速与GDP平减指数同比"),
     ("nonoil_", "非石油实际GDP增速与非石油GDP平减指数同比"),
-    ("nonfinancial_", "非金融公司实际增加值增速与平减指数同比"),
+    ("derived", "非油非金融实际GDP增速与平减指数同比"),
 ])
 def test_deflator_yoy_uses_nominal_to_real_gdp_ratio(prefix, title):
     bundle = _make_bundle()
+    if prefix == "derived":
+        frame = build_growth_panel(bundle).series_groups[title]
+        nonoil_real = bundle.series_by_id["growth.nonoil_real_gdp"]
+        finance_real = bundle.series_by_id["industry.finance_insurance.real"]
+        nonoil_nominal = bundle.series_by_id["growth.nonoil_nominal_gdp"]
+        finance_nominal = bundle.series_by_id["industry.finance_insurance.nominal"]
+        real = nonoil_real.sub(finance_real)
+        nominal = nonoil_nominal.sub(finance_nominal)
+        deflator_yoy = frame["非油非金融GDP平减指数同比"]
+        expected = ((nominal.iloc[-1] / real.iloc[-1])
+                    / (nominal.iloc[-5] / real.iloc[-5]) - 1) * 100
+        assert deflator_yoy.iloc[-1] == pytest.approx(expected)
+        assert frame["非油非金融实际GDP当季同比"].iloc[-1] == pytest.approx(
+            (real.iloc[-1] / real.iloc[-5] - 1) * 100
+        )
+        return
     nominal_id = f"growth.{prefix}nominal_gdp"
     real_id = f"growth.{prefix}real_gdp"
     nominal = bundle.series_by_id[nominal_id].copy()
@@ -190,7 +206,7 @@ def test_growth_panel_keeps_rounding_residual_and_different_price_release_dates(
     for title in (
         "实际GDP增速与GDP平减指数同比",
         "非石油实际GDP增速与非石油GDP平减指数同比",
-        "非金融公司实际增加值增速与平减指数同比",
+        "非油非金融实际GDP增速与平减指数同比",
     ):
         values = panel.series_groups[title]
         assert values.index[-1] == QUARTERS[-1]

@@ -209,7 +209,7 @@ def build_price_volume_figure(
         real_candidates = [
             column
             for column in frame.columns
-            if "平减指数" not in str(column)
+            if "当季同比" in str(column) and "平减指数" not in str(column)
         ]
         if len(real_candidates) != 1:
             raise ValueError("无法唯一识别实际GDP同比序列")

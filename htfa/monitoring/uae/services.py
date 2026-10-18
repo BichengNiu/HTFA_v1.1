@@ -11,7 +11,6 @@ from htfa.monitoring.uae.contracts import (
     DataProvenance,
     EvidenceClass,
     EvidenceItem,
-    ProvenanceKind,
     UAEDataBundle,
 )
 from htfa.monitoring.uae.data_adapter import load_real_uae_bundle
@@ -50,17 +49,6 @@ def _latest(series: pd.Series) -> tuple[Any, float]:
 
 def _growth(series: pd.Series, periods: int) -> pd.Series:
     return (series / series.shift(periods) - 1) * 100
-
-
-def _derived_kind(
-    bundle: UAEDataBundle,
-    indicator_ids: Iterable[str],
-) -> ProvenanceKind:
-    return (
-        ProvenanceKind.SIMULATED
-        if any(bundle.is_simulated(indicator_id) for indicator_id in indicator_ids)
-        else ProvenanceKind.REAL
-    )
 
 
 def _evidence(
@@ -104,6 +92,9 @@ def _build_price_volume_series(
     real_yoy_id: str,
     real_label: str,
     deflator_label: str,
+    nominal_level_label: str,
+    real_level_label: str,
+    deflator_level_label: str,
 ) -> pd.DataFrame:
     """读取实际当季同比，并由现价与不变价水平构造平减指数。"""
 
@@ -112,16 +103,55 @@ def _build_price_volume_series(
     real_yoy = bundle.require_series(real_yoy_id)
     deflator = nominal.div(real).mul(100)
     deflator_yoy = deflator.div(deflator.shift(4)).sub(1).mul(100)
-    prefix = (
-        "【模拟】"
-        if _derived_kind(bundle, (nominal_id, real_id, real_yoy_id))
-        is ProvenanceKind.SIMULATED
-        else "【真实】"
-    )
     return pd.concat(
         [
-            real_yoy.rename(f"{prefix}{real_label}"),
-            deflator_yoy.rename(f"{prefix}{deflator_label}"),
+            real_yoy.rename(real_label),
+            deflator_yoy.rename(deflator_label),
+            nominal.rename(nominal_level_label),
+            real.rename(real_level_label),
+            deflator.rename(deflator_level_label),
+        ],
+        axis=1,
+        sort=False,
+    ).dropna(how="all")
+
+
+def _build_nonoil_nonfinancial_price_volume_series(
+    bundle: UAEDataBundle,
+) -> pd.DataFrame:
+    """从非油总量扣除金融保险业，构造非油非金融量价序列。"""
+
+    nonoil_real = bundle.require_series("growth.nonoil_real_gdp")
+    finance_real = bundle.require_series("industry.finance_insurance.real")
+    nonoil_nominal = bundle.require_series("growth.nonoil_nominal_gdp")
+    finance_nominal = bundle.require_series("industry.finance_insurance.nominal")
+    components = pd.concat(
+        [
+            nonoil_real.rename("非油实际GDP（十亿阿联酋迪拉姆）"),
+            finance_real.rename("金融保险业实际增加值（十亿阿联酋迪拉姆）"),
+            nonoil_nominal.rename("非油名义GDP（十亿阿联酋迪拉姆）"),
+            finance_nominal.rename("金融保险业名义增加值（十亿阿联酋迪拉姆）"),
+        ],
+        axis=1,
+        sort=False,
+    )
+    real = components["非油实际GDP（十亿阿联酋迪拉姆）"].sub(
+        components["金融保险业实际增加值（十亿阿联酋迪拉姆）"]
+    )
+    nominal = components["非油名义GDP（十亿阿联酋迪拉姆）"].sub(
+        components["金融保险业名义增加值（十亿阿联酋迪拉姆）"]
+    )
+    if (real.dropna() <= 0).any() or (nominal.dropna() <= 0).any():
+        raise ValueError("非油非金融GDP水平必须为正数")
+    deflator = nominal.div(real).mul(100)
+    return pd.concat(
+        [
+            _growth(real, 4).rename("非油非金融实际GDP当季同比"),
+            _growth(deflator, 4).rename("非油非金融GDP平减指数同比"),
+            components,
+            real.rename("非油非金融实际GDP（十亿阿联酋迪拉姆）"),
+            nominal.rename("非油非金融名义GDP（十亿阿联酋迪拉姆）"),
+            deflator.rename("非油非金融GDP平减指数（现价/不变价×100）"),
         ],
         axis=1,
         sort=False,
@@ -206,6 +236,9 @@ def build_growth_panel(bundle: UAEDataBundle) -> MacroPanelResult:
             real_yoy_id="growth.real_gdp_yoy",
             real_label="实际GDP当季同比",
             deflator_label="GDP平减指数同比",
+            nominal_level_label="名义GDP（十亿阿联酋迪拉姆）",
+            real_level_label="实际GDP（十亿阿联酋迪拉姆）",
+            deflator_level_label="GDP平减指数（现价/不变价×100）",
         ),
         "非石油实际GDP增速与非石油GDP平减指数同比": _build_price_volume_series(
             bundle,
@@ -214,14 +247,12 @@ def build_growth_panel(bundle: UAEDataBundle) -> MacroPanelResult:
             real_yoy_id="growth.nonoil_real_gdp_yoy",
             real_label="非石油实际GDP当季同比",
             deflator_label="非石油GDP平减指数同比",
+            nominal_level_label="名义非石油GDP（十亿阿联酋迪拉姆）",
+            real_level_label="实际非石油GDP（十亿阿联酋迪拉姆）",
+            deflator_level_label="非石油GDP平减指数（现价/不变价×100）",
         ),
-        "非金融公司实际增加值增速与平减指数同比": _build_price_volume_series(
-            bundle,
-            nominal_id="growth.nonfinancial_nominal_gdp",
-            real_id="growth.nonfinancial_real_gdp",
-            real_yoy_id="growth.nonfinancial_real_gdp_yoy",
-            real_label="非金融公司实际增加值当季同比",
-            deflator_label="非金融公司GDP平减指数同比",
+        "非油非金融实际GDP增速与平减指数同比": (
+            _build_nonoil_nonfinancial_price_volume_series(bundle)
         ),
     }
 
@@ -407,8 +438,10 @@ def build_growth_panel(bundle: UAEDataBundle) -> MacroPanelResult:
         decomposition_tables={},
         provenance=_provenance_subset(bundle, source_ids),
         methodology_notes=(
-            "GDP平减指数按现价GDP除以不变价GDP并乘以100构造，再计算季度同比增速。",
+            "GDP平减指数按现价GDP除以不变价GDP并乘以100构造，再计算季度同比增速；图表下载同时包含两种GDP水平和所用平减指数序列。",
+            "非油非金融GDP按非油GDP减去金融保险业增加值构造；增速和平减指数同比由该派生水平序列计算，图表下载同时包含两个总量、金融保险分项及派生中间值。",
             "实际GDP当季同比直接读取指标字典中的不变价当季同比序列，不由GDP水平值重新计算。",
+            "非油非金融实际GDP当季同比由扣除金融保险业后的不变价水平计算，不采用非金融公司总量的已发布同比。",
             "实际GDP同比与平减指数同比均为增长率，共用同一纵轴展示；两者仍不能直接相加。",
             "折线展示石油及其他液体产量的季度同比增速，并与GDP可用季度对齐。",
             "堆叠柱形分别使用非油和石油实际GDP同比增量除以上年同期总体实际GDP，单位为百分点。",

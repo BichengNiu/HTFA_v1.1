@@ -154,7 +154,7 @@ def _render_report_header(
 GROWTH_OVERVIEW_GROUPS = (
     "实际GDP增速与GDP平减指数同比",
     "非石油实际GDP增速与非石油GDP平减指数同比",
-    "非金融公司实际增加值增速与平减指数同比",
+    "非油非金融实际GDP增速与平减指数同比",
 )
 GROWTH_INDUSTRY_GROUPS = (
     "GDP部门拉动与石油产量同比",
@@ -275,9 +275,11 @@ def _render_panel(
     ):
         chart_container = st_obj
         if group_title in GROWTH_OVERVIEW_GROUPS:
-            if macro_index % 2 == 0:
+            if macro_index == 1:
                 macro_columns = st_obj.columns(2, gap="small")
-            chart_container = macro_columns[macro_index % 2]
+                chart_container = macro_columns[0]
+            elif macro_index > 1:
+                chart_container = macro_columns[1]
             macro_index += 1
         section_title = INDUSTRY_SECTION_TITLES.get(group_title)
         if section_title is not None:
