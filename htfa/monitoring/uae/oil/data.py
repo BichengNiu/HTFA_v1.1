@@ -12,7 +12,6 @@ from htfa.data.economic_workbook import (
     SheetSeriesMetadata,
 )
 from htfa.data.economic_workbook import SheetSeriesMetadata
-from htfa.monitoring.uae.duckdb_reader import read_query
 
 
 EIA_DAILY_SHEET = "日度_EIA"
@@ -115,74 +114,6 @@ def load_oil_market_data(
     )
 
 
-def load_oil_market_from_duckdb() -> OilMarketData:
-    """从正式 DuckDB 读取石油页需要的日度和月度序列。"""
-
-    brent = read_query(
-        "SELECT period, price_usd_bbl FROM eia_brent_spot_daily ORDER BY period"
-    )
-    production = read_query(
-        "SELECT period, production_bpd FROM opec_crude_production_monthly ORDER BY period"
-    )
-    dubai = read_query(
-        "SELECT period, price_usd_bbl FROM imf_dubai_crude_monthly ORDER BY period"
-    )
-    rigs = read_query(
-        "SELECT period, oil_rigs FROM baker_hughes_monthly ORDER BY period"
-    )
-    if brent.empty or production.empty:
-        raise ValueError("DuckDB 缺少 EIA 布伦特油价或 OPEC 原油产量数据")
-
-    def indexed(frame: pd.DataFrame, column: str, name: str) -> pd.Series:
-        return pd.Series(
-            frame[column].to_numpy(),
-            index=pd.to_datetime(frame["period"]),
-            name=name,
-        )
-
-    prices = indexed(brent, "price_usd_bbl", "布伦特现货").to_frame()
-    if not dubai.empty:
-        prices = prices.join(
-            indexed(dubai, "price_usd_bbl", DUBAI_PRICE_INDICATOR[0]),
-            how="outer",
-        )
-    oil_production = indexed(
-        production,
-        "production_bpd",
-        OPEC_PRODUCTION_INDICATOR[0],
-    )
-    rig_count = (
-        None if rigs.empty else indexed(rigs, "oil_rigs", RIG_COUNT_INDICATOR[0])
-    )
-    metadata = {
-        "布伦特现货": SheetSeriesMetadata(
-            "布伦特现货", "eia_brent_spot_daily.price_usd_bbl", "日度", "美元/桶",
-            "EIA", "DuckDB", "eia_brent_spot_daily",
-        ),
-        OPEC_PRODUCTION_INDICATOR[0]: SheetSeriesMetadata(
-            OPEC_PRODUCTION_INDICATOR[0], "opec_crude_production_monthly.production_bpd",
-            "月度", "桶/天", "OPEC", "DuckDB", "opec_crude_production_monthly",
-        ),
-    }
-    if DUBAI_PRICE_INDICATOR[0] in prices:
-        metadata[DUBAI_PRICE_INDICATOR[0]] = SheetSeriesMetadata(
-            DUBAI_PRICE_INDICATOR[0], "imf_dubai_crude_monthly.price_usd_bbl",
-            "月度", "美元/桶", "IMF", "DuckDB", "imf_dubai_crude_monthly",
-        )
-    if rig_count is not None:
-        metadata[RIG_COUNT_INDICATOR[0]] = SheetSeriesMetadata(
-            RIG_COUNT_INDICATOR[0], "baker_hughes_monthly.oil_rigs",
-            "月度", "台", "Baker Hughes", "DuckDB", "baker_hughes_monthly",
-        )
-    return OilMarketData(
-        prices=prices.sort_index(),
-        production=oil_production.sort_index(),
-        rig_count=None if rig_count is None else rig_count.sort_index(),
-        metadata=metadata,
-        source_name="uae.duckdb",
-    )
-
-
 __all__ = [
     "OilMarketData",
     "EIA_DAILY_SHEET",
@@ -194,5 +125,4 @@ __all__ = [
     "RIG_COUNT_INDICATOR",
     "RIG_COUNT_SHEET",
     "load_oil_market_data",
-    "load_oil_market_from_duckdb",
 ]

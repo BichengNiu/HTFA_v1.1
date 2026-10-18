@@ -11,7 +11,6 @@ from matplotlib.figure import Figure
 from Ts.TsPlots import plot_series
 
 from htfa.monitoring.uae.periods import within_month_window
-from htfa.monitoring.uae.duckdb_reader import read_long_indicators
 from htfa.monitoring.uae.plot_helpers import (
     WAR_START_DATE,
     annotate_war,
@@ -84,36 +83,6 @@ def load_payment_data(
     ):
         values, metadata = _parse_payment_sheet(excel_file)
     return PaymentData(values=values, metadata=metadata, source_name=source_name)
-
-
-def load_payment_from_duckdb() -> PaymentData:
-    """从 CBUAE DuckDB 长表读取客户转账和支票清算指标。"""
-
-    targets = {display: indicator for display, indicator, _ in PAYMENT_INDICATORS}
-    values = read_long_indicators(
-        table="cbuae_monthly",
-        period_column="period",
-        indicator_column="indicator",
-        value_column="value",
-        targets=targets,
-    )
-    metadata = {
-        display: SheetSeriesMetadata(
-            display,
-            indicator,
-            "月度",
-            unit,
-            "CBUAE",
-            "DuckDB",
-            "cbuae_monthly",
-        )
-        for display, indicator, unit in PAYMENT_INDICATORS
-    }
-    return PaymentData(
-        values=values.sort_index(),
-        metadata=metadata,
-        source_name="uae.duckdb",
-    )
 
 
 def _parse_payment_sheet(
@@ -345,5 +314,4 @@ __all__ = [
     "build_customer_transfers_figure",
     "cumulative_to_monthly",
     "load_payment_data",
-    "load_payment_from_duckdb",
 ]

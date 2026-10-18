@@ -24,7 +24,6 @@ from htfa.monitoring.uae.periods import (
     latest_complete_month as _latest_complete_month,
 )
 from htfa.data.economic_workbook import normalize_indicator_name
-from htfa.monitoring.uae.duckdb_reader import read_query
 
 
 DLD_SHEET = "月度_DLD"
@@ -134,53 +133,6 @@ def load_real_estate_data(
     )
 
 
-def load_real_estate_from_duckdb() -> RealEstateData:
-    """从 DLD 月度聚合表读取期房/现房、住宅/商业销售。"""
-
-    frame = read_query(
-        "SELECT period, indicator, count, value_aed FROM dld_sales_monthly ORDER BY period"
-    )
-    if frame.empty:
-        raise ValueError("DuckDB 的 DLD 月度销售表没有观测")
-    mapping = {
-        "residential_offplan_sales": (OFFPLAN_RESIDENTIAL_COUNT, OFFPLAN_RESIDENTIAL_AMOUNT),
-        "residential_ready_sales": (READY_RESIDENTIAL_COUNT, READY_RESIDENTIAL_AMOUNT),
-        "commercial_offplan_sales": (OFFPLAN_COMMERCIAL_COUNT, OFFPLAN_COMMERCIAL_AMOUNT),
-        "commercial_ready_sales": (READY_COMMERCIAL_COUNT, READY_COMMERCIAL_AMOUNT),
-    }
-    raw_values = pd.DataFrame(
-        index=pd.DatetimeIndex(pd.to_datetime(frame["period"]).unique()).sort_values()
-    )
-    for indicator, (count_name, amount_name) in mapping.items():
-        subset = frame.loc[frame["indicator"].eq(indicator)]
-        raw_values[count_name] = pd.Series(
-            subset["count"].to_numpy(), index=pd.to_datetime(subset["period"])
-        )
-        raw_values[amount_name] = pd.Series(
-            subset["value_aed"].to_numpy() / 1_000_000,
-            index=pd.to_datetime(subset["period"]),
-        )
-    raw_values = raw_values.sort_index()
-    raw_metadata = {
-        name: SheetSeriesMetadata(
-            name, name, "月度", unit, "Dubai Land Department", "DuckDB",
-            "dld_sales_monthly",
-        )
-        for name, _, unit in SALES_COLUMNS
-    }
-    values, metadata = _aggregate_sales(
-        {name: raw_values[name].dropna() for name, _, _ in SALES_COLUMNS},
-        raw_metadata,
-    )
-    return RealEstateData(
-        values=values,
-        metadata=metadata,
-        source_name="uae.duckdb",
-        raw_values=raw_values,
-        raw_metadata=raw_metadata,
-    )
-
-
 def _parse_sales_sheet(
     excel_file: pd.ExcelFile,
 ) -> tuple[dict[str, pd.Series], dict[str, SheetSeriesMetadata]]:
@@ -260,7 +212,6 @@ def _parse_sales_sheet(
             sheet_name=DLD_SHEET,
         )
     return series_map, metadata
-
 
 
 def _aggregate_sales(
@@ -346,5 +297,4 @@ __all__ = [
     "anchor_last_month",
     "latest_complete_month",
     "load_real_estate_data",
-    "load_real_estate_from_duckdb",
 ]

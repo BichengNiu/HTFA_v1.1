@@ -29,7 +29,6 @@ from htfa.monitoring.uae.periods import (
     anchor_last_month as _anchor_last_month,
     latest_complete_month as _latest_complete_month,
 )
-from htfa.monitoring.uae.duckdb_reader import read_long_indicators, read_query
 
 PORTWATCH_SHEET = "月度_PortWatch"
 DUBAI_CUSTOMS_AIR_SHEET = "月度_迪拜海关航空"
@@ -239,115 +238,6 @@ def load_transport_data(
     )
 
 
-def load_transport_from_duckdb() -> TransportData:
-    """从 DuckDB 读取 PortWatch 港口与航空货运月度指标。"""
-
-    port = read_query(
-        """
-        SELECT (date_trunc('month', date) + INTERVAL 1 MONTH - INTERVAL 1 DAY)::DATE AS period,
-               sum(import) AS import_total, sum(export) AS export_total,
-               sum(import_tanker) AS tanker_import, sum(export_tanker) AS tanker_export
-        FROM detail.portwatch_uae_daily GROUP BY 1 ORDER BY 1
-        """
-    )
-    hormuz = read_query(
-        """
-        SELECT (date_trunc('month', date) + INTERVAL 1 MONTH - INTERVAL 1 DAY)::DATE AS period,
-               sum(n_total) AS total_calls, sum(n_tanker) AS tanker_calls
-        FROM detail.portwatch_chokepoint_daily
-        WHERE portid = 'chokepoint6' GROUP BY 1 ORDER BY 1
-        """
-    )
-    if port.empty or hormuz.empty:
-        raise ValueError("DuckDB 的 PortWatch 日表没有完整港口或霍尔木兹观测")
-    values = port.set_index(pd.to_datetime(port.pop("period"))).rename(
-        columns={
-            "import_total": UAE_PORT_IMPORT_TOTAL,
-            "export_total": UAE_PORT_EXPORT_TOTAL,
-            "tanker_import": UAE_PORT_TANKER_IMPORT,
-            "tanker_export": UAE_PORT_TANKER_EXPORT,
-        }
-    ).join(
-        hormuz.set_index(pd.to_datetime(hormuz.pop("period"))).rename(
-            columns={"total_calls": HORMUZ_TOTAL_CALLS, "tanker_calls": HORMUZ_TANKER_CALLS}
-        ),
-        how="outer",
-    ).sort_index()
-    metadata = {
-        name: SheetSeriesMetadata(
-            name, name, "月度", "吨" if "量" in name else "艘次",
-            "IMF PortWatch", "DuckDB", "detail.portwatch_*_daily",
-        )
-        for name in values.columns
-    }
-    monthly_values = values.copy()
-    load_errors: dict[str, str] = {}
-
-    def _read_air_targets(
-        *,
-        table: str,
-        targets: tuple[tuple[str, str], ...],
-        units: dict[str, str],
-        error_key: str,
-        source: str,
-    ) -> pd.DataFrame:
-        try:
-            frame = read_long_indicators(
-                table=table,
-                period_column="period",
-                indicator_column="indicator",
-                value_column="value",
-                targets=dict(targets),
-            )
-        except Exception as exc:  # noqa: BLE001 - 可选航空表独立失败
-            load_errors[error_key] = f"DuckDB 表 {table} 读取失败：{exc}"
-            return pd.DataFrame()
-        metadata.update(
-            {
-                name: SheetSeriesMetadata(
-                    name, indicator, "月度", units[name], source, "DuckDB", table
-                )
-                for name, indicator in targets
-            }
-        )
-        return frame
-
-    customs_awbs = _read_air_targets(
-        table="dubai_airway_bill_monthly",
-        targets=DUBAI_CUSTOMS_AIR_AWB_TARGETS,
-        units={DUBAI_AIR_IMPORT_AWBS: "张", DUBAI_AIR_EXPORT_AWBS: "张"},
-        error_key=DUBAI_CUSTOMS_AIR_AWB_ERROR_KEY,
-        source="Dubai Customs",
-    )
-    customs_totals = _read_air_targets(
-        table="dubai_airway_bill_monthly",
-        targets=DUBAI_CUSTOMS_AIR_TOTAL_TARGETS,
-        units={DUBAI_AIR_IMPORT_TOTAL: "吨", DUBAI_AIR_EXPORT_TOTAL: "吨"},
-        error_key=DUBAI_CUSTOMS_AIR_TOTAL_ERROR_KEY,
-        source="Dubai Customs",
-    )
-    dot_targets = DOTT100_PASSENGER_TARGETS + DOTT100_FREIGHT_TARGETS
-    dot_values = _read_air_targets(
-        table="dot_t100_monthly",
-        targets=dot_targets,
-        units={US_UAE_AIR_PASSENGERS: "人次", US_UAE_AIR_FREIGHT: "磅"},
-        error_key=DOTT100_ERROR_KEY,
-        source="US DOT BTS T-100",
-    )
-    monthly_values = pd.concat(
-        [monthly_values, customs_awbs, customs_totals, dot_values],
-        axis=1,
-        sort=False,
-    ).sort_index()
-    return TransportData(
-        values=values,
-        metadata=metadata,
-        source_name="uae.duckdb",
-        monthly_values=monthly_values,
-        load_errors=load_errors,
-    )
-
-
 def latest_complete_month(values: pd.DataFrame) -> pd.Timestamp:
     """返回输入月度指标均有效的最新月份。"""
 
@@ -405,5 +295,4 @@ __all__ = [
     "anchor_last_month",
     "latest_complete_month",
     "load_transport_data",
-    "load_transport_from_duckdb",
 ]

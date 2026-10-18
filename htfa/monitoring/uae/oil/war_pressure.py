@@ -11,7 +11,6 @@ from htfa.data.economic_workbook import (
     EconomicWorkbookReader,
     SheetSeriesMetadata,
 )
-from htfa.monitoring.uae.duckdb_reader import read_query
 
 
 WAM_SHEET = "月度_WAM"
@@ -115,53 +114,6 @@ def load_war_pressure_data(
     )
 
 
-def load_war_pressure_from_duckdb() -> WarPressureData:
-    """从 DuckDB 的月度 WAM 聚合表加载战争压力指标。"""
-
-    frame = read_query(
-        """
-        SELECT period, observation_days, ballistic_missiles, cruise_missiles,
-               uavs, strike_intensity_index
-        FROM wam_military_strike_monthly
-        ORDER BY period
-        """
-    )
-    if frame.empty:
-        raise ValueError("DuckDB 的 WAM 月度战争压力表没有观测")
-    index = pd.to_datetime(frame["period"])
-    values = pd.DataFrame(
-        {
-            BALLISTIC_LABEL: frame["ballistic_missiles"].to_numpy(),
-            CRUISE_LABEL: frame["cruise_missiles"].to_numpy(),
-            UAV_LABEL: frame["uavs"].to_numpy(),
-            PRESSURE_LABEL: frame["strike_intensity_index"].to_numpy(),
-        },
-        index=index,
-    )
-    metadata = {
-        label: SheetSeriesMetadata(
-            label, column, "月度", unit, "WAM", "DuckDB",
-            "wam_military_strike_monthly",
-        )
-        for label, column, unit in (
-            (BALLISTIC_LABEL, "ballistic_missiles", "枚"),
-            (CRUISE_LABEL, "cruise_missiles", "枚"),
-            (UAV_LABEL, "uavs", "架"),
-            (PRESSURE_LABEL, "strike_intensity_index", "指数"),
-            (OBSERVATION_DAYS_LABEL, "observation_days", "天"),
-        )
-    }
-    return WarPressureData(
-        values=values,
-        metadata=metadata,
-        source_name="uae.duckdb",
-        observation_days=pd.Series(
-            frame["observation_days"].to_numpy(), index=index,
-            name=OBSERVATION_DAYS_LABEL,
-        ),
-    )
-
-
 __all__ = [
     "BALLISTIC_LABEL",
     "CRUISE_LABEL",
@@ -174,5 +126,4 @@ __all__ = [
     "WAM_SHEET",
     "WarPressureData",
     "load_war_pressure_data",
-    "load_war_pressure_from_duckdb",
 ]

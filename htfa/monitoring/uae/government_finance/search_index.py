@@ -9,7 +9,6 @@ from matplotlib.figure import Figure
 from Ts.TsPlots import plot_series
 from scipy.signal import savgol_filter
 
-from htfa.monitoring.uae.duckdb_reader import read_long_indicators
 from htfa.monitoring.uae.plot_helpers import (
     WAR_START_DATE,
     annotate_war,
@@ -72,23 +71,6 @@ def load_search_index_data(
     values = values.sort_index()
     values.index = pd.DatetimeIndex(values.index).normalize()
     return values
-
-
-def load_search_index_from_duckdb() -> pd.DataFrame:
-    """从 employment_search_index 长表读取两组工作搜索热度。"""
-
-    values = read_long_indicators(
-        table="employment_search_index",
-        period_column="month",
-        indicator_column="keyword",
-        value_column="value",
-        targets={
-            WORK_DUBAI_COLUMN: "work in dubai",
-            WORK_UAE_COLUMN: "work in uae",
-        },
-    )
-    values.index = pd.DatetimeIndex(values.index).normalize()
-    return values.sort_index()
 
 
 def display_search_index_values(values: pd.DataFrame) -> pd.DataFrame:
@@ -179,5 +161,4 @@ __all__ = [
     "build_search_index_figure",
     "display_search_index_values",
     "load_search_index_data",
-    "load_search_index_from_duckdb",
 ]
