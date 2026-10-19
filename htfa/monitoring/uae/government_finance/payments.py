@@ -56,6 +56,12 @@ CUSTOMER_TRANSFER_SERIES = (
     CUSTOMER_TRANSFERS_AMOUNT_DISPLAY,
 )
 CHEQUE_SERIES = (CHEQUES_NUMBER_DISPLAY, CHEQUES_AMOUNT_DISPLAY)
+PAYMENT_LABELS = {
+    CUSTOMER_TRANSFERS_NUMBER_DISPLAY: "转账笔数",
+    CUSTOMER_TRANSFERS_AMOUNT_DISPLAY: "转账金额",
+    CHEQUES_NUMBER_DISPLAY: CHEQUES_NUMBER_DISPLAY,
+    CHEQUES_AMOUNT_DISPLAY: CHEQUES_AMOUNT_DISPLAY,
+}
 
 
 @dataclass(frozen=True)
@@ -94,6 +100,8 @@ def cumulative_to_monthly(values: pd.DataFrame) -> pd.DataFrame:
         return ordered
 
     periods = pd.PeriodIndex(ordered.index, freq="M")
+    if periods.duplicated().any():
+        raise ValueError("月度支付数据包含同月重复观测")
     consecutive = pd.Series(False, index=ordered.index)
     if len(ordered) > 1:
         consecutive.iloc[1:] = periods[1:] == (periods[:-1] + 1)
@@ -105,6 +113,24 @@ def cumulative_to_monthly(values: pd.DataFrame) -> pd.DataFrame:
     return monthly
 
 
+def payment_display_values(
+    values: pd.DataFrame, *, series: tuple[str, str], last_month: pd.Period,
+) -> pd.DataFrame:
+    """统一支付图与下载的当月值，并保留年内累计和连续上月基数。"""
+    original = values[list(series)]
+    monthly = cumulative_to_monthly(original).rename(columns=PAYMENT_LABELS)
+    prior = original.copy()
+    prior.index = pd.DatetimeIndex(prior.index).to_period("M") + 1
+    prior = prior.reindex(pd.DatetimeIndex(original.index).to_period("M"))
+    prior.index = original.index
+    frame = pd.concat([
+        monthly,
+        original.rename(columns=PAYMENT_LABELS).add_suffix("（年内累计）"),
+        prior.rename(columns=PAYMENT_LABELS).add_suffix("（上月累计）"),
+    ], axis=1)
+    return within_month_window(frame, first_month=last_month - 36, last_month=last_month)
+
+
 def _build_payment_figure(
     values: pd.DataFrame,
     *,
@@ -113,29 +139,26 @@ def _build_payment_figure(
     source_text: str,
     last_month: pd.Period,
     units: Mapping[str, str | None] | None = None,
-    legend_labels: tuple[str, str] | None = None,
 ) -> Figure:
     """用左右双轴绘制一组支付当月值指标。"""
 
-    monthly_values = cumulative_to_monthly(values[list(series)])
-    display_values = within_month_window(
-        monthly_values,
-        first_month=last_month - 36,
-        last_month=last_month,
-    ).dropna(how="all")
+    labels = [PAYMENT_LABELS[name] for name in series]
+    display_values = payment_display_values(
+        values, series=series, last_month=last_month,
+    )[labels].dropna(how="all")
     if display_values.empty:
         raise ValueError(f"{title}没有可绘制的有效数据")
 
     axis_units = {
-        series[0]: "笔" if series[0] == CUSTOMER_TRANSFERS_NUMBER_DISPLAY else "张",
-        series[1]: "百万迪拉姆",
+        labels[0]: "笔" if series[0] == CUSTOMER_TRANSFERS_NUMBER_DISPLAY else "张",
+        labels[1]: "百万迪拉姆",
     }
     if units is not None:
-        axis_units.update(units)
+        axis_units.update({PAYMENT_LABELS[name]: unit for name, unit in units.items()})
     figure, returned_axis = plot_series(
         display_values,
         facet=False,
-        axis_groups={series[0]: "number", series[1]: "amount"},
+        axis_groups={labels[0]: "number", labels[1]: "amount"},
         title=title,
         xtitle="",
         ytitle_position="side",
@@ -143,7 +166,6 @@ def _build_payment_figure(
         grid=True,
         vlines=WAR_START_DATE,
         show_legend=True,
-        legend_labels=legend_labels,
         note=source_note(source_text),
         note_loc="left",
         figsize=(9.4, 6.2),
@@ -172,7 +194,6 @@ def build_customer_transfers_figure(
         source_text=source_text,
         last_month=last_month,
         units=units,
-        legend_labels=("转账笔数（左轴）", "转账金额（右轴）"),
     )
 
 
@@ -213,5 +234,6 @@ __all__ = [
     "build_cheques_figure",
     "build_customer_transfers_figure",
     "cumulative_to_monthly",
+    "payment_display_values",
     "load_payment_data",
 ]

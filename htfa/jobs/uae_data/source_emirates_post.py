@@ -25,6 +25,8 @@ destn_city, service) 粒度）；``merge()`` 从库按 (period, service) 聚合�
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import collections
 import re
 import urllib.request
@@ -343,14 +345,9 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         download_note = "已在线刷新 bayanat 数据集"
     rows, metadata, duplicate_stats = parse_workbook(path)
 
-    con.begin()
-    try:
+    with db.transaction(con):
         db.replace(con, "detail.emirates_post_monthly", rows)
         db.upsert_dictionary_rows(con, _dictionary_rows())
-        con.commit()
-    except Exception:
-        con.rollback()
-        raise
 
     periods = sorted({row["period"].strftime("%Y-%m") for row in rows})
     note = (
@@ -415,15 +412,7 @@ def merge(workbook_path: Path) -> dict:
 
     by_period = _aggregate_rows(db_rows)
     observations = [
-        type(
-            "Observation",
-            (),
-            {
-                "period": period,
-                "values": tuple(item["values"]),
-                "source_file": RAW_FILE_NAME,
-            },
-        )()
+        SimpleNamespace(period=period, values=tuple(item['values']))
         for period, item in sorted(by_period.items())
     ]
 

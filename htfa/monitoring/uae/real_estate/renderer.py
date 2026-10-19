@@ -11,10 +11,9 @@ from htfa.monitoring.uae.database import PublishedUAEData
 from htfa.monitoring.uae.downloads import render_chart_download
 from htfa.monitoring.uae.real_estate.charts import (
     AMOUNT_LABEL,
-    AMOUNT_UNIT_FACTOR,
     COUNT_LABEL,
     DEFAULT_TITLES,
-    SALES_CONFIG,
+    PROPERTY_CONFIG,
     build_sales_figure,
     sales_display_values,
 )
@@ -60,9 +59,8 @@ def _format_real_estate_value(
     value: float | None,
     *,
     unit: str,
-    scale: float = 1.0,
 ) -> str | None:
-    if scale != 1:
+    if unit == "亿迪拉姆":
         return format_currency_value(
             value,
             "迪拉姆",
@@ -82,18 +80,18 @@ def _render_real_estate_metrics(
         pd.PeriodIndex(data.values.index, freq="M") <= last_month
     ]
     cards = []
-    for label, column, unit, scale in (
-        ("现房销售笔数", READY_COUNT, "笔", 1.0),
-        ("现房销售金额", READY_AMOUNT, "亿迪拉姆", AMOUNT_UNIT_FACTOR),
-        ("期房销售笔数", OFFPLAN_COUNT, "笔", 1.0),
-        ("期房销售金额", OFFPLAN_AMOUNT, "亿迪拉姆", AMOUNT_UNIT_FACTOR),
+    for label, column, unit in (
+        ("现房销售笔数", READY_COUNT, "笔"),
+        ("现房销售金额", READY_AMOUNT, "亿迪拉姆"),
+        ("期房销售笔数", OFFPLAN_COUNT, "笔"),
+        ("期房销售金额", OFFPLAN_AMOUNT, "亿迪拉姆"),
     ):
         series = values[column]
         value, as_of = latest_month_value(series)
         cards.append(
             (
                 label,
-                _format_real_estate_value(value, unit=unit, scale=scale),
+                _format_real_estate_value(value, unit=unit),
                 month_and_year_delta_text(series),
                 _source_note_from_metadata(data.metadata, column, as_of),
             )
@@ -109,7 +107,7 @@ def _render_sales_chart(
     market: str,
 ) -> None:
     title = DEFAULT_TITLES[market]
-    count_column, amount_column = SALES_CONFIG[market]
+    count_column, amount_column = PROPERTY_CONFIG[market]
     chart_values = data.raw_values
     count_metadata = data.raw_metadata[count_column]
     source_text = source_text_from_metadata(
@@ -133,8 +131,8 @@ def _render_sales_chart(
     )
     chart_frame = sales_display_values(
         chart_values,
-        last_month=last_month,
-    )[[count_column, amount_column]].dropna(how="all")
+        last_month=last_month, market=market,
+    )
     render_chart_download(
         st_obj,
         chart_frame,

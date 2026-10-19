@@ -16,6 +16,42 @@ from htfa.jobs.uae_data import db
 from htfa.jobs.uae_data import merge_workbook, update_data
 
 
+@pytest.mark.parametrize("error_type", [RuntimeError, KeyboardInterrupt])
+def test_scad_failed_refresh_preserves_old_rows_and_connection(
+    monkeypatch, tmp_path, error_type,
+):
+    from datetime import date
+    from htfa.jobs.uae_data import source_scad
+
+    (tmp_path / "HotelStats_2026-09.xlsx").touch()
+    monkeypatch.setattr(source_scad, "RAW_DIR", tmp_path)
+    monkeypatch.setattr(source_scad, "_long_rows", lambda paths: [
+        {"period": date(2026, 9, 30), "indicator": "new", "value": 2.0,
+         "source_file": "new.xlsx"},
+    ])
+    monkeypatch.setattr(source_scad, "_dictionary_rows", lambda: [])
+
+    def fail_metadata(*args):
+        raise error_type("metadata failed")
+
+    with db.connect(":memory:") as con:
+        db.init_schema(con)
+        con.execute("INSERT INTO scad_monthly VALUES ('2026-08-31','old',1,'old.xlsx')")
+        monkeypatch.setattr(db, "upsert_dictionary_rows", fail_metadata)
+        with pytest.raises(error_type, match="metadata failed"):
+            source_scad.update(con, skip_download=True)
+        assert con.execute("SELECT indicator,value FROM scad_monthly").fetchall() == [("old", 1.0)]
+        assert con.execute("SELECT 1").fetchone() == (1,)
+
+
+def test_ded_authentication_uses_final_urllib_response_url():
+    from htfa.jobs.uae_data.source_ded import AuthRequiredError, raise_if_sso_url
+
+    response = SimpleNamespace(geturl=lambda: "https://smartsso.dubai.gov.ae/login")
+    with pytest.raises(AuthRequiredError):
+        raise_if_sso_url(response)
+
+
 @pytest.mark.parametrize("indent", [None, 2])
 def test_atomic_json_roundtrip_keeps_unicode_and_missing_values(tmp_path, indent):
     destination = tmp_path / "nested" / "cache.json"

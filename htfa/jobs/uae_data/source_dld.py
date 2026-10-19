@@ -29,6 +29,7 @@ from htfa.data.temporal import last_complete_month_end
 
 from .paths import DATA_DIR, SCRIPTS_DIR
 from ._excel_helpers import run_powershell_command
+from ._official_download import write_json_atomic
 
 
 from . import db  # noqa: E402
@@ -428,15 +429,11 @@ DLD_OPEN_DATA_PAGE = "https://dubailand.gov.ae/en/open-data/real-estate-data/"
 DATA_DUBAI_BASE = "https://data.dubai"
 DATA_DUBAI_ENTITY_ID = "62035"
 TRANSACTIONS_DATASET_ID = "470061"
-LAND_REGISTRY_DATASET_ID = "465348"
 TRANSACTIONS_DATASET_PAGE = (
     f"{DATA_DUBAI_BASE}/en/l/{TRANSACTIONS_DATASET_ID}"
     f"?com_dda_data_and_statistics_ThemeId={DATA_DUBAI_ENTITY_ID}"
 )
-LAND_REGISTRY_DATASET_PAGE = (
-    f"{DATA_DUBAI_BASE}/en/l/{LAND_REGISTRY_DATASET_ID}"
-    f"?com_dda_data_and_statistics_ThemeId={DATA_DUBAI_ENTITY_ID}"
-)
+
 DOWNLOAD_API = f"{DATA_DUBAI_BASE}/o/dda/data-services/dataset-download"
 
 _USER_AGENT = (
@@ -1355,26 +1352,11 @@ def _parse_iso_date(value):
         return None
 
 
-def _is_land_transaction(row):
-    for key in (
-        "property_type_en",
-        "PROP_TYPE_EN",
-        "PROPERTY_TYPE_EN",
-        "property_type",
-        "PROPERTY_TYPE",
-    ):
-        if str(row.get(key) or "").strip().lower() == "land":
-            return True
-    return False
-
-
-def _merge_transactions(archives, all_path, land_path):
-    """合并交易 bulk 分区并生成「仅土地」抽取文件。"""
+def _merge_transactions(archives, all_path):
+    """合并交易 bulk 分区，保留全部原始行及日期质量统计。"""
 
     all_temp = all_path.with_suffix(all_path.suffix + ".part")
-    land_temp = land_path.with_suffix(land_path.suffix + ".part")
     total = 0
-    land_total = 0
     first_date = None
     last_date = None
     first_date_since_1900 = None
@@ -1384,11 +1366,8 @@ def _merge_transactions(archives, all_path, land_path):
     expected_fields = None
 
     try:
-        with open(all_temp, "w", newline="", encoding="utf-8-sig") as all_file, open(
-            land_temp, "w", newline="", encoding="utf-8-sig"
-        ) as land_file:
+        with open(all_temp, "w", newline="", encoding="utf-8-sig") as all_file:
             all_writer = None
-            land_writer = None
             for archive in archives:
                 raw, binary = _open_bulk_csv(archive)
                 try:
@@ -1403,11 +1382,7 @@ def _merge_transactions(archives, all_path, land_path):
                             all_writer = csv.DictWriter(
                                 all_file, fieldnames=expected_fields
                             )
-                            land_writer = csv.DictWriter(
-                                land_file, fieldnames=expected_fields
-                            )
                             all_writer.writeheader()
-                            land_writer.writeheader()
                         elif reader.fieldnames != expected_fields:
                             raise RuntimeError(
                                 f"CSV schema mismatch in {archive.name}"
@@ -1445,9 +1420,6 @@ def _merge_transactions(archives, all_path, land_path):
                                 snapshot_at = max(
                                     snapshot_at or load_timestamp, load_timestamp
                                 )
-                            if _is_land_transaction(row):
-                                land_writer.writerow(row)
-                                land_total += 1
                             if total % 250_000 == 0:
                                 print(f"  transactions merged: {total:,}", flush=True)
                 finally:
@@ -1457,19 +1429,14 @@ def _merge_transactions(archives, all_path, land_path):
                         raw.close()
 
         os.replace(all_temp, all_path)
-        os.replace(land_temp, land_path)
     except Exception:
-        for path in (all_temp, land_temp):
-            path.unlink(missing_ok=True)
+        all_temp.unlink(missing_ok=True)
         raise
 
     return {
         "transactions_file": str(all_path),
         "transactions_rows": total,
         "transactions_bytes": all_path.stat().st_size,
-        "land_transactions_file": str(land_path),
-        "land_transactions_rows": land_total,
-        "land_transactions_bytes": land_path.stat().st_size,
         "from_date": str(first_date) if first_date else None,
         "to_date": str(last_date) if last_date else None,
         "from_date_since_1900": (
@@ -1478,65 +1445,6 @@ def _merge_transactions(archives, all_path, land_path):
         "dates_before_1900_rows": dates_before_1900,
         "unparseable_date_rows": unparseable_dates,
         "snapshot_at": snapshot_at,
-    }
-
-
-def _merge_land_registry(archives, output_path):
-    """合并土地登记表 bulk 分区。"""
-
-    temp_path = output_path.with_suffix(output_path.suffix + ".part")
-    total = 0
-    snapshot_at = None
-    expected_fields = None
-    try:
-        with open(temp_path, "w", newline="", encoding="utf-8-sig") as output:
-            writer = None
-            for archive in archives:
-                raw, binary = _open_bulk_csv(archive)
-                try:
-                    with io.TextIOWrapper(
-                        binary, encoding="utf-8-sig", newline=""
-                    ) as text:
-                        reader = csv.DictReader(text)
-                        if not reader.fieldnames:
-                            raise RuntimeError(f"No CSV header in {archive.name}")
-                        if expected_fields is None:
-                            expected_fields = reader.fieldnames
-                            writer = csv.DictWriter(
-                                output, fieldnames=expected_fields
-                            )
-                            writer.writeheader()
-                        elif reader.fieldnames != expected_fields:
-                            raise RuntimeError(
-                                f"CSV schema mismatch in {archive.name}"
-                            )
-                        for row in reader:
-                            writer.writerow(row)
-                            total += 1
-                            load_timestamp = str(
-                                row.get("load_timestamp") or ""
-                            ).strip()
-                            if load_timestamp:
-                                snapshot_at = max(
-                                    snapshot_at or load_timestamp, load_timestamp
-                                )
-                            if total % 250_000 == 0:
-                                print(f"  land registry merged: {total:,}", flush=True)
-                finally:
-                    if not binary.closed:
-                        binary.close()
-                    if not raw.closed:
-                        raw.close()
-        os.replace(temp_path, output_path)
-    except Exception:
-        temp_path.unlink(missing_ok=True)
-        raise
-
-    return {
-        "land_registry_file": str(output_path),
-        "land_registry_rows": total,
-        "land_registry_bytes": output_path.stat().st_size,
-        "land_registry_snapshot_at": snapshot_at,
     }
 
 
@@ -1554,8 +1462,7 @@ def _fetch_and_stage(files, directory):
 def _download_all() -> None:
     """完整下载 Data Dubai 官方 bulk 快照并合并到 data/UAE/raw/dld/。
 
-    输出：DLD_Transactions_ALL.csv / DLD_Land_Transactions_ALL.csv /
-    DLD_Land_Registry_ALL.csv / DLD_download_manifest.json。
+    输出：DLD_Transactions_ALL.csv / DLD_download_manifest.json。
     """
 
     RAW_DLD_DIR.mkdir(parents=True, exist_ok=True)
@@ -1567,7 +1474,6 @@ def _download_all() -> None:
     manifest = {
         "source": "Data Dubai official bulk open data",
         "transactions_dataset": TRANSACTIONS_DATASET_PAGE,
-        "land_registry_dataset": LAND_REGISTRY_DATASET_PAGE,
         "dld_current_year_page": DLD_OPEN_DATA_PAGE,
         "coverage_note": (
             "The DLD real-time transaction page is limited to the current calendar year; "
@@ -1590,23 +1496,10 @@ def _download_all() -> None:
         transaction_result = _merge_transactions(
             transaction_archives,
             RAW_DLD_DIR / "DLD_Transactions_ALL.csv",
-            RAW_DLD_DIR / "DLD_Land_Transactions_ALL.csv",
         )
         manifest.update(transaction_result)
         manifest["transaction_source_files"] = transaction_transfers
 
-        print("[Land Registry] resolving official bulk files", flush=True)
-        registry_files = _get_bulk_csv_files(
-            LAND_REGISTRY_DATASET_ID, LAND_REGISTRY_DATASET_PAGE
-        )
-        registry_archives, registry_transfers = _fetch_and_stage(
-            registry_files, temp_dir
-        )
-        registry_result = _merge_land_registry(
-            registry_archives, RAW_DLD_DIR / "DLD_Land_Registry_ALL.csv"
-        )
-        manifest.update(registry_result)
-        manifest["land_registry_source_files"] = registry_transfers
 
     manifest["downloaded_at"] = datetime.now().isoformat(timespec="seconds")
     print("[Verification] calculating SHA-256 checksums", flush=True)
@@ -1617,18 +1510,7 @@ def _download_all() -> None:
             "bytes": manifest["transactions_bytes"],
             "sha256": _sha256_file(manifest["transactions_file"]),
         },
-        "land_transactions": {
-            "path": manifest["land_transactions_file"],
-            "rows": manifest["land_transactions_rows"],
-            "bytes": manifest["land_transactions_bytes"],
-            "sha256": _sha256_file(manifest["land_transactions_file"]),
-        },
-        "land_registry": {
-            "path": manifest["land_registry_file"],
-            "rows": manifest["land_registry_rows"],
-            "bytes": manifest["land_registry_bytes"],
-            "sha256": _sha256_file(manifest["land_registry_file"]),
-        },
+
     }
     if manifest["dates_before_1900_rows"]:
         manifest["data_quality_warning"] = (
@@ -1637,16 +1519,10 @@ def _download_all() -> None:
             "coverage boundary is required."
         )
     manifest_path = RAW_DLD_DIR / "DLD_download_manifest.json"
-    manifest_temp = manifest_path.with_suffix(manifest_path.suffix + ".part")
-    manifest_temp.write_text(
-        json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
-    os.replace(manifest_temp, manifest_path)
+    write_json_atomic(manifest_path, manifest)
 
     print("\nDONE", flush=True)
     print(f"Transactions: {manifest['transactions_rows']:,}", flush=True)
-    print(f"Land transactions: {manifest['land_transactions_rows']:,}", flush=True)
-    print(f"Land registry: {manifest['land_registry_rows']:,}", flush=True)
     print(f"Transaction dates: {manifest['from_date']} .. {manifest['to_date']}", flush=True)
     if manifest["dates_before_1900_rows"]:
         print(
@@ -1678,23 +1554,17 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     sales_rows = build_sales_monthly(con)
     lease_rows = build_lease_monthly(skip_download=skip_download)
 
-    con.begin()
-    try:
+    with db.transaction(con):
         row_count = db.replace(con, "dld_investment_pipeline_weekly", weekly_rows)
         row_count += db.replace(con, "dld_sales_monthly", sales_rows)
         row_count += db.replace(con, "dld_lease_monthly", lease_rows)
-        # 瘦身后只保留 transactions 的 KEEP_COLUMNS 字典行；历史 land_registry
-        # 字典行一并清理（保证 update 幂等，不以库内旧行为准）。
+        # 按当前 KEEP_COLUMNS 重建交易表字段字典。
         con.execute(
             "DELETE FROM meta_column_dictionary "
-            "WHERE object_name IN ('detail.dld_transactions', 'dld.land_registry')"
+            "WHERE object_name = 'detail.dld_transactions'"
         )
         _upsert_column_dictionary(con)
         _upsert_indicator_dictionary(con)
-        con.commit()
-    except BaseException:
-        con.rollback()
-        raise
 
     first_week = (
         f"{weekly_rows[0]['week_end']:%Y-%m-%d}" if weekly_rows else "-"

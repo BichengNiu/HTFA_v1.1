@@ -26,9 +26,7 @@ from htfa.monitoring.uae.oil.charts import (
 from htfa.monitoring.uae.oil.data import load_oil_market_data
 from htfa.monitoring.uae.oil.revenue import (
     DAYS_COLUMN,
-    PRICE_CONTRIBUTION_COLUMN,
     PRICE_BENCHMARK_COLUMN,
-    PRODUCTION_CONTRIBUTION_COLUMN,
     REVENUE_COLUMN,
     YOY_COLUMN,
     YTD_COLUMN,
@@ -347,7 +345,7 @@ def test_render_charts_uses_requested_two_by_two_rows(monkeypatch) -> None:
     ]
 
 
-def test_monthly_revenue_calculates_yoy_and_contributions() -> None:
+def test_monthly_revenue_calculates_yoy_and_ytd() -> None:
     dates = pd.date_range("2024-01-31", periods=13, freq="ME")
     prices = pd.DataFrame(
         {
@@ -366,12 +364,6 @@ def test_monthly_revenue_calculates_yoy_and_contributions() -> None:
     revenue = estimate_monthly_oil_revenue(prices, production)
 
     assert revenue[YOY_COLUMN].iloc[-1] == pytest.approx(32.0)
-    assert revenue[PRICE_CONTRIBUTION_COLUMN].iloc[-1] == pytest.approx(11.0)
-    assert revenue[PRODUCTION_CONTRIBUTION_COLUMN].iloc[-1] == pytest.approx(21.0)
-    assert (
-        revenue[PRICE_CONTRIBUTION_COLUMN].iloc[-1]
-        + revenue[PRODUCTION_CONTRIBUTION_COLUMN].iloc[-1]
-    ) == pytest.approx(revenue[YOY_COLUMN].iloc[-1])
     assert revenue[YTD_COLUMN].iloc[-1] == pytest.approx(40.92)
     assert revenue[YTD_YOY_COLUMN].iloc[-1] == pytest.approx(32.0)
 

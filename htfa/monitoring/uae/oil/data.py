@@ -76,19 +76,6 @@ def load_oil_market_data(
     rig_count = rig_count_frame[RIG_COUNT_INDICATOR[0]].rename(
         RIG_COUNT_INDICATOR[0]
     )
-    required_series = {
-        **{name: prices[name] for name, _ in EIA_PRICE_INDICATORS},
-        DUBAI_PRICE_INDICATOR[0]: prices[DUBAI_PRICE_INDICATOR[0]],
-        OPEC_PRODUCTION_INDICATOR[0]: production,
-        RIG_COUNT_INDICATOR[0]: rig_count,
-    }
-    empty = [
-        name for name, series in required_series.items()
-        if series.dropna().empty
-    ]
-    if empty:
-        raise ValueError(f"石油监测数据库缺少有效观测：{empty}")
-
     return OilMarketData(
         prices=prices,
         production=production,

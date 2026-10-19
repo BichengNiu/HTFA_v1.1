@@ -14,6 +14,7 @@ from htfa.monitoring.uae.transport.charts import (
     HORMUZ_CALLS_TITLE,
     UAE_PORT_VOLUME_TITLE,
     US_UAE_AIR_TITLE,
+    normalize_legend_labels,
     build_dual_axis_figure,
     build_multi_series_figure,
 )
@@ -72,8 +73,7 @@ def _render_chart(
     download_columns: tuple[str, ...],
     chart_values: pd.DataFrame,
     download_values: pd.DataFrame | None = None,
-    units: Mapping[str, str | None] | None = None,
-    builder_kwargs: Mapping[str, Any] | None = None,
+    builder_kwargs: Mapping[str, Any],
 ) -> None:
     source_text = "、".join(
         dict.fromkeys(
@@ -84,22 +84,30 @@ def _render_chart(
     figure_kwargs: dict[str, Any] = {
         "source_text": source_text,
         "last_month": last_month,
+        **builder_kwargs,
     }
-    if builder_kwargs is None:
-        figure_kwargs["units"] = units
-    else:
-        figure_kwargs.update(builder_kwargs)
     render_pyplot_figure(
         st_obj,
         figure_builder(chart_values, **figure_kwargs),
         bbox_inches=None,
         place_legend_bottom=False,
     )
+    display_names = normalize_legend_labels(
+        builder_kwargs.get("legend_labels")
+    ) or download_columns
+    names = dict(zip(download_columns, display_names, strict=True))
+    download_frame = chart_values[list(download_columns)].rename(columns=names)
+    if download_values is not None:
+        raw_names = {
+            column: f"{names[column]}（原始值，{data.metadata[column].unit}）"
+            for column in download_columns
+        }
+        download_frame = download_frame.join(
+            download_values[list(download_columns)].rename(columns=raw_names)
+        )
     render_chart_download(
         st_obj,
-        (download_values if download_values is not None else chart_values)[
-            list(download_columns)
-        ].dropna(how="all"),
+        download_frame.dropna(how="all"),
         title=title,
         key=f"analysis.uae.transport.{download_columns[0]}.download",
     )
@@ -249,7 +257,7 @@ def render_transport_section(
                 (HORMUZ_TOTAL_CALLS, HORMUZ_TANKER_CALLS),
                 "艘次",
                 data.values,
-                data.values,
+                None,
             ),
         )
         for cell, title, columns, unit, chart_values, download_values in chart_rows:

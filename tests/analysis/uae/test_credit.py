@@ -17,8 +17,11 @@ from htfa.monitoring.uae.government_finance.credit import (
     INDIVIDUAL,
     INDIVIDUAL_DISPLAY,
     NONRESIDENT_CORPORATE,
+    NONRESIDENT_CORPORATE_DISPLAY,
     NONRESIDENT_GOVERNMENT,
+    NONRESIDENT_GOVERNMENT_DISPLAY,
     NONRESIDENT_INDIVIDUALS,
+    NONRESIDENT_INDIVIDUALS_DISPLAY,
     NONRESIDENT_DEPOSITS,
     PRIVATE_CORPORATE,
     PRIVATE_CORPORATE_DISPLAY,
@@ -88,12 +91,15 @@ def _workbook_bytes() -> bytes:
     return buffer.getvalue()
 
 
-def test_foreign_inflow_loader_reads_three_indicators() -> None:
+def test_foreign_inflow_loader_preserves_components_and_derived_total() -> None:
     data = load_foreign_inflow_data(report_source(_workbook_bytes()))
 
     assert data.values.columns.tolist() == [
         FOREIGN_LIABILITIES_DISPLAY,
         FOREIGN_CURRENCIES_DISPLAY,
+        NONRESIDENT_CORPORATE_DISPLAY,
+        NONRESIDENT_INDIVIDUALS_DISPLAY,
+        NONRESIDENT_GOVERNMENT_DISPLAY,
         NONRESIDENT_DEPOSITS,
     ]
     assert data.values.index.max() == pd.Timestamp("2025-06-30")

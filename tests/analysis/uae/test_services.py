@@ -125,6 +125,47 @@ def test_growth_panel_returns_all_expected_series_groups() -> None:
     assert all(item.kind is ProvenanceKind.REAL for item in panel.provenance.values())
 
 
+def test_industry_downloads_preserve_source_levels_and_reproduce_sector_pulls():
+    bundle = _make_bundle()
+    panel = build_growth_panel(bundle)
+    assert panel.download_groups.keys() == panel.series_groups.keys()
+    inputs = {"非油实际GDP": bundle.series_by_id["growth.nonoil_real_gdp"],
+              **{spec.display_name: bundle.series_by_id[f"industry.{key}.real"]
+                 for key, spec in INDUSTRY_NAMES.items()}}
+    for title in ("非油实际GDP行业拉动", "行业扩张广度指数", "行业增长集中度"):
+        data = panel.download_groups[title]
+        for name, source in inputs.items():
+            assert data[f"计算输入｜{name}（十亿迪拉姆）"].tolist() == source.tolist()
+    data = panel.download_groups["非油实际GDP行业拉动"]
+    denominator = data["计算输入｜非油实际GDP（十亿迪拉姆）"].shift(4)
+    pulls = {name: data[f"计算输入｜{name}（十亿迪拉姆）"].diff(4) / denominator * 100
+             for name in inputs if name != "非油实际GDP"}
+    plotted = panel.series_groups["非油实际GDP行业拉动"].columns.drop("非油GDP同比")
+    for name in plotted:
+        expected = (pd.DataFrame({key: value for key, value in pulls.items()
+                                  if key not in plotted}).sum(axis=1, min_count=1)
+                    if name == "其他行业" else pulls[name])
+        pd.testing.assert_series_equal(data[name], expected, check_names=False)
+
+
+def test_industry_quadrant_download_can_reproduce_growth_deflator_and_shares():
+    panel = build_growth_panel(_make_bundle())
+    data = panel.download_groups["行业量价四象限图"]
+    real = data["计算输入｜实际增加值（十亿迪拉姆）"]
+    previous_real = data["上年同期｜实际增加值（十亿迪拉姆）"]
+    deflator = data["计算输入｜行业隐含平减指数（现价/不变价×100）"]
+    previous_deflator = data["上年同期｜行业隐含平减指数（现价/不变价×100）"]
+    gdp = data["计算输入｜非油实际GDP（十亿迪拉姆）"]
+    for actual, expected in (
+        (data["实际增加值增速"], (real / previous_real - 1) * 100),
+        (data["行业隐含平减指数增速"], (deflator / previous_deflator - 1) * 100),
+        (data["实际GDP占非油GDP比例"], real / gdp),
+    ):
+        pd.testing.assert_series_equal(actual, expected, check_names=False)
+    state = panel.download_groups["行业增长持续性与状态矩阵"]
+    assert "计算输入｜实际增加值（十亿迪拉姆）" in state
+
+
 @pytest.mark.parametrize("prefix, title", [
     ("", "实际GDP增速与GDP平减指数同比"),
     ("nonoil_", "非石油实际GDP增速与非石油GDP平减指数同比"),

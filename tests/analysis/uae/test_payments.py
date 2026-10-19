@@ -9,6 +9,8 @@ from tests.analysis.uae._helpers import report_source
 
 from htfa.monitoring.uae.government_finance.payments import (
     PAYMENT_SHEET,
+    PAYMENT_LABELS,
+    payment_display_values,
     CHEQUES_AMOUNT,
     CHEQUES_AMOUNT_DISPLAY,
     CHEQUES_NUMBER,
@@ -80,6 +82,40 @@ def _workbook_bytes(
             index=False,
         )
     return buffer.getvalue()
+
+
+def test_payment_download_keeps_cumulative_inputs_without_filling_missing_months():
+    index = pd.to_datetime(["2025-11-30", "2026-01-31", "2026-02-28",
+                            "2026-04-30", "2026-05-31"])
+    values = pd.DataFrame({CUSTOMER_TRANSFERS_NUMBER_DISPLAY: [110, 10, 25, 60, 80],
+                           CUSTOMER_TRANSFERS_AMOUNT_DISPLAY: [1100, 100, 250, 600, 800]},
+                          index=index)
+    frame = payment_display_values(
+        values, series=(CUSTOMER_TRANSFERS_NUMBER_DISPLAY, CUSTOMER_TRANSFERS_AMOUNT_DISPLAY),
+        last_month=pd.Period("2026-05", freq="M"),
+    )
+    assert frame.loc["2026-01-31", "转账笔数"] == 10
+    assert frame.loc["2026-02-28", "转账笔数"] == 15
+    assert pd.isna(frame.loc["2026-04-30", "转账笔数"])
+    assert pd.isna(frame.loc["2026-04-30", "转账笔数（上月累计）"])
+    assert frame.loc["2026-05-31", "转账笔数"] == 20
+    assert frame.loc["2026-05-31", "转账笔数（年内累计）"] == 80
+    assert frame.loc["2026-05-31", "转账笔数（上月累计）"] == 60
+
+
+def test_payment_baseline_matches_month_start_labels_and_rejects_duplicate_months():
+    values = pd.DataFrame({CUSTOMER_TRANSFERS_NUMBER_DISPLAY: [10, 25, 40],
+                           CUSTOMER_TRANSFERS_AMOUNT_DISPLAY: [100, 250, 400]},
+                          index=pd.date_range("2026-01-01", periods=3, freq="MS"))
+    frame = payment_display_values(
+        values, series=(CUSTOMER_TRANSFERS_NUMBER_DISPLAY, CUSTOMER_TRANSFERS_AMOUNT_DISPLAY),
+        last_month=pd.Period("2026-03", freq="M"),
+    )
+    assert frame.loc["2026-02-01", "转账笔数"] == 15
+    assert frame.loc["2026-02-01", "转账笔数（上月累计）"] == 10
+    values.index = pd.to_datetime(["2026-01-01", "2026-01-31", "2026-02-28"])
+    with pytest.raises(ValueError, match="同月重复"):
+        cumulative_to_monthly(values)
 
 
 def _data_lines(figure):
@@ -198,8 +234,8 @@ def test_payment_figures_render_two_series_with_dual_units(
     assert len(figure.axes) == 2
     lines = _data_lines(figure)
     assert {line.get_label() for line in lines} == {
-        number_label,
-        amount_label,
+        PAYMENT_LABELS[number_label],
+        PAYMENT_LABELS[amount_label],
     }
     assert {len(line.get_xdata()) for line in lines} == {37}
     axis_labels = {axis.get_ylabel() for axis in figure.axes}

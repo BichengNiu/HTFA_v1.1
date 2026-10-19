@@ -415,7 +415,7 @@ def transaction(con) -> Iterator[Any]:
 def replace(con, table: str, rows: Iterable[dict[str, Any]]) -> int:
     """Replace all rows of ``table`` inside one transaction.
 
-    The caller should wrap the call in ``con.begin()`` when several tables
+    The caller should wrap the call in ``transaction(con)`` when several tables
     form one atomic refresh.  Returns the inserted row count.
     """
 

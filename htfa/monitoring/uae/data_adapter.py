@@ -64,7 +64,6 @@ def load_real_uae_bundle(source: PublishedUAEData) -> UAEDataBundle:
             unit=metadata.unit,
             coverage=spec.coverage,
             as_of=metadata.updated_at,
-            note=f"数据库指标：{indicator_name}",
         )
 
     missing_signature = sorted(UAE_SIGNATURE_IDS - set(resolved))

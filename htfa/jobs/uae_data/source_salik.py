@@ -269,8 +269,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     if not rows:
         raise ValueError("salik_active_vehicles_quarterly 输入为空，拒绝入库")
 
-    con.begin()
-    try:
+    with db.transaction(con):
         db.ensure(con, TABLE, _TABLE_DDL)
         db.replace(con, TABLE, rows)
         db.upsert_dictionary_rows(
@@ -287,10 +286,6 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
                 }
             ],
         )
-        con.commit()
-    except Exception:
-        con.rollback()
-        raise
 
     periods = [row["period"].isoformat() for row in rows]
     note = (

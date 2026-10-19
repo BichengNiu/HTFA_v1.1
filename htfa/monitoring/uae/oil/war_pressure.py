@@ -62,44 +62,21 @@ def load_war_pressure_data(
 
     source = require_published_source(source)
     with source.open() as tables:
-        groups = (
-            (WAM_INDICATORS[:2], "枚"),
-            (WAM_INDICATORS[2:3], "架"),
-            (WAM_INDICATORS[3:], "指数"),
-        )
-        frames: list[pd.DataFrame] = []
-        metadata: dict[str, SheetSeriesMetadata] = {}
-        for specifications, expected_unit in groups:
-            targets = tuple(
-                (display_name, indicator_name)
-                for display_name, indicator_name, _ in specifications
-            )
-            frame, group_metadata = parse_target_sheet(
-                tables,
-                sheet_name=WAM_SHEET,
-                targets=targets,
-                allowed_frequencies={"月"},
-                expected_unit=expected_unit,
-                zero_is_missing=False,
-            )
-            frames.append(frame)
-            metadata.update(group_metadata)
-
-        observation_frame, observation_metadata = parse_target_sheet(
+        specifications = (*WAM_INDICATORS, (OBSERVATION_DAYS_LABEL, OBSERVATION_DAYS_INDICATOR, "天"))
+        frame, metadata = parse_target_sheet(
             tables,
             sheet_name=WAM_SHEET,
-            targets=((OBSERVATION_DAYS_LABEL, OBSERVATION_DAYS_INDICATOR),),
+            targets=tuple((label, indicator) for label, indicator, _ in specifications),
             allowed_frequencies={"月"},
-            expected_unit="天",
+            expected_unit={label: unit for label, _, unit in specifications},
             zero_is_missing=False,
         )
-        metadata.update(observation_metadata)
 
-    values = pd.concat(frames, axis=1, sort=False).sort_index()
+    values = frame[[label for label, _, _ in WAM_INDICATORS]].dropna(how="all")
     return WarPressureData(
         values=values,
         metadata=metadata,
-        observation_days=observation_frame[OBSERVATION_DAYS_LABEL],
+        observation_days=frame[OBSERVATION_DAYS_LABEL].dropna(),
     )
 
 

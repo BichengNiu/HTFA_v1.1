@@ -241,14 +241,10 @@ def _source_note_from_metadata(
 ) -> str:
     """拼 help：截至日期、频率、来源、源表更新。"""
 
-    item = metadata.get(name)
-    frequency = item.frequency if item is not None else ""
-    source = (
-        translate_source_text(item.source)
-        if item is not None
-        else ""
-    )
-    updated = item.updated_at if item is not None else ""
+    item = metadata[name]
+    frequency = item.frequency
+    source = translate_source_text(item.source)
+    updated = item.updated_at
     when = as_of.strftime("%Y-%m") if as_of is not None else "—"
     return f"截至 {when}；{frequency}；来源：{source}；源表更新：{updated}"
 

@@ -16,6 +16,8 @@ import pandas as pd
 from htfa.data.economic_workbook import EconomicWorkbookReader
 from htfa.monitoring.uae.database import REPORT_SCHEMA_VERSION
 
+from . import db
+
 
 def _json_default(value):
     if isinstance(value, (date, datetime)):
@@ -60,8 +62,7 @@ def publish_workbook(con, workbook_path: Path) -> dict:
     version = hashlib.sha256(content).hexdigest()
     with pd.ExcelFile(BytesIO(content)) as workbook:
         tables = [(name, workbook.parse(name, header=None)) for name in workbook.sheet_names]
-    con.begin()
-    try:
+    with db.transaction(con):
         con.execute("CREATE SCHEMA IF NOT EXISTS report")
         con.execute("CREATE TABLE IF NOT EXISTS report.release ("
                     "version VARCHAR, schema_version INTEGER, published_at TIMESTAMP)")
@@ -108,8 +109,4 @@ def publish_workbook(con, workbook_path: Path) -> dict:
         con.execute("INSERT INTO report.release VALUES (?,?,?)", [
             version, REPORT_SCHEMA_VERSION, datetime.now(timezone.utc).replace(tzinfo=None),
         ])
-        con.commit()
-    except BaseException:
-        con.rollback()
-        raise
     return {"version": version, "sheets": len(tables), "observations": count}

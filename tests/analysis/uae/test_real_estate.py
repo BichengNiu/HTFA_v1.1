@@ -7,13 +7,13 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
+from htfa.monitoring.uae.periods import latest_complete_month
 from tests.analysis.uae._helpers import report_source
 
 from htfa.monitoring.uae.real_estate import renderer
 from htfa.monitoring.uae.real_estate.charts import (
     AMOUNT_LABEL,
     COUNT_LABEL,
-    MARKET_CONFIG,
     PROPERTY_CONFIG,
     build_sales_figure,
 )
@@ -22,7 +22,6 @@ from htfa.monitoring.uae.real_estate.data import (
     OFFPLAN_COUNT,
     READY_AMOUNT,
     READY_COUNT,
-    latest_complete_month,
     load_real_estate_data,
 )
 
@@ -168,15 +167,15 @@ def test_build_sales_figure_renders_bar_and_amount_line_for_both_markets() -> No
     data = load_real_estate_data(report_source(_workbook_bytes()))
     last_month = data.values.index.max().to_period("M")
 
-    for market in ("期房", "现房"):
+    for market in ("期房住宅", "现房住宅"):
         figure = build_sales_figure(
-            data.values,
+            data.raw_values,
             market=market,
             title=renderer.DEFAULT_TITLES[market],
             source_text="Dubai Land Department",
             last_month=last_month,
         )
-        count_col, amount_col = MARKET_CONFIG[market]
+        count_col, amount_col = PROPERTY_CONFIG[market]
         assert len(figure.axes) == 2
         axis, amount_axis = figure.axes
         assert axis.get_title() == renderer.DEFAULT_TITLES[market]
@@ -199,7 +198,7 @@ def test_build_sales_figure_renders_bar_and_amount_line_for_both_markets() -> No
         assert len(axis.patches) == 13  # 窗口内 13 个月的真实数据
         # 金额线按亿 AED 展示（百万 AED ÷ 100）
         assert amount_line.get_ydata()[-1] == pytest.approx(
-            data.values.loc["2025-05-31", amount_col] / 100
+            data.raw_values.loc["2025-05-31", amount_col] / 100
         )
         # 模板图例挂在参考轴（主轴）上，双轴叠加自动追加（左轴/右轴）后缀
         assert {
@@ -253,11 +252,11 @@ def test_sales_display_values_converts_amount_to_yi_aed() -> None:
     data = load_real_estate_data(report_source(_workbook_bytes()))
     last_month = data.values.index.max().to_period("M")
 
-    frame = sales_display_values(data.values, last_month=last_month)
+    frame = sales_display_values(data.raw_values, market="期房住宅", last_month=last_month)
 
-    assert frame.loc["2025-05-31", OFFPLAN_COUNT] == 134
-    assert frame.loc["2025-05-31", OFFPLAN_AMOUNT] == pytest.approx(1_124 / 100)
-    assert frame.loc["2025-05-31", READY_AMOUNT] == pytest.approx(4_324 / 100)
+    assert frame.loc["2025-05-31", COUNT_LABEL] == 112
+    assert frame.loc["2025-05-31", AMOUNT_LABEL] == pytest.approx(1_012 / 100)
+    assert frame.loc["2025-05-31", f"{AMOUNT_LABEL}（百万AED）"] == 1_012
 
 
 def test_section_renders_four_cross_segment_charts_and_explanation(

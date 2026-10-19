@@ -15,6 +15,7 @@ from htfa.monitoring.uae.government_finance.pmi import (
 )
 from htfa.monitoring.uae.government_finance.search_index import (
     SEARCH_SHEET,
+    SEARCH_SERIES,
     START_YEAR,
     WORK_DUBAI_COLUMN,
     WORK_UAE_COLUMN,
@@ -155,6 +156,14 @@ def test_search_index_display_filters_to_start_year() -> None:
     assert display.index.max().to_period("M") == values.index.max().to_period("M")
 
 
+@pytest.mark.parametrize("length", [1, 12])
+def test_search_index_does_not_substitute_raw_values_for_undefined_z_scores(length):
+    values = pd.DataFrame({WORK_DUBAI_COLUMN: 5.0, WORK_UAE_COLUMN: 10.0},
+                          index=pd.date_range("2026-01-31", periods=length, freq="ME"))
+    with pytest.raises(ValueError, match="无法计算标准化指数"):
+        display_search_index_values(values)
+
+
 def test_search_index_month_start_observations_align_with_september_tick() -> None:
     values = pd.DataFrame(
         {
@@ -171,7 +180,7 @@ def test_search_index_month_start_observations_align_with_september_tick() -> No
 
     assert values.index.max() == pd.Timestamp("2026-09-01")
     assert display.index.max() == pd.Timestamp("2026-09-30")
-    assert display.iloc[-1].tolist() == values.iloc[-1].tolist()
+    assert [display[f"{label}（原始指数）"].iloc[-1] for _, label in SEARCH_SERIES] == values.iloc[-1].tolist()
     axis = figure.axes[0]
     for line in axis.get_lines():
         if not line.get_label().startswith("_"):
@@ -181,6 +190,7 @@ def test_search_index_month_start_observations_align_with_september_tick() -> No
 
 def test_search_index_figure_standardizes_series_on_one_axis() -> None:
     values = _search_index_frame()
+    download = display_search_index_values(values)
 
     figure = build_search_index_figure(
         values,
@@ -203,5 +213,14 @@ def test_search_index_figure_standardizes_series_on_one_axis() -> None:
         ydata = pd.Series(line.get_ydata(), dtype=float).dropna()
         assert ydata.mean() == pytest.approx(0.0, abs=1e-9)
         assert ydata.std() == pytest.approx(1.0)
+        label = line.get_label()
+        pd.testing.assert_series_equal(
+            download[label],
+            pd.Series(line.get_ydata(), index=pd.DatetimeIndex(line.get_xdata())),
+            check_names=False, check_freq=False,
+        )
+        smoothed = download[f"{label}（平滑指数）"]
+        pd.testing.assert_series_equal(download[label],
+            (smoothed - smoothed.mean()) / smoothed.std(), check_names=False)
     assert axis.get_ylabel() == "标准化指数"
     assert any(text.get_text() == "数据来源：谷歌趋势" for text in figure.texts)

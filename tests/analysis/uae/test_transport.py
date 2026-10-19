@@ -8,9 +8,23 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from htfa.monitoring.uae.periods import latest_complete_month
 from tests.analysis.uae._helpers import report_source
 
 from htfa.monitoring.uae.transport import renderer
+
+
+@pytest.mark.parametrize("left,right", [((), ("value",)), (("value",), ())])
+def test_dual_axis_requires_data_for_both_axes(left, right):
+    from htfa.monitoring.uae.transport.charts import build_dual_axis_figure
+
+    frame = pd.DataFrame({"value": [1]}, index=pd.to_datetime(["2026-09-30"]))
+    with pytest.raises(ValueError, match="分别指定左右轴"):
+        build_dual_axis_figure(
+            frame, columns=("value",), left_columns=left, right_columns=right,
+            title="test", source_text="test", units={"value": "吨"},
+            last_month=pd.Period("2026-09", freq="M"),
+        )
 from htfa.monitoring.uae.transport.charts import (
     DUBAI_AIR_CARGO_TITLE,
     HORMUZ_CALLS_TITLE,
@@ -33,7 +47,6 @@ from htfa.monitoring.uae.transport.data import (
     UAE_PORT_TANKER_EXPORT,
     UAE_PORT_TANKER_IMPORT,
     anchor_last_month,
-    latest_complete_month,
     load_transport_data,
 )
 

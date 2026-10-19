@@ -125,8 +125,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
             download_file(url, path, force=True, browser_transport=True,
                           headers={"Accept": "text/csv;version=2.0.0;labels=both"})
         rows.extend(parse_gdp_csv(path.read_bytes(), system))
-    con.begin()
-    try:
+    with db.transaction(con):
         con.execute(f"CREATE TABLE IF NOT EXISTS {TABLE} (period DATE, "
                     "indicator VARCHAR, value DOUBLE, source_url VARCHAR, "
                     "source_file VARCHAR, PRIMARY KEY(period,indicator))")
@@ -146,10 +145,6 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
              "updated_at": date.today()}
             for name, (unit, source) in INDICATORS.items()
         ])
-        con.commit()
-    except BaseException:
-        con.rollback()
-        raise
     return {"status": "ok", "rows": len(rows), "note": "44 项季度 GDP 指标已入库"}
 
 

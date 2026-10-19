@@ -19,6 +19,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import json
 import os
 from datetime import date, datetime, timedelta
@@ -415,10 +417,6 @@ def merge(workbook_path: Path) -> dict:
             if row[0] + timedelta(days=6) <= weekly_cutoff
         ]
 
-    class _Obs:
-        def __init__(self, period, values):
-            self.period = period
-            self.values = tuple(values)
 
     def build(sheet_name, indicator, unit, frequency, observations):
         payload = {
@@ -443,11 +441,11 @@ def merge(workbook_path: Path) -> dict:
             run_powershell_sheet_writer(helper_path, workbook_path, payload_path, sheet_name)
 
     done = []
-    daily_obs = [_Obs(period=p.isoformat(), values=[v]) for p, v in daily_rows]
+    daily_obs = [SimpleNamespace(period=p.isoformat(), values=(v,)) for p, v in daily_rows]
     if daily_obs:
         build(TARGET_SHEET, INDICATOR, UNIT, FREQUENCY, daily_obs)
         done.append(f"{TARGET_SHEET} {len(daily_obs)} 天")
-    weekly_obs = [_Obs(period=p.isoformat(), values=[v]) for p, v in weekly_rows]
+    weekly_obs = [SimpleNamespace(period=p.isoformat(), values=(v,)) for p, v in weekly_rows]
     if weekly_obs:
         build(TARGET_SHEET_W, INDICATOR_W, UNIT_W, FREQUENCY_W, weekly_obs)
         done.append(f"{TARGET_SHEET_W} {len(weekly_obs)} 周")

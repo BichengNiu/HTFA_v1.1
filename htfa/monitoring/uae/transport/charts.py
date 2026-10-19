@@ -42,7 +42,7 @@ def _legend_label_without_unit(label: str) -> str:
     )
 
 
-def _normalize_legend_labels(
+def normalize_legend_labels(
     legend_labels: tuple[str, ...] | None,
 ) -> tuple[str, ...] | None:
     if legend_labels is None:
@@ -97,7 +97,7 @@ def build_multi_series_figure(
         raise ValueError(f"{title}没有可绘制的有效观测")
 
     frame = display[list(columns)].dropna(how="all")
-    series_labels = _normalize_legend_labels(legend_labels)
+    series_labels = normalize_legend_labels(legend_labels)
     figure, returned_axis = plot_series(
         frame,
         labels=series_labels,
@@ -158,6 +158,8 @@ def build_dual_axis_figure(
         设置序列显示名；长度必须与 ``columns`` 一致，图例自动追加轴标记。
     """
 
+    if not left_columns or not right_columns:
+        raise ValueError("双纵轴必须分别指定左右轴序列")
     if set(left_columns).intersection(right_columns):
         raise ValueError("双纵轴序列不能同时属于左右轴")
     if set(columns) != set(left_columns).union(right_columns):
@@ -172,7 +174,7 @@ def build_dual_axis_figure(
 
     frame = display[list(columns)].dropna(how="all")
     # 使用序列显示名，保留 Ts 按实际轴分组自动追加的“（左轴）/（右轴）”。
-    series_labels = _normalize_legend_labels(legend_labels)
+    series_labels = normalize_legend_labels(legend_labels)
     display_names = columns if series_labels is None else series_labels
     axis_groups = {
         label: "left" if column in left_columns else "right"
@@ -198,17 +200,16 @@ def build_dual_axis_figure(
         },
     )
     axis = normalize_ts_axis(returned_axis)
-    right_axis = getattr(axis, "right_ax", None)
-    for chart_axis in (axis, right_axis):
-        if chart_axis is not None:
-            chart_axis.set_ylim(bottom=0)
-            chart_axis.ticklabel_format(style="plain", axis="y", useOffset=False)
+    for chart_axis in (axis, axis.right_ax):
+        chart_axis.set_ylim(bottom=0)
+        chart_axis.ticklabel_format(style="plain", axis="y", useOffset=False)
     annotate_war(axis)
     apply_htfa_fonts(figure)
     return figure
 
 
 __all__ = [
+    "normalize_legend_labels",
     "HORMUZ_CALLS_TITLE",
     "UAE_PORT_VOLUME_TITLE",
     "DUBAI_AIR_CARGO_TITLE",

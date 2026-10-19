@@ -102,9 +102,7 @@ def load_foreign_inflow_data(
             NONRESIDENT_GOVERNMENT_DISPLAY,
         ]
     ].sum(axis=1, min_count=3)
-    frame = frame[
-        [FOREIGN_LIABILITIES_DISPLAY, FOREIGN_CURRENCIES_DISPLAY]
-    ].copy()
+    frame = frame.copy()
     frame[NONRESIDENT_DEPOSITS] = nonresident
     return CbuaeSeriesData(
         values=frame,
@@ -137,9 +135,6 @@ def _load_cbuae_series(
             allowed_frequencies={"月", "月度"},
             expected_unit="百万迪拉姆",
         )
-    frame = frame.sort_index()
-    if frame.empty:
-        raise ValueError(f"{CBUAE_SHEET} 没有可用的扩展指标观测")
     return CbuaeSeriesData(
         values=frame,
         metadata=metadata,

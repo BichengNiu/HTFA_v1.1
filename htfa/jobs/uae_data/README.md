@@ -87,7 +87,7 @@ EIA Brent 同时读取官方 XLS 和 RBRTE daily API 完整分页，校验系列
 - `_official_download.py`：显式下载传输及原子 JSON 写入；失败保留旧文件并清理临时文件；
 - `source_*.py`：每源一个模块（download → parse → load → merge）；
 - `write_indicator_sheet.ps1`：8 个来源共用的 Excel COM 宽表写入，载荷显式提供
-  `number_format`、`column_width`、`period_format`（`month` / `day` / `auto`），保留各源原有格式；
+  `number_format`、`column_width`、`period_format`（`month` / `day`），保留各源原有格式；
 - `write_baker_hughes_sheet.ps1` / `write_cbuae_sheet.ps1` / `write_uae_pmi_sheet.ps1`：
   保留各自的字典更新、工作簿修复打开和校验回滚契约；
 - `merge_workbook.ps1`（steel）、
@@ -103,7 +103,7 @@ EIA Brent 同时读取官方 XLS 和 RBRTE daily API 完整分页，校验系列
   不迁入本目录。
 
 来源模块仅供总控导入，不提供独立执行或内嵌自检入口；维护检查使用 `tests/`
-中的来源测试。更新和合并各注册同一组 25 个来源，`--source salik` 等单来源
+中的来源测试。更新和合并各注册同一组 28 个来源，`--source salik` 等单来源
 命令只写该来源的工作表。搜索热度直接从 DuckDB 写入工作簿，不再导出页面
 已不使用的 `工作搜索热度.csv`；本地既有 CSV 不删除。汽车进口工作表仅由
 专用来源写入乘用车、商用车两列台数，金额及零件明细仍保存在 DuckDB。

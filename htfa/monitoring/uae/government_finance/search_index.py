@@ -58,17 +58,22 @@ def load_search_index_data(
             expected_unit="指数",
             zero_is_missing=False,
         )
-    values = values.sort_index()
     values.index = pd.DatetimeIndex(values.index).normalize()
     return values
 
 
 def display_search_index_values(values: pd.DataFrame) -> pd.DataFrame:
-    """返回指定年份起的观测，月度展示日期对齐月末刻度。"""
+    """返回标准化绘图序列及原始、平滑中间值，日期对齐月末。"""
 
     display = values.loc[values.index >= pd.Timestamp(START_YEAR, 1, 1)].copy()
     display.index = display.index.to_period("M").to_timestamp("M")
-    return display
+    result = pd.DataFrame(index=display.index)
+    for column, label in SEARCH_SERIES:
+        smoothed = _smooth_series(display[column])
+        result[label] = _standardize_series(smoothed)
+        result[f"{label}（原始指数）"] = display[column]
+        result[f"{label}（平滑指数）"] = smoothed
+    return result
 
 
 def _smooth_series(series: pd.Series) -> pd.Series:
@@ -78,7 +83,7 @@ def _smooth_series(series: pd.Series) -> pd.Series:
     window = min(SMOOTH_WINDOW, len(values))
     if window % 2 == 0:
         window -= 1
-    if window < 3:
+    if window < 3 or values.nunique() == 1:
         return series
     return pd.Series(
         savgol_filter(values.to_numpy(), window, SMOOTH_POLYORDER),
@@ -91,8 +96,10 @@ def _standardize_series(series: pd.Series) -> pd.Series:
 
     values = series.dropna().astype(float)
     std = values.std()
-    if values.empty or pd.isna(std) or std == 0:
+    if values.empty:
         return values
+    if pd.isna(std) or std == 0:
+        raise ValueError("搜索热度缺少足够变动，无法计算标准化指数")
     return (values - values.mean()) / std
 
 
@@ -108,12 +115,7 @@ def build_search_index_figure(
     if display_values.dropna(how="all").empty:
         raise ValueError(f"{title}没有可绘制的有效数据")
 
-    frame = pd.DataFrame(
-        {
-            label: _standardize_series(_smooth_series(display_values[column]))
-            for column, label in SEARCH_SERIES
-        }
-    )
+    frame = display_values[[label for _, label in SEARCH_SERIES]]
     figure, returned_axis = plot_series(
         frame,
         facet=False,

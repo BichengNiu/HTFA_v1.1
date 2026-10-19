@@ -57,13 +57,13 @@ from htfa.monitoring.uae.government_finance.search_index import (
 from htfa.monitoring.uae.government_finance.renderer import _render_charts
 
 
+@pytest.mark.parametrize("freq", ["ME", "MS"])
 @pytest.mark.parametrize("render_name", [
     "_render_charts", "_render_foreign_inflow_chart", "_render_private_credit_chart",
 ])
-def test_credit_download_matches_every_plotted_value(render_name):
-    dates = pd.date_range("2021-01-31", periods=61, freq="ME").difference(
-        pd.DatetimeIndex(["2024-06-30"])
-    )
+def test_credit_download_matches_every_plotted_value(render_name, freq):
+    dates = pd.date_range("2021-01-01", periods=61, freq=freq)
+    dates = dates[dates.to_period("M") != pd.Period("2024-06", freq="M")]
     columns = [
         GOVERNMENT_CREDIT, GRE_CREDIT, FOREIGN_LIABILITIES_DISPLAY,
         FOREIGN_CURRENCIES_DISPLAY, NONRESIDENT_DEPOSITS,
@@ -90,7 +90,7 @@ def test_credit_download_matches_every_plotted_value(render_name):
         csv = st_obj.download_button.call_args.kwargs["data"].decode("utf-8-sig")
         downloaded = pd.read_csv(StringIO(csv), index_col=0, parse_dates=True)
         lines = data_lines(figure.axes[0])
-        assert downloaded.columns.tolist() == [line.get_label() for line in lines]
+        assert downloaded.columns[:len(lines)].tolist() == [line.get_label() for line in lines]
         for line in lines:
             expected = pd.Series(
                 line.get_ydata(), index=pd.DatetimeIndex(line.get_xdata()),
@@ -101,6 +101,14 @@ def test_credit_download_matches_every_plotted_value(render_name):
                 check_freq=False, check_names=False,
             )
             assert pd.notna(expected.iloc[0])
+        for name in selected:
+            current = downloaded[f"{name}（原始存量，百万迪拉姆）"]
+            base = downloaded[f"{name}（上年同期存量，百万迪拉姆）"]
+            pd.testing.assert_series_equal(current, values[name].reindex(current.index),
+                                           check_names=False, check_freq=False)
+            source_by_month = values[name].set_axis(values.index.to_period("M"))
+            expected_base = source_by_month.reindex(base.index.to_period("M") - 12)
+            assert base.tolist() == pytest.approx(expected_base.tolist(), nan_ok=True)
     finally:
         plt.close(figure)
 
@@ -249,7 +257,7 @@ def test_yoy_chart_calculates_yoy_before_applying_three_year_window() -> None:
     assert all(pd.notna(line.get_ydata()[0]) for line in lines)
 
 
-def test_chart_row_renders_one_yoy_view_and_downloads_only_yoy_data() -> None:
+def test_chart_row_downloads_yoy_and_the_underlying_levels() -> None:
     data = load_government_finance_data(
         report_source(_workbook_bytes()),
     )
@@ -261,7 +269,8 @@ def test_chart_row_renders_one_yoy_view_and_downloads_only_yoy_data() -> None:
     assert st_obj.download_button.call_count == 1
     chart_data = st_obj.download_button.call_args.kwargs["data"].decode("utf-8-sig")
     assert "同比" in chart_data
-    assert "百万迪拉姆" not in chart_data
+    assert "原始存量，百万迪拉姆" in chart_data
+    assert "上年同期存量，百万迪拉姆" in chart_data
     figure = st_obj.pyplot.call_args.args[0]
     assert st_obj.pyplot.call_args.kwargs["bbox_inches"] is None
     assert len(figure.axes) == 1
@@ -283,7 +292,7 @@ def test_section_renders_quad_business_and_labor_employment_subsections(
         lambda content: data,
     )
     for loader_name in (
-        "_load_rates_cached",
+        "load_rates_data",
         "_load_foreign_inflow_cached",
         "_load_private_credit_cached",
         "_load_ded_cached",
@@ -371,7 +380,7 @@ def test_quad_cell_failure_warns_cell_and_keeps_section(monkeypatch) -> None:
         lambda content: data,
     )
     for loader_name in (
-        "_load_rates_cached",
+        "load_rates_data",
         "_load_foreign_inflow_cached",
         "_load_private_credit_cached",
         "_load_ded_cached",
@@ -441,7 +450,7 @@ def test_payment_chart_failure_warns_only_its_business_cell(monkeypatch) -> None
         lambda content: data,
     )
     for loader_name in (
-        "_load_rates_cached",
+        "load_rates_data",
         "_load_foreign_inflow_cached",
         "_load_private_credit_cached",
         "_load_ded_cached",
@@ -554,7 +563,7 @@ def test_finance_metrics_row_falls_back_to_warning(monkeypatch) -> None:
     def _explode(*args, **kwargs):
         raise ValueError("日度_Wind 利率列缺失")
 
-    monkeypatch.setattr(renderer, "_load_rates_cached", _explode)
+    monkeypatch.setattr(renderer, "load_rates_data", _explode)
     st_obj = MagicMock()
     st_obj.columns.return_value = (MagicMock(), MagicMock(), MagicMock(), MagicMock())
 
@@ -609,7 +618,7 @@ def test_finance_metrics_cover_all_absolute_series_with_mom_and_yoy(
     )
     monkeypatch.setattr(
         renderer,
-        "_load_rates_cached",
+        "load_rates_data",
         lambda content: SimpleNamespace(
             values=rates_values,
             metadata=_metadata(rates_values.columns),

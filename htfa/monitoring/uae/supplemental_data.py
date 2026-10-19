@@ -75,17 +75,14 @@ def load_chart_data(
     *, today: pd.Timestamp | None = None,
 ) -> tuple[pd.DataFrame, dict, dict[str, str]]:
     """校验原始频率与单位，日度和周度序列按有效观测转换为月均。"""
-    frames, metadata = [], {}
     with require_published_source(content).open() as book:
-        for label, indicator, unit in spec.series:
-            frame, meta = parse_target_sheet(
-                book, sheet_name=spec.sheet, targets=((label, indicator),),
-                allowed_frequencies={spec.frequency}, expected_unit=unit,
-                zero_is_missing=spec.sheet == "日度_Wind",
-            )
-            frames.append(frame)
-            metadata.update(meta)
-    values = pd.concat(frames, axis=1, sort=False).sort_index()
+        values, metadata = parse_target_sheet(
+            book, sheet_name=spec.sheet,
+            targets=tuple((label, indicator) for label, indicator, _ in spec.series),
+            allowed_frequencies={spec.frequency},
+            expected_unit={label: unit for label, _, unit in spec.series},
+            zero_is_missing=spec.sheet == "日度_Wind",
+        )
     reference = pd.Timestamp.today().normalize() if today is None else pd.Timestamp(today).normalize()
     values = values.loc[values.index <= reference]
     if spec.frequency == "月":
@@ -105,7 +102,6 @@ def load_chart_data(
     units = {label: unit for label, _, unit in spec.series}
     if spec.key == "air_transit":
         values["转运占比"] = values["转运量"].div(values["合计货量"].where(values["合计货量"] > 0)) * 100
-        values = values[["转运量", "转运占比"]]
         units = {"转运量": "吨", "转运占比": "%"}
     values = values.dropna(how="all")
     if values.empty:

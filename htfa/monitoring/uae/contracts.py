@@ -16,7 +16,6 @@ class ProvenanceKind(str, Enum):
     """指标来源类型。"""
 
     REAL = "真实数据"
-    SIMULATED = "模拟数据"
 
 
 class EvidenceClass(str, Enum):
@@ -37,7 +36,6 @@ class DataProvenance:
     unit: str
     coverage: str
     as_of: str
-    note: str = ""
 
 
 @dataclass(frozen=True)
@@ -48,9 +46,7 @@ class EvidenceItem:
     value: float | str
     unit: str
     evidence_class: EvidenceClass
-    provenance_kind: ProvenanceKind
     as_of: str
-    note: str = ""
 
 
 @dataclass(frozen=True)

@@ -48,7 +48,7 @@ def test_only_fixed_weights_and_versioned_uae_data_use_streamlit_process_cache()
         "htfa/monitoring/uae/real_estate/renderer.py": {"_load_real_estate_cached"},
         "htfa/monitoring/uae/government_finance/renderer.py": {
             "_load_government_finance_cached", "_load_foreign_labor_cached",
-            "_load_rates_cached", "_load_foreign_inflow_cached",
+            "_load_foreign_inflow_cached",
             "_load_private_credit_cached", "_load_ded_cached", "_load_pmi_cached",
             "_load_payment_cached", "_load_search_index_cached",
         },

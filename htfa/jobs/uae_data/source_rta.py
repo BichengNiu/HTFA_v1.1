@@ -27,6 +27,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import csv
 import gzip
 import json
@@ -615,11 +617,7 @@ def merge(workbook_path: Path) -> dict:
             item = by_period.setdefault(key, [None] * len(indicators))
             if indicator in order:
                 item[order[indicator]] = value
-        class _Obs:
-            def __init__(self, period, values):
-                self.period = period
-                self.values = tuple(values)
-        return [_Obs(p, v) for p, v in sorted(by_period.items())]
+        return [SimpleNamespace(period=p, values=tuple(v)) for p, v in sorted(by_period.items())]
 
     def payload(indicators, observations, frequency):
         return {
@@ -627,7 +625,7 @@ def merge(workbook_path: Path) -> dict:
             "source_label": SOURCE_NAME,
             "number_format": "#,##0.0",
             "column_width": 30,
-            "period_format": "auto",
+            "period_format": "day" if frequency == "日" else "month",
             "metadata_labels": ["指标名称", "频率", "单位", "来源", "更新时间"],
             "frequency": frequency,
             "unit": "见各列",

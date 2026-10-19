@@ -333,14 +333,9 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     db.ensure(con, "detail.portwatch_uae_daily", UAE_TABLE_DDL)
     db.ensure(con, "detail.portwatch_chokepoint_daily", CHOKEPOINT_TABLE_DDL)
 
-    transaction = con.begin()
-    try:
+    with db.transaction(con):
         db.replace(con, "detail.portwatch_uae_daily", uae_rows)
         db.replace(con, "detail.portwatch_chokepoint_daily", chokepoint_rows)
-        transaction.commit()
-    except BaseException:
-        transaction.rollback()
-        raise
 
     uae_dates = sorted({row["date"] for row in uae_rows})
     chokepoint_dates = sorted({row["date"] for row in chokepoint_rows})

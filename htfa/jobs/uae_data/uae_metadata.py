@@ -539,8 +539,7 @@ def complete_metadata(con, *, updated_at: date | None = None) -> dict[str, int]:
     stamp = updated_at or date.today()
     indicator_rows = [dict(row, updated_at=stamp) for row in INDICATOR_DEFINITIONS]
     column_rows = _column_rows(con)
-    con.execute("BEGIN TRANSACTION")
-    try:
+    with db.transaction(con):
         db.upsert_dictionary_rows(con, indicator_rows)
         for row in column_rows:
             con.execute(
@@ -560,10 +559,6 @@ def complete_metadata(con, *, updated_at: date | None = None) -> dict[str, int]:
                     row["caveat_cn"],
                 ],
             )
-        con.execute("COMMIT")
-    except BaseException:
-        con.execute("ROLLBACK")
-        raise
     return {"indicator_rows": len(indicator_rows), "column_rows": len(column_rows)}
 
 

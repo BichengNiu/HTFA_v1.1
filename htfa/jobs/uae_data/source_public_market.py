@@ -305,8 +305,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         raise ValueError("Public market inputs contain duplicate observation keys")
     if set(r["indicator"] for r in rows) != set(INDICATORS):
         raise ValueError("Public market inputs do not cover all seven indicators")
-    con.begin()
-    try:
+    with db.transaction(con):
         con.execute(f"CREATE TABLE IF NOT EXISTS {TABLE} (period DATE, "
                     "indicator VARCHAR, value DOUBLE, source_url VARCHAR, "
                     "PRIMARY KEY(period, indicator))")
@@ -327,10 +326,6 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
              "industry": "金融", "updated_at": date.today()}
             for name in MONTHLY_CREDIT
         ])
-        con.commit()
-    except BaseException:
-        con.rollback()
-        raise
     return {"status": "ok", "rows": len(rows),
             "note": ("七个公开源指标已入库：DFM、ADX、EIBOR隔夜/1年、EFFR、USD/AED、CNY/AED；"
                      f"ADX重复冲突日期留空{sum(r['indicator'] == ADX and r['value'] is None for r in rows)}条")}

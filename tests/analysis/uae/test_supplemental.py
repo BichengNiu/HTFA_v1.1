@@ -2,6 +2,7 @@
 
 from io import BytesIO
 from unittest.mock import MagicMock
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -61,6 +62,14 @@ def test_monthly_excludes_partial_month_and_transit_share_handles_zero(workbook)
     assert pd.isna(values.loc["2026-08-31", "转运占比"])
     assert values.loc["2026-09-30", "转运占比"] == pytest.approx(20.0)
     assert units == {"转运量": "吨", "转运占比": "%"}
+    assert values.loc["2026-09-30", "合计货量"] == 100
+    assert values.loc["2026-08-31", "合计货量"] == 0
+    figure = renderer.build_supplemental_figure(
+        values, spec=TRANSPORT_CHARTS[2], units=units, source_text="test source",
+    )
+    plotted = [line.get_label() for axis in figure.axes for line in axis.lines
+               if not line.get_label().startswith("_")]
+    assert plotted == ["转运量", "转运占比"]
 
 
 def test_federal_cpi_monthly_chart_uses_index_and_complete_months(workbook):
@@ -149,7 +158,11 @@ def test_price_cpi_metrics_show_changes_in_percentage_points():
         index=pd.to_datetime(["2026-05-31", "2026-06-30"]),
     )
     st_obj = MagicMock()
-    renderer._render_price_metrics(st_obj, [(spec, values, {}, {})])
+    metadata = {
+        name: SimpleNamespace(frequency="月", source="FCSC UAE.Stat SDMX", updated_at="2026-06-30")
+        for name in values
+    }
+    renderer._render_price_metrics(st_obj, [(spec, values, metadata, {})])
 
     calls = st_obj.metric.call_args_list
     assert [call.args for call in calls] == [

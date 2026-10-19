@@ -14,12 +14,9 @@ PRICE_BENCHMARK_COLUMN = "价格基准"
 PRODUCTION_COLUMN = "月均原油产量"
 DAYS_COLUMN = "当月天数"
 REVENUE_COLUMN = "月度石油收入"
-MOM_COLUMN = "环比"
 YOY_COLUMN = "同比"
 YTD_COLUMN = "本年度累计收入"
 YTD_YOY_COLUMN = "年度累计同比"
-PRICE_CONTRIBUTION_COLUMN = "价格拉动率"
-PRODUCTION_CONTRIBUTION_COLUMN = "产量拉动率"
 
 
 def estimate_monthly_oil_revenue(
@@ -70,31 +67,10 @@ def estimate_monthly_oil_revenue(
         * result[DAYS_COLUMN]
         / 100_000_000
     )
-    result[MOM_COLUMN] = result[REVENUE_COLUMN].pct_change(
-        fill_method=None
-    ) * 100
     result[YOY_COLUMN] = result[REVENUE_COLUMN].pct_change(
         periods=12,
         fill_method=None,
     ) * 100
-    prior_price = result[PRICE_COLUMN].shift(12)
-    monthly_volume = result[PRODUCTION_COLUMN] * result[DAYS_COLUMN]
-    prior_volume = monthly_volume.shift(12)
-    prior_value = prior_price * prior_volume
-    result[PRICE_CONTRIBUTION_COLUMN] = (
-        (result[PRICE_COLUMN] - prior_price)
-        * (monthly_volume + prior_volume)
-        / 2
-        / prior_value
-        * 100
-    )
-    result[PRODUCTION_CONTRIBUTION_COLUMN] = (
-        (monthly_volume - prior_volume)
-        * (result[PRICE_COLUMN] + prior_price)
-        / 2
-        / prior_value
-        * 100
-    )
     result[YTD_COLUMN] = result[REVENUE_COLUMN].groupby(periods.year).cumsum()
     result[YTD_YOY_COLUMN] = result[YTD_COLUMN].pct_change(
         periods=12,
@@ -111,13 +87,10 @@ def estimate_monthly_oil_revenue(
 
 __all__ = [
     "DAYS_COLUMN",
-    "MOM_COLUMN",
-    "PRICE_CONTRIBUTION_COLUMN",
     "PRICE_BENCHMARK_COLUMN",
     "PRICE_COLUMN",
     "REVENUE_PRICE_BENCHMARK",
     "PRODUCTION_COLUMN",
-    "PRODUCTION_CONTRIBUTION_COLUMN",
     "REVENUE_COLUMN",
     "YOY_COLUMN",
     "YTD_COLUMN",

@@ -26,7 +26,6 @@ from htfa.monitoring.uae.charts import (
     build_nonoil_industry_pull_figure,
     build_price_volume_figure,
 )
-from htfa.monitoring.uae.contracts import ProvenanceKind
 from htfa.monitoring.uae.downloads import render_chart_download
 from htfa.monitoring.uae.results import MacroPanelResult
 from htfa.monitoring.uae.report import render_high_frequency_topics
@@ -286,7 +285,7 @@ def _render_panel(
             )
         render_chart_download(
             chart_container,
-            frame,
+            panel.download_groups[group_title],
             title=group_title,
             key=f"analysis.uae.{panel.key}.series.{group_title}.download",
         )
@@ -301,13 +300,8 @@ def _render_panel(
         st_obj.write(panel.limitation)
         st_obj.markdown("**证据类型**")
         for item in panel.evidence:
-            source_tag = (
-                "模拟"
-                if item.provenance_kind is ProvenanceKind.SIMULATED
-                else "真实"
-            )
             st_obj.markdown(
-                f"- `{item.evidence_class.value}` `{source_tag}` "
+                f"- `{item.evidence_class.value}` `真实` "
                 f"{item.label}：{item.value}{item.unit}（{item.as_of}）"
             )
         st_obj.markdown("**方法说明**")

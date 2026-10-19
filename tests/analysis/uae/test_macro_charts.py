@@ -12,6 +12,29 @@ from htfa.monitoring.uae import charts
 from htfa.ui_shared.chart_legend import _apply_cjk_fonts
 
 
+@pytest.mark.parametrize("max_points", [None, 65])
+def test_industry_chart_windows_remain_independent_of_macro_history_limit(max_points):
+    index = pd.period_range("2000Q1", periods=90, freq="Q")
+    breadth = pd.DataFrame({"不加权｜正增长行业比例": 50.0,
+                            "不加权｜连续四季度正增长的行业比例": 25.0}, index=index)
+    concentration = pd.DataFrame({
+        "贡献平衡指数": 60.0, "标准化绝对贡献集中度": 25.0,
+        "绝对贡献HHI": 0.25, "总变动强度": 5.0, "非油GDP同比": 3.0,
+        "最大正向贡献行业": "制造业", "最大正向贡献": 4.0,
+        "最大负向贡献行业": "建筑业", "最大负向贡献": -1.0,
+    }, index=index)
+    options = {} if max_points is None else {"max_points": max_points}
+    expected = 80 if max_points is None else max_points
+    figure = charts.build_industry_breadth_figure(breadth, title="行业广度", **options)
+    assert len(figure.data[0].x) == expected
+    assert figure.data[0].x[0] == str(index[-expected])
+    figure = charts.build_industry_concentration_figure(
+        concentration, title="行业集中度", **options,
+    )
+    assert len(figure.frames) == expected
+    assert figure.frames[0].name == str(index[-expected])
+
+
 def test_sector_pull_ts_chart_keeps_negative_stacks_and_separate_units():
     frame = pd.DataFrame({
         "非石油经济部门拉动": [2.0, -3.0],

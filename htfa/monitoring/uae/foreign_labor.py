@@ -68,12 +68,6 @@ def load_foreign_labor_data(
     )
 
 
-def latest_common_month(values: pd.DataFrame) -> pd.Period:
-    """Return the newest month where both plotted series are available."""
-
-    return common_observations(values).index[-1].to_period("M")
-
-
 def common_observations(values: pd.DataFrame) -> pd.DataFrame:
     """Keep only months with observations for both countries, from their common start."""
 
@@ -87,7 +81,7 @@ def common_observations(values: pd.DataFrame) -> pd.DataFrame:
     return shared
 
 
-def _recent_common_observations(values: pd.DataFrame) -> pd.DataFrame:
+def display_foreign_labor_values(values: pd.DataFrame) -> pd.DataFrame:
     """Match the oil charts' trailing three-year display window."""
 
     shared = common_observations(values)
@@ -96,7 +90,7 @@ def _recent_common_observations(values: pd.DataFrame) -> pd.DataFrame:
         shared,
         first_month=last_month - (DISPLAY_MONTHS - 1),
         last_month=last_month,
-    )
+    ).rename(columns=dict(SERIES_SPECS))
 
 
 def build_foreign_labor_figure(
@@ -108,13 +102,7 @@ def build_foreign_labor_figure(
 ) -> Figure:
     """用 Ts 默认模板绘制尼泊尔与孟加拉国月度劳工人数（双柱、分居左右轴）。"""
 
-    display_values = _recent_common_observations(values)
-    frame = pd.DataFrame(
-        {
-            NEPAL_LABEL: display_values[NEPAL_APPROVALS],
-            BANGLADESH_LABEL: display_values[BANGLADESH_CLEARANCES],
-        }
-    )
+    frame = display_foreign_labor_values(values)
     axis_units = {NEPAL_LABEL: "人", BANGLADESH_LABEL: "人"}
     if units is not None:
         axis_units.update(units)
@@ -152,6 +140,6 @@ __all__ = [
     "SERIES_SPECS",
     "build_foreign_labor_figure",
     "common_observations",
-    "latest_common_month",
+    "display_foreign_labor_values",
     "load_foreign_labor_data",
 ]

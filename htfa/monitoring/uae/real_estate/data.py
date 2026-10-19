@@ -23,7 +23,6 @@ from htfa.data.economic_workbook import (
 )
 from htfa.monitoring.uae.periods import (
     anchor_last_month as _anchor_last_month,
-    latest_complete_month as _latest_complete_month,
 )
 
 
@@ -156,15 +155,6 @@ def _aggregate_sales(
     return values.sort_index(), metadata
 
 
-def latest_complete_month(values: pd.DataFrame) -> pd.Timestamp:
-    """返回期房/现房笔数与金额四个口径均有效的最新月份。"""
-
-    return _latest_complete_month(
-        values,
-        empty_message="月度_DLD 没有四个销售口径均完整的月份",
-    )
-
-
 def anchor_last_month(
     values: pd.DataFrame,
     *,
@@ -200,6 +190,5 @@ __all__ = [
     "READY_RESIDENTIAL_COUNT",
     "RealEstateData",
     "anchor_last_month",
-    "latest_complete_month",
     "load_real_estate_data",
 ]

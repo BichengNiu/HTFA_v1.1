@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 import pandas as pd
@@ -79,9 +80,29 @@ def display_calendar_yoy(values: pd.DataFrame) -> pd.DataFrame:
     selected = values.dropna(how="all").sort_index()
     if selected.empty:
         return selected
-    yoy = calculate_calendar_yoy(selected).reindex(selected.index)
     months = pd.DatetimeIndex(selected.index).to_period("M")
+    yoy = calculate_calendar_yoy(selected)
+    yoy.index = yoy.index.to_period("M")
+    yoy = yoy.reindex(months)
+    yoy.index = selected.index
     return yoy.loc[months >= months.max() - 36]
+
+
+def calendar_yoy_download(
+    values: pd.DataFrame, labels: Mapping[str, str],
+) -> pd.DataFrame:
+    """导出图中的同比、原始存量和上年同期基数，保留派生合计的分项。"""
+    display = display_calendar_yoy(values[list(labels)]).rename(columns=labels)
+    prior = values.copy()
+    prior.index = pd.DatetimeIndex(prior.index).to_period("M") + 12
+    prior = prior.reindex(pd.DatetimeIndex(display.index).to_period("M"))
+    prior.index = display.index
+    return pd.concat(
+        [display,
+         values.reindex(display.index).add_suffix("（原始存量，百万迪拉姆）"),
+         prior.add_suffix("（上年同期存量，百万迪拉姆）")],
+        axis=1,
+    )
 
 
 def latest_complete_month(values: pd.DataFrame) -> pd.Timestamp:
@@ -102,6 +123,7 @@ __all__ = [
     "GRE_DEPOSITS",
     "GovernmentFinanceData",
     "calculate_calendar_yoy",
+    "calendar_yoy_download",
     "display_calendar_yoy",
     "latest_complete_month",
     "load_government_finance_data",

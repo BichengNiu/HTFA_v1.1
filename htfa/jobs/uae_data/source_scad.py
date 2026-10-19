@@ -315,14 +315,9 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     if not rows:
         raise ValueError("SCAD 官网未提供可解析的 XLSX 数据")
 
-    con.execute("DELETE FROM scad_monthly")
-    if rows:
-        con.executemany(
-            "INSERT INTO scad_monthly (period, indicator, value, source_file) "
-            "VALUES (?, ?, ?, ?)",
-            [(row["period"], row["indicator"], row["value"], row["source_file"]) for row in rows],
-        )
-    db.upsert_dictionary_rows(con, _dictionary_rows())
+    with db.transaction(con):
+        db.replace(con, "scad_monthly", rows)
+        db.upsert_dictionary_rows(con, _dictionary_rows())
 
     periods = sorted({row["period"] for row in rows})
     indicators = sorted({row["indicator"] for row in rows})

@@ -26,7 +26,6 @@ from htfa.data.economic_workbook.shared.target_reader import parse_target_sheet
 from htfa.data.economic_workbook import SheetSeriesMetadata
 from htfa.monitoring.uae.periods import (
     anchor_last_month as _anchor_last_month,
-    latest_complete_month as _latest_complete_month,
 )
 
 PORTWATCH_SHEET = "月度_PortWatch"
@@ -158,15 +157,6 @@ def load_transport_data(
     )
 
 
-def latest_complete_month(values: pd.DataFrame) -> pd.Timestamp:
-    """返回输入月度指标均有效的最新月份。"""
-
-    return _latest_complete_month(
-        values,
-        empty_message="交通物流月度指标没有共同完整月份",
-    )
-
-
 def anchor_last_month(
     values: pd.DataFrame,
     *,
@@ -213,6 +203,5 @@ __all__ = [
     "US_UAE_AIR_FREIGHT",
     "US_UAE_AIR_PASSENGERS",
     "anchor_last_month",
-    "latest_complete_month",
     "load_transport_data",
 ]

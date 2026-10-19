@@ -91,7 +91,7 @@ SOURCE_DISPLAY_NAMES = {
     "MEsteel（CFR/CPT UAE）": "MEsteel 钢材数据（CFR/CPT 阿联酋）",
     "IMF PortWatch (HDX mirror)": "国际货币基金组织港口监测（HDX 镜像）",
     "Emirates Post (bayanat.ae)": "阿联酋邮政（bayanat.ae）",
-    "SCAD": "沙迦统计与社区发展局",
+    "SCAD": "阿布扎比统计中心",
     "FCSC UAE.Stat SDMX": "阿联酋联邦竞争力与统计中心",
     "FCSC UAE.Stat Quarterly National Accounts": "阿联酋联邦竞争力与统计中心",
     "TDRA Open Data": "电信和数字政府监管局开放数据",

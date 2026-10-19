@@ -72,6 +72,19 @@ def test_rates_loader_resamples_daily_to_monthly_mean() -> None:
     assert data.values.loc["2026-07-31", US_OVERNIGHT_DISPLAY] == pytest.approx(3.25)
 
 
+def test_same_publication_advances_complete_month_when_calendar_changes():
+    workbook = load_workbook(BytesIO(_workbook_bytes()))
+    workbook["日度_Wind"].append([date(2026, 8, 31), 7.0, 6.0, 4.5])
+    payload = BytesIO()
+    workbook.save(payload)
+    workbook.close()
+    source = report_source(payload.getvalue())
+    august = load_rates_data(source, today=pd.Timestamp("2026-08-30"))
+    september = load_rates_data(source, today=pd.Timestamp("2026-09-01"))
+    assert august.values.index.max() == pd.Timestamp("2026-07-31")
+    assert september.values.index.max() == pd.Timestamp("2026-08-31")
+
+
 def test_rates_loader_uses_common_complete_month_for_each_source() -> None:
     workbook = load_workbook(BytesIO(_workbook_bytes()))
     sheet = workbook["日度_Wind"]

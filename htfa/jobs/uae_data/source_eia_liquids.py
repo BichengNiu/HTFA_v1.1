@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 from calendar import monthrange
 from collections import defaultdict
 from datetime import date, datetime
@@ -12,6 +11,7 @@ from math import isfinite
 from pathlib import Path
 
 from . import db
+from ._official_download import write_json_atomic
 from .paths import DATA_DIR
 from .workbook_sheet_writer import merge_source_columns
 
@@ -82,14 +82,7 @@ def _download() -> None:
         raise RuntimeError(f"EIA 月度产量下载失败（HTTP {response.status_code}）")
     payload = response.json()
     parse_monthly(payload)
-    RAW_PATH.parent.mkdir(parents=True, exist_ok=True)
-    fd, name = tempfile.mkstemp(dir=RAW_PATH.parent, suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
-            json.dump(payload, stream)
-        os.replace(name, RAW_PATH)
-    finally:
-        Path(name).unlink(missing_ok=True)
+    write_json_atomic(RAW_PATH, payload, indent=None)
 
 
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
@@ -100,8 +93,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     quarterly = quarterly_observations(monthly)
     if not quarterly:
         raise ValueError("EIA 没有完整季度")
-    con.begin()
-    try:
+    with db.transaction(con):
         con.execute("CREATE TABLE IF NOT EXISTS eia_liquids_monthly ("
                     "period DATE PRIMARY KEY, production_mbd DOUBLE, data_flag VARCHAR)")
         con.execute("CREATE TABLE IF NOT EXISTS eia_liquids_quarterly ("
@@ -118,10 +110,6 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
             "source": SOURCE_NAME, "type": "指标", "industry": "能源",
             "updated_at": date.today(),
         }])
-        con.commit()
-    except BaseException:
-        con.rollback()
-        raise
     return {"status": "ok", "rows": len(monthly) + len(quarterly),
             "note": f"EIA 石油及其他液体产量，最新完整季度 {quarterly[-1][0]}"}
 

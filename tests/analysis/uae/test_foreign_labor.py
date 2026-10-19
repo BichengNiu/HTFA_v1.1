@@ -13,7 +13,7 @@ from htfa.monitoring.uae.foreign_labor import (
     NEPAL_APPROVALS,
     NEPAL_LABEL,
     build_foreign_labor_figure,
-    latest_common_month,
+    display_foreign_labor_values,
     load_foreign_labor_data,
 )
 from htfa.ui_shared.chart_legend import place_chart_legend_at_bottom
@@ -92,7 +92,7 @@ def test_loader_reads_the_two_requested_monthly_labour_series() -> None:
 def test_chart_uses_the_latest_common_month_and_two_requested_lines() -> None:
     data = load_foreign_labor_data(report_source(_workbook_bytes()))
 
-    assert latest_common_month(data.values) == pd.Period("2026-07", freq="M")
+    assert display_foreign_labor_values(data.values).index[-1] == pd.Timestamp("2026-07-31")
     figure = build_foreign_labor_figure(
         data.values,
         title="尼泊尔批准（含再入境）与孟加拉出境许可",

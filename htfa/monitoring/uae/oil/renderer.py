@@ -34,8 +34,10 @@ from htfa.monitoring.uae.oil.data import (
     load_oil_market_data,
 )
 from htfa.monitoring.uae.oil.revenue import (
+    DAYS_COLUMN,
     PRICE_BENCHMARK_COLUMN,
     PRICE_COLUMN,
+    PRODUCTION_COLUMN,
     REVENUE_PRICE_BENCHMARK,
     REVENUE_COLUMN,
     YOY_COLUMN,
@@ -355,7 +357,9 @@ def _render_charts(
     price_download = revenue_window[[PRICE_COLUMN]].rename(
         columns={PRICE_COLUMN: REVENUE_PRICE_LABEL}
     ).join(dubai_window, how="outer").sort_index()
-    revenue_download = revenue_window[[REVENUE_COLUMN]]
+    revenue_download = revenue_window[
+        [REVENUE_COLUMN, PRICE_COLUMN, PRODUCTION_COLUMN, DAYS_COLUMN, PRICE_BENCHMARK_COLUMN]
+    ].rename(columns={REVENUE_COLUMN: REVENUE_LABEL, PRICE_COLUMN: REVENUE_PRICE_LABEL})
 
     first_row = st_obj.columns(2, gap="small")
     second_row = st_obj.columns(2, gap="small")

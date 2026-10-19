@@ -21,6 +21,8 @@ is*Estimated 一致的记录；金额取 primaryValue USD。
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import json
 import subprocess
 import sys
@@ -256,15 +258,10 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         for (period, code), rec in sorted(collected.items())
     ]
 
-    con.begin()
-    try:
+    with db.transaction(con):
         db.ensure(con, TABLE, _TABLE_DDL)
         db.replace(con, TABLE, rows)
         db.upsert_dictionary_rows(con, _dictionary_rows())
-        con.commit()
-    except Exception:
-        con.rollback()
-        raise
 
     periods = sorted({row["period"] for row in rows})
     source_counts: dict[str, int] = {}
@@ -318,15 +315,7 @@ def merge(workbook_path: Path) -> dict:
         raise ValueError("无有效整车台数观测，无法合并")
 
     observations = [
-        type(
-            "Observation",
-            (),
-            {
-                "period": period,
-                "values": tuple(item),
-                "source_file": SOURCE_NAME,
-            },
-        )()
+        SimpleNamespace(period=period, values=tuple(item))
         for period, item in sorted(by_period.items())
     ]
 

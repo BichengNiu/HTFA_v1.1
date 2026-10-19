@@ -121,7 +121,7 @@ def make_request(url, headers=None):
 
 def raise_if_sso_url(response):
     """最终 URL 被 SSO 拦截时抛出 AuthRequiredError。"""
-    final = getattr(response, "url", "") or response.geturl()
+    final = response.geturl()
     if "smartsso.dubai.gov.ae" in final or "/isam/sps/" in final:
         raise AuthRequiredError(
             "请求被重定向到迪拜政府统一登录（smartsso.dubai.gov.ae，需要登录）。"

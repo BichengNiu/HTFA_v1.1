@@ -16,8 +16,7 @@ from htfa.monitoring.uae.foreign_labor import (
     NEPAL_LABEL,
     ForeignLaborData,
     build_foreign_labor_figure,
-    common_observations,
-    latest_common_month as latest_foreign_labor_month,
+    display_foreign_labor_values,
     load_foreign_labor_data,
 )
 from htfa.monitoring.uae.government_finance.charts import (
@@ -25,6 +24,8 @@ from htfa.monitoring.uae.government_finance.charts import (
     build_government_finance_yoy_figure,
 )
 from htfa.monitoring.uae.government_finance.credit import (
+    FOREIGN_SERIES,
+    PRIVATE_CREDIT_SERIES,
     BUSINESS_INDUSTRIAL_DISPLAY,
     CbuaeSeriesData,
     FOREIGN_CURRENCIES_DISPLAY,
@@ -41,7 +42,7 @@ from htfa.monitoring.uae.government_finance.data import (
     GOVERNMENT_CREDIT,
     GRE_CREDIT,
     GovernmentFinanceData,
-    display_calendar_yoy,
+    calendar_yoy_download,
     latest_complete_month,
     load_government_finance_data,
 )
@@ -69,6 +70,7 @@ from htfa.monitoring.uae.government_finance.payments import (
     build_cheques_figure,
     build_customer_transfers_figure,
     cumulative_to_monthly,
+    payment_display_values,
     load_payment_data,
 )
 from htfa.monitoring.uae.government_finance.rates import (
@@ -145,11 +147,6 @@ def _load_foreign_labor_cached(
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
-def _load_rates_cached(content: PublishedUAEData) -> RatesData:
-    return load_rates_data(content)
-
-
-@st.cache_data(show_spinner=False, max_entries=4)
 def _load_foreign_inflow_cached(content: PublishedUAEData) -> CbuaeSeriesData:
     return load_foreign_inflow_data(content)
 
@@ -203,7 +200,7 @@ def _render_finance_metrics(
     """财政金融指标卡：覆盖四类图表序列，主值为绝对量并显示环比和同比。"""
 
     try:
-        rates = _load_rates_cached(content)
+        rates = load_rates_data(content)
         rate_cards = []
         for label, column in (
             ("阿联酋隔夜拆借利率", EIBOR_OVERNIGHT_DISPLAY),
@@ -447,9 +444,9 @@ def _render_charts(
 ) -> None:
     source_text = source_text_from_metadata(data.metadata)
     title = "政府贷款与政府控股企业贷款同比"
-    chart_frame = display_calendar_yoy(
-        data.values[[GOVERNMENT_CREDIT, GRE_CREDIT]]
-    ).rename(columns=dict(YOY_SERIES))
+    chart_frame = calendar_yoy_download(
+        data.values[[GOVERNMENT_CREDIT, GRE_CREDIT]], dict(YOY_SERIES),
+    )
     _render_figure_with_download(
         st_obj,
         build_government_finance_yoy_figure(
@@ -505,7 +502,9 @@ def _render_foreign_inflow_chart(
         title=title,
         source_text=source_text,
     )
-    chart_frame = display_calendar_yoy(data.values).add_suffix("同比")
+    chart_frame = calendar_yoy_download(
+        data.values, {name.removesuffix("同比"): name for name in FOREIGN_SERIES},
+    )
     _render_figure_with_download(
         st_obj,
         figure,
@@ -522,7 +521,9 @@ def _render_private_credit_chart(
 ) -> None:
     source_text = source_text_from_metadata(data.metadata)
     title = "企业及居民信贷同比"
-    chart_frame = display_calendar_yoy(data.values).add_suffix("同比")
+    chart_frame = calendar_yoy_download(
+        data.values, {name.removesuffix("同比"): name for name in PRIVATE_CREDIT_SERIES},
+    )
     _render_figure_with_download(
         st_obj,
         build_private_credit_yoy_figure(
@@ -570,18 +571,13 @@ def _render_foreign_labor_chart(
     st_obj: Any,
     data: ForeignLaborData,
 ) -> None:
-    last_month = latest_foreign_labor_month(data.values)
-    display_values = within_month_window(
-        common_observations(data.values),
-        first_month=last_month - 36,
-        last_month=last_month,
-    )
+    display_values = display_foreign_labor_values(data.values)
     source_text = source_text_from_metadata(data.metadata, separator="；")
     title = "尼泊尔和孟加拉国入境阿联酋劳工人数"
     _render_figure_with_download(
         st_obj,
         build_foreign_labor_figure(
-            display_values,
+            data.values,
             title=title,
             source_text=source_text,
             units={
@@ -646,16 +642,8 @@ def _render_customer_transfers_chart(
     """渲染 FTS 客户转账当月值双轴图及其下载。"""
 
     last_month = latest_date.to_period("M")
-    monthly_values = cumulative_to_monthly(data.values)
-    display_values = within_month_window(
-        monthly_values[
-            [
-                CUSTOMER_TRANSFERS_NUMBER_DISPLAY,
-                CUSTOMER_TRANSFERS_AMOUNT_DISPLAY,
-            ]
-        ],
-        first_month=last_month - 36,
-        last_month=last_month,
+    display_values = payment_display_values(
+        data.values, series=(CUSTOMER_TRANSFERS_NUMBER_DISPLAY, CUSTOMER_TRANSFERS_AMOUNT_DISPLAY), last_month=last_month,
     )
     source_text = source_text_from_metadata(data.metadata)
     title = "客户资金转账（FTS）"
@@ -690,11 +678,8 @@ def _render_cheques_chart(
     """渲染支票清算当月值双轴图及其下载。"""
 
     last_month = latest_date.to_period("M")
-    monthly_values = cumulative_to_monthly(data.values)
-    display_values = within_month_window(
-        monthly_values[[CHEQUES_NUMBER_DISPLAY, CHEQUES_AMOUNT_DISPLAY]],
-        first_month=last_month - 36,
-        last_month=last_month,
+    display_values = payment_display_values(
+        data.values, series=(CHEQUES_NUMBER_DISPLAY, CHEQUES_AMOUNT_DISPLAY), last_month=last_month,
     )
     source_text = source_text_from_metadata(data.metadata)
     title = "支票清算"
@@ -835,7 +820,7 @@ def _render_quad_finance_charts(
 
     try:
         with st_obj.spinner("正在读取 EIBOR 与联邦基金利率..."):
-            rates = _load_rates_cached(content)
+            rates = load_rates_data(content)
         _render_rates_chart(top_left, rates)
     except (KeyError, TypeError, ValueError) as exc:
         top_left.warning(f"利率图未加载：{exc}")

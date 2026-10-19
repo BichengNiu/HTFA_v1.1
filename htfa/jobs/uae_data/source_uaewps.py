@@ -23,6 +23,8 @@ Economic Review, QER）正文的「Employment and Wages」小节**，每期公�
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import json
 import re
 from datetime import date
@@ -397,14 +399,9 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     if not verified:
         raise ValueError("UAEWPS validation rejected all observations")
     rows = _long_rows(verified, source_files=source_files)
-    con.begin()
-    try:
+    with db.transaction(con):
         db.replace(con, "uaewps_monthly", rows)
         db.upsert_dictionary_rows(con, _dictionary_rows())
-        con.commit()
-    except Exception:
-        con.rollback()
-        raise
 
     periods = sorted({row["period"].strftime("%Y-%m") for row in rows})
     note = (
@@ -420,7 +417,7 @@ def merge(workbook_path: Path) -> dict:
     """把 uaewps_monthly 写回 阿联酋.xlsx 的 季度_UAEWPS sheet。
 
     每次调用重建该 sheet；数据来自库中长表，按 UAEWPS_INDICATORS 顺序还原宽表
-    记录，最新在前；缺失值留空单元格。历史遗留的「月度_UAEWPS」sheet 一并删除。
+    记录，最新在前；缺失值留空单元格。
     """
 
     if not workbook_path.is_file():
@@ -432,35 +429,25 @@ def merge(workbook_path: Path) -> dict:
     con = db.connect(read_only=True)
     try:
         db_rows = con.execute(
-            "SELECT period, indicator, value, source_file, note "
+            "SELECT period, indicator, value "
             "FROM uaewps_monthly ORDER BY period"
         ).fetchall()
     finally:
         con.close()
 
     by_period: dict[str, dict] = {}
-    for period, indicator, value, source_file, note in db_rows:
+    for period, indicator, value in db_rows:
         key = period.strftime("%Y-%m")
         item = by_period.setdefault(
             key,
-            {"values": [None] * len(UAEWPS_INDICATORS), "note": note},
+            {"values": [None] * len(UAEWPS_INDICATORS)},
         )
         item["values"][INDICATOR_ORDER[indicator]] = value
-        if source_file and not item.get("source_file"):
-            item["source_file"] = source_file
     if not by_period:
         raise ValueError("uaewps_monthly is empty; nothing to merge")
 
     observations = [
-        type(
-            "Observation",
-            (),
-            {
-                "period": period,
-                "values": tuple(item["values"]),
-                "source_file": item.get("source_file", ""),
-            },
-        )()
+        SimpleNamespace(period=period, values=tuple(item['values']))
         for period, item in sorted(by_period.items())
     ]
 

@@ -24,7 +24,7 @@ try {
             throw "Missing sheet writer option: $name"
         }
     }
-    if ($payload.period_format -notin @("month", "day", "auto")) {
+    if ($payload.period_format -notin @("month", "day")) {
         throw "Unsupported period format: $($payload.period_format)"
     }
     $numberFormat = [string]$payload.number_format
@@ -91,10 +91,7 @@ try {
         )
     }
 
-    $isDaily = ($payload.period_format -eq "day" -or (
-        $payload.period_format -eq "auto" -and $records.Count -gt 0 -and
-        ([string]$records[0].period).Length -eq 10
-    ))
+    $isDaily = $payload.period_format -eq "day"
     for ($index = 0; $index -lt $records.Count; $index++) {
         $record = $records[$index]
         $periodText = [string]$record.period

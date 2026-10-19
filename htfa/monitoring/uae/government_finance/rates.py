@@ -63,6 +63,7 @@ class RatesData:
 
 def load_rates_data(
     source: PublishedUAEData,
+    *, today: pd.Timestamp | None = None,
 ) -> RatesData:
     """读取三条官方利率，聚合为月度均值并统一末期。"""
 
@@ -83,7 +84,7 @@ def load_rates_data(
             raise ValueError(f"{label}须使用{expected_source}数据，请更新数据库报告")
     monthly = pd.DataFrame(
         {
-            label: through_last_complete_month(frame[label]).resample("ME").mean()
+            label: through_last_complete_month(frame[label], today=today).resample("ME").mean()
             for label, _ in RATES_INDICATORS
         }
     )

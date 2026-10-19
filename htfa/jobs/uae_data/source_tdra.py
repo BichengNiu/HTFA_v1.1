@@ -16,6 +16,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import html
 import re
 from datetime import date, datetime
@@ -321,7 +323,7 @@ def merge(workbook_path: Path) -> dict:
     con = db.connect(read_only=True)
     try:
         db_rows = con.execute(
-            "SELECT period, indicator, value, source_file "
+            "SELECT period, indicator, value "
             "FROM tdra_telecom_monthly ORDER BY period"
         ).fetchall()
     finally:
@@ -329,16 +331,12 @@ def merge(workbook_path: Path) -> dict:
 
     INDICATOR_ORDER = {indicator: index for index, (_, (_, indicator, _, _)) in enumerate(ITEMS.items())}
     by_period: dict[str, dict] = {}
-    for period, indicator, value, source_file in db_rows:
+    for period, indicator, value in db_rows:
         key = period.strftime("%Y-%m")
-        item = by_period.setdefault(key, {"values": [None] * len(ITEMS), "source_file": source_file})
+        item = by_period.setdefault(key, {"values": [None] * len(ITEMS)})
         item["values"][INDICATOR_ORDER[indicator]] = value
-    class _Obs:
-        def __init__(self, period, values):
-            self.period = period
-            self.values = tuple(values)
     observations = [
-        _Obs(period=period, values=item["values"])
+        SimpleNamespace(period=period, values=tuple(item["values"]))
         for period, item in sorted(by_period.items())
     ]
     if not observations:

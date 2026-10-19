@@ -5,12 +5,71 @@
 """
 
 from datetime import date, timedelta
+import csv
+import gzip
+import json
 import math
 
 import duckdb
 import pytest
 
 from htfa.jobs.uae_data import source_dld as dld  # noqa: E402
+
+
+def _write_bulk_archive(path, columns, rows):
+    with gzip.open(path, "wt", encoding="utf-8-sig", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(columns)
+        writer.writerows(rows)
+
+
+def test_download_only_fetches_consumed_transactions_and_preserves_raw_rows(
+    tmp_path, monkeypatch,
+):
+    columns = ["transaction_id", "instance_date", "load_timestamp"]
+    rows = [["1", "1899-01-01", "2026-09-01"],
+            ["2", "not a date", "2026-09-02"],
+            ["3", "2026-08-31", "2026-09-03"]]
+    first, second = tmp_path / "first.csv.gz", tmp_path / "second.csv.gz"
+    _write_bulk_archive(first, columns, rows[:2])
+    _write_bulk_archive(second, columns, rows[2:])
+    # Existing local archives are user assets, even when no longer refreshed.
+    legacy = tmp_path / "DLD_Land_Registry_ALL.csv"
+    legacy.write_text("keep existing raw data", encoding="utf-8")
+    requested = []
+
+    def resolve(dataset_id, page):
+        requested.append(dataset_id)
+        return [first, second]
+
+    monkeypatch.setattr(dld, "RAW_DLD_DIR", tmp_path)
+    monkeypatch.setattr(dld, "_get_bulk_csv_files", resolve)
+    monkeypatch.setattr(dld, "_fetch_and_stage", lambda files, folder: (files, []))
+    dld._download_all()
+
+    assert requested == [dld.TRANSACTIONS_DATASET_ID]
+    with (tmp_path / "DLD_Transactions_ALL.csv").open(encoding="utf-8-sig", newline="") as stream:
+        actual = csv.reader(stream)
+        assert list(actual) == [columns, *rows]
+    manifest = json.loads((tmp_path / "DLD_download_manifest.json").read_text(encoding="utf-8"))
+    assert set(manifest["output_files"]) == {"transactions"}
+    assert manifest["transactions_rows"] == 3
+    assert manifest["dates_before_1900_rows"] == 1
+    assert manifest["unparseable_date_rows"] == 1
+    assert manifest["from_date_since_1900"] == "2026-08-31"
+    assert legacy.read_text(encoding="utf-8") == "keep existing raw data"
+
+
+def test_bulk_schema_failure_preserves_previous_complete_transaction_file(tmp_path):
+    first, second = tmp_path / "first.csv.gz", tmp_path / "second.csv.gz"
+    _write_bulk_archive(first, ["transaction_id"], [["1"]])
+    _write_bulk_archive(second, ["different_schema"], [["2"]])
+    target = tmp_path / "transactions.csv"
+    target.write_bytes(b"previous complete data")
+    with pytest.raises(RuntimeError, match="schema mismatch"):
+        dld._merge_transactions([first, second], target)
+    assert target.read_bytes() == b"previous complete data"
+    assert not target.with_suffix(".csv.part").exists()
 
 
 def _week(offset: int) -> date:

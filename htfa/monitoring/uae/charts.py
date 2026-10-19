@@ -39,25 +39,24 @@ COLORS = (
 )
 
 
+_MACRO_HISTORY_POINTS = 60
+
+
 def build_growth_and_sector_pull_figure(
     frame: pd.DataFrame,
     *,
     title: str,
-    pull_columns: tuple[str, str] = (
-        "非石油经济部门拉动",
-        "石油经济部门拉动",
-    ),
-    max_points: int = 60,
     source_text: str = "",
 ) -> MatplotlibFigure:
     """Ts 时间序列模板：左轴正负堆叠部门拉动，右轴石油产量同比。"""
 
+    pull_columns = ("非石油经济部门拉动", "石油经济部门拉动")
     production_column = "石油及其他液体产量季度同比"
     plotted = [*pull_columns, production_column]
     missing = [column for column in plotted if column not in frame]
     if missing:
         raise ValueError(f"缺少部门拉动序列: {', '.join(missing)}")
-    clean = frame[plotted].dropna(how="all").sort_index().tail(max_points).copy()
+    clean = frame[plotted].dropna(how="all").sort_index().tail(_MACRO_HISTORY_POINTS).copy()
     if clean.empty:
         raise ValueError(f"{title}没有可绘制的有效数据")
     if isinstance(clean.index, pd.PeriodIndex):
@@ -96,38 +95,29 @@ def build_price_volume_figure(
     frame: pd.DataFrame,
     *,
     title: str,
-    real_column: str | None = None,
-    deflator_column: str | None = None,
-    max_points: int = 60,
     source_text: str = "",
 ) -> MatplotlibFigure:
     """使用高频报告的 Ts 模板，分别保留实际增速与平减指数的末期。"""
 
-    if real_column is None:
-        real_candidates = [
-            column
-            for column in frame.columns
-            if "当季同比" in str(column) and "平减指数" not in str(column)
-        ]
-        if len(real_candidates) != 1:
-            raise ValueError("无法唯一识别实际GDP同比序列")
-        real_column = real_candidates[0]
-    if deflator_column is None:
-        deflator_candidates = [
-            column
-            for column in frame.columns
-            if "平减指数同比" in str(column)
-        ]
-        if len(deflator_candidates) != 1:
-            raise ValueError("无法唯一识别GDP平减指数同比序列")
-        deflator_column = deflator_candidates[0]
+    real_candidates = [
+        column
+        for column in frame.columns
+        if "当季同比" in str(column) and "平减指数" not in str(column)
+    ]
+    if len(real_candidates) != 1:
+        raise ValueError("无法唯一识别实际GDP同比序列")
+    real_column = real_candidates[0]
+    deflator_candidates = [
+        column
+        for column in frame.columns
+        if "平减指数同比" in str(column)
+    ]
+    if len(deflator_candidates) != 1:
+        raise ValueError("无法唯一识别GDP平减指数同比序列")
+    deflator_column = deflator_candidates[0]
 
     required = (real_column, deflator_column)
-    missing = [column for column in required if column not in frame.columns]
-    if missing:
-        raise ValueError(f"缺少量价关系序列: {', '.join(missing)}")
-
-    clean = frame[list(required)].dropna(how="all").tail(max_points).copy()
+    clean = frame[list(required)].dropna(how="all").tail(_MACRO_HISTORY_POINTS).copy()
     if clean.empty:
         raise ValueError(f"{title}没有可绘制的有效数据")
     if isinstance(clean.index, pd.PeriodIndex):
@@ -1099,18 +1089,15 @@ def build_nonoil_industry_pull_figure(
     frame: pd.DataFrame,
     *,
     title: str,
-    line_column: str = "非油GDP同比",
-    other_column: str = "其他行业",
-    max_points: int = 60,
     source_text: str = "",
 ) -> MatplotlibFigure:
     """用 Ts 模板展示非油实际 GDP 行业拉动堆叠柱。"""
-    if other_column not in frame:
+    if "其他行业" not in frame:
         raise ValueError("缺少其他行业拉动序列")
-    pull_columns = [column for column in frame if column != line_column]
+    pull_columns = [column for column in frame if column != "非油GDP同比"]
     if len(pull_columns) < 2:
         raise ValueError("至少需要一个非油行业拉动序列")
-    clean = frame[pull_columns].dropna(how="all").sort_index().tail(max_points).copy()
+    clean = frame[pull_columns].dropna(how="all").sort_index().tail(_MACRO_HISTORY_POINTS).copy()
     if clean.empty:
         raise ValueError(f"{title}没有可绘制的有效数据")
     if isinstance(clean.index, pd.PeriodIndex):
@@ -1132,7 +1119,7 @@ def build_nonoil_industry_pull_figure(
         units={name: "百分点" for name in clean},
         bar_series=pull_columns,
         bar_stacked=True,
-        colors=[COLORS[i % len(COLORS)] if name != other_column else "#B8BDC6"
+        colors=[COLORS[i % len(COLORS)] if name != "其他行业" else "#B8BDC6"
                 for i, name in enumerate(clean)],
         vlines=WAR_START_DATE,
         show_legend=True,
