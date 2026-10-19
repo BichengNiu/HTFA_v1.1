@@ -11,7 +11,6 @@ from Ts.TsPlots import plot_series
 
 from htfa.monitoring.uae.database import PublishedUAEData, require_published_source
 from htfa.data.economic_workbook.shared.target_reader import parse_target_sheet
-from htfa.data.economic_workbook.tables import TableWorkbook
 
 from htfa.monitoring.uae.periods import within_month_window
 from htfa.monitoring.uae.plot_helpers import (
@@ -55,25 +54,17 @@ def load_foreign_labor_data(
 
     source = require_published_source(source)
     with source.open() as tables:
-        values, metadata = _parse_foreign_labor_sheet(tables)
+        values, metadata = parse_target_sheet(
+            tables,
+            sheet_name=FOREIGN_LABOR_SHEET,
+            targets=tuple((name, name) for name, _ in SERIES_SPECS),
+            allowed_frequencies={"月"},
+            expected_unit="人",
+        )
 
     return ForeignLaborData(
         values=values,
         metadata=metadata,
-    )
-
-
-def _parse_foreign_labor_sheet(
-    tables: TableWorkbook,
-) -> tuple[pd.DataFrame, dict[str, SheetSeriesMetadata]]:
-    """读取写表器生成的标准元数据布局。"""
-
-    return parse_target_sheet(
-        tables,
-        sheet_name=FOREIGN_LABOR_SHEET,
-        targets=tuple((name, name) for name in (NEPAL_APPROVALS, BANGLADESH_CLEARANCES)),
-        allowed_frequencies={"月"},
-        expected_unit="人",
     )
 
 

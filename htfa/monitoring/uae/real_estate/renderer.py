@@ -56,13 +56,6 @@ def _load_real_estate_cached(
     return load_real_estate_data(content)
 
 
-def _market_columns(market: str) -> tuple[str, str]:
-    try:
-        return SALES_CONFIG[market]
-    except KeyError as exc:
-        raise ValueError(f"未知房地产口径：{market}") from exc
-
-
 def _format_real_estate_value(
     value: float | None,
     *,
@@ -116,16 +109,12 @@ def _render_sales_chart(
     market: str,
 ) -> None:
     title = DEFAULT_TITLES[market]
-    count_column, amount_column = _market_columns(market)
-    chart_values = data.values
-    chart_metadata = data.metadata
-    if count_column not in chart_values.columns:
-        if data.raw_values is None:
-            raise ValueError(f"{market}明细数据不可用")
-        chart_values = data.raw_values
-        chart_metadata = data.raw_metadata or {}
-    count_metadata = chart_metadata.get(count_column)
-    source_text = source_text_from_metadata(chart_metadata)
+    count_column, amount_column = SALES_CONFIG[market]
+    chart_values = data.raw_values
+    count_metadata = data.raw_metadata[count_column]
+    source_text = source_text_from_metadata(
+        {column: data.raw_metadata[column] for column in (count_column, amount_column)}
+    )
     render_pyplot_figure(
         st_obj,
         build_sales_figure(
@@ -135,7 +124,7 @@ def _render_sales_chart(
             source_text=source_text,
             last_month=last_month,
             units={
-                COUNT_LABEL: count_metadata.unit if count_metadata else "笔",
+                COUNT_LABEL: count_metadata.unit,
                 AMOUNT_LABEL: "亿迪拉姆",
             },
         ),

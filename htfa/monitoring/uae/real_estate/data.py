@@ -97,8 +97,8 @@ class RealEstateData:
 
     values: pd.DataFrame
     metadata: dict[str, SheetSeriesMetadata]
-    raw_values: pd.DataFrame | None = None
-    raw_metadata: dict[str, SheetSeriesMetadata] | None = None
+    raw_values: pd.DataFrame
+    raw_metadata: dict[str, SheetSeriesMetadata]
 
 
 def load_real_estate_data(

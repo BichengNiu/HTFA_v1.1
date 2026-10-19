@@ -78,7 +78,7 @@ def _smooth_series(series: pd.Series) -> pd.Series:
     window = min(SMOOTH_WINDOW, len(values))
     if window % 2 == 0:
         window -= 1
-    if window < 3 or len(values) < window:
+    if window < 3:
         return series
     return pd.Series(
         savgol_filter(values.to_numpy(), window, SMOOTH_POLYORDER),

@@ -225,7 +225,6 @@ def test_build_sales_figure_renders_each_property_segment() -> None:
         "期房商业": "迪拜商业地产期房",
     }
 
-    assert data.raw_values is not None
     for market, (count_col, amount_col) in PROPERTY_CONFIG.items():
         figure = build_sales_figure(
             data.raw_values,
@@ -360,8 +359,12 @@ def test_section_loader_failure_shows_error_and_returns_error_status(
     assert st_obj.pyplot.call_count == 0
 
 
-def test_cell_failure_warns_cell_and_keeps_other_charts(monkeypatch) -> None:
+@pytest.mark.parametrize("missing_column", PROPERTY_CONFIG["期房商业"])
+def test_missing_metadata_warns_cell_and_keeps_other_charts(
+    monkeypatch, missing_column,
+) -> None:
     data = load_real_estate_data(report_source(_workbook_bytes()))
+    del data.raw_metadata[missing_column]
     monkeypatch.setattr(
         renderer,
         "_load_real_estate_cached",
@@ -377,15 +380,6 @@ def test_cell_failure_warns_cell_and_keeps_other_charts(monkeypatch) -> None:
         return metric_columns if n == 4 else chart_rows.pop(0)
 
     st_obj.columns.side_effect = _columns
-
-    original_render = renderer._render_sales_chart
-
-    def _fail_offplan(st_obj, data, last_month, market):
-        if market == "期房商业":
-            raise KeyError("期房金额列缺失")
-        return original_render(st_obj, data, last_month, market=market)
-
-    monkeypatch.setattr(renderer, "_render_sales_chart", _fail_offplan)
 
     result = renderer.render_real_estate_section(
         st_obj,

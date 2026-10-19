@@ -79,11 +79,8 @@ def _render_chart(
         dict.fromkeys(
             data.metadata[column].source
             for column in download_columns
-            if column in data.metadata
         )
     )
-    if not source_text:
-        source_text = "工作簿指标"
     figure_kwargs: dict[str, Any] = {
         "source_text": source_text,
         "last_month": last_month,

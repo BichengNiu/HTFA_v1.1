@@ -639,8 +639,9 @@ def test_section_loader_failure_shows_error_and_returns_error_status(
     assert st_obj.pyplot.call_count == 0
 
 
-def test_cell_failure_warns_cell_and_keeps_other_chart(monkeypatch) -> None:
+def test_missing_metadata_warns_cell_and_keeps_other_chart(monkeypatch) -> None:
     data = load_transport_data(report_source(_workbook_bytes()))
+    del data.metadata[UAE_PORT_IMPORT_TOTAL]
     monkeypatch.setattr(
         renderer,
         "load_transport_data",
@@ -654,31 +655,6 @@ def test_cell_failure_warns_cell_and_keeps_other_chart(monkeypatch) -> None:
         return metric_columns if n == 4 else (left, right)
 
     st_obj.columns.side_effect = _columns
-
-    original_render = renderer._render_chart
-
-    def _fail_left(
-        st_obj,
-        data,
-        last_month,
-        title,
-        figure_builder,
-        download_columns,
-        **kwargs,
-    ):
-        if title == UAE_PORT_VOLUME_TITLE:
-            raise KeyError("阿联酋港口货量列缺失")
-        return original_render(
-            st_obj,
-            data,
-            last_month,
-            title=title,
-            figure_builder=figure_builder,
-            download_columns=download_columns,
-            **kwargs,
-        )
-
-    monkeypatch.setattr(renderer, "_render_chart", _fail_left)
 
     result = renderer.render_transport_section(
         st_obj,
