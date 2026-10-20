@@ -72,15 +72,14 @@ def test_transport_charts_render_and_export_with_base_canvas(monkeypatch, dual_a
     from matplotlib.figure import Figure
     from htfa.monitoring.uae.transport import charts
 
-    original = charts.plot_series
     figures = []
 
-    def plot_on_base_canvas(*args, **kwargs):
-        figure = Figure(figsize=kwargs["figsize"])
+    def axis_on_base_canvas():
+        figure = Figure(figsize=(9.4, 6.2))
         figures.append(figure)
-        return original(*args, ax=figure.add_subplot(), **kwargs)
+        return figure.add_subplot()
 
-    monkeypatch.setattr(charts, "plot_series", plot_on_base_canvas)
+    monkeypatch.setattr(charts, "create_report_axis", axis_on_base_canvas)
     values = pd.DataFrame(
         {"passengers": [100, 120, 140], "freight": [80, 100, 120]},
         index=pd.date_range("2026-07-01", periods=3, freq="MS"),

@@ -136,7 +136,7 @@ def test_macro_ts_chart_has_no_x_title_and_keeps_real_growth_in_q2(monkeypatch):
     assert any(text.get_text().strip() == "2026" for text in axis.texts)
     assert "hlines" not in captured
     assert [text.get_text() for text in axis.get_legend().get_texts()] == list(frame.columns)
-    assert captured["figsize"] == (9.4, 6.2)
+    assert tuple(figure.get_size_inches()) == (9.4, 6.2)
     assert captured["units"] == {name: "%" for name in frame}
     plt.close(figure)
 

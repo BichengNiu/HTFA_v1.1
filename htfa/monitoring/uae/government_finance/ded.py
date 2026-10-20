@@ -24,6 +24,7 @@ from htfa.data.economic_workbook.shared.target_reader import parse_target_sheet
 
 from htfa.monitoring.uae.periods import within_month_window
 from htfa.monitoring.uae.plot_helpers import (
+    create_report_axis,
     WAR_START_DATE,
     annotate_war,
     apply_htfa_fonts,
@@ -126,7 +127,7 @@ def build_ded_figure(
         show_legend=True,
         note=source_note(source_text),
         note_loc="left",
-        figsize=(9.4, 6.2),
+        ax=create_report_axis(),
         units=axis_units,
     )
     axis = normalize_ts_axis(returned_axis)

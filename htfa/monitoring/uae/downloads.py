@@ -44,6 +44,7 @@ def render_chart_download(
         mime="text/csv",
         key=key,
         type="primary",
+        on_click="ignore",
     )
 
 

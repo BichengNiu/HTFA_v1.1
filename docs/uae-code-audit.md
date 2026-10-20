@@ -216,3 +216,30 @@ flowchart LR
 - `TopicResult.payload` 属于返回给调用方的主题结果载荷，`AdditivityResult.residual` 属于核算验证结果契约；不因当前页面不直接展示而删除。
 - 所有候选均有上述处置或保留依据；修改后限定模块名引用扫描、字段/参数扫描、34 张基础表的消费检查、重复函数扫描和动态入口核对再次完成，没有未分类候选。
 - 该停止条件针对本次记录的代码与路径。未执行真实联网抓取，离线回归不证明外部接口实时可用，也不宣称所有未来修改都不存在缺陷或优化空间。
+
+## 2026-10-20：线上并发渲染异常修复
+
+线上实际下载 CSV 并切换标签页时曾出现
+`'FigureCanvasBase' object has no attribute 'get_renderer'`。此前单会话
+AppTest 通过不等于多会话清理期间安全，不能据此宣称线上零异常。
+
+最小复现：在真实 UAE 图表首次 Agg 绘制过程中，让另一个线程执行
+Streamlit 的 `_clean_problem_modules()`。它调用 `plt.close("all")`，
+Matplotlib 3.11 随后把 pyplot 注册图形的画布重置为 `FigureCanvasBase`；
+Ts 测量图例尺寸时再访问 `figure.canvas.get_renderer()` 就得到线上同一异常。
+
+Ts 现有 `plot_series(ax=...)` 和调用方独立画布测试已支持正确入口，无需增加
+Ts 参数或异常重试。UAE 的 19 个 Ts 调用点统一传入未注册到 pyplot 的独立
+`Figure` / `FigureCanvasAgg` 坐标轴，沿用 9.4×6.2 英寸画布和原模板。
+CSV 下载使用 Streamlit 既有的 `on_click="ignore"`：直接下载已生成的数据，
+不再因下载一个文件而重跑整份报告、重新绘制所有图表。
+
+验证：
+
+- 新增 4 个真实并发清理场景：GDP 双线、部门双轴、行业堆叠、高频月度图。
+  修复前均稳定触发同一 AttributeError，修复后均可完成布局和 PNG 导出。
+- UAE、共享图例/字体、UI↔Ts 参数契约测试：205 项通过；随后补测下载协议的
+  `ignore_rerun` 标志及相关页面回归，33 项通过，验证下载不重跑报告。
+- Ts `tests` 与 `TsPlots/tests`：544 项通过；Ts 源码及固定版本未修改。
+- 禁止 Excel I/O 的实际 DuckDB 页面渲染：宏观 4 图、行业 4 图、高频扩展
+  32 图正常；36 张时序图输入、4 张完整 Plotly JSON 和 39 份 CSV 与修复前一致。

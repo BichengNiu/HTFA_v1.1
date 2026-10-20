@@ -10,6 +10,7 @@ from matplotlib.figure import Figure as MatplotlibFigure
 from Ts.TsPlots import plot_series
 
 from htfa.monitoring.uae.plot_helpers import (
+    create_report_axis,
     WAR_START_DATE,
     annotate_war,
     apply_htfa_fonts,
@@ -84,7 +85,7 @@ def build_growth_and_sector_pull_figure(
         legend_cols=2,
         note=source_note(source_text) if source_text else None,
         note_loc="left",
-        figsize=(9.4, 6.2),
+        ax=create_report_axis(),
     )
     annotate_war(normalize_ts_axis(returned_axis))
     apply_htfa_fonts(figure)
@@ -141,7 +142,7 @@ def build_price_volume_figure(
         show_legend=True,
         note=source_note(source_text) if source_text else None,
         note_loc="left",
-        figsize=(9.4, 6.2),
+        ax=create_report_axis(),
     )
     annotate_war(normalize_ts_axis(returned_axis))
     apply_htfa_fonts(figure)
@@ -1126,7 +1127,7 @@ def build_nonoil_industry_pull_figure(
         legend_cols=2,
         note=source_note(source_text) if source_text else None,
         note_loc="left",
-        figsize=(9.4, 6.2),
+        ax=create_report_axis(),
     )
     annotate_war(normalize_ts_axis(axis))
     apply_htfa_fonts(figure)

@@ -11,6 +11,7 @@ from htfa.monitoring.uae.database import PublishedUAEData, require_published_sou
 from htfa.data.economic_workbook.shared.target_reader import parse_target_sheet
 
 from htfa.monitoring.uae.plot_helpers import (
+    create_report_axis,
     WAR_START_DATE,
     annotate_war,
     apply_htfa_fonts,
@@ -129,7 +130,7 @@ def build_search_index_figure(
         show_legend=True,
         note=source_note(source_text),
         note_loc="left",
-        figsize=(9.4, 6.2),
+        ax=create_report_axis(),
         units={label: "标准化指数" for _, label in SEARCH_SERIES},
     )
     axis = normalize_ts_axis(returned_axis)

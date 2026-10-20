@@ -27,6 +27,7 @@ from htfa.monitoring.uae.oil.war_pressure import (
     RAW_LABELS,
 )
 from htfa.monitoring.uae.plot_helpers import (
+    create_report_axis,
     WAR_START_DATE,
     annotate_war,
     apply_htfa_fonts,
@@ -174,7 +175,7 @@ def build_war_pressure_raw_figure(
         legend_cols=3,
         note=source_note(source_text),
         note_loc="left",
-        figsize=(9.4, 6.2),
+        ax=create_report_axis(),
         bar_series=list(RAW_LABELS),
     )
     axis = normalize_ts_axis(returned_axis)
@@ -204,7 +205,7 @@ def build_war_pressure_index_figure(
         show_legend=True,
         note=source_note(source_text),
         note_loc="left",
-        figsize=(9.4, 6.2),
+        ax=create_report_axis(),
         units={PRESSURE_LABEL: "指数"},
     )
     axis = normalize_ts_axis(returned_axis)
@@ -251,7 +252,7 @@ def _build_oil_single_series_figure(
         show_legend=True,
         note=source_note(source_text),
         note_loc="left",
-        figsize=(9.4, 6.2),
+        ax=create_report_axis(),
         units=axis_units,
     )
     axis = normalize_ts_axis(returned_axis)
@@ -334,7 +335,7 @@ def build_oil_price_figure(
         show_legend=True,
         note=source_note(source_text),
         note_loc="left",
-        figsize=(9.4, 6.2),
+        ax=create_report_axis(),
         units={
             REVENUE_PRICE_LABEL: "美元/桶",
             DUBAI_PRICE_LABEL: "美元/桶",

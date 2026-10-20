@@ -11,6 +11,7 @@ import re
 import matplotlib
 import pandas as pd
 from matplotlib.axes import Axes
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.dates import date2num
 from matplotlib.figure import Figure
 from matplotlib.transforms import blended_transform_factory
@@ -116,6 +117,13 @@ SOURCE_DISPLAY_NAMES = {
     "UN Comtrade (HS87 镜像为主)": "联合国商品贸易统计数据库（HS87 以镜像为主）",
     "UN Comtrade (HS87 镜像口径)": "联合国商品贸易统计数据库（HS87 镜像口径）",
 }
+
+
+def create_report_axis() -> Axes:
+    """Create an unregistered canvas that another Streamlit run cannot close."""
+    figure = Figure(figsize=(9.4, 6.2))
+    FigureCanvasAgg(figure)
+    return figure.subplots()
 
 
 def normalize_ts_axis(axis: Axes | np.ndarray) -> Axes:

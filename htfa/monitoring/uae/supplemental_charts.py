@@ -5,6 +5,7 @@ from matplotlib.figure import Figure
 from Ts.TsPlots import plot_series
 
 from htfa.monitoring.uae.plot_helpers import (
+    create_report_axis,
     WAR_START_DATE, annotate_war, apply_htfa_fonts, normalize_ts_axis, source_note,
 )
 from htfa.monitoring.uae.supplemental_data import ChartSpec
@@ -20,7 +21,7 @@ def build_supplemental_figure(
         ytitle_position="side", year_ruler=True,
         axis_groups={name: "right" if name in spec.right else "left" for name in frame},
         units=units, vlines=WAR_START_DATE, show_legend=True,
-        note=source_note(source_text), note_loc="left", figsize=(9.4, 6.2),
+        note=source_note(source_text), note_loc="left", ax=create_report_axis(),
     )
     annotate_war(normalize_ts_axis(returned_axis))
     apply_htfa_fonts(figure)
