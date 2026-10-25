@@ -11,25 +11,27 @@ from htfa.monitoring.uae.annual import (
     displayed_annual_values, load_annual_data,
 )
 from tests.analysis.uae._helpers import report_source
+from htfa.monitoring.uae.annual_comparison_contracts import REPORT_UNITS, GDP_SHEET, GDP_COMPARE_COLUMNS, GCC_NAME
 
 
 def annual_source():
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         for sheet, _, _ in ANNUAL_CHARTS:
-            labels = ["资本形成总额（现价）", "资本形成总额（2010年不变价）"] if sheet == "年度_资本形成" else ["甲", "乙"]
+            labels = list(REPORT_UNITS[sheet]) if sheet in REPORT_UNITS else (["资本形成总额（现价）", "资本形成总额（2010年不变价）"] if sheet == "年度_资本形成" else ["甲", "乙"])
+            units = [REPORT_UNITS[sheet][label] for label in labels] if sheet in REPORT_UNITS else ["十亿迪拉姆"] * len(labels)
             pd.DataFrame([
-                [sheet, None, None], ["指标名称", *[sheet + ":" + label for label in labels]],
-                ["频率", "年", "年"], ["单位", "十亿迪拉姆", "十亿迪拉姆"],
-                ["来源", "FCSC", "FCSC"], ["更新时间", "2026-10-25", "2026-10-25"],
-                ["2015-12-31", 1, None], ["2016-12-31", 2, 3],
+                [sheet, *([None] * len(labels))], ["指标名称", *[sheet + ":" + label for label in labels]],
+                ["频率", *(["年"] * len(labels))], ["单位", *units],
+                ["来源", *(["测试官方源"] * len(labels))], ["更新时间", *(["2026-10-25"] * len(labels))],
+                ["2015-12-31", 1, None, *([1] * (len(labels) - 2))], ["2016-12-31", 2, 3, *([2] * (len(labels) - 2))],
             ]).to_excel(writer, sheet_name=sheet, header=False, index=False)
     return report_source(output.getvalue())
 
 
 def test_published_annual_reader_retains_years_and_missing_observations():
     frames = load_annual_data(annual_source())
-    assert len(frames) == 5
+    assert len(frames) == 9
     frame = frames["年度_行业资本形成"]
     assert list(frame.index.year) == [2015, 2016]
     assert list(frame.columns) == ["甲", "乙"]
@@ -46,7 +48,7 @@ def test_top_industries_use_fixed_latest_year_ranking_without_zero_filling():
 
 
 def test_annual_figure_uses_single_axis_and_report_style():
-    frame = next(iter(load_annual_data(annual_source()).values()))
+    frame = load_annual_data(annual_source())["年度_行业资本形成"]
     figure = build_annual_figure(frame, title="年度投资", bars=True)
     try:
         assert len(figure.axes) == 1
@@ -73,8 +75,8 @@ with patch.object(renderer, "published_source", annual_source), patch.object(ren
     assert not app.exception
     assert not app.error
     assert [tab.label for tab in app.tabs] == ["年度数据", "季度数据", "行业分析", "月度数据"]
-    assert len(app.get("image")) == 5
-    assert len(app.get("download_button")) == 5
+    assert len(app.get("image")) == 9
+    assert len(app.get("download_button")) == 9
 
 
 def test_capital_growth_uses_current_prices_and_exact_previous_year():
@@ -113,9 +115,51 @@ def test_capital_download_contains_all_industry_levels_and_growth(monkeypatch):
     host = MagicMock()
     host.columns.return_value = [MagicMock(), MagicMock()]
     annual.render_annual_data(host, frames)
-    total = capture.call_args_list[0].args[1]
+    total = capture.call_args_list[4].args[1]
     assert not any("不变价" in column for column in total)
     assert total.iloc[1, 1] == 100
-    industry = capture.call_args_list[1].args[1]
+    industry = capture.call_args_list[5].args[1]
     assert list(industry.columns) == ["甲", "乙", "甲同比", "乙同比"]
     assert np.isnan(industry.loc[pd.Timestamp("2016-12-31"), "乙同比"])
+
+
+def test_gcc_gdp_and_three_sector_charts_precede_investment(monkeypatch):
+    from unittest.mock import MagicMock
+    from htfa.monitoring.uae import annual
+
+    frames = load_annual_data(annual_source())
+    builder, download = MagicMock(), MagicMock()
+    monkeypatch.setattr(annual, "build_annual_figure", builder)
+    monkeypatch.setattr(annual, "render_pyplot_figure", MagicMock())
+    monkeypatch.setattr(annual, "render_chart_download", download)
+    host = MagicMock()
+    host.columns.return_value = [MagicMock(), MagicMock()]
+    annual.render_annual_data(host, frames)
+    assert ANNUAL_CHARTS[0][0] == GDP_SHEET
+    assert [c[0] for c in ANNUAL_CHARTS[1:4]] == ["年度_第一产业对比", "年度_第二产业对比", "年度_第三产业对比"]
+    gdp = builder.call_args_list[0]
+    assert list(gdp.args[0]) == GDP_COMPARE_COLUMNS
+    assert gdp.kwargs["growth"] is True
+    assert set(gdp.kwargs["units"].values()) == {"十亿美元", "%"}
+    assert len(download.call_args_list[0].args[1].columns) == 14
+    for sector in builder.call_args_list[1:4]:
+        assert list(sector.args[0]) == ["阿联酋", GCC_NAME]
+        assert sector.kwargs["bars"] is True
+        assert sector.kwargs["stacked"] is False
+        assert set(sector.kwargs["units"].values()) == {"%"}
+
+
+def test_sector_comparison_bars_are_adjacent_not_stacked():
+    frame = pd.DataFrame({"阿联酋": [30, 40], GCC_NAME: [20, 25]},
+                         index=pd.to_datetime(["2015-12-31", "2016-12-31"]))
+    figure = build_annual_figure(frame, title="产业占比", bars=True, stacked=False,
+                                 units={name: "%" for name in frame})
+    try:
+        assert len(figure.axes) == 1
+        left = figure.axes[0]
+        assert left.get_ylabel() == "%"
+        uae, gcc = left.containers
+        assert uae.patches[0].get_x() != gcc.patches[0].get_x()
+        assert all(patch.get_y() == 0 for container in (uae, gcc) for patch in container)
+    finally:
+        plt.close(figure)

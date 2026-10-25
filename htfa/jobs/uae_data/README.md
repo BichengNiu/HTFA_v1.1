@@ -15,6 +15,14 @@ runtime\python.exe -m htfa.jobs.uae_data.merge_workbook   # 单独重跑库→�
 
 常用参数：`--source cbuae,gfs`、`--skip-download`（只用 raw 缓存）、`--force`。
 
+`--source wdi_gcc` 从世界银行 WDI（source=2）抓取海合会六国的现价美元 GDP、
+不变价 GDP 增速及农业林渔/工业（含建筑）/服务业增加值占 GDP 比重，保留原始
+国家、指标、年份、缺失值、来源 URL 和修订日期到 `wdi_gcc_annual`。
+报告按年对六国简单平均（含阿联酋），不足六国就留空，不进行变样本平均、加权或插值。
+先入 DuckDB，再写四张 `年度_` 对比表、指标字典及完整发布版本。
+GDP 图以十亿美元为左轴、实际增速百分比为右轴；产业占比为相邻柱形对比。
+图表下载保留六国输入和均值，不把现价增速混作实际增速，也不把三产业占比强制归一为100%。
+
 `--source fcsc_annual` 下载 FCSC 的年度行业资本形成、现价/不变价支出法资本形成、
 外资类型、外资行业和来源国×行业六张官方表。原始观测及维度、单位、来源 URL
 写入 `fcsc_investment_annual`，再经 DuckDB 同步五张 `年度_` 工作表、指标字典及

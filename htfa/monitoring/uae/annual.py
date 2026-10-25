@@ -7,8 +7,13 @@ from htfa.monitoring.uae.database import require_published_source, read_raw_tabl
 from htfa.monitoring.uae.downloads import render_chart_download
 from htfa.monitoring.uae.plot_helpers import create_report_axis, apply_htfa_fonts, source_note
 from htfa.ui_shared.chart_legend import render_pyplot_figure
+from htfa.monitoring.uae.annual_comparison_contracts import (
+    COMPARISON_CHARTS, GDP_SHEET, GDP_COMPARE_COLUMNS, GROWTH_SUFFIX, GCC_NAME,
+    REPORT_UNITS,
+)
 
 ANNUAL_CHARTS = (
+    *COMPARISON_CHARTS,
     ("年度_资本形成", "资本形成总额（现价）及同比", False),
     ("年度_行业资本形成", "行业资本形成总额及同比（现价，末年前五行业）", True),
     ("年度_外资类型", "外国投资分类（历史数据）", False),
@@ -25,11 +30,14 @@ def load_annual_data(source):
             raw = read_raw_table(tables, sheet_name=sheet)
             if set(raw.iloc[2, 1:].dropna()) != {"年"}:
                 raise ValueError(f"{sheet} 频率不是年度")
-            if set(raw.iloc[3, 1:].dropna()) != {"十亿迪拉姆"}:
-                raise ValueError(f"{sheet} 单位不匹配")
+            labels = [str(name).removeprefix(sheet + ":") for name in raw.iloc[1, 1:]]
+            for label, unit in zip(labels, raw.iloc[3, 1:], strict=True):
+                expected = REPORT_UNITS[sheet].get(label) if sheet in REPORT_UNITS else "十亿迪拉姆"
+                if unit != expected:
+                    raise ValueError(f"{sheet} 的 {label} 单位不匹配")
             frame = raw.iloc[6:, 1:].apply(pd.to_numeric, errors="raise")
             frame.index = pd.DatetimeIndex(pd.to_datetime(raw.iloc[6:, 0], errors="raise"))
-            frame.columns = [str(name).removeprefix(sheet + ":") for name in raw.iloc[1, 1:]]
+            frame.columns = labels
             if frame.index.isna().any() or frame.index.duplicated().any():
                 raise ValueError(f"{sheet} 日期异常")
             frame = frame.sort_index().dropna(how="all")
@@ -59,28 +67,33 @@ def capital_formation_values(frame, *, total=False, top_five=False):
     return levels.join(growth)
 
 
-def build_annual_figure(frame, *, title, bars=False, growth=False):
+def build_annual_figure(frame, *, title, bars=False, growth=False, line_columns=None,
+                        units=None, stacked=None, legend_labels=None,
+                        source_text="阿联酋联邦竞争力与统计中心（FCSC）"):
     """Use Ts annual report styling; optionally place level bars and YoY lines on two axes."""
     values = frame.copy()
     values.index = values.index.year
     axis = create_report_axis()
     axis.set_xlim(values.index.min() - 0.7, values.index.max() + 0.7)
-    growth_columns = [name for name in values if growth and name.endswith("同比")]
+    growth_columns = (list(line_columns) if line_columns is not None
+                      else [name for name in values if growth and name.endswith("同比")])
     level_columns = [name for name in values if name not in growth_columns]
     figure, _ = plot_series(
         values, facet=False, title=title, xtitle="", ytitle_position="side",
         auto_dual_y=False,
         axis_groups={name: "right" if name in growth_columns else "left" for name in values},
-        units={name: "%" if name in growth_columns else "十亿迪拉姆" for name in values}, grid=True,
+        units=units or {name: "%" if name in growth_columns else "十亿迪拉姆" for name in values}, grid=True,
         max_ticks=min(len(values), 8), show_legend=True, legend_cols=2,
-        bar_series=level_columns if bars or growth else None, bar_stacked=bars,
-        note=source_note("阿联酋联邦竞争力与统计中心（FCSC）"), note_loc="left",
+        legend_labels=legend_labels,
+        bar_series=level_columns if bars or growth else None,
+        bar_stacked=bars if stacked is None else stacked,
+        note=source_note(source_text), note_loc="left",
         ax=axis,
     )
     step = max(1, (len(values) + 7) // 8)
     ticks = list(values.index[::step])
     if ticks[-1] != values.index[-1]:
-        if len(ticks) > 1 and values.index[-1] - ticks[-1] < step:
+        if len(ticks) > 1 and values.index[-1] - ticks[-1] < min(step, 2):
             ticks.pop()
         ticks.append(values.index[-1])
     axis.set_xticks(ticks, [str(year) for year in ticks])
@@ -96,18 +109,42 @@ def render_annual_data(st_obj, frames):
         host = columns[index % 2]
         frame = frames[sheet]
         capital = sheet in {"年度_资本形成", "年度_行业资本形成"}
-        if capital:
+        options = {}
+        if sheet == GDP_SHEET:
+            display = frame[GDP_COMPARE_COLUMNS]
+            download = frame
+            options = {"growth": True, "line_columns": [c for c in display if c.endswith(GROWTH_SUFFIX)],
+                       "units": {c: REPORT_UNITS[sheet][c] for c in display},
+                       "legend_labels": ["阿联酋GDP", "海合会平均GDP", "阿联酋实际增速", "海合会平均实际增速"],
+                       "source_text": "世界银行世界发展指标（WDI）"}
+        elif sheet in REPORT_UNITS:
+            display = frame[["阿联酋", GCC_NAME]]
+            download = frame
+            options = {"bars": True, "stacked": False, "units": {c: "%" for c in display},
+                       "source_text": "世界银行世界发展指标（WDI）"}
+        elif capital:
             display = capital_formation_values(frame, total=sheet == "年度_资本形成", top_five=top_five)
             download = capital_formation_values(frame, total=sheet == "年度_资本形成")
         else:
             display = displayed_annual_values(frame, top_five)
             download = frame
-        title = f"{title}｜{frame.index[0].year}—{frame.index[-1].year}年"
-        figure = build_annual_figure(display, title=title, bars=top_five, growth=capital)
+        display = display.dropna(how="all")
+        if display.empty:
+            raise ValueError(f"{sheet} 没有可展示的年度观测")
+        title = f"{title}｜{display.index[0].year}—{display.index[-1].year}年"
+        figure = build_annual_figure(display, title=title,
+                                     **({"bars": top_five, "growth": capital} | options))
         render_pyplot_figure(host, figure, bbox_inches=None, place_legend_bottom=False)
         render_chart_download(host, download, title=title, key=f"analysis.uae.annual.{sheet}.download")
     with st_obj.expander("指标算法与解读", expanded=True, key="uae-indicator-explanation-annual"):
         st_obj.markdown(
+            "- GDP 与三次产业对比统一采用世界银行 WDI。GDP 柱形为现价总量（左轴，十亿美元），"
+            "折线为不变价 GDP 增速（右轴，%），不是现价总量的同比。\n"
+            "- 海合会六国为阿联酋、沙特阿拉伯、巴林、科威特、阿曼、卡塔尔。"
+            "均值包含阿联酋，按每年六国简单平均计算；任一国缺数据则该年均值留空。"
+            "平均增速不是按 GDP 加权的海合会整体增速，下载包含六国原始指标，供复核。\n"
+            "- 第一产业为农业林业渔业；第二产业为工业（含采矿油气及建筑）；第三产业为服务业。"
+            "占比均为增加值/GDP，六国占比按简单平均计算，因产品税等调整项不强制合计为100%。\n"
             "- 资本形成采用 FCSC 官方 Gross Capital Formation 口径，不等同于固定资产投资完成额。"
             "图表仅使用现价，柱形显示绝对值（左轴，十亿迪拉姆），折线显示同比（右轴，%）。"
             "同比按本年现价值除以上一自然年现价值减1计算；缺少上年数据或上年值为零时留空。\n"

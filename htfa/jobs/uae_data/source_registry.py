@@ -18,6 +18,7 @@ SOURCES = (
     "fcsc",
     "fcsc_gdp",
     "fcsc_annual",
+    "wdi_gcc",
     "foreign_labour",
     "gfs",
     "pmi",

@@ -63,7 +63,7 @@ def _load_growth_panel_cached(source, schema_version: str = "gdp-sector-pull-v2"
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
-def _load_annual_data_cached(source):
+def _load_annual_data_cached(source, schema_version: str = "annual-gcc-v2"):
     return load_annual_data(source)
 
 
