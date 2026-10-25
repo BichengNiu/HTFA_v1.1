@@ -47,8 +47,8 @@ def test_public_entry_renders_navigation_without_exception():
     ]
     assert app.session_state["navigation.main_module"] == "监测分析"
     assert app.session_state["navigation.sub_module"] == "阿联酋"
-    assert [tab.label for tab in app.tabs] == ["宏观数据", "行业分析", "高频数据"]
-    assert app.get("tab_container")[0].proto.tab_container.default_tab_index == 2
+    assert [tab.label for tab in app.tabs] == ["年度数据", "季度数据", "行业分析", "月度数据"]
+    assert app.get("tab_container")[0].proto.tab_container.default_tab_index == 3
     assert not app.get("file_uploader")
     assert len(app.metric) > 0
     assert not app.error

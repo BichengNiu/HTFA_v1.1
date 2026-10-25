@@ -17,6 +17,7 @@ SOURCES = (
     "eia_liquids",
     "fcsc",
     "fcsc_gdp",
+    "fcsc_annual",
     "foreign_labour",
     "gfs",
     "pmi",

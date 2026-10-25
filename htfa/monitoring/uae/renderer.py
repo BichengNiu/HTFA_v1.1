@@ -30,13 +30,15 @@ from htfa.monitoring.uae.downloads import render_chart_download
 from htfa.monitoring.uae.results import MacroPanelResult
 from htfa.monitoring.uae.report import render_high_frequency_topics
 from htfa.monitoring.uae.services import load_growth_panel
+from htfa.monitoring.uae.annual import load_annual_data, render_annual_data
 from htfa.monitoring.uae.plot_helpers import translate_source_text
 from htfa.ui_shared.chart_legend import place_chart_legend_at_bottom, render_pyplot_figure
 
 TAB_CONFIG = (
-    ("宏观数据", "growth_overview"),
+    ("年度数据", "annual"),
+    ("季度数据", "growth_overview"),
     ("行业分析", "growth_industry"),
-    ("高频数据", "oil_fiscal"),
+    ("月度数据", "oil_fiscal"),
 )
 
 
@@ -58,6 +60,11 @@ _HIGH_FREQUENCY_LABELS = frozenset(
 def _load_growth_panel_cached(source, schema_version: str = "gdp-sector-pull-v2"):
     """按数据版本和结果结构版本缓存；结构变更时更新 schema_version。"""
     return load_growth_panel(source)
+
+
+@st.cache_data(show_spinner=False, max_entries=4)
+def _load_annual_data_cached(source):
+    return load_annual_data(source)
 
 
 def _latest_high_frequency_month(
@@ -342,9 +349,13 @@ def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
             "source": source_name,
         }
 
+    old_tab_names = {"宏观数据": "季度数据", "高频数据": "月度数据"}
+    active_tab = st.session_state.get("analysis.uae.active_tab")
+    if active_tab in old_tab_names:
+        st.session_state["analysis.uae.active_tab"] = old_tab_names[active_tab]
     tab_objects = st_obj.tabs(
         [label for label, _ in TAB_CONFIG],
-        default="高频数据",
+        default="月度数据",
         key="analysis.uae.active_tab",
         on_change="rerun",
     )
@@ -357,6 +368,14 @@ def render_uae_monitoring(st_obj=st) -> dict[str, Any]:
             if view_key == "oil_fiscal":
                 with st_obj.container(key="uae-high-frequency-print"):
                     topic_results = render_high_frequency_topics(st_obj, source)
+            elif view_key == "annual":
+                try:
+                    frames = _load_annual_data_cached(source)
+                except ValueError as exc:
+                    st_obj.error(f"年度投资数据加载失败：{exc}")
+                    continue
+                render_annual_data(st_obj, frames)
+                panel_count += 1
             else:
                 try:
                     with st_obj.spinner("正在构建宏观监测页面..."):

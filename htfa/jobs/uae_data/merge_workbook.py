@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import os
 import sys
 import traceback
 from pathlib import Path
@@ -64,7 +65,8 @@ def main(argv: list[str] | None = None) -> int:
         # A COM helper may outlive its PowerShell process by a short interval.
         # Clean that state before and after every source so the next writer or
         # an OOXML atomic replace never races a stale hidden Excel lock.
-        cleanup_excel_automation()
+        if os.name == "nt":
+            cleanup_excel_automation()
         try:
             module = importlib.import_module(f".source_{name}", package=__package__)
             outcome = module.merge(workbook_path)
@@ -83,7 +85,8 @@ def main(argv: list[str] | None = None) -> int:
             ).strip()
             print(f"[merge_workbook] {name:<16} FAILED  {detail}", flush=True)
         finally:
-            cleanup_excel_automation()
+            if os.name == "nt":
+                cleanup_excel_automation()
     if failures == 0:
         try:
             dictionary = sync_workbook_dictionary(workbook_path)

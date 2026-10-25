@@ -15,6 +15,14 @@ runtime\python.exe -m htfa.jobs.uae_data.merge_workbook   # 单独重跑库→�
 
 常用参数：`--source cbuae,gfs`、`--skip-download`（只用 raw 缓存）、`--force`。
 
+`--source fcsc_annual` 下载 FCSC 的年度行业资本形成、现价/不变价支出法资本形成、
+外资类型、外资行业和来源国×行业六张官方表。原始观测及维度、单位、来源 URL
+写入 `fcsc_investment_annual`，再经 DuckDB 同步五张 `年度_` 工作表、指标字典及
+报告发布表。页面只读发布快照，不在线下载。FCSC 国家标签归档在
+`fcsc_country_labels.json`（官方 `CL_COUNTRY` 1.3.0）。
+2026-10-25 核验：资本形成年度表覆盖2010—2025年，外资细分历史表覆盖2007—2016年。
+资本形成总额不改称固定资产投资；缺失值不补零，也不将外资历史表直接当作新增流量。
+
 宏观概览与行业分析的季度数据使用 `--source fcsc_gdp,eia_liquids`：
 `source_fcsc_gdp.py` 从 FCSC UAE.Stat 的 `DF_QGDP_CON` / `DF_QGDP_CUR`
 接入 GDP、非油 GDP、非金融公司增加值、16 个行业增加值及官方同比，共 44 项。

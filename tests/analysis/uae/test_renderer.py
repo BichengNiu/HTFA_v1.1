@@ -100,7 +100,7 @@ render_uae_monitoring()
 ''').run(timeout=90)
     assert not app.exception
     assert not app.error
-    assert [tab.label for tab in app.tabs] == ["宏观数据", "行业分析", "高频数据"]
+    assert [tab.label for tab in app.tabs] == ["年度数据", "季度数据", "行业分析", "月度数据"]
     assert len(app.get("image")) == 4
     assert not app.get("plotly_chart")
     assert not app.expander
@@ -137,9 +137,9 @@ def test_unavailable_macro_result_is_reported_without_rendering(monkeypatch):
     from htfa.monitoring.uae import renderer
 
     host = MagicMock()
-    tabs = [MagicMock() for _ in range(3)]
+    tabs = [MagicMock() for _ in range(4)]
     for index, tab in enumerate(tabs):
-        tab.open = index == 0
+        tab.open = index == 1
     host.tabs.return_value = tabs
     monkeypatch.setattr(renderer, "published_source", lambda: SimpleNamespace(
         name="uae.duckdb", published_at="2026-10-19",
