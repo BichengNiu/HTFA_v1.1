@@ -730,17 +730,12 @@ def render_government_finance_section(
             render_supplemental_charts(st_obj, content, FINANCE_CHARTS)
             with st_obj.expander("指标算法与解读", expanded=True, key="uae-indicator-explanation-finance"):
                 st_obj.markdown(FINANCE_EXPLANATION)
-        if st_obj.toggle(
-            "显示企业活动与劳动就业扩展图表",
-            value=False,
-            key="analysis.uae.government_finance.show_extended_charts",
-        ):
-            _render_business_activity_charts(
-                st_obj,
-                latest_date,
-                content,
-            )
-            _render_labor_employment_charts(st_obj, content)
+        _render_business_activity_charts(
+            st_obj,
+            latest_date,
+            content,
+        )
+        _render_labor_employment_charts(st_obj, content)
     except (KeyError, TypeError, ValueError) as exc:
         st_obj.error(f"政府及国有资本存款与信贷数据加载失败：{exc}")
         return {"status": "error", "message": str(exc)}

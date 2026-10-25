@@ -322,6 +322,7 @@ def test_section_renders_quad_business_and_labor_employment_subsections(
         monkeypatch.setattr(renderer, render_name, render_mocks[render_name])
     st_obj = MagicMock()
     st_obj.columns.return_value = (MagicMock(), MagicMock())
+    st_obj.toggle.return_value = False
 
     result = renderer.render_government_finance_section(
         st_obj,
@@ -329,6 +330,7 @@ def test_section_renders_quad_business_and_labor_employment_subsections(
     )
 
     assert result["status"] == "success"
+    st_obj.toggle.assert_not_called()
     st_obj.container.assert_called_once_with(key="uae-finance-part")
     calls = [call[0] for call in st_obj.method_calls]
     assert calls.count("divider") == 3
