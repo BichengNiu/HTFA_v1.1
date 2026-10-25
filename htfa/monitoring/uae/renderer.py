@@ -55,8 +55,8 @@ _HIGH_FREQUENCY_LABELS = frozenset(
 
 
 @st.cache_data(show_spinner=False, max_entries=4)
-def _load_growth_panel_cached(source):
-    """按已发布的数据版本缓存宏观监测计算。"""
+def _load_growth_panel_cached(source, schema_version: str = "gdp-sector-pull-v2"):
+    """按数据版本和结果结构版本缓存；结构变更时更新 schema_version。"""
     return load_growth_panel(source)
 
 

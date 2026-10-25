@@ -114,6 +114,25 @@ def test_missing_configured_chart_is_not_silently_skipped():
         _ordered_series_groups({}, ("required chart",))
 
 
+def test_growth_cache_rebuilds_old_result_for_current_schema(monkeypatch):
+    from htfa.monitoring.uae import renderer
+
+    old_title = "GDP部门拉动与石油产量同比"
+    current_title = "GDP部门拉动"
+    loader = MagicMock(side_effect=[{old_title: "old"}, {current_title: "current"}])
+    monkeypatch.setattr(renderer, "load_growth_panel", loader)
+    renderer._load_growth_panel_cached.clear()
+    try:
+        assert old_title in renderer._load_growth_panel_cached("same-release", "v1")
+        result = renderer._load_growth_panel_cached("same-release")
+        assert current_title in result
+        assert old_title not in result
+        assert renderer._load_growth_panel_cached("same-release") == result
+        assert loader.call_count == 2
+    finally:
+        renderer._load_growth_panel_cached.clear()
+
+
 def test_unavailable_macro_result_is_reported_without_rendering(monkeypatch):
     from htfa.monitoring.uae import renderer
 
