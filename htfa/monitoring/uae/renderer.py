@@ -148,7 +148,7 @@ def _render_report_header(
 
 MACRO_FIGURE_BUILDERS = {
     "实际GDP增速与GDP平减指数同比": build_price_volume_figure,
-    "GDP部门拉动与石油产量同比": build_growth_and_sector_pull_figure,
+    "GDP部门拉动": build_growth_and_sector_pull_figure,
     "非石油实际GDP增速与非石油GDP平减指数同比": build_price_volume_figure,
     "非油实际GDP行业拉动": build_nonoil_industry_pull_figure,
 }
@@ -259,10 +259,7 @@ def _render_panel(
             source_text = "、".join(dict.fromkeys(
                 translate_source_text(item.source)
                 for indicator_id, item in panel.provenance.items()
-                if indicator_id.startswith("growth.") or (
-                    group_title == "GDP部门拉动与石油产量同比"
-                    and indicator_id == "oil.crude_production"
-                )
+                if indicator_id.startswith("growth.")
             ))
             builder = MACRO_FIGURE_BUILDERS[group_title]
             figure = builder(

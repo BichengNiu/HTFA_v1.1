@@ -281,9 +281,6 @@ def build_growth_panel(bundle: UAEDataBundle) -> MacroPanelResult:
     nonoil_growth = _growth(nonoil, 4).rename("非油GDP同比")
     oil_production_id = "oil.crude_production"
     oil_production = bundle.require_series(oil_production_id).dropna()
-    oil_production_yoy = _growth(oil_production, 4).rename(
-        "石油及其他液体产量季度同比"
-    )
     nonoil_pull = (
         (nonoil - nonoil.shift(4))
         .div(real_gdp.shift(4))
@@ -320,9 +317,6 @@ def build_growth_panel(bundle: UAEDataBundle) -> MacroPanelResult:
         [
             nonoil_pull,
             oil_pull,
-            oil_production_yoy.reindex(real_gdp.index).where(
-                real_gdp.shift(4).notna()
-            ),
             real_gdp.rename("实际GDP（十亿阿联酋迪拉姆）"),
             nonoil.rename("非油实际GDP（十亿阿联酋迪拉姆）"),
             oil.rename("石油实际GDP（十亿阿联酋迪拉姆）"),
@@ -346,7 +340,7 @@ def build_growth_panel(bundle: UAEDataBundle) -> MacroPanelResult:
     ).dropna(how="all")
     series_groups = {
         **price_volume_groups,
-        "GDP部门拉动与石油产量同比": trend,
+        "GDP部门拉动": trend,
         "非油实际GDP行业拉动": quarterly_industry_pull,
         "行业量价四象限图": industry_quadrant,
         "行业扩张广度指数": industry_diagnostics.breadth,
@@ -382,7 +376,6 @@ def build_growth_panel(bundle: UAEDataBundle) -> MacroPanelResult:
             "GDP平减指数按现价GDP除以不变价GDP并乘以100构造，再计算季度同比增速；图表下载同时包含两种GDP水平和所用平减指数序列。",
             "实际GDP当季同比直接读取指标字典中的不变价当季同比序列，不由GDP水平值重新计算。",
             "实际GDP同比与平减指数同比均为增长率，共用同一纵轴展示；两者仍不能直接相加。",
-            "折线展示石油及其他液体产量的季度同比增速，并与GDP可用季度对齐。",
             "堆叠柱形分别使用非油和石油实际GDP同比增量除以上年同期总体实际GDP，单位为百分点。",
             "两部门拉动逐季度相加等于实际GDP同比增速。",
             "季度行业拉动使用各行业本季度与上年同季度的不变价增加值之差，除以上年同季度非油实际GDP，单位为百分点。",

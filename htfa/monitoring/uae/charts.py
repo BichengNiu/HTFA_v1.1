@@ -49,11 +49,10 @@ def build_growth_and_sector_pull_figure(
     title: str,
     source_text: str = "",
 ) -> MatplotlibFigure:
-    """Ts 时间序列模板：左轴正负堆叠部门拉动，右轴石油产量同比。"""
+    """Ts 时间序列模板：正负堆叠展示 GDP 部门拉动。"""
 
     pull_columns = ("非石油经济部门拉动", "石油经济部门拉动")
-    production_column = "石油及其他液体产量季度同比"
-    plotted = [*pull_columns, production_column]
+    plotted = list(pull_columns)
     missing = [column for column in plotted if column not in frame]
     if missing:
         raise ValueError(f"缺少部门拉动序列: {', '.join(missing)}")
@@ -75,8 +74,8 @@ def build_growth_and_sector_pull_figure(
         quarterly_ticks=True,
         xlabel_count=12,
         grid=True,
-        axis_groups={name: "left" if name in pull_columns else "right" for name in clean},
-        units={name: "百分点" if name in pull_columns else "%" for name in clean},
+        axis_groups={name: "left" for name in clean},
+        units={name: "百分点" for name in clean},
         bar_series=list(pull_columns),
         bar_stacked=True,
         vlines=WAR_START_DATE,

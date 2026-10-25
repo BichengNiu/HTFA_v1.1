@@ -87,7 +87,7 @@ def test_macro_data_tab_has_four_charts_without_explanations():
 
     assert GROWTH_OVERVIEW_GROUPS == (
         "实际GDP增速与GDP平减指数同比",
-        "GDP部门拉动与石油产量同比",
+        "GDP部门拉动",
         "非石油实际GDP增速与非石油GDP平减指数同比",
         "非油实际GDP行业拉动",
     )

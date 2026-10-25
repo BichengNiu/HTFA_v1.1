@@ -35,7 +35,7 @@ def test_industry_chart_windows_remain_independent_of_macro_history_limit(max_po
     assert figure.frames[0].name == str(index[-expected])
 
 
-def test_sector_pull_ts_chart_keeps_negative_stacks_and_separate_units():
+def test_sector_pull_ts_chart_keeps_negative_stacks_without_oil_production_line():
     frame = pd.DataFrame({
         "非石油经济部门拉动": [2.0, -3.0],
         "石油经济部门拉动": [1.0, -2.0],
@@ -44,16 +44,16 @@ def test_sector_pull_ts_chart_keeps_negative_stacks_and_separate_units():
     }, index=pd.to_datetime(["2026-03-31", "2026-06-30"]))
     figure = charts.build_growth_and_sector_pull_figure(frame, title="部门拉动")
     try:
-        left, right = figure.axes
+        assert len(figure.axes) == 1
+        left = figure.axes[0]
         first, second = left.containers
         assert [patch.get_y() for patch in second] == [2.0, -3.0]
         assert left.get_ylim()[0] < -5.0
         assert [patch.get_x() for patch in first] == [patch.get_x() for patch in second]
         assert left.get_ylabel() == "百分点"
-        assert right.get_ylabel() == "%"
         assert all(axis.get_xlabel() == "" for axis in figure.axes)
-        np.testing.assert_equal(right.lines[0].get_ydata(), [10.0, -4.0])
-        assert [text.get_text() for text in left.get_legend().get_texts()] == [f"{name}（左轴）" for name in frame.columns[:2]] + [f"{frame.columns[2]}（右轴）"]
+        assert not any("产量" in line.get_label() for line in left.lines)
+        assert [text.get_text() for text in left.get_legend().get_texts()] == list(frame.columns[:2])
     finally:
         plt.close(figure)
 
