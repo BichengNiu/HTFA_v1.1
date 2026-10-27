@@ -1,0 +1,2 @@
+# Isolated automation dependency; not part of the Streamlit app runtime.
+playwright==1.62.0

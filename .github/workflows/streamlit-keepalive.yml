@@ -1,0 +1,75 @@
+name: HTFA Streamlit keepalive
+
+on:
+  schedule:
+    # UTC 00:17, 06:17, 12:17, 18:17; Dubai 04:17, 10:17, 16:17, 22:17.
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/streamlit-keepalive.yml'
+      - 'scripts/cloud_keepalive.py'
+      - 'tooling/requirements/requirements-keepalive.txt'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: htfa-streamlit-keepalive
+  cancel-in-progress: false
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GIT_LFS_SKIP_SMUDGE: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          lfs: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: tooling/requirements/requirements-keepalive.txt
+      - name: Install browser automation
+        run: |
+          python -m pip install --disable-pip-version-check -r tooling/requirements/requirements-keepalive.txt
+          python -m playwright install --with-deps chromium
+      - name: Clean, push empty commit, and verify remote main
+        shell: bash
+        run: |
+          set -euo pipefail
+          pwsh -NoProfile -File tooling/scripts/clean_temps.ps1
+          test "$(git branch --show-current)" = main
+          git status --short
+          test -z "$(git status --porcelain)"
+          git pull --ff-only origin main
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit --allow-empty -m 'chore: Streamlit keep-alive'
+          pushed_commit=$(git rev-parse HEAD)
+          git push origin main
+          git fetch origin main
+          git merge-base --is-ancestor "$pushed_commit" origin/main
+          git merge --ff-only origin/main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo "Verified remote keepalive commit: $pushed_commit"
+          echo "Empty commit pushed and verified: $pushed_commit" >> "$GITHUB_STEP_SUMMARY"
+      - name: Wake HTFA and verify real application content
+        if: always()
+        run: |
+          python scripts/cloud_keepalive.py --timeout 180 --hold-seconds 15 --screenshot "$RUNNER_TEMP/htfa-keepalive-failure.png"
+          echo 'HTFA heading and metric verified in Chromium; session remained active.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Save failure screenshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: htfa-keepalive-failure
+          path: ${{ runner.temp }}/htfa-keepalive-failure.png
+          if-no-files-found: ignore
+          retention-days: 3
