@@ -3,9 +3,10 @@
 数据源（美国运输统计局 BTS，官方指定）：
 T-100 International Segment (All Carriers) —— 每月更新、滞后约 3-6 个月，
 1990 年起。本模块解析 ``data/UAE/raw/t100/csv/uae_<year>.zip``（由
-``download_uae_years.mjs`` 从 transtats.bts.gov 按年下载、按伙伴国 UAE 过滤，
-43 字段全量导出），保留 US↔UAE 双向航段并月度聚合成指标入
+``download_t100.py`` 从 transtats.bts.gov 官方表单按年下载并保留官方字段；
+已有 ``download_uae_years.mjs`` 时兼容使用），保留 US↔UAE 双向航段并月度聚合成指标入
 ``dot_t100_monthly``。
+在线更新最近三年时保留库内更早历史，拒绝删除刷新年份内已有观测。
 
 口径说明（BTS TableInfo）：
 - PASSENGERS = Non-Stop Segment Passengers Transported（航段经停旅客数，
@@ -69,7 +70,9 @@ INDICATOR_TPL = {
 }
 
 MIN_YEAR, MAX_YEAR = 1990, date.today().year
-T100_DOWNLOAD_SCRIPT = RAW_DIR / "download_uae_years.mjs"
+_TRACKED_DOWNLOAD_SCRIPT = Path(__file__).with_name("download_uae_years.mjs")
+T100_DOWNLOAD_SCRIPT = (_TRACKED_DOWNLOAD_SCRIPT if _TRACKED_DOWNLOAD_SCRIPT.is_file()
+                      else RAW_DIR / "download_uae_years.mjs")
 
 
 # ---------------------------------------------------------------------------
@@ -311,7 +314,8 @@ def _download_recent_years(*, force: bool) -> str:
     """
 
     if not T100_DOWNLOAD_SCRIPT.is_file():
-        raise FileNotFoundError(f"T-100 下载脚本缺失: {T100_DOWNLOAD_SCRIPT}")
+        from .download_t100 import download_recent
+        return download_recent(CSV_DIR)
     node = shutil.which("node") or shutil.which("node.exe")
     if node is None:
         raise RuntimeError("未找到 Node.js，无法运行 BTS T-100 浏览器下载器")
@@ -390,6 +394,15 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         if path.name.split("_")[1][:4].isdigit()
     }
     rows = collect_rows(zips)
+    refreshed_years = {int(path.stem.split("_")[1]) for path in zips} | nodata_years
+    previous = con.execute("SELECT period,indicator,value,source_file FROM dot_t100_monthly").fetchall()
+    new_keys = {(row["period"], row["indicator"]) for row in rows}
+    lost = [(period, indicator) for period, indicator, _value, _file in previous
+            if period.year in refreshed_years and (period, indicator) not in new_keys]
+    if lost:
+        raise ValueError(f"BTS refresh would remove existing observations: {lost[:5]}")
+    rows.extend({"period": period, "indicator": indicator, "value": value, "source_file": source_file}
+                for period, indicator, value, source_file in previous if period.year not in refreshed_years)
     report = build_quality_report(rows, nodata_years=nodata_years)
     (RAW_DIR / "quality_report.json").write_text(
         _json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"

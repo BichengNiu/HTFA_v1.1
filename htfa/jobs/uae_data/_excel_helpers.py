@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import time
 from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Sequence
 
@@ -19,6 +20,17 @@ _POWERSHELL_BASE = (
     "Bypass",
     "-File",
 )
+_PORTABLE_WRITES = ContextVar("uae_portable_workbook_writes", default=False)
+
+
+@contextmanager
+def portable_workbook_writes():
+    """Use validated OOXML counterparts only inside an isolated cloud refresh."""
+    token = _PORTABLE_WRITES.set(True)
+    try:
+        yield
+    finally:
+        _PORTABLE_WRITES.reset(token)
 _EXCEL_WRITER_TIMEOUT_SECONDS = 180.0
 _EXCEL_SHUTDOWN_TIMEOUT_SECONDS = 15.0
 _AUTOMATION_EXCEL_QUERY = (
@@ -155,6 +167,9 @@ def run_powershell_command(
     ``timeout_seconds`` 是助手允许运行的最长秒数。
     """
 
+    if _PORTABLE_WRITES.get():
+        from .portable_workbook import run_csv_writer
+        return run_csv_writer(arguments)
     cleanup_excel_automation()
     before = _automation_excel_pids()
     process = subprocess.Popen(
@@ -210,6 +225,10 @@ def run_powershell_sheet_writer(
 ) -> None:
     """调用 PowerShell 写表助手并统一处理失败消息。"""
 
+    if _PORTABLE_WRITES.get():
+        from .portable_workbook import write_payload
+        write_payload(workbook_path, payload_path, sheet_name)
+        return
     completed = run_powershell_command(
         _POWERSHELL_BASE
         + (

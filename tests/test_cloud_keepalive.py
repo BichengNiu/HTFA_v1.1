@@ -139,6 +139,9 @@ def test_workflow_has_margin_before_hibernation_and_empty_commits_do_not_retrigg
     assert workflow["on"]["push"]["branches"] == ["main"]
     assert set(workflow["on"]["push"]["paths"]) == {
         ".github/workflows/streamlit-keepalive.yml", "scripts/cloud_keepalive.py",
-        "tooling/requirements/requirements-keepalive.txt",
+        "tooling/requirements/requirements-keepalive.txt", "scripts/cloud_refresh.py",
+        "htfa/jobs/uae_data/cloud_worker.py", "htfa/jobs/uae_data/portable_workbook.py",
+        "htfa/jobs/uae_data/download_uae_years.mjs",
+        "htfa/jobs/uae_data/download_t100.py",
     }
     assert workflow["permissions"]["contents"] == "write"

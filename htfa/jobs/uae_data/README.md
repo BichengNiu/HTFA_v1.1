@@ -15,6 +15,11 @@ runtime\python.exe -m htfa.jobs.uae_data.merge_workbook   # 单独重跑库→�
 
 常用参数：`--source cbuae,gfs`、`--skip-download`（只用 raw 缓存）、`--force`。
 
+云端每日更新与每六小时保活统一由 GitHub Actions 管理，见
+[streamlit-keepalive.md](../../../docs/streamlit-keepalive.md)。只下载月度页使用的来源，
+以临时 DuckDB / 工作簿验证完整发布后仅推送数据库；本地默认 COM 写表入口不变。
+`HTFA_UAE_DATA_DIR` 可为隔离工作进程指定数据目录，默认仍为 `data/UAE/`。
+
 `--source wdi_gcc` 从世界银行 WDI（source=2）抓取海合会六国的现价美元 GDP、
 不变价 GDP 增速及农业林渔/工业（含建筑）/服务业增加值占 GDP 比重，保留原始
 国家、指标、年份、缺失值、来源 URL 和修订日期到 `wdi_gcc_annual`。
@@ -115,8 +120,9 @@ EIA Brent 同时读取官方 XLS 和 RBRTE daily API 完整分页，校验系列
 
 - 本目录入 Git 跟踪；`processed/`、`backups/`、`__pycache__/` 为中间产物，不入 Git。
 - `.bat` / `.ps1` 必须保持 **UTF-8 带 BOM**（PowerShell 按 GBK 读中文会乱码/删表失败）。
-- `raw/t100/*.mjs` 与 `raw/<源>/download_*.py` 属各源原始下载工具，随 raw 数据存放，
-  不迁入本目录。
+- `raw/<源>/download_*.py` 等既有本地工具随 raw 数据存放；云端需要的下载器应纳入
+  正式源码。BTS 使用 `download_t100.py` 获取官方最近三年数据，无需本地 raw 脚本；
+  既有 T-100 Node 下载器存在时仍兼容调用。
 
 来源模块仅供总控导入，不提供独立执行或内嵌自检入口；维护检查使用 `tests/`
 中的来源测试。更新和合并各注册同一组 28 个来源，`--source salik` 等单来源

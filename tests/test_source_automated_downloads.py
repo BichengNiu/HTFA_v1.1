@@ -44,8 +44,11 @@ def test_dubai_shards_follow_the_latest_manifest(tmp_path, monkeypatch):
     assert source_dubai_customs_air._current_shards() == [current]
 
 
-def test_comtrade_adapter_calls_the_official_downloader(monkeypatch):
+def test_comtrade_adapter_calls_the_official_downloader(monkeypatch, tmp_path):
     calls = []
+    helper = tmp_path / "download_hs87.py"
+    helper.write_text("# subprocess fixture\n")
+    monkeypatch.setattr(source_comtrade_vehicles, "DOWNLOAD_SCRIPT", helper)
 
     def fake_run(command, **kwargs):
         calls.append((command, kwargs))
@@ -109,11 +112,7 @@ def test_salik_extracts_absolute_value_but_not_yoy_percentage(monkeypatch):
 def test_t100_downloader_uses_repository_relative_output():
     script = (
         Path(__file__).parents[1]
-        / "data"
-        / "UAE"
-        / "raw"
-        / "t100"
-        / "download_uae_years.mjs"
+        / "htfa" / "jobs" / "uae_data" / "download_t100.py"
     ).read_text(encoding="utf-8")
-    assert "T100_OUTPUT" in script
+    assert "def download_recent(directory" in script
     assert "C:/Users/NIU/Desktop/HTFA_v1.1/data/UAE/raw/t100/csv" not in script
