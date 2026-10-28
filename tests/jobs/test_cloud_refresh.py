@@ -173,3 +173,29 @@ def test_portable_mode_is_scoped_and_invalid_payload_does_not_write(payload_book
     with pytest.raises(ValueError, match="width mismatch"):
         write_payload(path, json_path, "月度_测试")
     assert digest(path) == before
+
+
+def test_cloud_wam_seed_preserves_existing_flags_and_third_citation(tmp_path, monkeypatch):
+    from htfa.jobs.uae_data import cloud_worker, source_wam as wam
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "baseline.duckdb")
+    raw = tmp_path / "raw/wam"
+    monkeypatch.setattr(wam, "RAW_DIR", raw)
+    monkeypatch.setattr(wam, "DAILY_PATH", raw / "daily.csv")
+    monkeypatch.setattr(wam, "ASSET_PATH", raw / "asset_sources.csv")
+    with db.connect() as con:
+        db.init_schema(con)
+        con.execute("INSERT INTO detail.wam_military_strike_daily VALUES "
+                    "(DATE '2026-02-28',0,0,1,0,?,true,true,'stated','verified','official',"
+                    "false,NULL,NULL,'https://wam.ae/citation','original note')",
+                    [wam.weighted_pressure(0, 0, 1)])
+    cloud_worker.seed_wam_registry()
+    row = wam.load_daily_observations(wam.DAILY_PATH)[0]
+    assert row["attack_any"] is True
+    assert row["uae_asset_attack"] is True
+    assert row["source_url"] is None
+    assert row["source_url_3"] == "https://wam.ae/citation"
+    assert row["notes"] == "original note"
+    before = digest(wam.DAILY_PATH)
+    cloud_worker.seed_wam_registry()
+    assert digest(wam.DAILY_PATH) == before

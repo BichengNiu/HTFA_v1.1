@@ -478,6 +478,7 @@ def _download_official_shards(*, force: bool) -> str:
 
     if not DOWNLOAD_SCRIPT.is_file():
         raise FileNotFoundError(f"Data Dubai 下载器缺失: {DOWNLOAD_SCRIPT}")
+    RAW_DIR.mkdir(parents=True, exist_ok=True)
     command = [sys.executable, str(DOWNLOAD_SCRIPT), "--out", str(CSV_DIR)]
     if force:
         command.append("--force")

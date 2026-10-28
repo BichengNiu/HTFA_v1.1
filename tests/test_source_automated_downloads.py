@@ -62,6 +62,24 @@ def test_comtrade_adapter_calls_the_official_downloader(monkeypatch, tmp_path):
     assert "--start" in calls[0][0]
 
 
+def test_customs_downloader_creates_clean_runner_working_directory(monkeypatch, tmp_path):
+    source = source_dubai_customs_air
+    raw = tmp_path / "new/raw/customs"
+    csv_dir = raw / "csv"
+    monkeypatch.setattr(source, "RAW_DIR", raw)
+    monkeypatch.setattr(source, "CSV_DIR", csv_dir)
+    monkeypatch.setattr(source, "_current_shards", lambda: [csv_dir / "part.csv.gz"])
+    def fake_run(command, **kwargs):
+        assert kwargs["cwd"].is_dir()
+        csv_dir.mkdir()
+        (csv_dir / "download_report.json").write_text(json.dumps({
+            "files": [{"file": "part.csv.gz", "status": "ok"}],
+        }))
+        return SimpleNamespace(returncode=0)
+    monkeypatch.setattr(source.subprocess, "run", fake_run)
+    assert "1" in source._download_official_shards(force=True)
+
+
 def test_scad_discovery_supports_current_liferay_cards(monkeypatch):
     html = b'''
     <div class="journal-content-article "

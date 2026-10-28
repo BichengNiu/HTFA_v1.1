@@ -143,5 +143,6 @@ def test_workflow_has_margin_before_hibernation_and_empty_commits_do_not_retrigg
         "htfa/jobs/uae_data/cloud_worker.py", "htfa/jobs/uae_data/portable_workbook.py",
         "htfa/jobs/uae_data/download_uae_years.mjs",
         "htfa/jobs/uae_data/download_t100.py",
+        "htfa/jobs/uae_data/source_dubai_customs_air.py",
     }
     assert workflow["permissions"]["contents"] == "write"
