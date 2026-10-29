@@ -139,10 +139,13 @@ def test_workflow_has_margin_before_hibernation_and_empty_commits_do_not_retrigg
     assert workflow["on"]["push"]["branches"] == ["main"]
     assert set(workflow["on"]["push"]["paths"]) == {
         ".github/workflows/streamlit-keepalive.yml", "scripts/cloud_keepalive.py",
-        "tooling/requirements/requirements-keepalive.txt", "scripts/cloud_refresh.py",
-        "htfa/jobs/uae_data/cloud_worker.py", "htfa/jobs/uae_data/portable_workbook.py",
-        "htfa/jobs/uae_data/download_uae_years.mjs",
-        "htfa/jobs/uae_data/download_t100.py",
-        "htfa/jobs/uae_data/source_dubai_customs_air.py",
+        "tooling/requirements/requirements-keepalive.txt",
     }
     assert workflow["permissions"]["contents"] == "write"
+    steps = workflow["jobs"]["keepalive"]["steps"]
+    commands = "\n".join(step.get("run", "") for step in steps)
+    assert "cloud_refresh" not in commands
+    assert "git lfs pull" not in commands
+    assert "git add" not in commands
+    assert "git commit --allow-empty" in commands
+    assert not (ROOT / ".github/workflows/uae-source-diagnostics.yml").exists()
