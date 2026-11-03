@@ -15,6 +15,13 @@ runtime\python.exe -m htfa.jobs.uae_data.merge_workbook   # 单独重跑库→�
 
 常用参数：`--source cbuae,gfs`、`--skip-download`（只用 raw 缓存）、`--force`。
 
+`--source emsteel` 将 Quanto 的 Emsteel 月度公开报价与缺月的 SteelOrbis、
+SEAISI、AISU 当期报道合并，先写 `emsteel_monthly`，再重建 `月度_EMSTEEL`。
+2026-11-03 核验覆盖2024年1月—2026年10月连续34个月。它是含推算的名义报价
+汇编，非成交均价；逐月质量标记、原币、汇率、来源 URL 和原文哈希入库，
+Excel 数值批注保留来源与限制。不会插值补月，也不会用本地 EXW 覆盖
+`月度_MEsteel` 的进口 CFR/CPT 报价。详见 [Emsteel口径说明](../../../docs/uae-emsteel-series.md)。
+
 线上自动数据更新已取消，GitHub Actions 仅执行应用保活，见
 [streamlit-keepalive.md](../../../docs/streamlit-keepalive.md)。数据维护使用上述本地入口。
 
