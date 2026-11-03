@@ -16,6 +16,16 @@ from htfa.jobs.uae_data import db
 from htfa.jobs.uae_data import merge_workbook, update_data
 
 
+@pytest.fixture(autouse=True)
+def isolate_job_control_tests(monkeypatch, tmp_path):
+    """Controller doubles must neither retire nor open the production database."""
+    from htfa.jobs.uae_data import retired_sources
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "controller.duckdb")
+    monkeypatch.setattr(retired_sources, "retire_database", lambda con: None)
+    monkeypatch.setattr(retired_sources, "retire_workbook", lambda path: [])
+
+
 @pytest.mark.parametrize("error_type", [RuntimeError, KeyboardInterrupt])
 def test_scad_failed_refresh_preserves_old_rows_and_connection(
     monkeypatch, tmp_path, error_type,
@@ -36,6 +46,7 @@ def test_scad_failed_refresh_preserves_old_rows_and_connection(
 
     with db.connect(":memory:") as con:
         db.init_schema(con)
+        db.ensure(con, "scad_monthly", source_scad.TABLE_DDL)
         con.execute("INSERT INTO scad_monthly VALUES ('2026-08-31','old',1,'old.xlsx')")
         monkeypatch.setattr(db, "upsert_dictionary_rows", fail_metadata)
         with pytest.raises(error_type, match="metadata failed"):

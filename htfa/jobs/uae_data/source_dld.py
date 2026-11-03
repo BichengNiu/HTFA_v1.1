@@ -1277,7 +1277,20 @@ def _get_bulk_csv_files(dataset_id, dataset_page):
             "X-CSRF-Token": token_match.group(1),
         },
     )
-    payload = json.loads(_http_read(api_req, opener=opener, timeout=60, retries=2))
+    for attempt in range(3):
+        try:
+            payload = json.loads(
+                _http_read(api_req, opener=opener, timeout=60, retries=2)
+            )
+            break
+        except json.JSONDecodeError as exc:
+            # The official endpoint intermittently returns an empty/HTML 200.
+            # Retry the live request; never substitute an unverified old cache.
+            if attempt == 2:
+                raise RuntimeError(
+                    "Data Dubai download API returned invalid JSON after 3 attempts"
+                ) from exc
+            time.sleep(attempt + 1)
     if not payload.get("success"):
         raise RuntimeError(f"Data Dubai download API failed: {payload.get('message')}")
 

@@ -26,9 +26,9 @@ def retire_database(con) -> None:
                 [table, f"main.{table}"],
             )
         con.execute(
-            "DELETE FROM meta_indicator_dictionary WHERE source IN (?, ?) "
+            "DELETE FROM meta_indicator_dictionary WHERE source IN (?, ?, ?) "
             "OR indicator_name LIKE ? OR indicator_name LIKE ?",
-            ["MEsteel", "TDRA Open Data", "阿联酋:钢材进口报价:%", "阿联酋:TDRA%"],
+            ["MEsteel", "TDRA Open Data", "SCAD", "阿联酋:钢材进口报价:%", "阿联酋:TDRA%"],
         )
 
 
@@ -44,10 +44,24 @@ def retire_workbook(workbook_path: Path) -> list[str]:
     try:
         removed = [sheet for _table, sheet in RETIRED_SOURCES.values()
                    if sheet in book.sheetnames]
-        if not removed:
-            return []
         for sheet in removed:
             book.remove(book[sheet])
+        # Earlier Wind imports also contain copies of the retired hotel series.
+        # Match both provider and hotel definition to preserve unrelated data.
+        for sheet in book.worksheets:
+            if sheet.title == "指标字典":
+                continue
+            columns = [
+                col for col in range(2, sheet.max_column + 1)
+                if sheet.cell(5, col).value in {"SCAD", "阿布扎比统计局"}
+                and "酒店" in str(sheet.cell(2, col).value or "")
+            ]
+            for col in reversed(columns):
+                sheet.delete_cols(col)
+            if columns:
+                removed.append(f"{sheet.title}:SCAD酒店{len(columns)}列")
+        if not removed:
+            return []
         fd, name = tempfile.mkstemp(
             prefix=".retire-sources-", suffix=".tmp.xlsx", dir=path.parent,
         )

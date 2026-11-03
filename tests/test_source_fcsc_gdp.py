@@ -36,6 +36,23 @@ def test_parse_preserves_official_yoy_and_converts_millions_to_billions():
     assert values[date(2026, 6, 30), "阿联酋:GDP:不变价:当季同比"] == 4.7
 
 
+def test_online_download_uses_windows_safe_paths(tmp_path, monkeypatch):
+    monkeypatch.setattr(source, "RAW_DIR", tmp_path)
+    paths = []
+
+    def download(url, path, **kwargs):
+        paths.append(path)
+        system = "CON" if "DF_QGDP_CON" in url else "CUR"
+        path.write_bytes(payload(system))
+
+    monkeypatch.setattr(source, "download_file", download)
+    with db.connect(":memory:") as con:
+        db.init_schema(con)
+        source.update(con)
+    assert {p.name for p in paths} == {"gdp_CON.csv", "gdp_CUR.csv"}
+    assert all(p.stem.upper() not in {"CON", "PRN", "AUX", "NUL"} for p in paths)
+
+
 def test_first_year_without_published_annual_rates_is_not_fabricated():
     lines = payload(through=4).decode().splitlines()
     text = "\n".join(line for line in lines if ",GWTH_RATE," not in line)
@@ -63,8 +80,8 @@ def test_invalid_source_is_rejected(mutation):
 
 def test_update_preserves_different_release_quarters_and_refuses_regression(tmp_path, monkeypatch):
     monkeypatch.setattr(source, "RAW_DIR", tmp_path)
-    (tmp_path / "CON.csv").write_bytes(payload("CON", 2))
-    (tmp_path / "CUR.csv").write_bytes(payload("CUR", 1))
+    (tmp_path / "gdp_CON.csv").write_bytes(payload("CON", 2))
+    (tmp_path / "gdp_CUR.csv").write_bytes(payload("CUR", 1))
     con = db.connect(":memory:")
     db.init_schema(con)
     source.update(con, skip_download=True)
@@ -77,7 +94,7 @@ def test_update_preserves_different_release_quarters_and_refuses_regression(tmp_
         ["阿联酋:GDP:现价"],
     ).fetchone()[0] == date(2026, 3, 31)
     before = con.execute("SELECT * FROM fcsc_gdp_quarterly ORDER BY 1,2").fetchall()
-    (tmp_path / "CON.csv").write_bytes(payload("CON", 1))
+    (tmp_path / "gdp_CON.csv").write_bytes(payload("CON", 1))
     with pytest.raises(ValueError, match="回退"):
         source.update(con, skip_download=True)
     assert con.execute("SELECT * FROM fcsc_gdp_quarterly ORDER BY 1,2").fetchall() == before
@@ -88,8 +105,8 @@ def test_merge_reads_database_and_preserves_unrelated_columns(tmp_path, monkeypa
     database = tmp_path / "gdp.duckdb"
     monkeypatch.setattr(db, "DB_PATH", database)
     monkeypatch.setattr(source, "RAW_DIR", tmp_path)
-    (tmp_path / "CON.csv").write_bytes(payload("CON", 2))
-    (tmp_path / "CUR.csv").write_bytes(payload("CUR", 1))
+    (tmp_path / "gdp_CON.csv").write_bytes(payload("CON", 2))
+    (tmp_path / "gdp_CUR.csv").write_bytes(payload("CUR", 1))
     with db.connect() as con:
         db.init_schema(con)
         source.update(con, skip_download=True)

@@ -250,15 +250,6 @@ _BASE_DDL = (
     )
     """,
     """
-    CREATE TABLE IF NOT EXISTS scad_monthly (
-        period      DATE           NOT NULL,
-        indicator   VARCHAR        NOT NULL,
-        value       DECIMAL(28, 3),
-        source_file VARCHAR,
-        PRIMARY KEY (period, indicator)
-    )
-    """,
-    """
     CREATE TABLE IF NOT EXISTS fcsc_monthly (
         period      DATE           NOT NULL,
         indicator   VARCHAR        NOT NULL,

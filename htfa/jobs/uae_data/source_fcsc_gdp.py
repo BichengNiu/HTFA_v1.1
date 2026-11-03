@@ -110,7 +110,7 @@ def parse_gdp_csv(payload: bytes, system: str) -> list[dict]:
     return [
         {"period": period, "indicator": _name(system, measure, kind),
          "value": value / 1000 if kind == "VAL" else value,
-         "source_url": DATA_URLS[system], "source_file": f"{system}.csv"}
+         "source_url": DATA_URLS[system], "source_file": f"gdp_{system}.csv"}
         for (period, measure, kind), value in sorted(values.items())
         if measure in MEASURES and (kind == "VAL" or measure in RATE_MEASURES)
     ]
@@ -120,7 +120,8 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     """Fetch both price systems and atomically upsert all 44 report indicators."""
     rows = []
     for system, url in DATA_URLS.items():
-        path = RAW_DIR / f"{system}.csv"
+        # CON is reserved on Windows, including when suffixed with .csv.
+        path = RAW_DIR / f"gdp_{system}.csv"
         if not skip_download:
             download_file(url, path, force=True, browser_transport=True,
                           headers={"Accept": "text/csv;version=2.0.0;labels=both"})

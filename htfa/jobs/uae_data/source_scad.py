@@ -47,6 +47,10 @@ RAW_DIR = DATA_DIR / "raw" / "scad" / "hotel"
 TARGET_SHEET = "月度_SCAD"
 DICTIONARY_SHEET = "指标字典"
 SOURCE_NAME = "SCAD"
+TABLE_DDL = """CREATE TABLE IF NOT EXISTS scad_monthly (
+    period DATE NOT NULL, indicator VARCHAR NOT NULL,
+    value DECIMAL(28, 3), source_file VARCHAR,
+    PRIMARY KEY (period, indicator))"""
 INDUSTRY = "住宿/旅游"
 
 # HS Table 1 关键指标：(指标名, 子串前缀, 频率, 单位)
@@ -316,6 +320,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         raise ValueError("SCAD 官网未提供可解析的 XLSX 数据")
 
     with db.transaction(con):
+        db.ensure(con, "scad_monthly", TABLE_DDL)
         db.replace(con, "scad_monthly", rows)
         db.upsert_dictionary_rows(con, _dictionary_rows())
 

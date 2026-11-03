@@ -418,6 +418,27 @@ def test_online_snapshot_change_rebuilds_existing_dld_base(tmp_path, monkeypatch
         con.close()
 
 
+def test_download_metadata_retries_invalid_200_json(monkeypatch):
+    responses = iter([
+        "Liferay.authToken = 'public-test-token'",
+        "<html>temporary gateway response</html>",
+        json.dumps({"success": True, "data": {"metadata": [{"files": [
+            {"file_name": "latest.csv.gz", "file_extension": "csv", "file_url": "https://example.test/data"}
+        ]}]}}),
+    ])
+    monkeypatch.setattr(dld, "_http_read", lambda *a, **kw: next(responses))
+    monkeypatch.setattr(dld.time, "sleep", lambda delay: None)
+    assert dld._get_bulk_csv_files("123", "https://example.test/page")[0]["file_name"] == "latest.csv.gz"
+
+
+def test_download_metadata_rejects_persistent_invalid_json(monkeypatch):
+    responses = iter(["Liferay.authToken = 'public-test-token'", "", "", ""])
+    monkeypatch.setattr(dld, "_http_read", lambda *a, **kw: next(responses))
+    monkeypatch.setattr(dld.time, "sleep", lambda delay: None)
+    with pytest.raises(RuntimeError, match="invalid JSON after 3 attempts"):
+        dld._get_bulk_csv_files("123", "https://example.test/page")
+
+
 def test_indicator_dictionary_contract() -> None:
     assert len(dld.INDICATOR_DICTIONARY) == 6
     assert [row[0] for row in dld.INDICATOR_DICTIONARY] == list(

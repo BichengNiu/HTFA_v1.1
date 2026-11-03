@@ -307,6 +307,45 @@ def _ingest(con, rows: list[dict]) -> int:
     return len(rows)
 
 
+def _store_coverage(con, rows: list[dict]) -> None:
+    """Persist API window ends so a week-start timestamp is not a data cutoff."""
+    con.execute("CREATE TABLE IF NOT EXISTS cloudflare_radar_coverage ("
+                "source_file VARCHAR PRIMARY KEY, observed_through DATE NOT NULL)")
+    for filename in {row["source_file"] for row in rows}:
+        if Path(filename).name != filename:
+            raise ValueError("Invalid Cloudflare source file")
+        path = RAW_DIR / filename
+        if not path.is_file():
+            continue
+        data = json.loads(path.read_text(encoding="utf-8"))
+        _pairs, meta = _parse_netflows_json(data)
+        ranges = meta.get("dateRange") or []
+        if len(ranges) != 1 or not ranges[0].get("endTime"):
+            continue
+        end = datetime.fromisoformat(ranges[0]["endTime"].replace("Z", "+00:00"))
+        # endTime is exclusive; a partial day cannot complete a calendar month.
+        through = end.date() - timedelta(days=1)
+        con.execute("INSERT OR REPLACE INTO cloudflare_radar_coverage VALUES (?, ?)",
+                    [filename, through])
+
+
+def _weekly_cutoff(con, weekly_rows, *, today: date | None = None):
+    """Use proven source coverage, conservatively retaining the old cutoff otherwise."""
+    latest = max((row[0] for row in weekly_rows), default=None)
+    if latest is None:
+        return None
+    through = latest
+    if db.table_exists(con, "cloudflare_radar_coverage"):
+        coverage = con.execute(
+            "SELECT c.observed_through FROM cloudflare_radar_daily d "
+            "JOIN cloudflare_radar_coverage c USING(source_file) "
+            "WHERE d.period=? AND d.indicator=?", [latest, INDICATOR_W],
+        ).fetchone()
+        if coverage:
+            through = min(coverage[0], latest + timedelta(days=6))
+    return last_complete_month_end(through, today=today)
+
+
 # ---------------------------------------------------------------------------
 # 入库
 # ---------------------------------------------------------------------------
@@ -368,6 +407,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     with transaction(con):
         db.ensure(con, TABLE, _TABLE_DDL)
         _ingest(con, rows)
+        _store_coverage(con, rows)
         db.upsert_dictionary_rows(con, _dictionary_rows())
 
     return {"status": "ok", "rows": len(rows), "note": "；".join(notes)}
@@ -398,14 +438,12 @@ def merge(workbook_path: Path) -> dict:
             "SELECT period, value FROM cloudflare_radar_daily WHERE indicator = ? ORDER BY period",
             [INDICATOR_W],
         ).fetchall()
+        weekly_cutoff = _weekly_cutoff(con, weekly_rows)
     finally:
         con.close()
 
     daily_cutoff = last_complete_month_end(
         max((row[0] for row in daily_rows), default=None)
-    )
-    weekly_cutoff = last_complete_month_end(
-        max((row[0] for row in weekly_rows), default=None)
     )
     if daily_cutoff is not None:
         daily_rows = [row for row in daily_rows if row[0] <= daily_cutoff]

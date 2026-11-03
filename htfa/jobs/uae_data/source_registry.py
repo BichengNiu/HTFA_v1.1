@@ -27,7 +27,6 @@ SOURCES = (
     "public_market",
     "rta",
     "salik",
-    "scad",
     "uaewps",
     "wam",
 )
@@ -36,6 +35,7 @@ SOURCES = (
 RETIRED_SOURCES = {
     "steel": ("mesteel_monthly", "月度_MEsteel"),
     "tdra": ("tdra_telecom_monthly", "月度_TDRA"),
+    "scad": ("scad_monthly", "月度_SCAD"),
 }
 
 
