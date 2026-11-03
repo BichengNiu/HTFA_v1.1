@@ -4,6 +4,7 @@ import json
 import sys
 from datetime import date
 from pathlib import Path
+from io import BytesIO
 
 import pytest
 
@@ -27,6 +28,24 @@ def _payload() -> dict:
         "dates": ["2026-07-01", "2026-08-01"],
         "data": data,
     }
+
+
+def test_legacy_redirect_to_html_preserves_original_prices(monkeypatch, tmp_path):
+    class Response(BytesIO):
+        def geturl(self):
+            return "https://mesteel.com/prices"
+
+    raw = tmp_path / "prices.json"
+    manifest = tmp_path / "manifest.json"
+    raw.write_bytes(b"previous prices")
+    manifest.write_bytes(b"previous provenance")
+    monkeypatch.setattr(source, "RAW_PATH", raw)
+    monkeypatch.setattr(source, "MANIFEST_PATH", manifest)
+    monkeypatch.setattr(source, "urlopen", lambda *a, **k: Response(b"<!DOCTYPE html>"))
+    with pytest.raises(RuntimeError, match="website has migrated"):
+        source.download()
+    assert raw.read_bytes() == b"previous prices"
+    assert manifest.read_bytes() == b"previous provenance"
 
 
 def test_parse_quote_range_and_scalar() -> None:

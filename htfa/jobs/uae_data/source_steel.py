@@ -144,6 +144,13 @@ def download(timeout: int = 30) -> tuple[Path, Path]:
     )
     with urlopen(request, timeout=timeout) as response:
         raw_bytes = response.read()
+        final_url = response.geturl()
+    if raw_bytes.lstrip().startswith(b"<"):
+        raise RuntimeError(
+            "MEsteel legacy JSON endpoint now returns an HTML page at "
+            f"{final_url}; the price website has migrated. "
+            "The response is not a valid monthly price dataset."
+        )
     payload = validate_payload(json.loads(raw_bytes.decode("utf-8-sig")))
 
     canonical_bytes = json.dumps(payload, ensure_ascii=False, indent=2).encode(
