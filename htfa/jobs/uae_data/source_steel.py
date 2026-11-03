@@ -41,6 +41,11 @@ QUALITY_PATH = SCRIPTS_DIR / "processed" / "quality_report.json"
 MERGE_SCRIPT = SCRIPTS_DIR / "merge_workbook.ps1"
 
 TARGET_SHEET = "月度_MEsteel"
+# Archival parser only; this source is no longer in the active registry/schema.
+TABLE_DDL = """CREATE TABLE IF NOT EXISTS mesteel_monthly (
+    period DATE NOT NULL, product VARCHAR NOT NULL, lower DOUBLE,
+    upper DOUBLE, midpoint DOUBLE, origin_label VARCHAR,
+    PRIMARY KEY (period, product))"""
 SOURCE_NAME = "MEsteel"
 SOURCE_BASIS = "CFR/CPT UAE"
 UNIT = "美元/吨"
@@ -367,6 +372,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         for row in long_rows
     ]
     with transaction(con):
+        db.ensure(con, "mesteel_monthly", TABLE_DDL)
         db.replace(con, "mesteel_monthly", rows)
         db.upsert_dictionary_rows(con, _dictionary_rows())
 

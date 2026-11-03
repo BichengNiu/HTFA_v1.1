@@ -55,9 +55,10 @@ TRANSPORT_CHARTS = (
               right=("转运占比",)),
 )
 PRICE_CHARTS = (
-    ChartSpec("steel", "阿联酋钢材进口报价（CFR/CPT区间中值）", "月度_MEsteel", "月",
-              tuple((name, f"阿联酋:钢材进口报价:{name}:CFR/CPT:区间中值", "美元/吨")
-                    for name in ("螺纹钢", "钢坯及方坯", "3mm热轧卷"))),
+    ChartSpec(
+        "steel", "Emsteel钢筋月度公开报价（EXW，汇编含推算）", "月度_EMSTEEL", "月",
+        (("Emsteel钢筋", "阿联酋:Emsteel钢筋月度公开报价:EXW:汇编含推算", "迪拉姆/吨"),),
+    ),
     ChartSpec(
         "cpi",
         "阿联酋居民消费价格同比变化（月度，%）",

@@ -61,6 +61,13 @@ def main(argv: list[str] | None = None) -> int:
     workbook_path = args.workbook.resolve()
     print(f"[merge_workbook] sources: {', '.join(names)}", flush=True)
     failures = 0
+    from .retired_sources import retire_database, retire_workbook
+
+    with db.connect() as con:
+        retire_database(con)
+    retired = retire_workbook(workbook_path)
+    if retired:
+        print(f"[merge_workbook] retired          ok       {', '.join(retired)}", flush=True)
     for name in names:
         # A COM helper may outlive its PowerShell process by a short interval.
         # Clean that state before and after every source so the next writer or

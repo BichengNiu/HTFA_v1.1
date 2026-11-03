@@ -4,7 +4,7 @@
 T-100 International Segment (All Carriers) —— 每月更新、滞后约 3-6 个月，
 1990 年起。本模块解析 ``data/UAE/raw/t100/csv/uae_<year>.zip``（由
 ``download_t100.py`` 从 transtats.bts.gov 官方表单按年下载并保留官方字段；
-已有 ``download_uae_years.mjs`` 时兼容使用），保留 US↔UAE 双向航段并月度聚合成指标入
+记录官方最新可用月份与实际下载覆盖），保留 US↔UAE 双向航段并月度聚合成指标入
 ``dot_t100_monthly``。
 在线更新最近三年时保留库内更早历史，拒绝删除刷新年份内已有观测。
 
@@ -25,9 +25,6 @@ from __future__ import annotations
 
 import csv
 import io
-import os
-import shutil
-import subprocess
 import zipfile
 from datetime import date
 from pathlib import Path
@@ -70,10 +67,6 @@ INDICATOR_TPL = {
 }
 
 MIN_YEAR, MAX_YEAR = 1990, date.today().year
-_TRACKED_DOWNLOAD_SCRIPT = Path(__file__).with_name("download_uae_years.mjs")
-T100_DOWNLOAD_SCRIPT = (_TRACKED_DOWNLOAD_SCRIPT if _TRACKED_DOWNLOAD_SCRIPT.is_file()
-                      else RAW_DIR / "download_uae_years.mjs")
-
 
 # ---------------------------------------------------------------------------
 # 解析
@@ -304,72 +297,14 @@ def _dictionary_rows() -> list[dict[str, Any]]:
 
 
 def _download_recent_years(*, force: bool) -> str:
-    """Run the official TranStats browser downloader for recent years.
+    """Refresh official recent-year archives with the tracked form downloader.
 
-    BTS requires a JavaScript/browser session for the filtered table.  The
-    repository already contains that official-form downloader; this adapter
-    gives it a repository-relative output path and retries the current years.
-    Playwright is installed under raw/t100 on first online run, which is an
-    ignored cache and never part of the data commit.
+    The mutable annual files are always fetched again. The downloader records
+    BTS's publication cutoff separately from the filtered UAE observations.
     """
+    from .download_t100 import download_recent
 
-    if not T100_DOWNLOAD_SCRIPT.is_file():
-        from .download_t100 import download_recent
-        return download_recent(CSV_DIR)
-    node = shutil.which("node") or shutil.which("node.exe")
-    if node is None:
-        raise RuntimeError("未找到 Node.js，无法运行 BTS T-100 浏览器下载器")
-
-    probe = subprocess.run(
-        [node, "-e", "import('playwright')"],
-        cwd=RAW_DIR,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if probe.returncode != 0:
-        npm = shutil.which("npm.cmd") or shutil.which("npm")
-        if npm is None:
-            raise RuntimeError("未找到 npm，无法自动安装 T-100 下载器依赖")
-        install = subprocess.run(
-            [npm, "install", "--no-save", "--prefix", str(RAW_DIR), "playwright@1.55.0"],
-            cwd=RAW_DIR,
-            capture_output=True,
-            text=True,
-            timeout=900,
-            check=False,
-        )
-        if install.returncode != 0:
-            detail = (install.stderr or install.stdout or "").strip()[-800:]
-            raise RuntimeError(f"Playwright 自动安装失败: {detail}")
-
-    current_year = date.today().year
-    start_year = max(MIN_YEAR, current_year - 2)
-    years = ",".join(str(year) for year in range(start_year, current_year + 1))
-    env = os.environ.copy()
-    env.update(
-        {
-            "T100_OUTPUT": str(CSV_DIR),
-            "T100_YEARS": years,
-            "T100_RETRY_NODATA": "1",
-            "T100_MARK_NODATA": "0",
-            "T100_FORCE": "1" if force else "0",
-        }
-    )
-    result = subprocess.run(
-        [node, str(T100_DOWNLOAD_SCRIPT)],
-        cwd=RAW_DIR,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=1800,
-        check=False,
-    )
-    output = "\n".join(part for part in (result.stdout, result.stderr) if part).strip()
-    if result.returncode != 0:
-        detail = output[-1200:] if output else "无输出"
-        raise RuntimeError(f"T-100 下载器失败: {detail}")
-    return output[-1200:] if output else "已运行 BTS T-100 下载器"
+    return download_recent(CSV_DIR)
 
 
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict:

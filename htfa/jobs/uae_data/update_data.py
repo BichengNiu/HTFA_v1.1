@@ -65,6 +65,9 @@ def run_sources(
     con = db.connect()
     try:
         db.init_schema(con)
+        from .retired_sources import retire_database
+
+        retire_database(con)
 
         results: dict[str, dict] = {}
         for name in source_names:

@@ -128,17 +128,6 @@ _BASE_DDL = (
     )
     """,
     """
-    CREATE TABLE IF NOT EXISTS mesteel_monthly (
-        period       DATE    NOT NULL,
-        product      VARCHAR NOT NULL,
-        lower        DOUBLE,
-        upper        DOUBLE,
-        midpoint     DOUBLE,
-        origin_label VARCHAR,
-        PRIMARY KEY (period, product)
-    )
-    """,
-    """
     CREATE TABLE IF NOT EXISTS ded_monthly (
         month  DATE    NOT NULL,
         series VARCHAR NOT NULL,
@@ -233,15 +222,6 @@ _BASE_DDL = (
         volume      BIGINT,
         raw_rows    BIGINT,
         PRIMARY KEY (period, origin_city, destn_city, service)
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS tdra_telecom_monthly (
-        period      DATE           NOT NULL,
-        indicator   VARCHAR        NOT NULL,
-        value       DECIMAL(20, 4),
-        source_file VARCHAR,
-        PRIMARY KEY (period, indicator)
     )
     """,
     """

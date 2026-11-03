@@ -3,6 +3,7 @@
 import csv
 from datetime import date
 import io
+import json
 from pathlib import Path
 from types import SimpleNamespace
 import zipfile
@@ -41,7 +42,9 @@ def test_bts_selects_matching_data_table_and_filters_only_us_uae(tmp_path):
 
 
 def test_no_data_marker_requires_official_message_and_echoed_filters(tmp_path):
-    form = ''.join(f'<input type="checkbox" name="{field}">' for field in source.FIELDS_REQUIRED)
+    form = 'Latest Available Data: July 2026 ' + ''.join(
+        f'<input type="checkbox" name="{field}">' for field in source.FIELDS_REQUIRED
+    )
     def response(text):
         return SimpleNamespace(text=text, content=text.encode(), raise_for_status=lambda: None)
     empty = ('No data available for All Months 1990'
@@ -54,6 +57,24 @@ def test_no_data_marker_requires_official_message_and_echoed_filters(tmp_path):
     with pytest.raises(ValueError, match="verified no-data"):
         downloader.download_year(session, 1991, tmp_path)
     assert not (tmp_path / "uae_1991.nodata").exists()
+
+
+def test_download_records_official_cutoff_separately_from_archive_months(tmp_path):
+    form = 'Latest Available Data: August 2026 ' + ''.join(
+        f'<input type="checkbox" name="{field}">' for field in source.FIELDS_REQUIRED
+    )
+    session = SimpleNamespace(
+        get=lambda *a, **k: SimpleNamespace(text=form, raise_for_status=lambda: None),
+        post=lambda *a, **k: SimpleNamespace(
+            content=archive(months=(6, 7)), raise_for_status=lambda: None,
+        ),
+    )
+    assert downloader.download_year(session, 2026, tmp_path) == 4
+    evidence = json.loads((tmp_path / "uae_2026.source.json").read_text())
+    assert evidence["official_latest_available_period"] == "2026-08"
+    assert evidence["filtered_latest_period"] == "2026-07"
+    assert evidence["filtered_months"] == ["2026-06", "2026-07"]
+    assert len(evidence["sha256"]) == 64
 
 
 def test_recent_year_refresh_retains_old_database_history(tmp_path, monkeypatch):

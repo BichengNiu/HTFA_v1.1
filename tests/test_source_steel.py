@@ -132,6 +132,7 @@ def test_update_roundtrip_loads_monthly_table(tmp_path, monkeypatch) -> None:
 def test_merge_builds_wide_csv(tmp_path) -> None:
     con = db.connect(":memory:")
     db.init_schema(con)
+    db.ensure(con, "mesteel_monthly", source.TABLE_DDL)
     rows, _wide, _quality = source.clean_payload(_payload())
     db.replace(
         con,

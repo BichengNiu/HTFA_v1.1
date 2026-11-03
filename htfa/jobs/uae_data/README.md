@@ -19,8 +19,18 @@ runtime\python.exe -m htfa.jobs.uae_data.merge_workbook   # 单独重跑库→�
 SEAISI、AISU 当期报道合并，先写 `emsteel_monthly`，再重建 `月度_EMSTEEL`。
 2026-11-03 核验覆盖2024年1月—2026年10月连续34个月。它是含推算的名义报价
 汇编，非成交均价；逐月质量标记、原币、汇率、来源 URL 和原文哈希入库，
-Excel 数值批注保留来源与限制。不会插值补月，也不会用本地 EXW 覆盖
-`月度_MEsteel` 的进口 CFR/CPT 报价。详见 [Emsteel口径说明](../../../docs/uae-emsteel-series.md)。
+Excel 数值批注保留来源与限制。不会插值补月；本地EXW序列使用独立指标名称。
+详见 [Emsteel口径说明](../../../docs/uae-emsteel-series.md)。
+
+2026-11-03 后，`steel`（旧MEsteel）和 `tdra` 不再是活动来源：前者已由
+Emsteel钢筋序列接替，后者九份官方工作簿均停在2026年6月，按用户要求撤下。
+标准更新/合并入口会清理两者的生产库表、受管工作表和指标字典；原始缓存及
+历史运行日志保留。`source_steel.py` / `source_tdra.py` 仅保留历史解析能力。
+
+T-100 统一采用仓库内 `download_t100.py` 直接访问BTS官方表单，强制重抓最近
+三年年包，不依赖 raw 目录里的浏览器脚本。`uae_<year>.source.json` 分别记录
+官网“Latest Available Data”与实际美阿航段月份，便于识别源站滞后和下载漏月。
+2026-11-03 复核：官方表说明页、下载页及重新下载的2026年包都只到2026年7月。
 
 线上自动数据更新已取消，GitHub Actions 仅执行应用保活，见
 [streamlit-keepalive.md](../../../docs/streamlit-keepalive.md)。数据维护使用上述本地入口。

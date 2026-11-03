@@ -143,12 +143,12 @@ render_prices_section(st, p)
     assert [element.value for element in app.subheader] == ["物价"]
     assert not app.caption
     assert [metric.label for metric in app.metric] == [
-        "螺纹钢报价", "钢坯及方坯报价", "3mm热轧卷报价",
+        "Emsteel钢筋报价",
         "总体 CPI 同比", "食品与饮料 CPI 同比",
     ]
-    assert all(metric.value.endswith("美元/吨") for metric in app.metric[:3])
-    assert all(metric.value.endswith("%") for metric in app.metric[3:])
-    assert all(metric.delta.endswith("个百分点") for metric in app.metric[3:])
+    assert app.metric[0].value.endswith("迪拉姆/吨")
+    assert all(metric.value.endswith("%") for metric in app.metric[1:])
+    assert all(metric.delta.endswith("个百分点") for metric in app.metric[1:])
 
 
 def test_price_cpi_metrics_show_changes_in_percentage_points():

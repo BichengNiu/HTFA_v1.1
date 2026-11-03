@@ -1,15 +1,20 @@
 """Download UAE-filtered BTS international segment annual files from its official form."""
 
 import csv
-from datetime import date
+from datetime import date, datetime, timezone
+import hashlib
 from html.parser import HTMLParser
 import io
+import json
 import os
+import re
 from pathlib import Path
 import tempfile
 import zipfile
 
 from curl_cffi import requests
+
+from ._official_download import write_json_atomic
 
 FORM_URL = "https://www.transtats.bts.gov/DL_SelectFields.aspx?gnoyr_VQ=FJE&QO_fu146_anzr="
 
@@ -20,6 +25,10 @@ class DownloadForm(HTMLParser):
         self.hidden = {}
         self.fields = []
         self.selected = []
+        self.text = []
+
+    def handle_data(self, value):
+        self.text.append(value)
 
     def handle_starttag(self, tag, attributes):
         item = dict(attributes)
@@ -77,6 +86,13 @@ def download_year(session, year, directory):
     form.feed(response.text)
     if not set(FIELDS_REQUIRED) <= set(form.fields):
         raise ValueError("BTS form is not the international segment all-carrier table")
+    label = re.search(
+        r"Latest Available Data:\s*([A-Za-z]+)\s+(20\d{2})",
+        " ".join(" ".join(form.text).split()),
+    )
+    if label is None:
+        raise ValueError("BTS form lacks its latest available data month")
+    available = datetime.strptime(" ".join(label.groups()), "%B %Y").strftime("%Y-%m")
     payload = {**form.hidden, **{field: "on" for field in form.fields},
                "cboGeography": "United Arab Emirates", "cboYear": str(year),
                "cboPeriod": "All", "chkDownloadZip": "on", "chkMergeSub": "on", "btnDownload": "Download"}
@@ -100,8 +116,21 @@ def download_year(session, year, directory):
     try:
         count = filter_zip(response.content, temporary, year)
         if count:
+            with zipfile.ZipFile(temporary) as archive:
+                with archive.open(f"uae_{year}.csv") as raw:
+                    rows = csv.DictReader(io.TextIOWrapper(raw, encoding="utf-8"))
+                    months = sorted({f"{int(row['YEAR'])}-{int(row['MONTH']):02d}" for row in rows})
             os.replace(temporary, target)
             no_data.unlink(missing_ok=True)
+            write_json_atomic(directory / f"uae_{year}.source.json", {
+                "retrieved_at_utc": datetime.now(timezone.utc).isoformat(),
+                "source_url": FORM_URL,
+                "official_latest_available_period": available,
+                "year": year, "segment_rows": count,
+                "filtered_months": months,
+                "filtered_latest_period": months[-1],
+                "sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
+            })
         else:
             no_data.write_text(f"Verified official archive contains no US↔AE segments for {year}\n{FORM_URL}\n")
             target.unlink(missing_ok=True)
@@ -116,4 +145,13 @@ def download_recent(directory, *, today=None):
     years = sorted({1990, *range(current - 2, current + 1)})
     with requests.Session(impersonate="chrome") as session:
         counts = {year: download_year(session, year, directory) for year in years}
-    return "Official BTS annual download: " + ", ".join(f"{year}={count} segments" for year, count in counts.items())
+    latest = json.loads(
+        (Path(directory) / f"uae_{current}.source.json").read_text(encoding="utf-8")
+    ) if counts[current] else None
+    note = "Official BTS annual download: " + ", ".join(
+        f"{year}={count} segments" for year, count in counts.items()
+    )
+    if latest:
+        note += (f"; official latest={latest['official_latest_available_period']}"
+                 f"; UAE archive latest={latest['filtered_latest_period']}")
+    return note

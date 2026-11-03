@@ -28,11 +28,15 @@ SOURCES = (
     "rta",
     "salik",
     "scad",
-    "steel",
-    "tdra",
     "uaewps",
     "wam",
 )
+
+# Retained parsers are archival tools, not supported update/merge sources.
+RETIRED_SOURCES = {
+    "steel": ("mesteel_monthly", "月度_MEsteel"),
+    "tdra": ("tdra_telecom_monthly", "月度_TDRA"),
+}
 
 
 def resolve_source_names(specifier: str) -> list[str]:

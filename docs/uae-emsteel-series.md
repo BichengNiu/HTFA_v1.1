@@ -66,7 +66,9 @@ runtime\python.exe -m htfa.jobs.uae_data.update_data --source emsteel --skip-dow
 所有值与逐月来源先写DuckDB `emsteel_monthly` 长表（period为月末），再由
 `merge()` 从库读取数值和出处，原子重建 `月度_EMSTEEL` 并同步指标字典。
 数值单元格批注包含质量标记、来源URL和限制；报告快照经统一合并入口发布。
-原 `mesteel_monthly` / `月度_MEsteel` 不参与本次替代，避免混淆进口报价与本地报价。
+2026-11-03 按用户要求撤下旧 `mesteel_monthly` / `月度_MEsteel`，从刷新清单、
+生产库、工作簿、指标字典和已发布经济快照中移除。钢材图只读取新的
+`月度_EMSTEEL`。旧原始下载保留作本地审计资料。
 
 “34个月无日期缺口”仅代表公开报价汇编的时间覆盖完整，不代表34个月均为
 独立、同规格、无冲突的原始观测。严格经济计量使用时须考虑质量标记及口径断点。
