@@ -218,14 +218,31 @@ def _download_to(url: str, destination: Path) -> str:
 
     temporary = destination.with_suffix(destination.suffix + ".tmp")
     request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
-    with urllib.request.urlopen(request, timeout=_TIMEOUT) as response, \
-            open(temporary, "wb") as handle:
-        while True:
-            chunk = response.read(1024 * 1024)
-            if not chunk:
-                break
-            handle.write(chunk)
-    temporary.replace(destination)
+    try:
+        with urllib.request.urlopen(request, timeout=_TIMEOUT) as response:
+            if response.status != 200:
+                raise RuntimeError(
+                    f"HDX CSV download returned HTTP {response.status}; "
+                    f"WAF action={response.headers.get('x-amzn-waf-action', 'none')}"
+                )
+            if "html" in response.headers.get("Content-Type", "").lower():
+                raise ValueError("HDX CSV download returned an HTML page")
+            expected = int(response.headers.get("Content-Length") or 0)
+            received = 0
+            with open(temporary, "wb") as handle:
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    handle.write(chunk)
+                    received += len(chunk)
+            if not received or (expected and received != expected):
+                raise OSError(
+                    f"Incomplete HDX CSV download: {received}/{expected} bytes"
+                )
+        temporary.replace(destination)
+    finally:
+        temporary.unlink(missing_ok=True)
     return "downloaded"
 
 

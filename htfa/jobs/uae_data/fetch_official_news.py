@@ -201,7 +201,11 @@ def _published_date(item: dict) -> date:
     if not match:
         raise ValueError(f"Media Office news URL has no publication date: {link!r}")
     year, month_name, day, month = match.groups()
-    expected_month = MONTHS.get(month_name.casefold())
+    # The official November 2026 feed contains this transposed URL slug.
+    slug_month = {"novemebr": "november"}.get(
+        month_name.casefold(), month_name.casefold()
+    )
+    expected_month = MONTHS.get(slug_month)
     if expected_month != int(month):
         raise ValueError(f"Media Office news URL has an invalid month: {link!r}")
     try:

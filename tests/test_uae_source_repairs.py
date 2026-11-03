@@ -112,6 +112,20 @@ def test_ded_empty_title_keeps_valid_licence_body(monkeypatch):
     assert result["observations"][0]["value"] == 123
 
 
+def test_ded_official_november_slug_typo_matches_numeric_date():
+    assert news._published_date({
+        "DetailPageLink": "/en/news/2026/novemebr/02-11/article"
+    }) == date(2026, 11, 2)
+
+
+@pytest.mark.parametrize("slug", ["novemebr", "november"])
+def test_ded_month_mismatch_still_fails(slug):
+    with pytest.raises(ValueError, match="invalid month"):
+        news._published_date({
+            "DetailPageLink": f"/en/news/2026/{slug}/02-10/article"
+        })
+
+
 def test_ded_unrelated_empty_article_is_reported(monkeypatch):
     result = _news_scan(monkeypatch, headline="Real estate completes projects", body="")
     assert result["articles_without_text"] == ["https://mediaoffice.ae/en/news/test"]

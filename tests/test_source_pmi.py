@@ -5,6 +5,7 @@ import json
 import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from openpyxl import Workbook
@@ -77,6 +78,34 @@ def test_load_observations_parses_and_sorts(tmp_path) -> None:
         "2026-03",
     ]
     assert observations[0].value == 51.0  # 默认值 50.0 + 输入位置 1
+
+
+def test_official_pdf_reference_excludes_publication_date(monkeypatch):
+    import pypdf
+
+    page = SimpleNamespace(extract_text=lambda: (
+        "Embargoed until 5 October 2026\nSeptember 2026\nUAE PMI"
+    ))
+    monkeypatch.setattr(pypdf, "PdfReader", lambda _: SimpleNamespace(pages=[page]))
+    assert source.parse_official_reference_period(b"PDF") == "2026-09"
+
+
+def test_quality_uses_verified_reference_month_for_next_month_update():
+    observations = [
+        source.PmiObservation(f"{2024 + i // 12}-{i % 12 + 1:02d}", 55.3)
+        for i in range(33)
+    ]
+    metadata = {
+        "source_last_update": "20261031000000",
+        "official_reference_period": "2026-09",
+    }
+    report = source.build_quality_report(observations, metadata, today=date(2026, 11, 3))
+    assert report["status"] == "passed"
+    metadata["official_reference_period"] = "2026-10"
+    report = source.build_quality_report(observations, metadata, today=date(2026, 11, 3))
+    failed = {c["name"] for c in report["checks"] if not c["passed"]}
+    assert "latest_matches_official_release" in failed
+    assert "latest_matches_source_update" in failed
 
 
 @pytest.mark.parametrize("missing", ["country", "frequency", "source", "unit", "data"])

@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import json
+import re
 import ssl
 import threading
 import time
@@ -42,6 +43,7 @@ UA = (
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 )
 DEFAULT_OUT = Path(__file__).resolve().parents[3] / "data" / "UAE" / "raw" / "dubai_customs_air" / "csv"
+RANGE_BYTES = 4 * 1024 * 1024
 
 
 def fetch_json(url: str) -> dict:
@@ -96,7 +98,10 @@ def download_file(
     *,
     force: bool = False,
 ) -> str:
-    """Resume one shard and atomically replace it after gzip CRC verification.
+    """Download bounded ranges and publish a shard after gzip CRC verification.
+
+    ``url`` is the signed source URL and ``target`` is the destination path.
+    ``force`` refreshes even a valid existing target instead of reusing it.
 
     NOTE: the manifest ``file_size`` reports the *decompressed* size while the
     CDN serves the compressed gzip (about 56 MB per shard in July-2026 data),
@@ -108,36 +113,62 @@ def download_file(
             return "skipped"
     tmp = target.with_suffix(target.suffix + ".part")
     offset = tmp.stat().st_size if tmp.exists() and not force else 0
-    headers = {"User-Agent": UA}
-    if offset:
-        headers["Range"] = f"bytes={offset}-"
-    req = Request(url, headers=headers)
-    # CDN 签名 URL 只有约 10 分钟有效；短一些的 socket 超时可以让
-    # 过期/无响应的链接尽快触发 manifest 刷新，而不是把整批任务挂住。
-    try:
-        response = urlopen(req, timeout=180, context=_ssl_context())
-    except HTTPError as exc:
-        if exc.code == 416 and offset and _gzip_ok(tmp):
-            tmp.replace(target)
-            return "ok"
-        if exc.code == 416:
-            tmp.unlink(missing_ok=True)
-        raise
-    with response as resp:
-        append = resp.status == 206 and offset > 0
-        if append and not resp.headers.get("Content-Range", "").startswith(f"bytes {offset}-"):
-            raise ValueError("CDN resumed at an unexpected byte offset")
-        received = 0
-        expected = int(resp.headers.get("Content-Length") or 0)
-        with open(tmp, "ab" if append else "wb") as out:
-            while True:
-                chunk = resp.read(1 << 20)
-                if not chunk:
-                    break
-                out.write(chunk)
-                received += len(chunk)
-        if expected and received != expected:
-            raise OSError(f"Incomplete HTTP response: {received}/{expected} bytes")
+    total = None
+    while total is None or offset < total:
+        end = offset + RANGE_BYTES - 1
+        req = Request(
+            url, headers={"User-Agent": UA, "Range": f"bytes={offset}-{end}"}
+        )
+        # Bounded ranges avoid CDN full-object responses that stall before the
+        # first block, and retain verified byte offsets across signed-URL retries.
+        try:
+            response = urlopen(req, timeout=180, context=_ssl_context())
+        except HTTPError as exc:
+            if exc.code == 416 and offset and _gzip_ok(tmp):
+                tmp.replace(target)
+                return "ok"
+            if exc.code == 416:
+                tmp.unlink(missing_ok=True)
+            raise
+        with response as resp:
+            expected = int(resp.headers.get("Content-Length") or 0)
+            if resp.status == 206:
+                match = re.fullmatch(
+                    r"bytes (\d+)-(\d+)/(\d+)",
+                    resp.headers.get("Content-Range", ""),
+                )
+                if match is None:
+                    raise ValueError("CDN returned an invalid Content-Range")
+                start, last, size = map(int, match.groups())
+                if start != offset or not start <= last <= end or last >= size:
+                    raise ValueError("CDN returned an unexpected byte range")
+                if total is not None and total != size:
+                    raise ValueError("CDN object size changed during download")
+                total = size
+                range_size = last - start + 1
+                if expected and expected != range_size:
+                    raise ValueError("CDN Content-Length disagrees with Content-Range")
+                expected = range_size
+                mode = "ab" if offset else "wb"
+            elif resp.status == 200:
+                # A server may ignore Range; restart rather than append a full file.
+                offset = 0
+                mode = "wb"
+            else:
+                raise ValueError(f"Unexpected shard HTTP status: {resp.status}")
+            received = 0
+            with open(tmp, mode) as out:
+                while True:
+                    chunk = resp.read(1 << 20)
+                    if not chunk:
+                        break
+                    out.write(chunk)
+                    received += len(chunk)
+            if expected and received != expected:
+                raise OSError(f"Incomplete HTTP response: {received}/{expected} bytes")
+            offset += received
+            if resp.status == 200:
+                break
     if not _gzip_ok(tmp):
         tmp.unlink()
         raise ValueError("Downloaded gzip failed its CRC integrity check")

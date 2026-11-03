@@ -19,6 +19,7 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import urljoin
@@ -224,6 +225,12 @@ def download(output_dir: Path) -> tuple[Path, Path]:
     official_release = find_latest_official_release(
         fetch_text(SP_GLOBAL_RELEASES_URL)
     )
+    official_reference_period = None
+    if official_release is not None:
+        official_pdf = fetch_bytes(official_release["url"])
+        official_reference_period = parse_official_reference_period(official_pdf)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "latest_official_release.pdf").write_bytes(official_pdf)
 
     raw_path = output_dir / "tradingeconomics_chart.json"
     metadata_path = output_dir / "source_metadata.json"
@@ -248,6 +255,7 @@ def download(output_dir: Path) -> tuple[Path, Path]:
             "latest_value": series["data"][-1][0],
             "official_release_index_url": SP_GLOBAL_RELEASES_URL,
             "latest_official_release": official_release,
+            "official_reference_period": official_reference_period,
             "coverage_note": (
                 "Trading Economics labels this as a limited sample licensed from "
                 "S&P Global. Full headline history and sub-indices require a "
@@ -256,6 +264,25 @@ def download(output_dir: Path) -> tuple[Path, Path]:
         },
     )
     return raw_path, metadata_path
+
+
+def parse_official_reference_period(payload: bytes) -> str:
+    """Read the reference month from the first page of official PDF ``payload``."""
+
+    from pypdf import PdfReader
+
+    text = PdfReader(BytesIO(payload)).pages[0].extract_text()
+    months = (
+        "January February March April May June July August September October "
+        "November December"
+    ).split()
+    matches = re.findall(
+        rf"^\s*({'|'.join(months)})\s+(20\d{{2}})\s*$", text, flags=re.MULTILINE
+    )
+    periods = {f"{year}-{months.index(month) + 1:02d}" for month, year in matches}
+    if len(periods) != 1:
+        raise ValueError("Official UAE PMI PDF has no unique reference month")
+    return periods.pop()
 
 
 # ---------------------------------------------------------------------------
@@ -343,6 +370,13 @@ def build_quality_report(
     source_update_period = None
     if re_match := re.fullmatch(r"(\d{4})(\d{2})\d{2}\d*", source_update):
         source_update_period = f"{re_match.group(1)}-{re_match.group(2)}"
+    official_period = metadata.get("official_reference_period")
+    update_matches = source_update_period in (None, periods[-1])
+    if source_update_period and official_period == periods[-1]:
+        # Publication/update timestamps may fall in the following month.
+        update_matches = (
+            _month_number(source_update_period) - _month_number(periods[-1])
+        ) in (0, 1)
     checks = [
         {
             "name": "has_historical_data",
@@ -377,12 +411,17 @@ def build_quality_report(
         },
         {
             "name": "latest_matches_source_update",
-            "passed": source_update_period in (None, periods[-1]),
+            "passed": update_matches,
             "detail": (
                 "source update date unavailable"
                 if source_update_period is None
                 else f"source update period={source_update_period}"
             ),
+        },
+        {
+            "name": "latest_matches_official_release",
+            "passed": official_period in (None, periods[-1]),
+            "detail": f"official reference period={official_period}",
         },
         {
             "name": "metadata_count_matches",
