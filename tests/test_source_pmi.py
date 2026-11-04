@@ -202,6 +202,39 @@ def test_update_roundtrip_loads_monthly_table(tmp_path, monkeypatch) -> None:
     con.close()
 
 
+def test_update_preserves_history_when_public_sample_rolls(tmp_path, monkeypatch):
+    periods = _recent_periods(31)
+    chart = tmp_path / "chart.json"
+    metadata = tmp_path / "metadata.json"
+    monkeypatch.setattr(source, "CHART_PATH", chart)
+    monkeypatch.setattr(source, "METADATA_PATH", metadata)
+    monkeypatch.setattr(source, "REPORT_PATH", tmp_path / "quality.json")
+    con = db.connect(":memory:")
+    try:
+        db.init_schema(con)
+        chart.write_text(json.dumps(_make_payload(periods[:-1])), encoding="utf-8")
+        _write_metadata(metadata, periods[:-1])
+        source.update(con, skip_download=True)
+        original = con.execute(
+            "SELECT * FROM pmi_monthly ORDER BY period LIMIT 1"
+        ).fetchone()
+
+        values = [57.2] * 30
+        chart.write_text(
+            json.dumps(_make_payload(periods[1:], values)), encoding="utf-8"
+        )
+        _write_metadata(metadata, periods[1:])
+        source.update(con, skip_download=True)
+
+        rows = con.execute("SELECT * FROM pmi_monthly ORDER BY period").fetchall()
+        assert len(rows) == 31
+        assert rows[0] == original
+        assert all(row[1] == 57.2 for row in rows[1:])
+        assert rows[-1][0].strftime("%Y-%m") == periods[-1]
+    finally:
+        con.close()
+
+
 def test_update_rounds_values_to_one_decimal(tmp_path, monkeypatch) -> None:
     """52.74 -> 52.7：与旧脚本一位小数舍入一致。"""
 

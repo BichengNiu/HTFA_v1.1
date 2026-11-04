@@ -598,6 +598,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     - 否则在缓存缺失或 ``force=True`` 时调用``download`` 刷新缓存。
     - 质检报告写入 data/UAE/raw/pmi/quality_report.json；任一检查不过即抛错
       （与旧 process_uae_pmi.py 行为一致）。
+    - 公开样本会滚动截断历史；按月更新本次观测，保留样本窗口外的库内历史。
     """
 
     download_note = ""
@@ -631,7 +632,16 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         for observation in observations
     ]
     with transaction(con):
-        db.replace(con, "pmi_monthly", rows)
+        con.executemany(
+            "INSERT INTO pmi_monthly (period, value, source_label, source_url) "
+            "VALUES (?, ?, ?, ?) ON CONFLICT (period) DO UPDATE SET "
+            "value = excluded.value, source_label = excluded.source_label, "
+            "source_url = excluded.source_url",
+            [
+                (row["period"], row["value"], row["source_label"], row["source_url"])
+                for row in rows
+            ],
+        )
         db.upsert_dictionary_rows(con, _dictionary_rows())
 
     note = (
