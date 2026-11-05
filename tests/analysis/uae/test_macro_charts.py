@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from matplotlib.figure import Figure
+from matplotlib.transforms import Affine2D
 
 from htfa.monitoring.uae import charts
 from htfa.ui_shared.chart_legend import _apply_cjk_fonts
@@ -141,7 +142,25 @@ def test_macro_ts_chart_has_no_x_title_and_keeps_real_growth_in_q2(monkeypatch):
     plt.close(figure)
 
 
-def test_nonoil_industry_pull_has_only_six_bars_and_two_column_legend():
+def _assert_two_column_legend_rows(legend, rows):
+    # Text ink bounds vary with the glyphs. Measure the layout anchors instead,
+    # allowing one rendered pixel for independent-column font metric differences.
+    anchors = np.array([
+        text.get_transform().transform(text.get_position())
+        for text in legend.get_texts()
+    ])
+    assert anchors.shape == (rows * 2, 2)
+    left, right = anchors[:rows], anchors[rows:]
+    np.testing.assert_allclose(left[:, 0], left[0, 0], rtol=0, atol=1)
+    np.testing.assert_allclose(right[:, 0], right[0, 0], rtol=0, atol=1)
+    assert right[0, 0] > left[0, 0] + 1
+    assert np.all(np.diff(left[:, 1]) < -2)
+    assert np.all(np.diff(right[:, 1]) < -2)
+    np.testing.assert_allclose(left[:, 1], right[:, 1], rtol=0, atol=1)
+
+
+@pytest.mark.parametrize("dpi", [72, 100, 144])
+def test_nonoil_industry_pull_has_only_six_bars_and_two_column_legend(dpi):
     industries = ["批发零售", "金融保险", "制造业", "建筑业", "房地产业", "其他行业"]
     frame = pd.DataFrame({name: [2.0, -1.0, 3.0] for name in industries},
                          index=pd.date_range("2025-12-31", periods=3, freq="QE"))
@@ -156,11 +175,14 @@ def test_nonoil_industry_pull_has_only_six_bars_and_two_column_legend():
         legend = axis.get_legend()
         assert [item.get_text() for item in legend.get_texts()] == industries
         _apply_cjk_fonts(figure)
+        figure.set_dpi(dpi)
         figure.canvas.draw()
-        renderer = figure.canvas.get_renderer()
-        boxes = [item.get_window_extent(renderer) for item in legend.get_texts()]
-        assert len({round(box.x0, 1) for box in boxes}) == 2
-        assert len({round(box.y0, 1) for box in boxes}) == 3
+        _assert_two_column_legend_rows(legend, rows=3)
         assert [item.get_text() for item in axis.get_xticklabels()] == ["Q4", "Q1", "Q2"]
+        # A real four-pixel row displacement must still fail the same check.
+        displaced = legend.get_texts()[3]
+        displaced.set_transform(displaced.get_transform() + Affine2D().translate(0, 4))
+        with pytest.raises(AssertionError):
+            _assert_two_column_legend_rows(legend, rows=3)
     finally:
         plt.close(figure)
