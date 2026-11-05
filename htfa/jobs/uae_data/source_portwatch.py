@@ -22,7 +22,7 @@
 与 cbuae 等月度源不同，本表保存的是原始日度观测而非抽象指标，以宽表镜像
 原样落库，之后按需用 SQL 透视（如全 UAE 每日总到港/总进口、霍尔木兹过境量）。
 
-其中替代方案不存在：全部海峡仅保留霍尔木兹（chokepoint6），UAE 港口与霍尔木兹
+底库保留所有海峡，报告工作表只提取霍尔木兹（chokepoint6）。UAE 港口与霍尔木兹
 合并到单一 sheet ``月度_PortWatch``（每月一行 × 13 指标 = UAE 9 + 霍尔木兹 4）。
 写表走
 ``write_indicator_sheet.ps1``（Excel COM），并在指标字典 sheet 补录指标名；
@@ -32,6 +32,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import re
 import time
@@ -41,6 +42,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
+from threading import BoundedSemaphore
 from urllib.parse import urlencode
 
 from htfa.data.temporal import last_complete_month_end
@@ -104,6 +106,9 @@ _USER_AGENT = (
     "AppleWebKit/537.36 Chrome/151 Safari/537.36"
 )
 _TIMEOUT = 120
+_ARCGIS_ATTEMPTS = 10
+_ARCGIS_TIMEOUT = 45
+_ARCGIS_REQUESTS = BoundedSemaphore(8)
 
 HDX_API = "https://data.humdata.org/api/3/action/package_show"
 UAE_PACKAGE_ID = "united-arab-emirates-daily-port-activity-data-and-shipment-estimates"
@@ -113,6 +118,11 @@ PORTS_SERVICE = f"{ARCGIS_BASE}/Daily_Ports_Data/FeatureServer/0"
 CHOKEPOINT_SERVICE = f"{ARCGIS_BASE}/Daily_Chokepoints_Data/FeatureServer/0"
 PORTS_REFERENCE = f"{ARCGIS_BASE}/PortWatch_ports_database/FeatureServer/0"
 CHOKEPOINT_REFERENCE = f"{ARCGIS_BASE}/PortWatch_chokepoints_database/FeatureServer/0"
+HUB_DATASETS = {
+    PORTS_SERVICE: "83b1bbc7b3354c5fb1f40673bb8f852e",
+    CHOKEPOINT_SERVICE: "3da2b9ca97684916b75c4013f95d18ab",
+}
+HUB_DATASET_API = "https://hub.arcgis.com/api/v3/datasets/"
 
 UAE_FILE = RAW_DIR / "uae_daily_port_activity.csv"
 CHOKEPOINT_FILE = RAW_DIR / "chokepoint_transit_calls.csv"
@@ -265,81 +275,278 @@ def _download_to(url: str, destination: Path) -> str:
 def _arcgis_json(service: str, params: dict) -> dict:
     """Read public IMF ``service`` JSON with the supplied query ``params``."""
 
-    for attempt in range(3):
+    for attempt in range(_ARCGIS_ATTEMPTS):
+        parameters = dict(params) if service.startswith(HUB_DATASET_API) else {
+            "f": "pjson" if attempt % 4 == 3 else "json", **params,
+        }
+        if "where" in parameters:
+            parameters["cacheHint"] = "false"
+        use_post = "objectIds" in params or (
+            service.endswith("/query") and attempt % 4 >= 2
+        )
+        headers = {
+            "User-Agent": _USER_AGENT, "Accept": "application/json",
+            "Cache-Control": "no-cache",
+        }
+        if use_post:
+            headers["Content-Type"] = "application/x-www-form-urlencoded"
+        request_url = service
+        if not use_post and parameters:
+            request_url += "?" + urlencode(parameters)
         request = urllib.request.Request(
-            service + "?" + urlencode({
-                "f": "json" if attempt == 0 else "pjson", **params
-            }),
-            headers={"User-Agent": _USER_AGENT, "Accept": "application/json"},
+            request_url,
+            data=urlencode(parameters).encode("utf-8") if use_post else None,
+            headers=headers,
         )
         try:
-            with urllib.request.urlopen(request, timeout=_TIMEOUT) as response:
+            with _ARCGIS_REQUESTS, urllib.request.urlopen(
+                request, timeout=_ARCGIS_TIMEOUT
+            ) as response:
                 if response.status != 200:
                     raise RuntimeError(f"IMF ArcGIS returned HTTP {response.status}")
                 payload = json.loads(response.read())
             if "error" not in payload:
                 return payload
             error = payload["error"]
+            message = " ".join([
+                str(error.get("message", "")),
+                *map(str, error.get("details", [])),
+            ])
             retryable = error.get("code") in {429, 500, 502, 503, 504} or (
-                error.get("code") == 400 and error.get("message") in {
-                    "Invalid URL", "Cannot perform query. Invalid query parameters."
-                }
+                error.get("code") == 400 and any(text in message for text in (
+                    "Invalid URL", "Cannot perform query", "Unable to perform query",
+                    "was not found", "does not exist or is inaccessible",
+                    "Object reference not set", "service is not available",
+                ))
             )
-            if not retryable or attempt == 2:
-                raise RuntimeError(f"IMF ArcGIS query failed at {service}: {error}")
+            if not retryable or attempt == _ARCGIS_ATTEMPTS - 1:
+                operation = ", ".join(sorted(params)) or "metadata"
+                raise RuntimeError(
+                    f"IMF ArcGIS query failed at {service} "
+                    f"({operation}, where={params.get('where', '')!r}): {error}"
+                )
         except HTTPError as exc:
-            if exc.code not in {429, 500, 502, 503, 504} or attempt == 2:
+            if (exc.code not in {429, 500, 502, 503, 504}
+                    or attempt == _ARCGIS_ATTEMPTS - 1):
                 raise
         except (URLError, TimeoutError):
-            if attempt == 2:
+            if attempt == _ARCGIS_ATTEMPTS - 1:
                 raise
-        time.sleep(2 * (attempt + 1))
+        time.sleep(min(attempt + 1, 4))
     raise RuntimeError("IMF ArcGIS retries exhausted")
 
 
+def _arcgis_metadata(service: str) -> dict:
+    """Read and verify the official Hub catalog metadata for ``service``."""
+    item_id = HUB_DATASETS[service]
+    url = HUB_DATASET_API + item_id + "_0"
+    payload = _arcgis_json(url, {})
+    data = payload.get("data", {})
+    attrs = data.get("attributes", {})
+    layer = attrs.get("layer", {})
+    vintage = layer.get("editingInfo", {}).get("dataLastEditDate")
+    if (data.get("id") != item_id + "_0" or attrs.get("errors")
+            or attrs.get("access") != "public"
+            or attrs.get("owner") != "IMF-portwatch_imf_dataviz"
+            or attrs.get("url") != service
+            or layer.get("id") != 0 or layer.get("serviceItemId") != item_id
+            or type(vintage) is not int or vintage <= 0):
+        raise ValueError("IMF ArcGIS Hub metadata identity or source version is invalid")
+    return {**layer, "metadata_url": url, "catalog_composed_at": attrs.get("composedAt")}
+
+
 def _download_arcgis_csv(
-    service: str, destination: Path, columns: tuple[str, ...], where: str
+    service: str, destination: Path, columns: tuple[str, ...], where: str,
+    *, metadata: dict | None = None, force: bool = True, portids: list[str] | None = None,
 ) -> str:
     """Save ``service`` rows matching ``where`` to ``destination`` using ``columns``.
 
     Verify schema, pagination, unique keys, stable counts and CSV values before
     atomically replacing the previous cache. All original chokepoints are kept.
+    ``metadata`` optionally shares the same service-version snapshot across ports.
+    ``force=False`` permits a hash-verified cache of that same official version.
+    ``portids`` selects indexed port/year queries, reconciled to the full ID list.
     """
 
-    metadata = _arcgis_json(service, {})
+    metadata = _arcgis_metadata(service) if metadata is None else metadata
     fields = {field["name"]: field["type"] for field in metadata["fields"]}
     if missing := set(columns) - fields.keys():
         raise ValueError(f"IMF ArcGIS schema is missing fields: {sorted(missing)}")
+    string_columns = UAE_STRING_COLUMNS if "ISO3" in columns else ()
+    value_columns = UAE_VALUE_COLUMNS if "ISO3" in columns else CHOKEPOINT_VALUE_COLUMNS
+    if not force and _same_version_cache(
+        destination, service, where, columns, value_columns, string_columns, metadata
+    ):
+        return "reused/verified official version"
     oid = next(name for name, kind in fields.items() if kind == "esriFieldTypeOID")
     query = {"where": where}
-    expected = _arcgis_json(service + "/query", {**query, "returnCountOnly": "true"})["count"]
+
+    inventory_path = destination.with_suffix(".ids.json")
+    version = metadata["editingInfo"]["dataLastEditDate"]
+
+    def parse_inventory(payload) -> list[int]:
+        ids = payload.get("objectIds")
+        if (not isinstance(ids, list) or not ids
+                or any(type(value) is not int or value < 0 for value in ids)
+                or len(ids) != len(set(ids))
+                or payload.get("exceededTransferLimit", False)
+                or payload.get("objectIdFieldName", oid) != oid):
+            raise ValueError("IMF ArcGIS returned an invalid object ID inventory")
+        return sorted(ids)
+
+    def object_ids(*, reuse: bool = False) -> list[int]:
+        if reuse:
+            try:
+                saved = json.loads(inventory_path.read_text(encoding="utf-8"))
+                content = json.dumps(saved["ids"]).encode()
+                if (saved["service"] == service and saved["where"] == where
+                        and saved["version"] == version
+                        and saved["sha256"] == hashlib.sha256(content).hexdigest()):
+                    return parse_inventory({
+                        "objectIds": saved["ids"], "objectIdFieldName": saved["oid"],
+                    })
+            except (OSError, ValueError, KeyError, TypeError):
+                pass
+        ids = parse_inventory(_arcgis_json(
+            service + "/query", {**query, "returnIdsOnly": "true"}
+        ))
+        write_json_atomic(inventory_path, {
+            "service": service, "where": where, "version": version, "oid": oid,
+            "ids": ids, "sha256": hashlib.sha256(json.dumps(ids).encode()).hexdigest(),
+            "retrieved_at_utc": datetime.now(timezone.utc).isoformat(),
+        })
+        return ids
+
+    ids = object_ids(reuse=not force)
+    print(f"[portwatch] {where}: verified {len(ids)} object IDs", flush=True)
+    expected = _arcgis_json(service + "/query", {
+        **query, "returnCountOnly": "true", "returnGeometry": "false",
+    })["count"]
     if not isinstance(expected, int) or expected <= 0:
         raise ValueError("IMF ArcGIS returned an empty dataset")
-    page_size = min(int(metadata.get("maxRecordCount", 1000)), 1000)
+    if expected != len(ids):
+        raise ValueError("IMF ArcGIS object ID inventory disagrees with row count")
+    page_size = min(int(metadata.get("maxRecordCount", 1000)), 100 if where == "1=1" else 500)
+    if page_size <= 0:
+        raise ValueError("IMF ArcGIS returned an invalid page size")
     temporary = destination.with_suffix(destination.suffix + ".tmp")
     offset = 0
     previous_oid = -1
     seen = set()
+    seen_oids = set()
+    allowed_ids = set(ids)
+
+    def fetch_batch(batch):
+        payload = _arcgis_json(service + "/query", {
+            **query, "outFields": "*", "returnGeometry": "false",
+            "orderByFields": oid + " ASC", "resultRecordCount": len(batch),
+            "objectIds": ",".join(map(str, batch)),
+        })
+        features = payload.get("features")
+        if not isinstance(features, list):
+            raise ValueError("IMF ArcGIS query has no feature array")
+        returned_ids = [feature["attributes"][oid] for feature in features]
+        if (len(features) != len(batch) or set(returned_ids) != set(batch)
+                or payload.get("exceededTransferLimit", False)):
+            raise ValueError("IMF ArcGIS pagination is incomplete")
+        return sorted(features, key=lambda item: item["attributes"][oid])
+
+    def fetch_year(partition):
+        pid, year = partition
+        cache = destination.parent / (destination.stem + "_years")
+        cache.mkdir(parents=True, exist_ok=True)
+        cache_path = cache / f"{pid}_{year}.json"
+        version = metadata["editingInfo"]["dataLastEditDate"]
+
+        def validate(features, inventory):
+            returned = [feature["attributes"][oid] for feature in features]
+            if (len(returned) != len(set(returned)) or set(returned) != set(inventory)
+                    or not set(returned) <= allowed_ids):
+                raise ValueError(f"IMF ArcGIS port/year ID inventory mismatch: {pid}/{year}")
+            for feature in features:
+                row = feature["attributes"]
+                day = (
+                    datetime.fromtimestamp(row["date"] / 1000, timezone.utc).date()
+                    if type(row["date"]) in (int, float)
+                    else date.fromisoformat(str(row["date"])[:10])
+                )
+                if row["portid"] != pid or row.get("year") != year or day.year != year:
+                    raise ValueError("IMF ArcGIS returned rows outside the requested port/year")
+
+        if not force:
+            try:
+                saved = json.loads(cache_path.read_text(encoding="utf-8"))
+                content = json.dumps(saved["features"], sort_keys=True).encode()
+                if (saved["service"] == service and saved["version"] == version
+                        and saved["portid"] == pid and saved["year"] == year
+                        and saved["features"] and not saved.get("requires_refresh", False)
+                        and saved["sha256"] == hashlib.sha256(content).hexdigest()):
+                    validate(saved["features"], saved["ids"])
+                    return saved["features"]
+            except (OSError, ValueError, KeyError, TypeError):
+                pass
+        query = {"where": f"year={year} AND portid='{pid}'"}
+        payload = _arcgis_json(service + "/query", {
+            **query, "outFields": "*",
+            "returnGeometry": "false", "resultRecordCount": metadata["maxRecordCount"],
+        })
+        features = payload.get("features")
+        if not isinstance(features, list):
+            raise ValueError(f"IMF ArcGIS port/year query has no feature array: {pid}/{year}")
+        if payload.get("exceededTransferLimit", False):
+            raise ValueError("IMF ArcGIS port/year query exceeded the transfer limit")
+        features = sorted(features, key=lambda item: item["attributes"][oid])
+        year_ids = [feature["attributes"][oid] for feature in features]
+        validate(features, year_ids)
+        if features:
+            write_json_atomic(cache_path, {
+                "service": service, "version": version, "portid": pid, "year": year,
+                "ids": year_ids, "features": features,
+                "sha256": hashlib.sha256(json.dumps(features, sort_keys=True).encode()).hexdigest(),
+            })
+        return features
+
     try:
-        with temporary.open("w", encoding="utf-8", newline="") as output:
+        with ThreadPoolExecutor(max_workers=8 if where == "1=1" else 1) as pages, temporary.open(
+            "w", encoding="utf-8", newline=""
+        ) as output:
             writer = csv.DictWriter(output, fieldnames=columns)
             writer.writeheader()
-            while offset < expected:
-                payload = _arcgis_json(service + "/query", {
-                    # Request the public row as-is, then validate/select the
-                    # established CSV schema rather than project reserved names.
-                    **query, "outFields": "*",
-                    "returnGeometry": "false", "orderByFields": oid + " ASC",
-                    "resultOffset": offset, "resultRecordCount": page_size,
-                })
-                features = payload.get("features", [])
-                if not features or len(features) > page_size:
-                    raise ValueError("IMF ArcGIS pagination is incomplete")
+            if portids is not None:
+                if "year" not in fields:
+                    raise ValueError("IMF ArcGIS schema is missing the year partition field")
+                # The documented dataset begins in 2019. Reconciliation with
+                # the unfiltered ID inventory catches any out-of-range rows.
+                jobs = (
+                    (pid, year)
+                    for pid in portids
+                    for year in range(2019, date.today().year + 1)
+                )
+                fetch = fetch_year
+            else:
+                jobs = (ids[start:start + page_size] for start in range(0, expected, page_size))
+                fetch = fetch_batch
+            errors = []
+            if portids is not None:
+                futures = [pages.submit(fetch, job) for job in jobs]
+
+                def completed():
+                    for future in as_completed(futures):
+                        try:
+                            yield future.result()
+                        except Exception as exc:
+                            errors.append(exc)
+                results = completed()
+            else:
+                results = pages.map(fetch, jobs)
+            for features in results:
                 for feature in features:
                     attributes = feature["attributes"]
                     current_oid = attributes[oid]
-                    if current_oid <= previous_oid:
+                    if (current_oid in seen_oids or current_oid not in allowed_ids
+                            or (portids is None and current_oid <= previous_oid)):
                         raise ValueError("IMF ArcGIS repeated or unordered object IDs")
+                    seen_oids.add(current_oid)
                     previous_oid = current_oid
                     row = {column: attributes[column] for column in columns}
                     if isinstance(row["date"], (int, float)) and not isinstance(row["date"], bool):
@@ -352,15 +559,24 @@ def _download_arcgis_csv(
                     seen.add(key)
                     writer.writerow(row)
                 offset += len(features)
-                if not payload.get("exceededTransferLimit", False) and offset != expected:
-                    raise ValueError("IMF ArcGIS stopped before the advertised row count")
+                if offset == expected or (features and portids is not None) or offset % 10000 == 0:
+                    print(f"[portwatch] {where}: {offset}/{expected} rows", flush=True)
+            if errors:
+                raise errors[0]
         final_count = _arcgis_json(
-            service + "/query", {**query, "returnCountOnly": "true"}
+            service + "/query",
+            {**query, "returnCountOnly": "true", "returnGeometry": "false"},
         )["count"]
-        if offset != expected or final_count != expected:
-            raise ValueError("IMF ArcGIS row count changed during download")
-        string_columns = UAE_STRING_COLUMNS if "ISO3" in columns else ()
-        value_columns = UAE_VALUE_COLUMNS if "ISO3" in columns else CHOKEPOINT_VALUE_COLUMNS
+        if (offset != expected or final_count != expected or object_ids() != ids
+                or seen_oids != allowed_ids):
+            if portids is not None:
+                cache = destination.parent / (destination.stem + "_years")
+                for cache_path in cache.glob("*.json"):
+                    saved = json.loads(cache_path.read_text(encoding="utf-8"))
+                    if saved.get("version") == metadata["editingInfo"]["dataLastEditDate"]:
+                        saved["requires_refresh"] = True
+                        write_json_atomic(cache_path, saved)
+            raise ValueError("IMF ArcGIS rows or object IDs changed during download")
         parsed = parse_portwatch_csv(
             temporary, columns, value_columns, string_columns=string_columns
         )
@@ -370,12 +586,37 @@ def _download_arcgis_csv(
         temporary.replace(destination)
         write_json_atomic(destination.with_suffix(".source.json"), {
             "service": service, "where": where, "rows": expected,
+            "pagination": "objectIds/port-year" if portids is not None else "objectIds",
+            "object_id_field": oid,
             "retrieved_at_utc": datetime.now(timezone.utc).isoformat(),
             "editing_info": metadata.get("editingInfo"),
+            "metadata_url": metadata.get("metadata_url"),
+            "catalog_composed_at": metadata.get("catalog_composed_at"),
+            "sha256": hashlib.sha256(destination.read_bytes()).hexdigest(),
         })
     finally:
         temporary.unlink(missing_ok=True)
     return "downloaded/IMF ArcGIS"
+
+
+def _same_version_cache(path, service, where, columns, value_columns, string_columns, metadata):
+    """Verify cached ``path`` against the live official ``metadata`` version."""
+    try:
+        manifest = json.loads(path.with_suffix(".source.json").read_text(encoding="utf-8"))
+        version = metadata.get("editingInfo", {}).get("dataLastEditDate")
+        if (version is None or manifest.get("service") != service
+                or manifest.get("where") != where
+                or manifest.get("pagination") not in {"objectIds", "objectIds/port-year"}
+                or manifest.get("editing_info", {}).get("dataLastEditDate") != version
+                or manifest.get("sha256") != hashlib.sha256(path.read_bytes()).hexdigest()):
+            return False
+        rows = parse_portwatch_csv(path, columns, value_columns, string_columns=string_columns)
+        partition = re.fullmatch(r"portid='([^']+)'", where)
+        return (len(rows) == manifest.get("rows")
+                and len({(row["date"], row["portid"]) for row in rows}) == len(rows)
+                and (not partition or all(row["portid"] == partition[1] for row in rows)))
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return False
 
 
 def parse_portwatch_csv(
@@ -475,56 +716,80 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
                 or choke_registry.get("exceededTransferLimit", False)
                 or any(not re.fullmatch(r"chokepoint\d+", pid) for pid in choke_ids)):
             raise ValueError("IMF chokepoint registry is incomplete or invalid")
-        # Equality filters use the published portid indexes. Global/IN queries
-        # can time out even though individual-port queries work normally.
+        # Keep ports on their selective indexes. Reconcile chokepoint/year
+        # partitions against one complete, unfiltered object ID inventory.
         cache = RAW_DIR / "arcgis"
         cache.mkdir(parents=True, exist_ok=True)
         groups = [
-            (PORTS_SERVICE, UAE_FILE, UAE_REQUIRED_COLUMNS, portids),
-            (CHOKEPOINT_SERVICE, CHOKEPOINT_FILE, CHOKEPOINT_REQUIRED_COLUMNS, choke_ids),
+            (PORTS_SERVICE, UAE_FILE, UAE_REQUIRED_COLUMNS, portids,
+             [(pid, f"portid='{pid}'") for pid in portids]),
+            (CHOKEPOINT_SERVICE, CHOKEPOINT_FILE, CHOKEPOINT_REQUIRED_COLUMNS, choke_ids,
+             [("chokepoints_all", "1=1")]),
         ]
+        service_metadata = {
+            service: _arcgis_metadata(service) for service, *_ in groups
+        }
         errors = []
+        states = {}
         with ThreadPoolExecutor(max_workers=4) as pool:
             futures = {
-                pool.submit(_download_arcgis_csv, service, cache / f"{pid}.csv",
-                            columns, f"portid='{pid}'"): pid
-                for service, destination, columns, ids in groups for pid in ids
+                pool.submit(_download_arcgis_csv, service, cache / f"{key}.csv",
+                            columns, where,
+                            metadata=service_metadata[service], force=force,
+                            portids=ids if service == CHOKEPOINT_SERVICE else None): key
+                for service, destination, columns, ids, partitions in groups
+                for key, where in partitions
             }
             for future in as_completed(futures):
                 pid = futures[future]
                 try:
-                    future.result()
-                    print(f"[portwatch] {pid}: verified", flush=True)
+                    states[pid] = future.result()
+                    print(f"[portwatch] {pid}: verified ({states[pid]})", flush=True)
                 except Exception as exc:
                     errors.append(f"{pid}: {exc}")
                     print(f"[portwatch] {pid}: failed: {exc}", flush=True)
         if errors:
             raise RuntimeError("IMF ArcGIS partitions failed: " + "; ".join(errors))
-        for service, destination, columns, ids in groups:
+        for service, destination, columns, ids, partitions in groups:
             vintages = {
-                json.loads((cache / f"{pid}.source.json").read_text(encoding="utf-8"))["editing_info"].get(
+                json.loads((cache / f"{key}.source.json").read_text(encoding="utf-8"))["editing_info"].get(
                     "dataLastEditDate"
-                ) for pid in ids
+                ) for key, _ in partitions
             }
             if len(vintages) != 1 or None in vintages:
                 raise ValueError("IMF ArcGIS partitions have inconsistent source vintages")
+            final_metadata = _arcgis_metadata(service)
+            if final_metadata.get("editingInfo", {}).get("dataLastEditDate") != next(iter(vintages)):
+                raise ValueError("IMF ArcGIS source vintage changed during download")
+            actual_ports = set()
+            for key, _ in partitions:
+                with (cache / f"{key}.csv").open(encoding="utf-8", newline="") as part:
+                    actual_ports.update(row["portid"] for row in csv.DictReader(part))
+            if actual_ports != set(ids):
+                raise ValueError("IMF ArcGIS downloaded ports disagree with the registry")
+
+        for service, destination, columns, ids, partitions in groups:
             temporary = destination.with_suffix(".csv.tmp")
             try:
                 with temporary.open("w", encoding="utf-8", newline="") as output:
                     writer = csv.DictWriter(output, fieldnames=columns)
                     writer.writeheader()
-                    for pid in ids:
-                        with (cache / f"{pid}.csv").open(encoding="utf-8", newline="") as part:
+                    for key, _ in partitions:
+                        with (cache / f"{key}.csv").open(encoding="utf-8", newline="") as part:
                             writer.writerows(csv.DictReader(part))
                 temporary.replace(destination)
             finally:
                 temporary.unlink(missing_ok=True)
             write_json_atomic(destination.with_suffix(".source.json"), {
                 "service": service, "portids": ids,
-                "dataLastEditDate": next(iter(vintages)),
+                "dataLastEditDate": service_metadata[service]["editingInfo"]["dataLastEditDate"],
+                "pagination": "objectIds",
                 "retrieved_at_utc": datetime.now(timezone.utc).isoformat(),
             })
-        uae_state = chokepoint_state = "downloaded/IMF ArcGIS"
+        uae_state, chokepoint_state = (
+            ", ".join(sorted({states[key] for key, _ in partitions}))
+            for *_, partitions in groups
+        )
 
     uae_rows = parse_portwatch_csv(
         UAE_FILE,
