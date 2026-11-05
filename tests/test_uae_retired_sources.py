@@ -11,8 +11,9 @@ from htfa.jobs.uae_data.source_registry import resolve_source_names
 
 
 def test_retired_sources_are_not_registered_or_created():
-    assert not {"steel", "tdra", "scad"} & set(resolve_source_names("all"))
-    for name in ("steel", "tdra", "scad"):
+    retired = ("steel", "tdra", "scad", "uaewps", "emirates_post", "eurostat_air")
+    assert not set(retired) & set(resolve_source_names("all"))
+    for name in retired:
         with pytest.raises(ValueError, match="Unknown source"):
             resolve_source_names(name)
     with db.connect(":memory:") as con:
@@ -20,6 +21,9 @@ def test_retired_sources_are_not_registered_or_created():
         assert not db.table_exists(con, "mesteel_monthly")
         assert not db.table_exists(con, "tdra_telecom_monthly")
         assert not db.table_exists(con, "scad_monthly")
+        for name in ("uaewps_monthly", "dld_lease_monthly",
+                     "detail.emirates_post_monthly", "detail.eurostat_air_monthly"):
+            assert not db.table_exists(con, name)
 
 
 def test_retirement_preserves_replacement_and_unrelated_data(tmp_path, monkeypatch):
@@ -75,6 +79,12 @@ def test_retirement_removes_legacy_hotel_columns_without_removing_other_scad_dat
     import htfa.jobs.uae_data.uae_metadata as metadata
 
     monkeypatch.setattr(metadata, "sync_workbook_dictionary", lambda path: {})
+    database = tmp_path / "uae.duckdb"
+    with db.connect(database) as con:
+        db.init_schema(con)
+        retire_database(con)
+    connect = db.connect
+    monkeypatch.setattr(db, "connect", lambda **kw: connect(database, **kw))
     path = tmp_path / "legacy.xlsx"
     book = Workbook()
     sheet = book.active

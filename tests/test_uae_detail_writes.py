@@ -4,7 +4,7 @@ import ast
 from datetime import date
 from pathlib import Path
 
-from htfa.jobs.uae_data import db, source_emirates_post, source_portwatch
+from htfa.jobs.uae_data import db, source_portwatch
 
 
 def test_source_writes_qualify_known_detail_tables():
@@ -37,36 +37,6 @@ def test_source_writes_qualify_known_detail_tables():
             assert call.args[1].value not in detail_tables, (
                 f"{path.name}:{call.lineno}: detail-table write lacks schema qualification"
             )
-
-
-def test_emirates_post_update_writes_detail_table_with_main_view(monkeypatch, tmp_path):
-    source = source_emirates_post
-    monkeypatch.setattr(source, "RAW_DIR", tmp_path)
-    (tmp_path / source.RAW_FILE_NAME).touch()
-    row = {
-        "period": date(2025, 12, 31), "origin_city": "Dubai",
-        "destn_city": "Abu Dhabi", "service": "Parcel", "volume": 42, "raw_rows": 1,
-    }
-    monkeypatch.setattr(source, "parse_workbook", lambda path: (
-        [row], {}, {"dup_groups": 0},
-    ))
-    con = db.connect(":memory:")
-    try:
-        db.init_schema(con)
-        con.execute(
-            "CREATE VIEW main.emirates_post_monthly AS "
-            "SELECT * FROM detail.emirates_post_monthly"
-        )
-        for _ in range(2):
-            assert source.update(con, skip_download=True)["status"] == "ok"
-        assert con.execute("SELECT volume FROM detail.emirates_post_monthly").fetchall() == [
-            (42,),
-        ]
-        assert con.execute("SELECT volume FROM main.emirates_post_monthly").fetchall() == [
-            (42,),
-        ]
-    finally:
-        con.close()
 
 
 def test_portwatch_update_writes_both_detail_tables_with_main_views(monkeypatch, tmp_path):

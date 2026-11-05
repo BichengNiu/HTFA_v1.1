@@ -72,17 +72,16 @@ def test_aggregate_snapshots_dedup_semantics(tmp_path) -> None:
 
 
 def test_db_roundtrip_with_unknown_excluded(tmp_path) -> None:
-    """聚合结果入库：月末 DATE、四系列长表、unknown 月不进入 by_type 表。"""
+    """聚合结果入库：月末 DATE、三系列长表、unknown 月不进入 by_type 表。"""
 
     snap = _write_fixture(tmp_path / "commerce_registry_sample.csv")
     result = sd.aggregate_snapshots([snap])
     stats = result["stats"]
-    official = {"2024-01": 12345}
 
-    monthly_rows = sd._ded_monthly_rows(stats, official)
+    monthly_rows = sd._ded_monthly_rows(stats)
     by_type_rows = sd._ded_by_type_rows(stats)
 
-    assert {"records", "enterprises", "licences", "official_new_licenses"} == {
+    assert {"records", "enterprises", "licences"} == {
         row["series"] for row in monthly_rows
     }
 
@@ -99,10 +98,6 @@ def test_db_roundtrip_with_unknown_excluded(tmp_path) -> None:
         (datetime(2024, 2, 29).date(), "records", 2.0),
         (datetime(2024, 3, 31).date(), "records", 1.0),
     ]
-    # 2024-01 官方数字
-    assert con.execute(
-        "SELECT month, value FROM ded_monthly WHERE series='official_new_licenses'"
-    ).fetchone() == (datetime(2024, 1, 31).date(), 12345.0)
     # unknown 月（空日期行）只在 CSV 审计文件里，不在 DB
     assert "unknown" not in {row["month"] for row in by_type_rows}
     assert con.execute("SELECT count(*) FROM ded_monthly_by_type").fetchone()[0] == 4
@@ -165,15 +160,15 @@ def test_ded_sheet_spec_keeps_all_series_and_missing_values() -> None:
         db.replace(con, "ded_monthly", [
             {"month": datetime(2024, 1, 31).date(), "series": "enterprises", "value": 10},
             {"month": datetime(2024, 1, 31).date(), "series": "licences", "value": 11},
-            {"month": datetime(2024, 2, 29).date(), "series": "official_new_licenses", "value": 99},
+            {"month": datetime(2024, 2, 29).date(), "series": "records", "value": 99},
         ])
         spec = sd._sheet_spec(con)
     finally:
         con.close()
-    assert len(spec["indicators"]) == 4
+    assert len(spec["indicators"]) == 3
     rows = dict(spec["rows"])
     assert rows[datetime(2024, 2, 29).date()].get(spec["indicators"][1]) is None
-    assert rows[datetime(2024, 1, 31).date()].get(spec["indicators"][3]) is None
+    assert rows[datetime(2024, 1, 31).date()].get(spec["indicators"][0]) is None
     assert sd._month_end_date("2023-02") == datetime(2023, 2, 28).date()
 
 
@@ -189,23 +184,6 @@ def test_update_writes_files_and_db(tmp_path, monkeypatch) -> None:
 
     con = db.connect(":memory:")
     db.init_schema(con)
-    sd._ensure_official_news_tables(con)
-    sd._store_official_news_candidates(
-        con,
-        [
-            {
-                "source_url": "https://mediaoffice.ae/en/news/example",
-                "published_at": datetime(2024, 2, 1).date(),
-                "period": "January",
-                "year": 2024,
-                "month": "2024-01",
-                "period_kind": "month",
-                "value": 12345,
-                "headline": "New business licences",
-                "snippet": "12,345 new business licences in January 2024",
-            }
-        ],
-    )
     outcome = sd.update(con, skip_download=True)
     assert outcome["status"] == "ok"
     assert (out_dir / "monthly_counts.csv").exists()
@@ -215,6 +193,6 @@ def test_update_writes_files_and_db(tmp_path, monkeypatch) -> None:
     assert (out_dir / "fetch_manifest.json").exists()
     assert con.execute(
         "SELECT count(*) FROM ded_monthly WHERE series='official_new_licenses'"
-    ).fetchone()[0] == 1
+    ).fetchone()[0] == 0
     assert con.execute("SELECT count(*) FROM ded_monthly_by_type").fetchone()[0] == 4
     con.close()

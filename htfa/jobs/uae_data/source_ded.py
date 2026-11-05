@@ -1,7 +1,6 @@
 """Data Dubai DED 企业注册数据源：自动下载、月度聚合并写入 DuckDB。
 
-官方新执照公告由媒体办公室新闻 API 扫描并写入 DuckDB 候选表；``merge()``
-从 ``ded_monthly`` / ``ded_monthly_by_type`` 重建 ``月度_DED`` 工作表。
+``merge()`` 从 ``ded_monthly`` 重建 ``月度_DED`` 工作表。
 
 统计口径：
 - records      ：快照记录行数（按发照日期归月）；
@@ -9,7 +8,6 @@
                   '0'/空；快照中企业号↔发照月份一一对应，故企业号首现筛重数值
                   即当月有发证活动的企业数，正名不改数）；
 - licences     ：当月新发执照数（main_license_number 按发照月去重，同号剔除）；
-- official     ：官方公布数字（由官方新闻候选表生成）；
 - 单期存量快照无法给出流量，历史月份低估、近期可信。
 """
 
@@ -30,7 +28,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import Counter
-from datetime import date, datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -43,7 +41,6 @@ from .db import (  # noqa: E402
     connect,
     replace,
 )
-from . import fetch_official_news  # noqa: E402
 from .workbook_sheet_writer import read_indicator_metadata, write_indicator_sheets
 
 DATA_DUBAI = "https://data.dubai"
@@ -66,8 +63,6 @@ SHEET_NAME = "月度_DED"
 
 MONTHLY_TABLE = "ded_monthly"
 BY_TYPE_TABLE = "ded_monthly_by_type"
-OFFICIAL_NEWS_TABLE = "ded_official_news_candidates"
-OFFICIAL_NEWS_STATE_TABLE = "ded_official_news_scan_state"
 
 
 class AuthRequiredError(RuntimeError):
@@ -623,7 +618,7 @@ def build_manifest(out_dir, **kwargs):
 
 
 # --------------------------------------------------------------------------
-# 官方数字与库行转换
+# 快照聚合结果与库行转换
 # --------------------------------------------------------------------------
 
 def _month_end_date(month_key: str) -> object:
@@ -634,107 +629,8 @@ def _month_end_date(month_key: str) -> object:
     )
 
 
-def _ensure_official_news_tables(con) -> None:
-    con.execute(
-        f"""
-        CREATE TABLE IF NOT EXISTS {OFFICIAL_NEWS_TABLE} (
-            source_url VARCHAR NOT NULL,
-            published_at DATE,
-            period_label VARCHAR NOT NULL,
-            period_kind VARCHAR NOT NULL,
-            month DATE,
-            value BIGINT NOT NULL,
-            headline VARCHAR,
-            snippet VARCHAR,
-            retrieved_at TIMESTAMP NOT NULL,
-            PRIMARY KEY (source_url, period_label, value)
-        )
-        """
-    )
-    con.execute(
-        f"""
-        CREATE TABLE IF NOT EXISTS {OFFICIAL_NEWS_STATE_TABLE} (
-            state_key VARCHAR PRIMARY KEY,
-            state_value VARCHAR NOT NULL
-        )
-        """
-    )
-
-
-def _official_news_scan_start(con) -> date:
-    _ensure_official_news_tables(con)
-    row = con.execute(
-        f"SELECT state_value FROM {OFFICIAL_NEWS_STATE_TABLE} "
-        "WHERE state_key = 'last_successful_scan'"
-    ).fetchone()
-    if row:
-        last_scan = date.fromisoformat(str(row[0]))
-        return last_scan - timedelta(days=45)
-    return date(2020, 1, 1)
-
-
-def _store_official_news_candidates(con, observations: list[dict]) -> int:
-    retrieved_at = datetime.now().replace(microsecond=0)
-    rows = []
-    for item in observations:
-        month_key = str(item["month"])
-        month = _month_end_date(month_key) if month_key else None
-        rows.append(
-            (
-                item["source_url"],
-                item.get("published_at"),
-                f"{item['period']} {item['year']}",
-                item["period_kind"],
-                month,
-                int(item["value"]),
-                item.get("headline"),
-                item.get("snippet"),
-                retrieved_at,
-            )
-        )
-    if rows:
-        con.executemany(
-            f"""
-            INSERT INTO {OFFICIAL_NEWS_TABLE}
-            (source_url, published_at, period_label, period_kind, month, value,
-             headline, snippet, retrieved_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT (source_url, period_label, value) DO UPDATE SET
-                published_at = excluded.published_at,
-                period_kind = excluded.period_kind,
-                month = excluded.month,
-                headline = excluded.headline,
-                snippet = excluded.snippet,
-                retrieved_at = excluded.retrieved_at
-            """,
-            rows,
-        )
-    return len(rows)
-
-
-def _automatic_official_values(con) -> dict[str, int]:
-    """Return only unambiguous observations extracted from official news."""
-
-    values: dict[str, int] = {}
-    rows = con.execute(
-        f"""
-        SELECT month, COUNT(DISTINCT value) AS value_count, MIN(value) AS value
-        FROM {OFFICIAL_NEWS_TABLE}
-        WHERE month IS NOT NULL
-        GROUP BY month
-        HAVING COUNT(DISTINCT value) = 1
-           AND COUNT(DISTINCT period_kind) = 1
-        ORDER BY month
-        """
-    ).fetchall()
-    for period, _, value in rows:
-        month_key = period.strftime("%Y-%m")
-        values[month_key] = int(value)
-    return values
-
-
-def _ded_monthly_rows(stats, official: dict[str, int]) -> list[dict[str, object]]:
-    """把聚合结果与官方数字摊平成 ded_monthly 长表行。"""
+def _ded_monthly_rows(stats) -> list[dict[str, object]]:
+    """把快照聚合结果摊平成 ded_monthly 长表行。"""
 
     rows: list[dict[str, object]] = []
     series_map = {
@@ -751,14 +647,6 @@ def _ded_monthly_rows(stats, official: dict[str, int]) -> list[dict[str, object]
                     "value": float(value),
                 }
             )
-    for month_key, value in sorted(official.items()):
-        rows.append(
-            {
-                "month": _month_end_date(month_key),
-                "series": "official_new_licenses",
-                "value": float(value),
-            }
-        )
     return rows
 
 
@@ -797,7 +685,6 @@ def _sheet_spec(con) -> dict[str, Any]:
         "records": "迪拜:DED:当月快照记录数",
         "enterprises": "迪拜:当月有发证活动的企业数(企业号筛重)",
         "licences": "迪拜:当月新发执照数(执照号筛重)",
-        "official_new_licenses": "迪拜:新发执照数(官方口径)",
     }
     periods = {}
     for period, series, value in con.execute(
@@ -873,13 +760,6 @@ def update(
     (OUT / "future_issue_dates.json").write_text(
         json.dumps(stats["future_rows"], ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    news_scan = None
-    if not skip_download:
-        scan_start = _official_news_scan_start(con)
-        news_scan = fetch_official_news.discover_official_news(start=scan_start)
-        for url in news_scan.get("articles_without_text", []):
-            warnings.append(f"媒体办原文没有正文，未提取指标: {url}")
-
     # 审计文件（本地，结构照旧）
     write_monthly(OUT / "monthly_new_licenses.csv", stats["monthly"])
     write_monthly_counts(
@@ -919,23 +799,7 @@ def update(
 
     by_type_rows = _ded_by_type_rows(stats)
     with transaction(con):
-        _ensure_official_news_tables(con)
-        if news_scan is not None:
-            _store_official_news_candidates(con, news_scan["observations"])
-            con.execute(
-                f"DELETE FROM {OFFICIAL_NEWS_STATE_TABLE} "
-                "WHERE state_key = 'last_successful_scan'"
-            )
-            con.execute(
-                f"INSERT INTO {OFFICIAL_NEWS_STATE_TABLE} VALUES (?, ?)",
-                ["last_successful_scan", news_scan["scanned_through"].isoformat()],
-            )
-        official = _automatic_official_values(con)
-        if not official:
-            raise ValueError(
-                "官方新闻候选表中没有无冲突的执照观测值，拒绝写入空官方序列"
-            )
-        monthly_rows = _ded_monthly_rows(stats, official)
+        monthly_rows = _ded_monthly_rows(stats)
         replace(con, MONTHLY_TABLE, monthly_rows)
         replace(con, BY_TYPE_TABLE, by_type_rows)
 
@@ -953,14 +817,7 @@ def update(
         "note": (
             f"快照 {len(snapshots)} 个，{stats['total']:,} 行；月度三口径 "
             f"{len(stats['monthly'])} 个月、分类型 {len(by_type_rows)} 行；"
-            f"官方数字 {len(official)} 个期间；"
-            + (
-                f"媒体办扫描 {news_scan['pages']} 页、"
-                f"提取 {len(news_scan['observations'])} 个候选；"
-                f"无正文新闻 {len(news_scan.get('articles_without_text', []))} 条（见审计告警）"
-                if news_scan is not None
-                else "跳过媒体办扫描（复用 DuckDB 候选）"
-            )
+
         ),
     }
 

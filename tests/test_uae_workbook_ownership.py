@@ -11,7 +11,7 @@ from openpyxl import Workbook, load_workbook
 from htfa.jobs.uae_data.workbook_sheet_writer import write_indicator_sheets  # noqa: E402
 from htfa.jobs.uae_data import (
     db, source_dot_t100, source_dubai_customs_air, source_employment,
-    source_eurostat_air, source_fcsc, source_salik, update_data, merge_workbook,
+    source_fcsc, source_salik, update_data, merge_workbook,
 )
 
 
@@ -34,9 +34,6 @@ def test_all_update_sources_have_exactly_one_merge_owner():
     (source_employment,
      "CREATE TABLE employment_search_index(month DATE,keyword VARCHAR,value DOUBLE)",
      "INSERT INTO employment_search_index VALUES ('2026-06-01','work in dubai',123)"),
-    (source_eurostat_air,
-     "CREATE TABLE detail.eurostat_air_monthly(period DATE,dataset VARCHAR,geo VARCHAR,partner VARCHAR,schedule VARCHAR,tra_meas VARCHAR,value DOUBLE)",
-     "INSERT INTO detail.eurostat_air_monthly VALUES ('2026-06-30','avia_paexcc','EU27_2020','AE','TOTAL','PAS_BRD',123)"),
     (source_fcsc,
      "CREATE TABLE fcsc_monthly(period DATE,indicator VARCHAR,value DOUBLE,source_file VARCHAR)",
      "INSERT INTO fcsc_monthly VALUES ('2026-06-30','阿联酋:消费者价格指数:总体同比变化(%)',123,'test.csv')"),

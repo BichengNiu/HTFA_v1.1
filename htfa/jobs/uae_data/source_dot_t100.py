@@ -11,14 +11,10 @@ T-100 International Segment (All Carriers) —— 每月更新、滞后约 3-6 �
 口径说明（BTS TableInfo）：
 - PASSENGERS = Non-Stop Segment Passengers Transported（航段经停旅客数，
   非唯一旅客口径）；
-- FREIGHT / MAIL = Non-Stop Segment Freight/Mail Transported (pounds)。
+- FREIGHT = Non-Stop Segment Freight Transported (pounds)。
 - 每条记录是「承运商×机场对×机型×舱等」级，月度汇总为全承运商合计。
 
-指标（月度）：
-- 美国↔阿联酋_航空旅客_合计/美→阿/阿→美(人次)
-- 美国↔阿联酋_航空货运_合计/美→阿/阿→美(磅)
-- 美国↔阿联酋_航空邮件_合计/美→阿/阿→美(磅)
-- 美国↔阿联酋_执行航班_合计(班次)
+指标（月度）：双向航空旅客合计（人次）及航空货运合计（磅）。
 """
 
 from __future__ import annotations
@@ -47,23 +43,13 @@ RAW_DIR = DATA_DIR / "raw" / "t100"
 TARGET_SHEET = "月度_DOTT100"
 
 FIELDS_REQUIRED = (
-    "YEAR", "QUARTER", "MONTH",
-    "DEPARTURES_PERFORMED", "PAYLOAD", "SEATS", "PASSENGERS", "FREIGHT", "MAIL",
+    "YEAR", "QUARTER", "MONTH", "PASSENGERS", "FREIGHT",
     "ORIGIN", "DEST", "ORIGIN_COUNTRY", "DEST_COUNTRY",
 )
 
 INDICATOR_TPL = {
-    # (方向, 度量) -> 指标中文名
     ("all", "passengers"): "美国↔阿联酋_航空旅客_合计(人次)",
-    ("us2ae", "passengers"): "美国↔阿联酋_航空旅客_美→阿(人次)",
-    ("ae2us", "passengers"): "美国↔阿联酋_航空旅客_阿→美(人次)",
     ("all", "freight"): "美国↔阿联酋_航空货运_合计(磅)",
-    ("us2ae", "freight"): "美国↔阿联酋_航空货运_美→阿(磅)",
-    ("ae2us", "freight"): "美国↔阿联酋_航空货运_阿→美(磅)",
-    ("all", "mail"): "美国↔阿联酋_航空邮件_合计(磅)",
-    ("us2ae", "mail"): "美国↔阿联酋_航空邮件_美→阿(磅)",
-    ("ae2us", "mail"): "美国↔阿联酋_航空邮件_阿→美(磅)",
-    ("all", "departures"): "美国↔阿联酋_执行航班_合计(班次)",
 }
 
 MIN_YEAR, MAX_YEAR = 1990, date.today().year
@@ -93,90 +79,39 @@ def _f(value: str | None) -> float:
 
 
 def collect_rows(zip_paths: list[Path], *, today: date | None = None) -> list[dict[str, Any]]:
-    """遍历年包，过滤 US↔UAE 双向航段，按月份聚合为 10 个指标。
-
-    返回 (period, indicator, value, source_file) 行列表。
-    """
-    as_of = today or date.today()
-    agg: dict[tuple[date, str], dict[str, float]] = {}
-    sources: dict[tuple[date, str], str] = {}
-    seen_files: set[Path] = set()
-
+    """Aggregate US↔UAE passengers and freight, preserving official units."""
+    agg: dict[tuple[date, str], float] = {}
+    sources: dict[date, set[str]] = {}
     for zip_path in sorted(zip_paths):
         handle = _open_csv_from_zip(zip_path)
         if handle is None:
             continue
-        seen_files.add(zip_path)
         with handle:
             reader = csv.DictReader(handle)
-            missing = [f for f in FIELDS_REQUIRED if f not in (reader.fieldnames or [])]
+            missing = [field for field in FIELDS_REQUIRED if field not in (reader.fieldnames or [])]
             if missing:
                 raise ValueError(f"{zip_path.name}: 缺少字段 {missing}")
             for row in reader:
-                o_country = (row.get("ORIGIN_COUNTRY") or "").strip().upper()
-                d_country = (row.get("DEST_COUNTRY") or "").strip().upper()
-                if not ({o_country, d_country} == {"US", "AE"}):
+                countries = {(row.get("ORIGIN_COUNTRY") or "").strip().upper(),
+                             (row.get("DEST_COUNTRY") or "").strip().upper()}
+                if countries != {"US", "AE"}:
                     continue
                 try:
-                    year = int(row["YEAR"]); month = int(row["MONTH"])
+                    year, month = int(row["YEAR"]), int(row["MONTH"])
                 except (TypeError, ValueError):
                     continue
-                if not (1 <= month <= 12):
+                if not 1 <= month <= 12:
                     continue
                 period = date(year, month, 1)
-                direction = "us2ae" if (o_country == "US" and d_country == "AE") else "ae2us"
-                passengers = _f(row.get("PASSENGERS"))
-                freight = _f(row.get("FREIGHT"))
-                mail = _f(row.get("MAIL"))
-                deps = _f(row.get("DEPARTURES_PERFORMED"))
-                for key, value in (
-                    ((direction, "passengers"), passengers),
-                    ((direction, "freight"), freight),
-                    ((direction, "mail"), mail),
-                    ((direction, "departures"), deps),
-                ):
-                    bucket = agg.setdefault((period, key), {})
-                    bucket[key[1]] = bucket.get(key[1], 0.0) + value
-                    sources[(period, key)] = zip_path.name
-
-    rows: list[dict[str, Any]] = []
-    for (period, (direction, measure)), totals in agg.items():
-        value = totals.get(measure, 0.0)
-        indicator = INDICATOR_TPL.get((direction, measure))
-        if indicator is None:
-            continue
-        rows.append(
-            {
-                "period": period,
-                "indicator": indicator,
-                "value": round(value, 1),
-                "source_file": sources.get((period, (direction, measure))),
-            }
-        )
-    # 补"合计"指标 = 双向之和（在方向维已聚合好后加总）
-    all_buckets: dict[tuple[date, str], dict[str, float]] = {}
-    for (period, (direction, measure)), totals in agg.items():
-        for bucket_measure, val in totals.items():
-            if bucket_measure == measure:
-                key = (period, ("all", measure))
-                bucket = all_buckets.setdefault(key, {})
-                bucket[measure] = bucket.get(measure, 0.0) + val
-    for (period, (_dir, measure)), totals in all_buckets.items():
-        indicator = INDICATOR_TPL.get(("all", measure))
-        if indicator is None:
-            continue
-        rows.append(
-            {
-                "period": period,
-                "indicator": indicator,
-                "value": round(totals.get(measure, 0.0), 1),
-                "source_file": ";".join(sorted({s for (p2, _k), s in sources.items() if p2 == period})),
-            }
-        )
-
-    if not rows:
+                sources.setdefault(period, set()).add(zip_path.name)
+                for field, measure in (("PASSENGERS", "passengers"), ("FREIGHT", "freight")):
+                    key = (period, measure)
+                    agg[key] = agg.get(key, 0.0) + _f(row.get(field))
+    if not agg:
         raise ValueError("dot_t100_monthly: 未解析到任何 US↔UAE 观测（检查 raw/t100/csv/uae_*.zip）")
-    return rows
+    return [{"period": period, "indicator": INDICATOR_TPL["all", measure],
+             "value": round(value, 1), "source_file": ";".join(sorted(sources[period]))}
+            for (period, measure), value in sorted(agg.items())]
 
 
 def build_quality_report(
@@ -270,7 +205,7 @@ odata_years``：transtats 表单在该年份返回空（美阿航线尚未开航
                                     and r["period"] == periods[-1]), None),
         },
         "checks": checks,
-        "note": "PASSENGERS 为航段经停旅客数（非唯一旅客）；FREIGHT/MAIL 单位为磅。",
+        "note": "PASSENGERS 为航段经停旅客数（非唯一旅客）；FREIGHT 单位为磅。",
     }
 
 

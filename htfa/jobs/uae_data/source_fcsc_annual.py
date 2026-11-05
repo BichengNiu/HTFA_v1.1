@@ -15,7 +15,7 @@ from .workbook_sheet_writer import write_indicator_sheets
 SOURCE = "FCSC UAE.Stat"
 TABLE = "fcsc_investment_annual"
 DATASETS = (
-    "DF_NA_FIX_CUR", "DF_NA_EXPEND_CUR", "DF_NA_EXPEND_CON",
+    "DF_NA_FIX_CUR", "DF_NA_EXPEND_CUR",
     "DF_FI_TYPE", "DF_FI_ECON_ACTIV", "DF_FI_COUNTRY",
 )
 SHEETS = (
@@ -86,9 +86,9 @@ def sheet_specs(con):
         f"SELECT dataset,period,measure,activity,country,value,unit FROM {TABLE} ORDER BY period"
     ).fetchall():
         sheet = label = None
-        if dataset.startswith("DF_NA_EXPEND") and measure == "EXPEND4":
+        if dataset == "DF_NA_EXPEND_CUR" and measure == "EXPEND4":
             sheet = SHEETS[0]
-            label = "资本形成总额（现价）" if dataset.endswith("CUR") else "资本形成总额（2010年不变价）"
+            label = "资本形成总额（现价）"
         elif dataset == "DF_NA_FIX_CUR" and activity in INDUSTRIES:
             sheet, label = SHEETS[1], INDUSTRIES[activity]
         elif dataset == "DF_FI_TYPE" and measure in FOREIGN_TYPES:

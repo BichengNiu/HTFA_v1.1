@@ -35,7 +35,7 @@ def test_bts_selects_matching_data_table_and_filters_only_us_uae(tmp_path):
     path = tmp_path / "uae_2026.zip"
     assert downloader.filter_zip(archive(), path, 2026) == 2
     rows = source.collect_rows([path], today=date(2026, 10, 28))
-    assert len(rows) == 10
+    assert len(rows) == 2
     assert next(r["value"] for r in rows if r["indicator"] == source.INDICATOR_TPL["all", "passengers"]) == 20
     with pytest.raises(ValueError, match="different year"):
         downloader.filter_zip(archive(2025), tmp_path / "wrong.zip", 2026)

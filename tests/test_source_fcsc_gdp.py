@@ -31,7 +31,7 @@ def payload(system="CON", through=2):
 def test_parse_preserves_official_yoy_and_converts_millions_to_billions():
     rows = source.parse_gdp_csv(payload(), "CON")
     values = {(row["period"], row["indicator"]): row["value"] for row in rows}
-    assert len(rows) == 44  # 19 levels + 3 official rates, for two quarters.
+    assert len(rows) == 40  # 18 levels + 2 real official rates, for two quarters.
     assert values[date(2026, 6, 30), "阿联酋:GDP:不变价:制造业"] == 2
     assert values[date(2026, 6, 30), "阿联酋:GDP:不变价:当季同比"] == 4.7
 
@@ -58,7 +58,7 @@ def test_first_year_without_published_annual_rates_is_not_fabricated():
     text = "\n".join(line for line in lines if ",GWTH_RATE," not in line)
     text = text.replace(",2026,", ",2025,")
     rows = source.parse_gdp_csv(text.encode(), "CON")
-    assert len(rows) == 19 * 4
+    assert len(rows) == 18 * 4
     assert not any("当季同比" in row["indicator"] for row in rows)
 
 

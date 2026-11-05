@@ -20,7 +20,7 @@ TARGET_SHEET = "季度_Wind"
 SOURCE_NAME = "FCSC UAE.Stat Quarterly National Accounts"
 TABLE = "fcsc_gdp_quarterly"
 MEASURES = {
-    "TOT_GDP": "", "TOT_NO": ":非石油", "NFC": ":非金融公司",
+    "TOT_GDP": "", "TOT_NO": ":非石油",
     "AGR": ":农业、林业和渔业", "MAN": ":制造业",
     "ELE": ":电力、煤气、供水及废物管理", "CON": ":建筑业",
     "WHO": ":批发零售业、汽车及摩托车修理", "TRA": ":运输和仓储",
@@ -31,7 +31,7 @@ MEASURES = {
     "ACT": ":家庭作为雇主的活动",
 }
 PRICE_SYSTEMS = {"CON": "不变价", "CUR": "现价"}
-RATE_MEASURES = {"TOT_GDP", "TOT_NO", "NFC"}
+RATE_MEASURES = {"TOT_GDP", "TOT_NO"}
 DATA_URLS = {
     system: f"https://releaseeuaestat.fcsc.gov.ae/rest/data/FCSA,DF_QGDP_{system}/all"
             "?dimensionAtObservation=AllDimensions"
@@ -50,7 +50,7 @@ INDICATORS = {
     )
     for system in PRICE_SYSTEMS
     for measure in MEASURES
-    for kind in (["VAL", "GWTH_RATE"] if measure in RATE_MEASURES else ["VAL"])
+    for kind in (["VAL", "GWTH_RATE"] if system == "CON" and measure in RATE_MEASURES else ["VAL"])
 }
 
 
@@ -68,6 +68,8 @@ def parse_gdp_csv(payload: bytes, system: str) -> list[dict]:
         if record["FREQ"] != "Q" or record["QGDP_SYS"] != system:
             raise ValueError("FCSC GDP 频率或价格口径不匹配")
         measure, kind = record["MEASURE"], record["QGDP_UNIT"]
+        if measure == "NFC" or (system == "CUR" and kind == "GWTH_RATE"):
+            continue
         if measure not in {*MEASURES, "MIN"} or kind not in {"VAL", "GWTH_RATE"}:
             raise ValueError(f"FCSC GDP 未识别的维度：{measure}/{kind}")
         expected_unit = "MILAED" if kind == "VAL" else "PERCENT"
@@ -94,7 +96,7 @@ def parse_gdp_csv(payload: bytes, system: str) -> list[dict]:
     for period in periods:
         needed = [(m, "VAL") for m in [*MEASURES, "MIN"]]
         has_rates = any((period, m, "GWTH_RATE") in values for m in RATE_MEASURES)
-        if period.year * 4 + period.month // 3 - 1 >= quarter_ids[0] + 4 or has_rates:
+        if system == "CON" and (period.year * 4 + period.month // 3 - 1 >= quarter_ids[0] + 4 or has_rates):
             needed += [(m, "GWTH_RATE") for m in RATE_MEASURES]
         if any((period, m, k) not in values for m, k in needed):
             raise ValueError(f"FCSC GDP 指标缺失：{period}")
@@ -112,12 +114,12 @@ def parse_gdp_csv(payload: bytes, system: str) -> list[dict]:
          "value": value / 1000 if kind == "VAL" else value,
          "source_url": DATA_URLS[system], "source_file": f"gdp_{system}.csv"}
         for (period, measure, kind), value in sorted(values.items())
-        if measure in MEASURES and (kind == "VAL" or measure in RATE_MEASURES)
+        if measure in MEASURES and (kind == "VAL" or (system == "CON" and measure in RATE_MEASURES))
     ]
 
 
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
-    """Fetch both price systems and atomically upsert all 44 report indicators."""
+    """Fetch both price systems and atomically upsert all 38 report indicators."""
     rows = []
     for system, url in DATA_URLS.items():
         # CON is reserved on Windows, including when suffixed with .csv.
@@ -146,7 +148,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
              "updated_at": date.today()}
             for name, (unit, source) in INDICATORS.items()
         ])
-    return {"status": "ok", "rows": len(rows), "note": "44 项季度 GDP 指标已入库"}
+    return {"status": "ok", "rows": len(rows), "note": "38 项季度 GDP 指标已入库"}
 
 
 def merge(workbook_path: Path) -> dict:

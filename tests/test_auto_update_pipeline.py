@@ -25,8 +25,8 @@ def test_auto_update_batch_covers_every_registered_source() -> None:
 
 def test_comtrade_has_only_one_workbook_merge_owner() -> None:
     assert update_data.workbook_merge_sources(["comtrade"]) == ["comtrade"]
-    assert update_data.workbook_merge_sources(["comtrade", "emirates_post", "portwatch"]) == [
-        "comtrade", "emirates_post", "portwatch",
+    assert update_data.workbook_merge_sources(["comtrade", "dot_t100", "portwatch"]) == [
+        "comtrade", "dot_t100", "portwatch",
     ]
 
 

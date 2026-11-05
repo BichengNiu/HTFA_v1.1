@@ -11,10 +11,8 @@ SOURCES = (
     "dld",
     "dot_t100",
     "dubai_customs_air",
-    "emirates_post",
     "emsteel",
     "employment",
-    "eurostat_air",
     "eia_liquids",
     "fcsc",
     "fcsc_gdp",
@@ -27,12 +25,14 @@ SOURCES = (
     "public_market",
     "rta",
     "salik",
-    "uaewps",
     "wam",
 )
 
-# Retained parsers are archival tools, not supported update/merge sources.
+# Discontinued sources cannot be selected by update or workbook merge.
 RETIRED_SOURCES = {
+    "uaewps": ("uaewps_monthly", "季度_UAEWPS"),
+    "emirates_post": ("detail.emirates_post_monthly", "月度_邮政"),
+    "eurostat_air": ("detail.eurostat_air_monthly", "月度_Eurostat航空"),
     "steel": ("mesteel_monthly", "月度_MEsteel"),
     "tdra": ("tdra_telecom_monthly", "月度_TDRA"),
     "scad": ("scad_monthly", "月度_SCAD"),

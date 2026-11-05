@@ -6,9 +6,8 @@ from types import SimpleNamespace
 import duckdb
 import pytest
 
-from htfa.jobs.uae_data import fetch_official_news as news
-from htfa.jobs.uae_data import source_dld, source_rta, source_tdra
-from htfa.jobs.uae_data import source_employment, source_eurostat_air
+from htfa.jobs.uae_data import source_rta, source_tdra
+from htfa.jobs.uae_data import source_employment
 
 
 def test_tdra_discovers_by_official_title_with_absolute_media_url():
@@ -20,26 +19,6 @@ def test_tdra_discovers_by_official_title_with_absolute_media_url():
     assert source_tdra._discover_downloads(session) == {
         "pre-paid-subscriptions": "https://tdra.gov.ae/-/media/Open-Data/test.ashx?a=1&b=2"
     }
-
-
-def test_dld_continues_past_page_without_moasher(monkeypatch, tmp_path):
-    pages = []
-    def fetch(request, **kwargs):
-        page = int(request.full_url.rsplit("=", 1)[1])
-        pages.append(page)
-        state = '{"props":{"pageProps":{"list":{"pagination":'
-        state += f'{{"page":{page},"pageCount":2}}'
-        state += '}}}}'
-        body = f'<script id="__NEXT_DATA__">{state}</script>'
-        if page == 2:
-            body += '<a href="/en/insightshub/moasher/2024-monthly-november-240">Report</a>'
-        return body
-    monkeypatch.setattr(source_dld, "_http_read", fetch)
-    monkeypatch.setattr(source_dld, "MOASHER_URLS_FILE", tmp_path / "urls.txt")
-    assert source_dld._discover_moasher_urls() == [
-        source_dld.MOASHER_BASE + "2024-monthly-november-240"
-    ]
-    assert pages == [1, 2]
 
 
 def test_rta_mixed_line_endings_preserve_all_rows(tmp_path):
@@ -96,60 +75,6 @@ def test_rta_monthly_taxi_report_dates_are_normalized_before_grouping(tmp_path):
     assert source_rta._aggregate_taxi_monthly([path]) == (
         {date(2026, 3, 31): 150}, {date(2026, 3, 31): 14}
     )
-
-
-def _news_scan(monkeypatch, *, headline, body):
-    item = {"Date": "Tuesday, October 13, 2026", "NewsTitle": headline,
-            "FullText": body, "DetailPageLink": "/en/news/test"}
-    payload = {"PageCount": 1, "TotalRecordCount": 1, "PageNo": 1, "Items": [item]}
-    monkeypatch.setattr(news, "_fetch_listing_inputs", lambda: {})
-    monkeypatch.setattr(news, "_fetch_news_page", lambda *a: payload)
-    return news.discover_official_news(start=date(2020, 1, 1))
-
-
-def test_ded_empty_title_keeps_valid_licence_body(monkeypatch):
-    result = _news_scan(monkeypatch, headline="", body="Issued 123 new business licences in January 2026")
-    assert result["observations"][0]["value"] == 123
-
-
-def test_ded_official_november_slug_typo_matches_numeric_date():
-    assert news._published_date({
-        "DetailPageLink": "/en/news/2026/novemebr/02-11/article"
-    }) == date(2026, 11, 2)
-
-
-@pytest.mark.parametrize("slug", ["novemebr", "november"])
-def test_ded_month_mismatch_still_fails(slug):
-    with pytest.raises(ValueError, match="invalid month"):
-        news._published_date({
-            "DetailPageLink": f"/en/news/2026/{slug}/02-10/article"
-        })
-
-
-def test_ded_unrelated_empty_article_is_reported(monkeypatch):
-    result = _news_scan(monkeypatch, headline="Real estate completes projects", body="")
-    assert result["articles_without_text"] == ["https://mediaoffice.ae/en/news/test"]
-
-
-def test_ded_empty_licence_article_still_fails(monkeypatch):
-    with pytest.raises(ValueError, match="licence news"):
-        _news_scan(monkeypatch, headline="New business licences", body="")
-
-
-def test_eurostat_uses_verified_certificate_context(monkeypatch):
-    seen = {}
-    class Response:
-        status = 200
-        def __enter__(self): return self
-        def __exit__(self, *args): pass
-        def read(self): return b'{"value":{}}'
-    def open_url(request, **kwargs):
-        seen.update(kwargs)
-        return Response()
-    monkeypatch.setattr(source_eurostat_air, "urlopen", open_url)
-    assert source_eurostat_air.fetch_json("https://ec.europa.eu/test") == {"value": {}}
-    assert seen["context"].check_hostname
-    assert seen["context"].verify_mode == 2
 
 
 def test_google_429_retries_same_session(monkeypatch):

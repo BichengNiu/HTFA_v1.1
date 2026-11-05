@@ -145,15 +145,6 @@ _BASE_DDL = (
     )
     """,
     """
-    CREATE TABLE IF NOT EXISTS dld_lease_monthly (
-        period     DATE    NOT NULL,
-        indicator  VARCHAR NOT NULL,
-        value      DOUBLE,
-        source_url VARCHAR,
-        PRIMARY KEY (period, indicator)
-    )
-    """,
-    """
     CREATE TABLE IF NOT EXISTS ded_monthly_by_type (
         month      DATE    NOT NULL,
         legal_form VARCHAR NOT NULL,
@@ -170,40 +161,13 @@ _BASE_DDL = (
     )
     """,
     """
-    CREATE TABLE IF NOT EXISTS uaewps_monthly (
-        period      DATE           NOT NULL,
-        indicator   VARCHAR        NOT NULL,
-        value       DECIMAL(28, 3),
-        source_file VARCHAR,
-        note        VARCHAR,
-        PRIMARY KEY (period, indicator)
-    )
-    """,
-    """
     CREATE TABLE IF NOT EXISTS dld_investment_pipeline_weekly (
         week_end                          DATE PRIMARY KEY,
         confirmed_new_projects_28d        DOUBLE,
-        offplan_sales_28d                 DOUBLE,
-        active_projects_28d               DOUBLE,
-        project_launch_index              DOUBLE,
-        offplan_absorption_index          DOUBLE,
-        project_commercial_transition_index DOUBLE
+        active_projects_28d               DOUBLE
     )
     """,
-    # --- EU↔UAE / US↔UAE 航空客货运（月度） ---
-    """
-    CREATE TABLE IF NOT EXISTS detail.eurostat_air_monthly (
-        period   DATE           NOT NULL,
-        dataset  VARCHAR        NOT NULL,
-        geo      VARCHAR        NOT NULL,
-        partner  VARCHAR        NOT NULL,
-        schedule VARCHAR        NOT NULL,
-        unit     VARCHAR        NOT NULL,
-        tra_meas VARCHAR        NOT NULL,
-        value    DECIMAL(28, 3),
-        PRIMARY KEY (period, dataset, geo, partner, schedule, unit, tra_meas)
-    )
-    """,
+    # --- US↔UAE 航空客货运（月度） ---
     """
     CREATE TABLE IF NOT EXISTS dot_t100_monthly (
         period      DATE           NOT NULL,
@@ -211,17 +175,6 @@ _BASE_DDL = (
         value       DECIMAL(28, 3),
         source_file VARCHAR,
         PRIMARY KEY (period, indicator)
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS detail.emirates_post_monthly (
-        period      DATE    NOT NULL,
-        origin_city VARCHAR NOT NULL,
-        destn_city  VARCHAR NOT NULL,
-        service     VARCHAR NOT NULL,
-        volume      BIGINT,
-        raw_rows    BIGINT,
-        PRIMARY KEY (period, origin_city, destn_city, service)
     )
     """,
     """

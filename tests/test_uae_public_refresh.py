@@ -11,7 +11,6 @@ from htfa.jobs.uae_data import source_ded as ded
 from htfa.jobs.uae_data import source_foreign_labour as labour
 from htfa.jobs.uae_data import source_public_market as market
 from htfa.jobs.uae_data import source_salik as salik
-from htfa.jobs.uae_data import source_uaewps as wps
 
 
 def test_adx_deduplicates_daily_closes_and_preserves_conflicts_as_null():
@@ -59,37 +58,6 @@ def test_public_merge_adds_adx_column_from_database(monkeypatch, tmp_path):
     assert sheet.cell(3, sheet.max_column).value == "日"
     assert sheet.cell(7, sheet.max_column).value == 10000
     updated.close()
-
-
-def test_wps_declining_wages_keep_the_negative_sign():
-    assert wps._parse_wage_yoy("the average wage declined by 2.3% Y-o-Y") == -2.3
-    assert wps._parse_wage_yoy("the average wage rose by 0.7% Y-o-Y") == 0.7
-
-
-def test_wps_repeated_observation_month_uses_latest_publication():
-    records = [("2024Q3", "2024-09", 4.0, 7.2, "first"),
-               ("2024Q4", "2024-09", 4.0, 7.2, "later")]
-    rows = wps._long_rows(records)
-    assert len(rows) == 2
-    assert {r["source_file"] for r in rows} == {"2024Q4.pdf"}
-
-
-def test_wps_historical_validation_still_rejects_changed_values():
-    with pytest.raises(ValueError, match="不一致"):
-        wps.validate_observations({"2025Q1": ("2024-12", 0.0, 6.7, "")})
-
-
-def test_wps_publication_vintage_comes_from_pdf_not_wrong_cache_name(monkeypatch, tmp_path):
-    text = ("Quarterly Economic Review June 2024 Employment and Wages "
-            "As of April 2024, employees covered by WPS increased by 7.5% "
-            "and average wage increased by 9.4%. Government Revenue and Expenditure")
-    page = SimpleNamespace(extract_text=lambda: text)
-    monkeypatch.setattr(wps, "PdfReader", lambda path: SimpleNamespace(pages=[page]))
-    tag, period, employees, wage, _ = wps.extract_qer_wps(tmp_path / "2024Q1.pdf")
-    assert (tag, period, employees, wage) == ("2024Q2", "2024-04", 7.5, 9.4)
-    rows = wps._long_rows([(tag, period, employees, wage, "")],
-                          source_files={tag: "2024Q1.pdf"})
-    assert rows[0]["source_file"] == "2024Q1.pdf"
 
 
 @pytest.mark.parametrize("name, expected", [
@@ -169,31 +137,4 @@ def test_public_merge_preserves_unmatched_columns_and_blanks_holidays(monkeypatc
                if r[0] == datetime(2026, 9, 2))
     assert row[1:-1] == (None,) * len(market.INDICATORS)
     assert row[-1] == 99.0
-    updated.close()
-
-
-def test_public_credit_aliases_convert_million_aed_to_billion(monkeypatch, tmp_path):
-    database = tmp_path / "credit.duckdb"
-    with duckdb.connect(str(database)) as con:
-        con.execute(f"CREATE TABLE {market.TABLE}(period DATE,indicator VARCHAR,value DOUBLE)")
-        con.execute("CREATE TABLE cbuae_monthly(period DATE,indicator VARCHAR,value DOUBLE)")
-        for name in market.INDICATORS:
-            con.execute(f"INSERT INTO {market.TABLE} VALUES (?,?,?)", [date(2026, 9, 1), name, 3.0])
-        for original in market.MONTHLY_CREDIT.values():
-            con.execute("INSERT INTO cbuae_monthly VALUES (?,?,?)", [date(2026, 8, 31), original, 391964.551])
-    monkeypatch.setattr(market.db, "connect", lambda **k: duckdb.connect(str(database), **k))
-    monkeypatch.setattr(market, "DATA_DIR", tmp_path)
-    workbook = Workbook()
-    daily = workbook.active
-    daily.title = market.SHEET
-    monthly = workbook.create_sheet("月度_Wind")
-    for sheet, names in ((daily, market.INDICATORS), (monthly, market.MONTHLY_CREDIT)):
-        for i, name in enumerate(names, 2):
-            sheet.cell(2, i, name)
-    path = tmp_path / "book.xlsx"
-    workbook.save(path)
-    market.merge(path)
-    updated = load_workbook(path, data_only=True)
-    assert updated["月度_Wind"].cell(7, 2).value == pytest.approx(391.964551)
-    assert updated["月度_Wind"].cell(4, 2).value == "十亿阿联酋迪拉姆"
     updated.close()

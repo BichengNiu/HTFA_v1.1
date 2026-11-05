@@ -58,7 +58,7 @@ GET 临时失败时尝试等价 POST JSON 请求。
 GDP 图以十亿美元为左轴、实际增速百分比为右轴；产业占比为相邻柱形对比。
 图表下载保留六国输入和均值，不把现价增速混作实际增速，也不把三产业占比强制归一为100%。
 
-`--source fcsc_annual` 下载 FCSC 的年度行业资本形成、现价/不变价支出法资本形成、
+`--source fcsc_annual` 下载 FCSC 的年度行业资本形成、现价支出法资本形成、
 外资类型、外资行业和来源国×行业六张官方表。原始观测及维度、单位、来源 URL
 写入 `fcsc_investment_annual`，再经 DuckDB 同步五张 `年度_` 工作表、指标字典及
 报告发布表。页面只读发布快照，不在线下载。FCSC 国家标签归档在
@@ -68,7 +68,7 @@ GDP 图以十亿美元为左轴、实际增速百分比为右轴；产业占比�
 
 宏观概览与行业分析的季度数据使用 `--source fcsc_gdp,eia_liquids`：
 `source_fcsc_gdp.py` 从 FCSC UAE.Stat 的 `DF_QGDP_CON` / `DF_QGDP_CUR`
-接入 GDP、非油 GDP、非金融公司增加值、16 个行业增加值及官方同比，共 44 项。
+接入 GDP、非油 GDP、16 个行业增加值及实际 GDP/非油 GDP 官方同比，共 38 项。
 金额由百万 AED 转为工作簿标注的十亿 AED，保留官方历史修订值；同比自官方
 开始发布的 2013Q1 起保留，不补造首年的同比。现价与不变价独立保留发布季度。
 `source_eia_liquids.py` 使用 EIA International 的 UAE / product 53 / production，
@@ -91,22 +91,18 @@ GDP 图以十亿美元为左轴、实际增速百分比为右轴；产业占比�
 对象与源文件。Excel 仍保留为本地维护和导出产物，其他模块的上传功能不受影响。
 
 `--source public_market` 自动下载 DFM、CBUAE 和纽约联储的公开数据，更新 DFM
-综合指数、FTSE ADX 综合指数、EIBOR 隔夜/1 年、EFFR、美元/人民币兑迪拉姆七条日度序列，先写入
-`public_market_daily` 再合并 Excel。它同时从既有 `cbuae_monthly` 读取政府/政府
-相关实体存贷款四条序列，按百万 AED → 十亿 AED 换算写回对应历史列。
-全量流程先更新 CBUAE 再运行 public_market；单跑 public_market 不会重新下载
-CBUAE 公报。历史 `日度_Wind` / `月度_Wind` 表名保留兼容，匹配列的来源和频率
-元数据同步改成公开源。未匹配列和公开源覆盖前的历史数据保留。覆盖区间内
+综合指数、FTSE ADX 综合指数、EIBOR 隔夜/1 年、EFFR、人民币兑迪拉姆六条日度序列，先写入
+`public_market_daily` 再合并 Excel。`日度_Wind` 表名保留兼容，匹配列的来源和频率
+元数据同步改成公开源。报告使用的覆盖前历史数据保留。覆盖区间内
 无官方观测的交易休息日留空，不延续历史零值填充。
 
 ADX 使用交易所官网 FADGI 五年历史接口。同日同值记录去重，同日不同收盘值
 保留日期但数值写 NULL，不任取一个值。报告中的 DFM、ADX 和人民币兑迪拉姆
 均按有效日度观测计算已结束月份的算术平均，下载数据与图表一致。
 
-Salik 投资者 PDF 和 UAEWPS QER 使用固定的 Chrome 请求方式；抓取失败直接
+Salik 投资者 PDF 使用固定的 Chrome 请求方式；抓取失败直接
 报错。Salik 同时读取财报及投资者演示目录，支持 Q/H/FY/9M 文件名并补抓历史
-缺季。WPS 报告季度从 PDF 标题读取（部分旧缓存文件名错误），观察月份从
-正文读取，历史值仍严格校验；同月多报告保留最新报告，工资下降保留负号。
+缺季。UAEWPS、邮政和 Eurostat 航空已停止采集，相关模块及工作表已删除。
 
 尼泊尔同时识别原“劳工审批详情”标题和新“月度进展报告”标题；后者从该卡片
 的发布日期读取尼历年份。实际统计区间仍以 PDF 的起止日期为准，不能将
@@ -141,10 +137,9 @@ EIA Brent 同时读取官方 XLS 和 RBRTE daily API 完整分页，校验系列
   `number_format`、`column_width`、`period_format`（`month` / `day`），保留各源原有格式；
 - `write_baker_hughes_sheet.ps1` / `write_cbuae_sheet.ps1` / `write_uae_pmi_sheet.ps1`：
   保留各自的字典更新、工作簿修复打开和校验回滚契约；
-- `merge_workbook.ps1`（steel）、
-  `merge_dld_indices_into_uae_workbook.ps1`（dld）：各来源的写表通道脚本；
-  `processed/` 中间产物仍落在 `data/UAE/processed/`；
-- `fetch_official_news.py` / `source_ded.py`：从迪拜媒体办公室官方新闻接口扫描 2020 年以来的执照公告，将期间、数值、原文片段和来源 URL 写入 DuckDB 候选表；期间终点值无冲突时进入 `ded_monthly`，官方候选缺失或冲突时更新直接报错。
+- `source_dld.py`：只计算两个周度项目计数和八个月度销售指标，通过共享写表器原子合并；租赁抓取及三个周度指数的计算已删除。
+- `source_ded.py`：Data Dubai 快照聚合为记录数、发证企业数和新发执照数；官方新闻执照指标及其新闻扫描器已删除。
+- `retired_indicators.json` / `retired_sources.py`：显式停用名单先写 DuckDB，再按指标名合并删除工作簿列及同步字典；名称匹配不依赖旧列号。
 
 ## ⚠️ 维护注意
 
@@ -155,7 +150,7 @@ EIA Brent 同时读取官方 XLS 和 RBRTE daily API 完整分页，校验系列
   既有 T-100 Node 下载器存在时仍兼容调用。
 
 来源模块仅供总控导入，不提供独立执行或内嵌自检入口；维护检查使用 `tests/`
-中的来源测试。更新和合并各注册同一组 28 个来源，`--source salik` 等单来源
+中的来源测试。更新和合并各注册同一组 25 个来源，`--source salik` 等单来源
 命令只写该来源的工作表。搜索热度直接从 DuckDB 写入工作簿，不再导出页面
 已不使用的 `工作搜索热度.csv`；本地既有 CSV 不删除。汽车进口工作表仅由
 专用来源写入乘用车、商用车两列台数，金额及零件明细仍保存在 DuckDB。
@@ -167,12 +162,9 @@ DED 仅由 `source_ded.merge()` 使用共享原子写表工具写入四个指标
 
 ### 官方来源读取约定
 
-- DED 媒体办新闻允许空标题；有正文时仍按正文提取。没有正文的条目逐条写入审计告警；许可主题新闻缺正文仍中止更新。
-- DLD 按 Insights Hub 的分页元数据扫描，不因某一页没有 Mo’asher 报告提前停止。
 - RTA 公交速度 CSV 先统一换行格式，保留全部字段和记录；水运固定使用官方 JSON 导出，逐条读取原文完整的 `txn_date` 字段计数。JSON 拼接分隔符不计为记录，每条记录缺日期、重复日期字段或日期无效均报错，不启用忽略错误行。
 - RTA 在线运行保存各数据集的 `download_manifest.json`；显式离线模式只读取清单指定文件并核对大小，不访问元数据接口、不扫描混用历史版本。缺失清单或文件即报错。
 - TDRA 旧解析器作为归档工具保留，不参加活动更新。
 - Google Trends 使用同一 Chrome 请求会话获取查询令牌和时间线；429 有限退避重试，仍失败则报错，不自动转用缓存。
-- Eurostat 使用 certifi 证书库并保持证书及主机名校验。
 - 迪拜海关航空下载器为正式源码 `download_dubai_customs_air.py`：按当前完整清单下载，支持 HTTP Range 断点续传，校验响应长度及 gzip CRC 后原子替换。单次请求和重试次数有限，不再按整批累计 30 分钟强制终止；缺少任一分片即拒绝入库。
 - 嵌入式运行时的 `python313._pth` 包含项目根目录，支持直接执行 `runtime\python.exe -m htfa.jobs.uae_data.update_data`；运行时生成脚本同步维护此配置。

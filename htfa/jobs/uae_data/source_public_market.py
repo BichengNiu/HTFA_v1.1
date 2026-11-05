@@ -1,8 +1,7 @@
 """Public DFM, CBUAE and NY Fed daily data; DuckDB precedes workbook writes.
 
-The legacy sheet name is retained for existing consumers. Only the explicitly
-matched series are updated; licensed commodity quotes and Term SOFR remain
-untouched rather than being silently replaced by different benchmarks.
+The legacy sheet name is retained for existing consumers. Only the six report
+series are collected: EIBOR overnight/one year, EFFR, CNY/AED, DFM and ADX.
 """
 
 from __future__ import annotations
@@ -31,7 +30,6 @@ TABLE = "public_market_daily"
 SHEET = "日度_Wind"
 BASE = "https://www.centralbank.ae"
 EIBOR_URL = BASE + "/umbraco/surface/eibor/GetEiborData"
-FX_URL = BASE + "/umbraco/Surface/Exchange/GetExchangeRateData?lang=en"
 FX_PAGE = BASE + "/en/forex-eibor/exchange-rates/"
 DFM_PAGE = "https://www.dfm.ae/the-exchange/statistics-reports/historical-data/dfmgi"
 ADX_PAGE = "https://www.adx.ae/"
@@ -40,7 +38,6 @@ EFFR_BASE = "https://markets.newyorkfed.org/api/rates/unsecured/effr/search.json
 EIBOR_ON = "阿联酋:银行间同业拆借利率(EIBOR):隔夜"
 EIBOR_YEAR = "阿联酋:银行间同业拆借利率(EIBOR):1年"
 EFFR = "美国:有效联邦基金利率(EFFR)"
-USD = "美元兑阿联酋迪拉姆"
 CNY = "人民币兑阿联酋迪拉姆"
 DFM = "阿联酋DFM综合股票指数"
 ADX = "阿联酋FTSE ADX综合股票指数"
@@ -48,16 +45,9 @@ INDICATORS = {
     EIBOR_ON: ("%", "阿联酋央行"),
     EIBOR_YEAR: ("%", "阿联酋央行"),
     EFFR: ("%", "美联储纽约分行"),
-    USD: ("AED/USD", "CBUAE VAT reference exchange rates"),
     CNY: ("AED/CNY", "CBUAE VAT reference exchange rates"),
     DFM: ("点", "Dubai Financial Market"),
     ADX: ("点", "Abu Dhabi Securities Exchange"),
-}
-MONTHLY_CREDIT = {
-    "阿联酋:银行存款:居民存款:政府部门": "阿联酋政府存款",
-    "阿联酋:银行存款:居民存款:政府相关实体(政府持股超50%)": "阿联酋政府控股企业存款",
-    "阿联酋:信贷总额:国内信贷:政府部门": "阿联酋政府信贷",
-    "阿联酋:信贷总额:国内信贷:公共部门(政府相关实体)": "阿联酋政府控股企业信贷",
 }
 
 
@@ -95,15 +85,6 @@ def parse_eibor(text: str) -> list[dict]:
                 result.append(_row(datetime.strptime(stamp, "%d %b %Y").date(),
                                    indicator, value, EIBOR_URL))
     return result
-
-
-def parse_usd(text: str) -> list[dict]:
-    payload = _embedded_json(text, "fxDataJson")["usd"]
-    dates, values = payload["rowDates"], payload["values"]
-    if len(dates) != len(values):
-        raise ValueError("FX date/value lengths differ")
-    return [_row(date.fromisoformat(stamp), USD, value, FX_URL)
-            for stamp, value in zip(dates, values) if value is not None]
 
 
 def parse_dfm(payload: dict) -> list[dict]:
@@ -216,7 +197,7 @@ def parse_cny_daily(text: str, period: date, url: str) -> list[dict]:
 def _download() -> list[dict]:
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     effr_url = f"{EFFR_BASE}?startDate=2023-01-01&endDate={date.today()}"
-    plans = [("eibor.html", EIBOR_URL), ("usd.html", FX_URL),
+    plans = [("eibor.html", EIBOR_URL),
              ("fx-page.html", FX_PAGE), ("dfm-page.html", DFM_PAGE),
              ("effr.json", effr_url)]
 
@@ -288,14 +269,13 @@ def _latest_fx_year_links(page: str) -> list[str]:
 
 
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
-    """Refresh the seven matched public series and upsert them in DuckDB."""
+    """Refresh the six matched public series and upsert them in DuckDB."""
     if not skip_download:
         _download()
     cny = json.loads((RAW_DIR / "cny.json").read_text(encoding="utf-8"))
     for row in cny:
         row["period"] = date.fromisoformat(row["period"])
     rows = (parse_eibor((RAW_DIR / "eibor.html").read_text(encoding="utf-8"))
-            + parse_usd((RAW_DIR / "usd.html").read_text(encoding="utf-8"))
             + parse_dfm(json.loads((RAW_DIR / "dfm.json").read_text(encoding="utf-8")))
             + parse_adx(json.loads((RAW_DIR / "adx.json").read_text(encoding="utf-8")))
             + parse_effr(json.loads((RAW_DIR / "effr.json").read_text(encoding="utf-8")))
@@ -304,7 +284,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     if len(keys) != len(set(keys)):
         raise ValueError("Public market inputs contain duplicate observation keys")
     if set(r["indicator"] for r in rows) != set(INDICATORS):
-        raise ValueError("Public market inputs do not cover all seven indicators")
+        raise ValueError("Public market inputs do not cover all six indicators")
     with db.transaction(con):
         con.execute(f"CREATE TABLE IF NOT EXISTS {TABLE} (period DATE, "
                     "indicator VARCHAR, value DOUBLE, source_url VARCHAR, "
@@ -320,14 +300,8 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
              "source": source, "type": "市场", "industry": "金融",
              "updated_at": date.today()} for name, (unit, source) in INDICATORS.items()
         ])
-        db.upsert_dictionary_rows(con, [
-            {"indicator_name": name, "frequency": "月", "unit": "十亿阿联酋迪拉姆",
-             "source": "CBUAE Statistical Bulletin", "type": "金额",
-             "industry": "金融", "updated_at": date.today()}
-            for name in MONTHLY_CREDIT
-        ])
     return {"status": "ok", "rows": len(rows),
-            "note": ("七个公开源指标已入库：DFM、ADX、EIBOR隔夜/1年、EFFR、USD/AED、CNY/AED；"
+            "note": ("六个公开源指标已入库：DFM、ADX、EIBOR隔夜/1年、EFFR、CNY/AED；"
                      f"ADX重复冲突日期留空{sum(r['indicator'] == ADX and r['value'] is None for r in rows)}条")}
 
 
@@ -335,14 +309,6 @@ def merge(workbook_path: Path) -> dict:
     """Update matched columns from DuckDB, preserving all other workbook data."""
     with db.connect(read_only=True) as con:
         observations = con.execute(f"SELECT period,indicator,value FROM {TABLE} ORDER BY period").fetchall()
-        credit = []
-        if db.table_exists(con, "cbuae_monthly"):
-            for name, original in MONTHLY_CREDIT.items():
-                credit.extend((period, name, float(value) / 1000 if value is not None else None)
-                              for period, value in con.execute(
-                                  "SELECT period,value FROM cbuae_monthly WHERE indicator=?",
-                                  [original],
-                              ).fetchall())
     if not observations:
         raise ValueError("Public market table is empty")
     path = Path(workbook_path)
@@ -355,10 +321,6 @@ def merge(workbook_path: Path) -> dict:
         if ADX not in {sheet.cell(2, i).value for i in range(2, sheet.max_column + 1)}:
             sheet.cell(2, sheet.max_column + 1, ADX)
         _update_columns(sheet, observations, INDICATORS, "日")
-        if credit:
-            _update_columns(workbook["月度_Wind"], credit,
-                            {name: ("十亿阿联酋迪拉姆", "CBUAE Statistical Bulletin")
-                             for name in MONTHLY_CREDIT}, "月")
         backup_dir = DATA_DIR / "backups"
         backup_dir.mkdir(exist_ok=True)
         shutil.copy2(path, backup_dir / f"public_market_{datetime.now():%Y%m%d_%H%M%S}.xlsx")
@@ -372,4 +334,4 @@ def merge(workbook_path: Path) -> dict:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
     return {"status": "ok", "rows": len(observations),
-            "note": "Wind 表名保留兼容；七个日度公开源、四个央行月度存贷款列已更新"}
+            "note": "Wind 表名保留兼容；六个报告在用日度公开源已更新"}

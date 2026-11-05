@@ -87,8 +87,6 @@ def test_detail_schema_separates_fine_grained_physical_tables() -> None:
         for table in (
             "comtrade_partner_detail",
             "comtrade_quantity_detail",
-            "eurostat_air_monthly",
-            "emirates_post_monthly",
         ):
             physical = con.execute(
                 "SELECT table_type FROM information_schema.tables "
@@ -161,8 +159,12 @@ def test_legacy_workbook_indicators_have_source_metadata() -> None:
         row["indicator_name"]: row for row in uae_metadata.INDICATOR_DEFINITIONS
     }
 
-    assert names <= definitions.keys()
-    assert all(definitions[name]["source"] for name in names)
+    from htfa.jobs.uae_data.retired_sources import RETIRED_INDICATORS
+
+    retired = {name for group in RETIRED_INDICATORS.values() for name in group}
+    assert not definitions.keys() & retired
+    assert names - retired <= definitions.keys()
+    assert all(definitions[name]["source"] for name in names - retired)
 
 
 def test_sync_workbook_dictionary_removes_unbacked_rows(tmp_path, monkeypatch) -> None:

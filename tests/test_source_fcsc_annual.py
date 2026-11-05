@@ -43,7 +43,7 @@ def test_update_normalizes_only_after_database_load_and_rejects_coverage_regress
         (raw / f"{dataset}.csv").write_bytes(_csv(dataset))
     with duckdb.connect() as con:
         db.init_schema(con)
-        assert source.update(con, skip_download=True)["rows"] == 12
+        assert source.update(con, skip_download=True)["rows"] == 10
         specs = source.sheet_specs(con)
         assert len(specs) == 5
         assert all(value == 1 for spec in specs for _, values in spec["rows"] for value in values.values())
@@ -51,4 +51,4 @@ def test_update_normalizes_only_after_database_load_and_rejects_coverage_regress
         (raw / "DF_NA_FIX_CUR.csv").write_bytes(_csv("DF_NA_FIX_CUR", years=(2011,)))
         with pytest.raises(ValueError, match="覆盖回退"):
             source.update(con, skip_download=True)
-        assert con.execute(f"SELECT min(period),count(*) FROM {source.TABLE}").fetchone() == (date(2010, 12, 31), 12)
+        assert con.execute(f"SELECT min(period),count(*) FROM {source.TABLE}").fetchone() == (date(2010, 12, 31), 10)
