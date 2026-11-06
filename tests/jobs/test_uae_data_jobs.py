@@ -27,31 +27,16 @@ def isolate_job_control_tests(monkeypatch, tmp_path):
 
 
 @pytest.mark.parametrize("error_type", [RuntimeError, KeyboardInterrupt])
-def test_scad_failed_refresh_preserves_old_rows_and_connection(
-    monkeypatch, tmp_path, error_type,
-):
-    from datetime import date
-    from htfa.jobs.uae_data import source_scad
-
-    (tmp_path / "HotelStats_2026-09.xlsx").touch()
-    monkeypatch.setattr(source_scad, "RAW_DIR", tmp_path)
-    monkeypatch.setattr(source_scad, "_long_rows", lambda paths: [
-        {"period": date(2026, 9, 30), "indicator": "new", "value": 2.0,
-         "source_file": "new.xlsx"},
-    ])
-    monkeypatch.setattr(source_scad, "_dictionary_rows", lambda: [])
-
-    def fail_metadata(*args):
-        raise error_type("metadata failed")
-
+def test_failed_transaction_preserves_old_rows_and_connection(error_type):
     with db.connect(":memory:") as con:
-        db.init_schema(con)
-        db.ensure(con, "scad_monthly", source_scad.TABLE_DDL)
-        con.execute("INSERT INTO scad_monthly VALUES ('2026-08-31','old',1,'old.xlsx')")
-        monkeypatch.setattr(db, "upsert_dictionary_rows", fail_metadata)
-        with pytest.raises(error_type, match="metadata failed"):
-            source_scad.update(con, skip_download=True)
-        assert con.execute("SELECT indicator,value FROM scad_monthly").fetchall() == [("old", 1.0)]
+        con.execute("CREATE TABLE observations(indicator VARCHAR,value DOUBLE)")
+        con.execute("INSERT INTO observations VALUES ('old',1)")
+        with pytest.raises(error_type, match="interrupted"):
+            with db.transaction(con):
+                con.execute("DELETE FROM observations")
+                con.execute("INSERT INTO observations VALUES ('new',2)")
+                raise error_type("interrupted")
+        assert con.execute("SELECT * FROM observations").fetchall() == [("old",1.0)]
         assert con.execute("SELECT 1").fetchone() == (1,)
 
 

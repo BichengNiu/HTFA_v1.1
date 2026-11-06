@@ -9,7 +9,6 @@ from htfa.jobs.uae_data import (
     source_comtrade_vehicles,
     source_dubai_customs_air,
     source_salik,
-    source_scad,
 )
 
 
@@ -77,25 +76,6 @@ def test_customs_downloader_creates_clean_runner_working_directory(monkeypatch, 
         return SimpleNamespace(returncode=0)
     monkeypatch.setattr(source.subprocess, "run", fake_run)
     assert "1" in source._download_official_shards(force=True)
-
-
-def test_scad_discovery_supports_current_liferay_cards(monkeypatch):
-    html = b'''
-    <div class="journal-content-article "
-         data-analytics-asset-title="Hotel Statistics-Monthly March 2026">
-      <a class="ml-2" href="/documents/report.xlsx/abc?t=1">Excel</a>
-    </div>
-    '''
-
-    def fake_fetch(url: str, **_kwargs):
-        return html if "start=1" in url else b""
-
-    monkeypatch.setattr(source_scad, "fetch_bytes", fake_fetch)
-    found = source_scad._discover_official_files()
-
-    assert len(found) == 1
-    assert found[0][0] == "HotelStats"
-    assert found[0][2].name == "HotelStats_2026-03.xlsx"
 
 
 def test_salik_extracts_absolute_value_but_not_yoy_percentage(monkeypatch):

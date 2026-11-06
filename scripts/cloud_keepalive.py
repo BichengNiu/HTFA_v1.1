@@ -13,8 +13,6 @@ import re
 import time
 from urllib.parse import urlsplit, urlunsplit
 
-from playwright.sync_api import Error, TimeoutError, sync_playwright
-
 APP_URL = "https://fyjpjytbgdretgzufqnxte.streamlit.app/"
 APP_TITLE = "阿联酋经济监测"
 WAKE_BUTTON = re.compile(r"get this app back up|wake (?:it|this app) (?:back )?up|唤醒", re.I)
@@ -35,6 +33,8 @@ def validate_url(url: str) -> str:
 
 def page_status(page):
     """Check every frame; an app title and rendered metric are both required."""
+    from playwright.sync_api import Error
+
     sleeping_button = None
     ready = False
     for frame in list(page.frames):
@@ -63,6 +63,8 @@ def page_status(page):
 
 def wake_and_verify(page, url=APP_URL, *, timeout=180, hold_seconds=15):
     """Click the sleep page once, then require real HTFA content and a stable session."""
+    from playwright.sync_api import TimeoutError
+
     validate_url(url)
     deadline = time.monotonic() + timeout
     woke = False
@@ -110,6 +112,8 @@ def main(argv=None):
     validate_url(args.url)
     if args.timeout <= 0 or args.hold_seconds < 0:
         parser.error("timeout must be positive and hold-seconds must be nonnegative")
+    from playwright.sync_api import Error, sync_playwright
+
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(executable_path=args.browser_executable)
         page = browser.new_page(viewport={"width": 1440, "height": 1000})

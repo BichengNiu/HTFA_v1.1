@@ -1,6 +1,7 @@
 """Retired data cannot return through normal schema, update or merge entrypoints."""
 
 from datetime import date
+from importlib.util import find_spec
 
 from openpyxl import Workbook, load_workbook
 import pytest
@@ -14,6 +15,7 @@ def test_retired_sources_are_not_registered_or_created():
     retired = ("steel", "tdra", "scad", "uaewps", "emirates_post", "eurostat_air")
     assert not set(retired) & set(resolve_source_names("all"))
     for name in retired:
+        assert find_spec(f"htfa.jobs.uae_data.source_{name}") is None
         with pytest.raises(ValueError, match="Unknown source"):
             resolve_source_names(name)
     with db.connect(":memory:") as con:

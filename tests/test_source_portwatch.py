@@ -144,30 +144,6 @@ def test_official_errors_have_bounded_retries_and_reject_authentication(
     assert len(set(calls)) <= 2
 
 
-@pytest.mark.parametrize("status,body,headers,error", [
-    (202, b"", {"x-amzn-waf-action": "challenge"}, RuntimeError),
-    (200, b"", {}, OSError),
-    (200, b"short", {"Content-Length": "100"}, OSError),
-    (200, b"<html>challenge</html>", {"Content-Type": "text/html"}, ValueError),
-])
-def test_invalid_download_preserves_cache(
-    monkeypatch, tmp_path, status, body, headers, error
-):
-    class Response(BytesIO):
-        pass
-
-    response = Response(body)
-    response.status = status
-    response.headers = headers
-    monkeypatch.setattr(source.urllib.request, "urlopen", lambda *a, **k: response)
-    target = tmp_path / "ports.csv"
-    target.write_bytes(b"previous validated CSV")
-    with pytest.raises(error):
-        source._download_to("https://example.com/ports.csv", target)
-    assert target.read_bytes() == b"previous validated CSV"
-    assert not target.with_suffix(".csv.tmp").exists()
-
-
 def test_monthly_aggregation_ignores_partial_latest_month() -> None:
     con = duckdb.connect(":memory:")
     try:

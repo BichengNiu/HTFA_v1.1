@@ -154,12 +154,20 @@ def test_migration_surface_has_no_compatibility_bridges() -> None:
 def test_uae_monitoring_uses_the_economic_workbook_protocol() -> None:
     """UAE 主题不得重新引入监测域内的第二套工作簿读取器。"""
     forbidden = re.compile(
-        r"\bopen_uae_workbook\b|\bparse_target_sheet\b|pd\.read_excel\s*\("
+        r"\bopen_uae_workbook\b|pd\.(?:read_excel|ExcelFile)\s*\("
     )
     for source_file in (PROJECT_ROOT / "htfa/monitoring/uae").rglob("*.py"):
-        assert not forbidden.search(
-            source_file.read_text(encoding="utf-8", errors="ignore")
-        ), source_file
+        source = source_file.read_text(encoding="utf-8", errors="ignore")
+        assert not forbidden.search(source), source_file
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                assert node.name != "parse_target_sheet", source_file
+            elif isinstance(node, ast.ImportFrom) and any(
+                alias.name == "parse_target_sheet" for alias in node.names
+            ):
+                assert node.level == 0 and node.module == (
+                    "htfa.data.economic_workbook.shared.target_reader"
+                ), source_file
 
 
 def test_dfm_preparation_uses_the_economic_workbook_protocol() -> None:

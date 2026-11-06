@@ -6,19 +6,8 @@ from types import SimpleNamespace
 import duckdb
 import pytest
 
-from htfa.jobs.uae_data import source_rta, source_tdra
+from htfa.jobs.uae_data import source_rta
 from htfa.jobs.uae_data import source_employment
-
-
-def test_tdra_discovers_by_official_title_with_absolute_media_url():
-    page = '<div class="aegov-card x"><h6>Pre-paid Subscriptions</h6>'
-    page += '<button data-item="changed-slug"></button>'
-    page += '<a href="/-/media/Open-Data/test.ashx?a=1&amp;b=2">Download</a>'
-    response = SimpleNamespace(text=page, raise_for_status=lambda: None)
-    session = SimpleNamespace(get=lambda *a, **k: response)
-    assert source_tdra._discover_downloads(session) == {
-        "pre-paid-subscriptions": "https://tdra.gov.ae/-/media/Open-Data/test.ashx?a=1&b=2"
-    }
 
 
 def test_rta_mixed_line_endings_preserve_all_rows(tmp_path):

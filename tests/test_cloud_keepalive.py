@@ -8,8 +8,6 @@ import sys
 import threading
 
 import pytest
-from playwright.sync_api import sync_playwright
-import yaml
 
 from scripts.cloud_keepalive import (
     APP_TITLE, KeepaliveError, safe_error, validate_url, wake_and_verify,
@@ -62,9 +60,10 @@ def server():
 
 @pytest.fixture
 def page():
+    browser_api = pytest.importorskip("playwright.sync_api", reason="Browser integration dependency")
     if not CHROMIUM:
         pytest.skip("System Chromium required for browser integration checks")
-    with sync_playwright() as playwright:
+    with browser_api.sync_playwright() as playwright:
         browser = playwright.chromium.launch(executable_path=CHROMIUM)
         page = browser.new_page()
         try:
@@ -100,6 +99,7 @@ def test_application_error_and_unstable_session_are_failures(page, server):
 
 
 def test_cli_preserves_failure_exit_code_and_screenshot(server, tmp_path):
+    pytest.importorskip("playwright.sync_api", reason="Browser integration dependency")
     if not CHROMIUM:
         pytest.skip("System Chromium required")
     url, _ = server
@@ -129,7 +129,22 @@ def test_error_logging_removes_authentication_payloads():
     assert message == "Failed https://host.test/login"
 
 
+def test_cli_help_does_not_require_browser_dependencies():
+    code = (
+        "import runpy, sys; script=sys.argv[1]; "
+        "sys.modules['playwright']=None; sys.argv=[script,'--help']; "
+        "runpy.run_path(script,run_name='__main__')"
+    )
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", code, str(ROOT / "scripts/cloud_keepalive.py")],
+        capture_output=True, text=True, timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "--browser-executable" in result.stdout
+
+
 def test_workflow_has_margin_before_hibernation_and_empty_commits_do_not_retrigger():
+    yaml = pytest.importorskip("yaml", reason="Workflow YAML inspection dependency")
     workflow = yaml.load((ROOT / ".github/workflows/streamlit-keepalive.yml").read_text(), Loader=yaml.BaseLoader)
     fields = workflow["on"]["schedule"][0]["cron"].split()
     interval = int(fields[1].removeprefix("*/"))

@@ -1,14 +1,7 @@
 """IMF PortWatch 日度海运数据（UAE 港口活动 + 全球海峡过境）入库。
 
-数据来源：IMF PortWatch（https://portwatch.imf.org，基于 ArcGIS Hub 发布），
-在线更新直接读取 IMF 官方 ArcGIS 服务；HDX 历史镜像：
-- "United Arab Emirates: Daily Port Activity Data and Shipment Estimates"
-  https://data.humdata.org/dataset/united-arab-emirates-daily-port-activity-data-and-shipment-estimates
-  （日度，2019-01-01 至今，全量 CSV：15 个 UAE 港口 × 每日分层到港次数与进出口吨位）
-- "Daily Chokepoint Transit Calls and Shipment Volume Estimates"
-  https://data.humdata.org/dataset/daily-chokepoint-transit-calls-and-shipment-volume-estimates
-  （日度，2019-01-01 至今，全量 CSV：28 个海峡 × 每日分层过境次数与载货容量，
-   含霍尔木兹海峡 chokepoint6）
+数据来源：IMF PortWatch（https://portwatch.imf.org，基于 ArcGIS Hub 发布）。
+在线更新从 IMF 官方 ArcGIS 服务获取港口活动和海峡过境数据。
 
 ``update()``：从 IMF 港口目录定位 UAE 港口，分页校验官方数据并保存 CSV →
 ``data/UAE/raw/portwatch/`` 下缓存的 CSV →
@@ -105,14 +98,10 @@ _USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 Chrome/151 Safari/537.36"
 )
-_TIMEOUT = 120
 _ARCGIS_ATTEMPTS = 10
 _ARCGIS_TIMEOUT = 45
 _ARCGIS_REQUESTS = BoundedSemaphore(8)
 
-HDX_API = "https://data.humdata.org/api/3/action/package_show"
-UAE_PACKAGE_ID = "united-arab-emirates-daily-port-activity-data-and-shipment-estimates"
-CHOKEPOINT_PACKAGE_ID = "daily-chokepoint-transit-calls-and-shipment-volume-estimates"
 ARCGIS_BASE = "https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services"
 PORTS_SERVICE = f"{ARCGIS_BASE}/Daily_Ports_Data/FeatureServer/0"
 CHOKEPOINT_SERVICE = f"{ARCGIS_BASE}/Daily_Chokepoints_Data/FeatureServer/0"
@@ -214,57 +203,6 @@ CREATE TABLE IF NOT EXISTS detail.portwatch_chokepoint_daily (
 # ---------------------------------------------------------------------------
 # 下载
 # ---------------------------------------------------------------------------
-
-
-def resolve_resource_url(package_id: str) -> str:
-    """经 HDX package_show API 解析该数据集第一个资源的下载 URL。"""
-
-    url = f"{HDX_API}?id={package_id}"
-    request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
-    with urllib.request.urlopen(request, timeout=_TIMEOUT) as response:
-        payload = json.loads(response.read().decode("utf-8"))
-    resources = payload.get("result", {}).get("resources") or []
-    for resource in resources:
-        download_url = resource.get("url")
-        if download_url:
-            return download_url
-    raise ValueError(f"HDX package_show 未发现资源下载 URL: {package_id}")
-
-
-def _download_to(url: str, destination: Path) -> str:
-    """在线下载 URL 到 destination。
-
-    返回 "downloaded"。写临时文件后原子改名，避免半截文件落盘。
-    """
-
-    temporary = destination.with_suffix(destination.suffix + ".tmp")
-    request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
-    try:
-        with urllib.request.urlopen(request, timeout=_TIMEOUT) as response:
-            if response.status != 200:
-                raise RuntimeError(
-                    f"HDX CSV download returned HTTP {response.status}; "
-                    f"WAF action={response.headers.get('x-amzn-waf-action', 'none')}"
-                )
-            if "html" in response.headers.get("Content-Type", "").lower():
-                raise ValueError("HDX CSV download returned an HTML page")
-            expected = int(response.headers.get("Content-Length") or 0)
-            received = 0
-            with open(temporary, "wb") as handle:
-                while True:
-                    chunk = response.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    handle.write(chunk)
-                    received += len(chunk)
-            if not received or (expected and received != expected):
-                raise OSError(
-                    f"Incomplete HDX CSV download: {received}/{expected} bytes"
-                )
-        temporary.replace(destination)
-    finally:
-        temporary.unlink(missing_ok=True)
-    return "downloaded"
 
 
 # ---------------------------------------------------------------------------
