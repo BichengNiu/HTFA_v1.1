@@ -7,8 +7,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from htfa.monitoring.energy_supply import ais_history
-from htfa.monitoring.energy_supply import data_store
+import htfa.monitoring.energy_supply.processing.ais_history as ais_history
+import htfa.monitoring.energy_supply.data.storage as data_store
 class AISSnapshotDedupTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

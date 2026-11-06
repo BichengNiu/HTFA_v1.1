@@ -11,7 +11,7 @@ import duckdb
 
 from htfa.jobs.uae_data import db
 from htfa.jobs.uae_data.paths import DB_PATH
-from htfa.monitoring.energy_supply.data_store import SCHEMA
+from htfa.monitoring.energy_supply.data.storage import SCHEMA
 
 SOURCE_COMMIT = "72f3b04ba9205f66ec1b34231ec6ae3d927dfc9c"
 SOURCE_SHA256 = "1e3c5b8007878a269c0c22f7d40a202065cd87e03cf9a5532dc4c120382e2154"
@@ -62,7 +62,7 @@ def import_snapshot(source: Path, destination: Path = DB_PATH) -> dict:
                 audit = source.parents[1] / "audits/port_type_review_2026-10-16.json"
                 if not audit.is_file():
                     raise FileNotFoundError(audit)
-                from htfa.monitoring.energy_supply.data_store import put_binary_document
+                from htfa.monitoring.energy_supply.data.storage import put_binary_document
 
                 put_binary_document(
                     "audits/port_type_review_2026-10-16.json", audit.read_bytes(),

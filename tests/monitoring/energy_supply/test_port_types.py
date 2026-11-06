@@ -4,8 +4,8 @@ from pathlib import Path
 import unittest
 
 import duckdb
-from htfa.monitoring.energy_supply import data_store
-from htfa.monitoring.energy_supply.port_types import (REVIEWED_PORT_TYPES, PORT_TYPE_GROUPS, PORT_TYPE_BY_ID,
+import htfa.monitoring.energy_supply.data.storage as data_store
+from htfa.monitoring.energy_supply.processing.port_types import (REVIEWED_PORT_TYPES, PORT_TYPE_GROUPS, PORT_TYPE_BY_ID,
                         PORT_TYPE_UNRESOLVED, port_type_label, port_business_label)
 
 ROOT = Path(__file__).resolve().parents[1]

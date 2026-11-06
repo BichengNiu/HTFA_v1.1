@@ -14,8 +14,8 @@ from streamlit.testing.v1 import AppTest
 from htfa.jobs.energy_supply import publish, snapshot_update
 from htfa.jobs.uae_data import db, source_energy_supply
 from htfa.jobs.uae_data.paths import DB_PATH
-from htfa.monitoring.energy_supply import data_store
-from htfa.monitoring.energy_supply import ais
+import htfa.monitoring.energy_supply.data.storage as data_store
+import htfa.monitoring.energy_supply.processing.ais as ais
 
 APP = Path(__file__).resolve().parents[3] / "app.py"
 
@@ -57,7 +57,7 @@ def test_ais_worker_threads_inherit_the_maintenance_database(tmp_path):
 
     database = tmp_path / "threaded.duckdb"
     with data_store.job_database(database):
-        with patch.object(ais, "urlopen", side_effect=lambda *args, **kwargs:
+        with patch("htfa.monitoring.energy_supply.data.openwaters_client.urlopen", side_effect=lambda *args, **kwargs:
                           BytesIO(b'{"type":"FeatureCollection","features":[]}')):
             result = ais.openwaters_snapshot()
         assert result["error"] is None

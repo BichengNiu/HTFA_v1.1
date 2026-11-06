@@ -1,8 +1,9 @@
 """Vessel charts count distinct ships in observed periods, with unknown gaps."""
 from datetime import date
+from htfa.monitoring.energy_supply.ui import charts
 import unittest
 from unittest.mock import patch
-from htfa.monitoring.energy_supply import vessel_charts
+import htfa.monitoring.energy_supply.processing.vessel_charts as vessel_charts
 class VesselChartsTest(unittest.TestCase):
     def test_stock_uses_fresh_latest_positions_and_period_end_sample_not_daily_sum(self):
         rows = [
@@ -37,7 +38,7 @@ class VesselChartsTest(unittest.TestCase):
         rows = tuple((date(2026,10,d), date(2026,10,d), date(2026,10,d), *([1]*6))
                      for d in (15,16,17))
         with patch.object(Figure, 'savefig', autospec=True, side_effect=inspect):
-            images = vessel_charts.chart_images.__wrapped__(rows, '日度')
+            images = charts.vessel_chart_images.__wrapped__(rows, '日度')
         self.assertEqual(len(images), 6)
         self.assertEqual(len(checked), 6)
 

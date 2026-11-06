@@ -2,11 +2,13 @@
 import json
 from pathlib import Path
 from unittest.mock import patch
+from htfa.monitoring.energy_supply.ui import pipeline_popups
 import unittest
 
-from htfa.monitoring.energy_supply import data_store, map_renderer
-from htfa.monitoring.energy_supply import pipeline_catalog
-from htfa.monitoring.energy_supply import dashboard_views
+import htfa.monitoring.energy_supply.data.storage as data_store
+import htfa.monitoring.energy_supply.ui.map_renderer as map_renderer
+import htfa.monitoring.energy_supply.processing.pipeline_catalog as pipeline_catalog
+import htfa.monitoring.energy_supply.ui.map_panel as dashboard_views
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -31,14 +33,14 @@ class MapSearchTest(unittest.TestCase):
 
     def test_unmapped_record_preserves_unknown_capacity_and_has_no_invented_route(self):
         document = data_store.read_json('data/pipeline_projects.json')
-        with patch('htfa.monitoring.energy_supply.data_store.read_json', return_value=document):
+        with patch('htfa.monitoring.energy_supply.data.storage.read_json', return_value=document):
             projects = pipeline_catalog.load_unmapped_projects()
         self.assertEqual(projects[0]['status'], 'construction')
         self.assertIsNone(projects[0]['geometry'])
         self.assertIsNone(projects[0]['capacity_million_bpd'])
-        self.assertIn('2027', pipeline_catalog.unmapped_popup(projects[0]))
-        self.assertIn('百万桶/日', pipeline_catalog.unmapped_popup(projects[0]))
+        self.assertIn('2027', pipeline_popups.unmapped_popup(projects[0]))
+        self.assertIn('百万桶/日', pipeline_popups.unmapped_popup(projects[0]))
         document['projects'][0]['geometry'] = {'type':'LineString','coordinates':[[1,2],[3,4]]}
-        with patch('htfa.monitoring.energy_supply.data_store.read_json', return_value=document):
+        with patch('htfa.monitoring.energy_supply.data.storage.read_json', return_value=document):
             with self.assertRaisesRegex(ValueError, '证据无效'):
                 pipeline_catalog.load_unmapped_projects()

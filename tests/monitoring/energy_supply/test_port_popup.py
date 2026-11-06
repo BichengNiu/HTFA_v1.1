@@ -3,10 +3,10 @@ from datetime import date, timedelta
 import unittest
 from unittest.mock import patch
 
-from htfa.monitoring.energy_supply import dashboard_rows
-from htfa.monitoring.energy_supply import portwatch
-from htfa.monitoring.energy_supply.map_popups import port_popup
-from htfa.monitoring.energy_supply.portwatch_records import PORT_METRICS
+import htfa.monitoring.energy_supply.ui.dashboard_rows as dashboard_rows
+import htfa.monitoring.energy_supply.processing.portwatch as portwatch
+from htfa.monitoring.energy_supply.ui.map_popups import port_popup
+from htfa.monitoring.energy_supply.contracts.records import PORT_METRICS
 
 
 class PortPopupTest(unittest.TestCase):
@@ -15,8 +15,8 @@ class PortPopupTest(unittest.TestCase):
                 'portcalls': i+1, 'portcalls_tanker':i+1} for i in range(7)}
         if missing_day:
             rows.pop(day-timedelta(days=1))
-        with patch('htfa.monitoring.energy_supply.portwatch._activity_rows', return_value={'port105':rows}):
-            return portwatch.week_to_date_activity.__wrapped__(day,('port105',))['port105']
+        with patch('htfa.monitoring.energy_supply.processing.portwatch._activity_rows', return_value={'port105':rows}):
+            return portwatch.week_to_date_activity(day,('port105',))['port105']
 
     def test_calendar_week_excludes_previous_week_and_popup_is_compact(self):
         weekly = self.week()
@@ -85,7 +85,7 @@ class PortPopupTest(unittest.TestCase):
         self.assertTrue(all(label.endswith("（2025年12月29日-2026年01月01日）") for label in labels[2:]))
 
     def test_types_use_reviewed_facilities_not_observed_traffic(self):
-        from htfa.monitoring.energy_supply.port_types import port_type_label, port_business_label
+        from htfa.monitoring.energy_supply.processing.port_types import port_type_label, port_business_label
         self.assertIn("综合港 / 油品枢纽", port_business_label({'portid':'port362'}))
         self.assertIn("综合港 / 集装箱枢纽", port_business_label({'portid':'port744'}))
         self.assertIn('液化石油气', port_type_label({'portid':'wpi48406','name':'Khawr Al Zubair Lng Terminal'}))
@@ -96,18 +96,18 @@ class PortPopupTest(unittest.TestCase):
     def test_month_cumulative_requires_complete_days_without_operating_status(self):
         day=date(2026,6,29)
         rows={day-timedelta(days=i):{**{field:0 for field in PORT_METRICS},'portcalls':2,'portcalls_tanker':2} for i in range(29)}
-        with patch('htfa.monitoring.energy_supply.portwatch._activity_rows',return_value={'port105':rows}):
-            result=portwatch.week_to_date_activity.__wrapped__(day,('port105',))['port105']
+        with patch('htfa.monitoring.energy_supply.processing.portwatch._activity_rows',return_value={'port105':rows}):
+            result=portwatch.week_to_date_activity(day,('port105',))['port105']
         self.assertEqual(result['month_calls'],58)
         self.assertEqual(result['month_calls_tanker'],58)
         self.assertEqual(result['week_calls'],2)
         self.assertNotIn('recent_daily_activity_normal', result)
         rows.pop(day-timedelta(days=12))
-        with patch('htfa.monitoring.energy_supply.portwatch._activity_rows',return_value={'port105':rows}):
-            result=portwatch.week_to_date_activity.__wrapped__(day,('port105',))['port105']
+        with patch('htfa.monitoring.energy_supply.processing.portwatch._activity_rows',return_value={'port105':rows}):
+            result=portwatch.week_to_date_activity(day,('port105',))['port105']
         self.assertIsNone(result['month_calls'])
         self.assertEqual(result['week_calls'],2)
         self.assertNotIn('recent_daily_activity_normal', result)
         rows[day]['portcalls']=0
-        with patch('htfa.monitoring.energy_supply.portwatch._activity_rows',return_value={'port105':rows}):
-            result=portwatch.week_to_date_activity.__wrapped__(day,('port105',))['port105']
+        with patch('htfa.monitoring.energy_supply.processing.portwatch._activity_rows',return_value={'port105':rows}):
+            result=portwatch.week_to_date_activity(day,('port105',))['port105']

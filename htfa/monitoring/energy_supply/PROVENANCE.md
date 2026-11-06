@@ -4,7 +4,7 @@
 `72f3b04ba9205f66ec1b34231ec6ae3d927dfc9c`。
 
 HTFA 原生调用本包，保留地图、港口、船舶、油气页面及下载、地图截图和打印。
-Leaflet、MarkerCluster 和 fflate 静态代码保留在 `vendor/`，各自许可文件随代码保留。
+Leaflet、MarkerCluster 和 fflate 静态代码保留在 `ui/vendor/`，各自许可文件随代码保留。
 不包含原项目内置的 Ts；统一使用 HTFA 安装的 Ts 公共绘图接口。
 
 初始 DuckDB 快照：193212416 字节，SHA256

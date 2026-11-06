@@ -5,9 +5,10 @@ import unittest
 from unittest.mock import patch
 
 import duckdb
-from htfa.monitoring.energy_supply import data_store
-from htfa.monitoring.energy_supply import port_charts
-from htfa.monitoring.energy_supply.portwatch_records import SHIP_TYPES
+from htfa.monitoring.energy_supply.ui import charts
+import htfa.monitoring.energy_supply.data.storage as data_store
+import htfa.monitoring.energy_supply.processing.port_charts as port_charts
+from htfa.monitoring.energy_supply.contracts.records import SHIP_TYPES
 
 
 class PortChartsTest(unittest.TestCase):
@@ -46,7 +47,7 @@ class PortChartsTest(unittest.TestCase):
             return figure, axis
         rows = tuple((date(2025,12,29)+timedelta(days=i), *[1]*6) for i in range(8))
         with patch('Ts.TsPlots.plot_series', side_effect=plot):
-            images = port_charts.chart_images.__wrapped__(rows, rows[0][0], '年度')
+            images = charts.port_chart_images.__wrapped__(rows, rows[0][0], '年度')
         self.assertEqual(len(images), 6)
         self.assertEqual(seen, [([3,5], 0)]*6)
 
@@ -67,7 +68,7 @@ class PortChartsTest(unittest.TestCase):
                     record['portcalls_tanker']=3 if pid=='port1' else -1
                 rows.append(record)
         data_store.save_portwatch('ports',rows,'test',conn=conn)
-        with patch('htfa.monitoring.energy_supply.data_store.connect',connection):
+        with patch('htfa.monitoring.energy_supply.data.storage.connect',connection):
             result=data_store.portwatch_daily_totals(('port1','port2','port1'),date(2026,10,4))
         self.assertEqual([r['date'] for r in result],[date(2026,10,i) for i in range(1,5)])
         self.assertEqual(result[0]['portcalls'],0)
@@ -88,7 +89,7 @@ class PortChartsTest(unittest.TestCase):
         rows=tuple((date(2026,10,day),*[value]*6) for day,value in [(1,0),(2,None),(3,6)])
         before=plt.get_fignums()
         with patch('Ts.TsPlots.plot_series',side_effect=plot):
-            images=port_charts.chart_images.__wrapped__(rows,date(2026,10,1))
+            images=charts.port_chart_images.__wrapped__(rows,date(2026,10,1))
         self.assertEqual(len(images),6)
         self.assertTrue(all(image.startswith(b'\x89PNG') for image in images))
         self.assertEqual(len(seen),6)
@@ -121,5 +122,5 @@ class PortChartsTest(unittest.TestCase):
             rows = tuple((date(2026,10,9)-timedelta(days=offset), *[10]*6)
                          for offset in reversed(range(days)))
             with patch.object(Figure, 'savefig', autospec=True, side_effect=inspect):
-                port_charts.chart_images.__wrapped__(rows, rows[0][0])
+                charts.port_chart_images.__wrapped__(rows, rows[0][0])
         self.assertEqual(len(checked), 12)

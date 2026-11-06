@@ -1,10 +1,10 @@
 """Consistent display labels without altering source observations."""
 import unittest
 from unittest.mock import patch
-from htfa.monitoring.energy_supply import map_renderer
-from htfa.monitoring.energy_supply import dashboard_rows
-from htfa.monitoring.energy_supply import vessel_charts
-from htfa.monitoring.energy_supply.vessel_display import destination_text, reception_time, source_label
+import htfa.monitoring.energy_supply.ui.map_renderer as map_renderer
+import htfa.monitoring.energy_supply.ui.dashboard_rows as dashboard_rows
+import htfa.monitoring.energy_supply.processing.vessel_charts as vessel_charts
+from htfa.monitoring.energy_supply.processing.vessel_display import destination_text, reception_time, source_label
 
 
 class VesselDisplayTest(unittest.TestCase):
@@ -31,7 +31,7 @@ class VesselDisplayTest(unittest.TestCase):
         self.assertEqual(record['目的地'], '扎库姆油田')
         self.assertEqual(record['接收时间（迪拜）'], '2026年10月24日8时')
         self.assertEqual(record['数据源'], 'openwaters')
-        with patch('htfa.monitoring.energy_supply.map_renderer.compressed_document',side_effect=lambda html:html):
+        with patch('htfa.monitoring.energy_supply.ui.map_renderer.compressed_document',side_effect=lambda html:html):
             html=map_renderer.build_map_html([],[],[],[row],'','',asset_popup=lambda r:'',
                 port_popup=lambda r:'',chokepoint_popup=lambda r:'')
         self.assertIn('扎库姆油田',html)

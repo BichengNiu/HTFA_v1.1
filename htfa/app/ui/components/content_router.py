@@ -101,7 +101,7 @@ def render_monitoring_analysis_content(sub_module: str | None) -> None:
 
         render_uae_monitoring(st)
     elif sub_module == "能源保供":
-        from htfa.monitoring.energy_supply.renderer import render_energy_supply
+        from htfa.monitoring.energy_supply.ui.renderer import render_energy_supply
 
         render_energy_supply(st)
     else:

@@ -3,6 +3,35 @@
 入口为“监测分析 → 能源保供”，与工业、阿联酋并列。四个页面直接调用本地 Python
 模块；地图 HTML 在本地生成，只向地图服务请求底图，不嵌入线上 Streamlit 应用。
 
+## 三层架构
+
+`htfa/monitoring/energy_supply/` 采用进程内三层架构，依赖方向固定为
+`ui → processing → data`。`contracts` 是共享的数据类型和来源字段定义，不执行 I/O。
+
+| 层 | 职责与主要入口 |
+| --- | --- |
+| `data` | `storage` 管理连接、候选库上下文和原始事实；专用 repository 保存 AIS、海域事件及来源交付；client 管理网络请求、限流与分页校验 |
+| `processing` | `dashboard_service` 组装页面快照，`reporting` 组装报告；港口、船舶、资产、海域及管线模块实现各自口径；`workbook_reporting` 生成月度指标 |
+| `ui` | `renderer` 组合独立的地图、港口、船舶、油气和打印面板；`cache` 管理查询缓存，`charts` 复用 Ts 输出 PNG |
+
+页面向计算服务传入 `DashboardQuery`，计算层返回 `DashboardContext` 和
+`DashboardViewState`。页面不执行 SQL、写库或调用数据源客户端；计算层不加载
+Streamlit、Matplotlib 或直接发送网络请求。维护作业继续由 `htfa/jobs/energy_supply/`
+调度，不由页面触发。
+
+资产构建通过 `processing.field_catalog.build_catalog()` 显式执行。`asset_spec` 保存
+静态来源规范，审计材料在一次构建的 `evidence_scope` 中读取；构建函数返回全新记录，
+不保存目录。维护作业随后调用 `processing.catalogs.save_catalog()` 完成业务补全和入库。
+存储层本身不执行名称补全或港口分类规则，也不依赖维护作业包。
+
+所有层导入时均不访问数据库或网络。Streamlit 查询缓存包含数据库路径、文件身份及
+相关事实版本；船舶翻译、船旗和海域几何缓存同样按快照隔离。相同版本号的不同候选库
+以及同路径替换的已发布快照不会共用过期结果。
+
+旧的平铺模块已直接移除；新增调用方应从所属层导入，不提供旧路径兼容包装。
+依赖方向、循环依赖和导入安全由 `tests/architecture/test_energy_supply_boundaries.py`
+验证。目录构建、缓存隔离和跨层事务行为由 `test_layer_services.py` 验证。
+
 ## 数据与发布
 
 所有事实保存在 `data/UAE/uae.duckdb` 的 `energy_supply` schema。

@@ -1,0 +1,1 @@
+"""Energy supply ui layer."""

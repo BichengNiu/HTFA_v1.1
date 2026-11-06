@@ -9,7 +9,9 @@ from unittest.mock import patch
 from pathlib import Path
 import tempfile
 
-from htfa.monitoring.energy_supply import portwatch, data_store
+import htfa.monitoring.energy_supply.processing.portwatch as portwatch
+from htfa.monitoring.energy_supply.data import portwatch_client as transport
+import htfa.monitoring.energy_supply.data.storage as data_store
 class _Response(io.BytesIO):
     def __enter__(self):
         return self
@@ -24,7 +26,7 @@ class PortWatchBudgetTest(unittest.TestCase):
         self.enterContext(data_store.job_database(Path(temporary) / "test.duckdb"))
 
     def test_failed_date_statistics_falls_back_to_ordered_source_rows(self):
-        with patch('htfa.monitoring.energy_supply.portwatch.query', side_effect=[portwatch.PortWatchQueryError('Invalid URL'),
+        with patch('htfa.monitoring.energy_supply.processing.portwatch.query', side_effect=[portwatch.PortWatchQueryError('Invalid URL'),
                 {'features': [{'attributes': {'date': '2026-10-30'}}]}]) as query:
             self.assertEqual(portwatch._latest_day('https://example.test/query', 'empty'), date(2026, 10, 30))
         self.assertEqual(query.call_args.kwargs['orderByFields'], 'date DESC')
@@ -38,9 +40,9 @@ class PortWatchBudgetTest(unittest.TestCase):
             timeouts.append(timeout)
             return _Response(json.dumps({"features": []}).encode())
 
-        with patch.object(portwatch, "_LAST_REQUEST", time.monotonic() - 1), \
-             patch("htfa.monitoring.energy_supply.portwatch.urlopen", side_effect=response):
-            with portwatch.request_budget(0.25):
+        with patch.object(transport, "_LAST_REQUEST", time.monotonic() - 1), \
+             patch("htfa.monitoring.energy_supply.data.portwatch_client.urlopen", side_effect=response):
+            with transport.request_budget(0.25):
                 result = portwatch.query("https://example.test/FeatureServer/0/query")
 
         self.assertEqual(result, {"features": []})
@@ -55,18 +57,18 @@ class PortWatchBudgetTest(unittest.TestCase):
             calls.append(timeout)
             return _Response(json.dumps({"error": {"message": "Too many requests"}}).encode())
 
-        with patch.object(portwatch, "_LAST_REQUEST", time.monotonic() - 1), \
-             patch("htfa.monitoring.energy_supply.portwatch.urlopen", side_effect=response):
-            with portwatch.request_budget(0.25):
-                with self.assertRaises(portwatch.RequestBudgetExceeded):
+        with patch.object(transport, "_LAST_REQUEST", time.monotonic() - 1), \
+             patch("htfa.monitoring.energy_supply.data.portwatch_client.urlopen", side_effect=response):
+            with transport.request_budget(0.25):
+                with self.assertRaises(transport.RequestBudgetExceeded):
                     portwatch.query("https://example.test/FeatureServer/0/query")
 
         self.assertEqual(len(calls), 1)
 
     def test_source_query_failure_preserves_details_and_safe_query_context(self):
         error = {"error": {"code": 400, "message": "", "details": ["Invalid query parameters"]}}
-        with patch.object(portwatch, "_LAST_REQUEST", time.monotonic() - 1), \
-             patch("htfa.monitoring.energy_supply.portwatch.urlopen", side_effect=lambda *a, **k: _Response(json.dumps(error).encode())):
+        with patch.object(transport, "_LAST_REQUEST", time.monotonic() - 1), \
+             patch("htfa.monitoring.energy_supply.data.portwatch_client.urlopen", side_effect=lambda *a, **k: _Response(json.dumps(error).encode())):
             with self.assertRaises(ValueError) as failure:
                 portwatch.query("https://example.test/query", where="portid='port105'",
                                 token="must-not-be-logged")
@@ -84,8 +86,8 @@ class PortWatchBudgetTest(unittest.TestCase):
         def respond(request, timeout):
             requests.append(request.full_url)
             return _Response(json.dumps(responses.pop(0)).encode())
-        with patch.object(portwatch, "_LAST_REQUEST", time.monotonic() - 1), \
-             patch("htfa.monitoring.energy_supply.portwatch.urlopen", side_effect=respond), patch("htfa.monitoring.energy_supply.portwatch._budget_sleep"):
+        with patch.object(transport, "_LAST_REQUEST", time.monotonic() - 1), \
+             patch("htfa.monitoring.energy_supply.data.portwatch_client.urlopen", side_effect=respond), patch("htfa.monitoring.energy_supply.data.portwatch_client._budget_sleep"):
             self.assertEqual(portwatch.query("https://example.test/query", where="portid='fso151'"),
                              {"count": 14})
         first = parse_qs(urlsplit(requests[0]).query)
@@ -95,12 +97,12 @@ class PortWatchBudgetTest(unittest.TestCase):
 
     def test_persistent_backend_error_never_becomes_a_successful_empty_response(self):
         error = {"error": {"code": 400, "message": "Cannot perform query. Invalid query parameters."}}
-        with patch.object(portwatch, "_LAST_REQUEST", time.monotonic() - 1), \
-             patch("htfa.monitoring.energy_supply.portwatch.urlopen", side_effect=lambda *a, **k: _Response(json.dumps(error).encode())) as query, \
-             patch("htfa.monitoring.energy_supply.portwatch._budget_sleep"):
+        with patch.object(transport, "_LAST_REQUEST", time.monotonic() - 1), \
+             patch("htfa.monitoring.energy_supply.data.portwatch_client.urlopen", side_effect=lambda *a, **k: _Response(json.dumps(error).encode())) as query, \
+             patch("htfa.monitoring.energy_supply.data.portwatch_client._budget_sleep"):
             with self.assertRaisesRegex(ValueError, "Invalid query parameters"):
                 portwatch.query("https://example.test/query")
-        self.assertEqual(query.call_count, portwatch.QUERY_ATTEMPTS)
+        self.assertEqual(query.call_count, transport.QUERY_ATTEMPTS)
 
     def test_invalid_url_uses_alternate_formats_and_post_with_unchanged_data_query(self):
         calls = []
@@ -110,8 +112,8 @@ class PortWatchBudgetTest(unittest.TestCase):
             data = ({'count': 434} if request.get_method() == 'POST' else
                     {'error': {'code': 400, 'message': 'Invalid URL', 'details': ['Invalid URL']}})
             return _Response(json.dumps(data).encode())
-        with patch.object(portwatch, '_LAST_REQUEST', time.monotonic() - 1), \
-             patch('htfa.monitoring.energy_supply.portwatch.urlopen', side_effect=respond), patch('htfa.monitoring.energy_supply.portwatch._budget_sleep'):
+        with patch.object(transport, '_LAST_REQUEST', time.monotonic() - 1), \
+             patch('htfa.monitoring.energy_supply.data.portwatch_client.urlopen', side_effect=respond), patch('htfa.monitoring.energy_supply.data.portwatch_client._budget_sleep'):
             result = portwatch.query('https://example.test/query', where="portid IN ('port27')", returnCountOnly='true')
         self.assertEqual(result, {'count': 434})
         self.assertEqual([method for method, _ in calls], ['GET', 'GET', 'GET', 'POST'])

@@ -1,1 +1,1 @@
-"""中东能源、港口与战略运输通道监测。"""
+"""Native energy monitoring with data, processing and UI layers."""

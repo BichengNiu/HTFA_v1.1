@@ -4,7 +4,8 @@ from pathlib import Path
 import unittest
 
 import duckdb
-from htfa.monitoring.energy_supply import production_units as p, data_store
+import htfa.monitoring.energy_supply.processing.production_units as p
+import htfa.monitoring.energy_supply.data.storage as data_store
 
 
 def asset(name, value="10", parent=None, period="2024年平均", **extra):
