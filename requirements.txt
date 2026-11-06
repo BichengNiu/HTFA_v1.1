@@ -1,4 +1,4 @@
-# Runtime dependencies for Streamlit Community Cloud (Python 3.13).
+# Runtime dependencies for HTFA native modules on Streamlit Community Cloud (Python 3.13).
 streamlit==1.64.0
 duckdb==1.5.5
 pandas==3.0.5
