@@ -12,6 +12,7 @@ requests>=2.32,<3
 curl_cffi>=0.16.3,<0.17
 shapely==2.1.2
 websockets==16.1.1
+pytz==2025.2
 tensorflow>=2.20,<3
 
 # HTFA's internal time-series toolkit, pinned to a tested public commit.

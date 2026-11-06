@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/energy-supply.yml'
+      - 'tooling/requirements/requirements-energy-collector.txt'
   schedule:
     - cron: '0 4 * * *'
     - cron: '0 9 * * *'

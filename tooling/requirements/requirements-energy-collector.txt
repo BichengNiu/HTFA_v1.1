@@ -7,3 +7,4 @@ openpyxl==3.1.5
 requests==2.34.2
 shapely==2.1.2
 websockets==16.1.1
+pytz==2025.2
