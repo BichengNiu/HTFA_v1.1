@@ -43,7 +43,7 @@ def test_public_entry_renders_navigation_without_exception():
     assert not app.exception
     assert MODEL_LIBRARY_TOKEN_KEY not in app.session_state
     assert [button.label for button in app.sidebar.button] == [
-        "数据预览", "模型分析", "监测分析", "数据探索", "工业", "阿联酋",
+        "数据预览", "模型分析", "监测分析", "数据探索", "工业", "能源保供", "阿联酋",
     ]
     assert app.session_state["navigation.main_module"] == "监测分析"
     assert app.session_state["navigation.sub_module"] == "阿联酋"

@@ -199,7 +199,7 @@ def test_sync_workbook_dictionary_removes_unbacked_rows(tmp_path, monkeypatch) -
         def close(self):
             pass
 
-    monkeypatch.setattr(uae_metadata.db, "connect", lambda read_only=True: _Connection())
+    monkeypatch.setattr(uae_metadata.db, "connect", lambda path=None, read_only=True: _Connection())
     result = uae_metadata.sync_workbook_dictionary(workbook_path)
 
     assert result["removed"] == 1
@@ -246,7 +246,7 @@ def test_sync_workbook_dictionary_rejects_legacy_date_columns(tmp_path, monkeypa
         def close(self):
             pass
 
-    monkeypatch.setattr(uae_metadata.db, "connect", lambda read_only=True: _Connection())
+    monkeypatch.setattr(uae_metadata.db, "connect", lambda path=None, read_only=True: _Connection())
     previous = workbook_path.read_bytes()
     with pytest.raises(ValueError, match="9"):
         uae_metadata.sync_workbook_dictionary(workbook_path, as_of=date(2026, 8, 22))

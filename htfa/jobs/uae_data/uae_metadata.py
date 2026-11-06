@@ -355,6 +355,21 @@ _DETAIL_OBJECTS = (
     "detail.portwatch_uae_daily",
     "detail.portwatch_chokepoint_daily",
     "detail.dld_transactions",
+    "energy_supply.app_meta",
+    "energy_supply.documents",
+    "energy_supply.document_rows",
+    "energy_supply.catalogs",
+    "energy_supply.portwatch_daily",
+    "energy_supply.portwatch_cache",
+    "energy_supply.source_queries",
+    "energy_supply.ais_reports",
+    "energy_supply.archive_imports",
+    "energy_supply.sea_manifests",
+    "energy_supply.sea_entries",
+    "energy_supply.sea_coverage",
+    "energy_supply.sea_vessel_checkpoints",
+    "energy_supply.collection_runs",
+    "energy_supply.report_indicators",
 )
 
 _PORTWATCH_VALUE_PREFIXES = {
@@ -583,6 +598,7 @@ def sync_workbook_dictionary(
     workbook_path: Path,
     *,
     as_of: date | None = None,
+    database: Path | None = None,
 ) -> dict[str, int]:
     """Sync DB metadata for indicators present in workbook data sheets.
 
@@ -599,7 +615,7 @@ def sync_workbook_dictionary(
     if lock_path.exists():
         raise RuntimeError(f"请先关闭 Excel 工作簿：{lock_path}")
 
-    con = db.connect(read_only=True)
+    con = db.connect(database, read_only=True)
     try:
         rows = con.execute(
             """

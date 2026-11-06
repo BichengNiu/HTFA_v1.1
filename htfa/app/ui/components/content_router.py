@@ -67,7 +67,7 @@ def detect_navigation_level(main_module: str, sub_module: str | None) -> str:
         return "MAIN_MODULE_ONLY"
     if main_module == "数据预览" and sub_module in PREVIEW_MODULE_MAPPING:
         return "FUNCTION_ACTIVE"
-    if main_module == "监测分析" and sub_module in {"工业", "阿联酋"}:
+    if main_module == "监测分析" and sub_module in {"工业", "阿联酋", "能源保供"}:
         return "FUNCTION_ACTIVE"
     return "SUB_MODULE_ONLY"
 
@@ -100,6 +100,10 @@ def render_monitoring_analysis_content(sub_module: str | None) -> None:
         from htfa.monitoring.uae.renderer import render_uae_monitoring
 
         render_uae_monitoring(st)
+    elif sub_module == "能源保供":
+        from htfa.monitoring.energy_supply.renderer import render_energy_supply
+
+        render_energy_supply(st)
     else:
         st.info("请选择一个子模块以开始监测分析")
 

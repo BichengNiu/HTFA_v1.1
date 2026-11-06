@@ -78,7 +78,7 @@ def render_complete_sidebar(
             selected_main == "数据探索"
             or (
                 selected_main == "监测分析"
-                and get_current_sub_module() != "阿联酋"
+                and get_current_sub_module() not in {"阿联酋", "能源保供"}
             )
         )
         if should_render_shared_uploader:

@@ -12,6 +12,7 @@ SOURCES = (
     "dot_t100",
     "dubai_customs_air",
     "emsteel",
+    "energy_supply",
     "employment",
     "eia_liquids",
     "fcsc",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from io import BytesIO
 from typing import Any
 
 import matplotlib.pyplot as plt
@@ -187,9 +188,11 @@ def render_pyplot_figure(
     仅在置底时生效。
     """
 
-    if "use_container_width" not in kwargs:
-        kwargs.setdefault("width", "stretch")
-    kwargs.setdefault("clear_figure", True)
+    container_width = kwargs.pop("use_container_width", None)
+    width = kwargs.pop("width", "stretch" if container_width is not False else "content")
+    kwargs.pop("clear_figure", None)
+    kwargs.setdefault("dpi", 200)
+    kwargs.setdefault("bbox_inches", "tight")
     try:
         if place_legend_bottom:
             figure = place_chart_legend_at_bottom(
@@ -198,7 +201,9 @@ def render_pyplot_figure(
                 legend_cols=legend_cols,
             )
         _apply_cjk_fonts(figure)
-        st_obj.pyplot(figure, **kwargs)
+        output = BytesIO()
+        figure.savefig(output, format="png", **kwargs)
+        st_obj.image(output.getvalue(), width=width)
     finally:
         plt.close(figure)
 

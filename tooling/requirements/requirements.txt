@@ -1,6 +1,6 @@
 # 经济运行分析平台 - 依赖包列表
 # 核心框架
-streamlit>=1.50.0
+streamlit>=1.64.0
 # Streamlit 1.61.0 的 GZip 中间件尚不兼容 Starlette 1.4.0。
 starlette>=0.46.0,<1.4.0
 
@@ -13,6 +13,8 @@ pypdf>=6.15.0
 curl_cffi>=0.16.3,<0.17
 # 本地数据管理（data/ 统一 DuckDB 管线）
 duckdb>=1.5.0
+shapely==2.1.2
+websockets==16.1.1
 
 # 科学计算与统计分析
 scipy>=1.16.0

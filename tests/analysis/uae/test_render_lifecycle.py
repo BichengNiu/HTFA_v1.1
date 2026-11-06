@@ -85,12 +85,9 @@ def test_chart_survives_another_session_cleanup_during_layout(monkeypatch, chart
     outputs = []
 
     class StreamlitSink:
-        def pyplot(self, rendered, **kwargs):
-            output = BytesIO()
-            rendered.savefig(output, format="png", dpi=60, bbox_inches=None)
-            outputs.append(output.getvalue())
-            if kwargs["clear_figure"]:
-                rendered.clear()
+        def image(self, rendered, **kwargs):
+            outputs.append(rendered)
+            assert kwargs["width"] == "stretch"
 
     render_pyplot_figure(
         StreamlitSink(), figure, place_legend_bottom=False, bbox_inches=None,

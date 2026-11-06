@@ -5,7 +5,7 @@ from __future__ import annotations
 
 MODULE_CONFIG = {
     "数据预览": {"工业": None, "阿联酋": None},
-    "监测分析": {"工业": None, "阿联酋": None},
+    "监测分析": {"工业": None, "阿联酋": None, "能源保供": None},
     "模型分析": {
         "DFM 模型": ["数据准备", "模型训练", "模型分析", "影响分解"],
         "单变量模型": ["SARIMAX", "RDL", "ARDL"],
