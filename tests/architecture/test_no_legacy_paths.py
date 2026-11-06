@@ -63,6 +63,7 @@ MIGRATION_SURFACE_ROOTS = (
     PROJECT_ROOT / "htfa/exploration/ui/shared_dataset_source.py",
     PROJECT_ROOT / "htfa/models/univariate/sarimax/ui/data_input.py",
     PROJECT_ROOT / "htfa/monitoring/uae",
+    PROJECT_ROOT / "htfa/models/univariate/sarimax/ui/state.py",
     PROJECT_ROOT / "htfa/workspace",
 )
 

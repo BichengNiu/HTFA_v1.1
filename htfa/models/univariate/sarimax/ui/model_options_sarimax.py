@@ -17,7 +17,7 @@ from htfa.models.univariate.sarimax.ui.model_options_shared import (
     render_trend_selector,
     restore_table_state,
 )
-from htfa.models.univariate.sarimax.ui.state import state
+from htfa.models.univariate.sarimax.ui.state import SARIMAX_SCOPE
 from htfa.models.univariate.common.state import StateStore
 
 _AUTO_RANGE_DEFAULTS = {
@@ -44,7 +44,7 @@ def render_sarimax_options(
     response_log: bool = False,
     exog_log_names: tuple[str, ...] = (),
     prefix: str = "sarimax",
-    state_manager: StateStore = state,
+    state_manager: StateStore = SARIMAX_SCOPE.state,
 ) -> SARIMAXConfig | AutoSARIMAXConfig | None:
     """渲染 SARIMAX 模型族的手动或自动配置。
 
@@ -91,7 +91,7 @@ def render_sarimax_error_options(
     *,
     include_trend: bool = True,
     response_log: bool = False,
-    state_manager: StateStore = state,
+    state_manager: StateStore = SARIMAX_SCOPE.state,
 ) -> SARIMAXConfig | None:
     """渲染 RDL/ARDL 使用的手动 SARIMAX 误差结构配置。
 
@@ -129,7 +129,7 @@ def _render_manual_config(
     exog: pd.DataFrame | None = None,
     exog_log_names: tuple[str, ...] = (),
     include_trend: bool = True,
-    state_manager: StateStore = state,
+    state_manager: StateStore = SARIMAX_SCOPE.state,
 ) -> SARIMAXConfig | None:
     """渲染手动 SARIMAX 阶数与高级设置。"""
     order_columns = st_obj.columns(4 if include_trend else 3)
@@ -215,7 +215,7 @@ def _render_auto_config(
     log: bool | None = False,
     exog: pd.DataFrame | None = None,
     exog_log_names: tuple[str, ...] = (),
-    state_manager: StateStore = state,
+    state_manager: StateStore = SARIMAX_SCOPE.state,
 ) -> AutoSARIMAXConfig | None:
     """渲染 AutoSARIMAX 搜索范围；范围非法时提示并返回 None。"""
     layout_columns = st_obj.columns([2, 1])

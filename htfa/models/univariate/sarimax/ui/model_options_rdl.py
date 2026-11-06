@@ -17,7 +17,7 @@ from htfa.models.univariate.sarimax.ui.model_options_shared import (
 from htfa.models.univariate.sarimax.ui.model_options_sarimax import (
     render_sarimax_error_options,
 )
-from htfa.models.univariate.sarimax.ui.state import state
+from htfa.models.univariate.sarimax.ui.state import SARIMAX_SCOPE
 from htfa.models.univariate.common.state import StateStore
 
 
@@ -29,7 +29,7 @@ def render_rdl_options(
     intervention_analysis: bool = False,
     model_dates: pd.Index | None = None,
     prefix: str = "sarimax_rdl",
-    state_manager: StateStore = state,
+    state_manager: StateStore = SARIMAX_SCOPE.state,
 ) -> RDLConfig | None:
     """渲染 RDL 的误差结构、输入动态与估计设置。
 

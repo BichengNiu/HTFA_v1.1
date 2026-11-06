@@ -129,25 +129,16 @@ def prepare_time_index(
         logger.warning("无法找到有效的时间列")
         return df_work, None
 
-    # 如果时间列不在DataFrame中，可能是索引
-    if time_column not in df_work.columns and time_column == (df_work.index.name or "时间索引"):
-        return df_work, time_column
-
-    # 转换时间列为datetime类型
-    try:
-        df_work[time_column] = pd.to_datetime(df_work[time_column], errors='coerce')
-        logger.info(f"时间列 '{time_column}' 已转换为datetime类型")
-    except (KeyError, TypeError, ValueError, OverflowError) as e:
-        logger.error(f"转换时间列失败: {e}")
-        return df_work, None
+    if time_column not in df_work.columns:
+        raise ValueError(f"指定的时间列不存在：{time_column}")
+    dates = pd.to_datetime(df_work[time_column], errors="raise")
+    if dates.isna().any():
+        raise ValueError(f"时间列 '{time_column}' 包含空日期")
+    df_work[time_column] = dates
 
     # 设置为索引
     if set_as_index:
-        try:
-            df_work = df_work.set_index(time_column, drop=not keep_column)
-            logger.info(f"时间列 '{time_column}' 已设置为索引 (keep_column={keep_column})")
-        except (KeyError, TypeError, ValueError) as e:
-            logger.error(f"设置时间索引失败: {e}")
+        df_work = df_work.set_index(time_column, drop=not keep_column)
 
     return df_work, time_column
 

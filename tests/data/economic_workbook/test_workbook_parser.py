@@ -66,10 +66,10 @@ def _build_workbook(
 def test_parse_workbook_merges_dictionary_and_sheet_metadata():
     result = parse_economic_workbook(_build_workbook(), module_name="test")
 
-    assert result.get_dataframe("daily").shape == (2, 1)
-    assert result.get_dataframe("monthly").shape == (1, 1)
-    assert result.get_dataframe("weekly").empty
-    assert result.get_dataframe("ten_day").empty
+    assert result.dataframes["daily"].shape == (2, 1)
+    assert result.dataframes["monthly"].shape == (1, 1)
+    assert result.dataframes["weekly"].empty
+    assert result.dataframes["ten_day"].empty
 
     metadata = result.indicator_metadata_map["指标A"]
     assert metadata.frequency == "daily"
@@ -185,7 +185,7 @@ def test_parse_workbook_discards_indicators_not_registered_in_dictionary():
 
     result = parse_economic_workbook(output, module_name="test")
 
-    assert result.get_dataframe("monthly").empty
+    assert result.dataframes["monthly"].empty
     assert "指标B" not in result.indicator_metadata_map
 
 
@@ -215,7 +215,7 @@ def test_parse_workbook_can_limit_parsing_to_an_indicator_allowlist():
     )
 
     assert set(result.indicator_metadata_map) == {"指标A"}
-    assert result.get_dataframe("monthly").empty
+    assert result.dataframes["monthly"].empty
 
 
 def test_parse_workbook_converts_zero_values_to_missing():
@@ -230,7 +230,7 @@ def test_parse_workbook_converts_zero_values_to_missing():
     output.name = "零值占位数据库.xlsx"
 
     result = parse_economic_workbook(output, module_name="test")
-    series = result.get_dataframe("daily")["指标A"]
+    series = result.dataframes["daily"]["指标A"]
 
     assert pd.isna(series.iloc[0])
     assert series.iloc[1] == 11.0

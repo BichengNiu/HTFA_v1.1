@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.ticker import MaxNLocator
-from Ts import TimeSeriesSummary, difference
+from Ts import difference
 from Ts.TsPlots import plot_acf, plot_pacf, plot_series
 from Ts.TsTests import (
     ADFTest,
@@ -160,27 +160,6 @@ RESULT_COLUMNS = [
 ]
 
 
-SUMMARY_LABELS = {
-    "Name": "名称",
-    "Observations": "总观测数",
-    "Valid observations": "有效观测数",
-    "Frequency": "频率",
-    "Start": "起始时间",
-    "End": "结束时间",
-    "Missing values": "缺失值数",
-    "Missing ratio": "缺失比例",
-    "Missing timestamps": "缺失时间点",
-    "Missing positions": "缺失位置",
-    "Mean": "均值",
-    "Standard deviation": "标准差",
-    "Minimum": "最小值",
-    "First quartile": "第一四分位数",
-    "Median": "中位数",
-    "Third quartile": "第三四分位数",
-    "Maximum": "最大值",
-}
-
-
 def prepare_selected_series(
     data: pd.DataFrame,
     variable: Hashable,
@@ -266,92 +245,6 @@ def transform_series(
     )
     transformed.name = series.name
     return transformed
-
-
-def _localize_summary_frequency(value: str) -> str:
-    normalized = value.strip()
-    upper = normalized.upper()
-    if upper.startswith(("QE", "Q-")) or upper == "Q":
-        return "季度"
-    if upper.startswith(("ME", "MS", "M-", "WOM")) or upper == "M":
-        return "月度"
-    if upper.startswith("W"):
-        return "周度"
-    if upper.startswith(("YE", "YS", "A-", "Y-")) or upper in {"A", "Y"}:
-        return "年度"
-    if upper.startswith(("D", "B")):
-        return "日度"
-    if normalized == "irregular or unknown":
-        return "不规则或未知"
-    if normalized == "unknown":
-        return "未知"
-    if normalized.startswith("positional"):
-        return normalized.replace("positional", "位置索引").replace(
-            "step",
-            "步长",
-        )
-    return normalized
-
-
-def localize_summary_text(summary: str) -> str:
-    """将 ``Ts.summary()`` 的固定英文标签完整转换为中文。"""
-    localized = []
-    for line in summary.splitlines():
-        stripped = line.strip()
-        if stripped == "Time Series Summary":
-            localized.append("时间序列统计摘要")
-            continue
-        if ":" not in line:
-            localized.append(line)
-            continue
-        label, value = line.split(":", 1)
-        english_label = label.strip()
-        chinese_label = SUMMARY_LABELS.get(english_label, english_label)
-        localized_value = value.strip()
-        if english_label == "Frequency":
-            localized_value = _localize_summary_frequency(localized_value)
-        elif localized_value == "None":
-            localized_value = "无"
-        elif localized_value == "Unnamed":
-            localized_value = "未命名"
-        localized.append(f"{chinese_label}：{localized_value}")
-    return "\n".join(localized)
-
-
-SUMMARY_FREQUENCY_LABELS = {
-    "Daily": "日度",
-    "Weekly": "周度",
-    "Ten_Day": "旬度",
-    "Monthly": "月度",
-    "Quarterly": "季度",
-    "Annual": "年度",
-    "Undetermined": "未确定",
-}
-
-
-def summarize_series(
-    series: pd.Series,
-    *,
-    alpha: float = 0.05,
-    frequency: str | None = None,
-) -> str:
-    """调用 ``Ts.TimeSeriesSummary.summary`` 并转换为中文摘要。
-
-    ``frequency`` 非空时使用调用方已经确认的业务频率，避免 Ts 的索引推断
-    与工作簿元数据/频率表口径不一致。
-    """
-    values = _validate_numeric_series(series)
-    summary = TimeSeriesSummary(values, alpha=alpha).summary(plot=False)
-    localized = localize_summary_text(summary)
-    if frequency is None:
-        return localized
-
-    display_frequency = SUMMARY_FREQUENCY_LABELS.get(frequency, str(frequency))
-    lines = localized.splitlines()
-    return "\n".join(
-        f"频率：{display_frequency}" if line.startswith("频率：") else line
-        for line in lines
-    )
 
 
 def create_time_series_figure(
@@ -698,13 +591,11 @@ __all__ = [
     "TransformationSpec",
     "create_correlogram_figure",
     "create_time_series_figure",
-    "localize_summary_text",
     "matplotlib_date_compatibility",
     "normalize_frequency",
     "prepare_selected_series",
     "resolve_correlation_lags",
     "resolve_year_over_year_lag",
     "run_selected_stationarity_tests",
-    "summarize_series",
     "transform_series",
 ]

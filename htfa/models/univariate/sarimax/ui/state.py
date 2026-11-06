@@ -57,7 +57,7 @@ _ARDL_WIDGET_SUFFIXES = (
 _TABLE_SUFFIXES = (
     "input_table", "advanced_table", "exog_operators", "future_exog_editor",
 )
-_RESULT_KEYS = (
+RESULT_KEYS = (
     "fitted_result", "fit_signature", "diagnostics_table", "diagnostics_signature",
     "forecast", "forecast_signature",
     "backtest", "backtest_signature",
@@ -128,7 +128,7 @@ class ModelPageScope:
     def clear_widget_state(self, st_obj, keys: tuple[str, ...] | None = None) -> None:
         self.lifecycle.clear_widget_state(st_obj, keys=keys)
 
-    def restore_result_state(self, values: Mapping[str, object], *, keys: tuple[str, ...] = _RESULT_KEYS) -> None:
+    def restore_result_state(self, values: Mapping[str, object], *, keys: tuple[str, ...] = RESULT_KEYS) -> None:
         self.lifecycle.restore_result_state(values, keys=keys)
 
 
@@ -145,47 +145,4 @@ ARDL_SCOPE = ModelPageScope(
     data_key_prefix="ardl_model", widget_suffixes=_ARDL_WIDGET_SUFFIXES,
 )
 
-# 兼容 SARIMAX 独立页交接模块的既有公共名称。
-state = SARIMAX_SCOPE.state
-MODEL_WIDGET_KEYS = SARIMAX_SCOPE.widget_keys
-WIDGET_KEYS = MODEL_WIDGET_KEYS
-PERSISTENT_WIDGET_KEYS = SARIMAX_SCOPE.persistent_widget_keys
-DATASET_REPLACED_WIDGET_KEYS = MODEL_WIDGET_KEYS
-RESULT_KEYS = _RESULT_KEYS
-
-
-def clear_fit_results() -> None:
-    SARIMAX_SCOPE.clear_fit_results()
-
-
-def store_fit_result(result, signature) -> None:
-    SARIMAX_SCOPE.store_fit_result(result, signature)
-
-
-def clear_downstream_results() -> None:
-    SARIMAX_SCOPE.lifecycle.clear_downstream_results()
-
-
-def store_downstream_result(result_key: str, result, signature_key: str, signature) -> None:
-    SARIMAX_SCOPE.store_downstream_result(result_key, result, signature_key, signature)
-
-
-def clear_downstream_result(result_key: str, signature_key: str) -> None:
-    SARIMAX_SCOPE.clear_downstream_result(result_key, signature_key)
-
-
-def restore_result_state(values: Mapping[str, object], *, keys: tuple[str, ...] = RESULT_KEYS) -> None:
-    SARIMAX_SCOPE.restore_result_state(values, keys=keys)
-
-
-def clear_widget_state(st_obj, keys: tuple[str, ...] = WIDGET_KEYS) -> None:
-    SARIMAX_SCOPE.clear_widget_state(st_obj, keys)
-
-
-__all__ = [
-    "ARDL_SCOPE", "DATASET_REPLACED_WIDGET_KEYS", "MODEL_WIDGET_KEYS",
-    "ModelPageScope", "PERSISTENT_WIDGET_KEYS", "RDL_SCOPE", "RESULT_KEYS",
-    "SARIMAX_SCOPE", "WIDGET_KEYS", "clear_downstream_result",
-    "clear_downstream_results", "clear_fit_results", "clear_widget_state",
-    "restore_result_state", "state", "store_downstream_result", "store_fit_result",
-]
+__all__ = ["ARDL_SCOPE", "ModelPageScope", "RDL_SCOPE", "RESULT_KEYS", "SARIMAX_SCOPE"]

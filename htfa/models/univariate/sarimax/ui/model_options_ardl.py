@@ -12,7 +12,7 @@ from htfa.models.univariate.sarimax.ui.model_options_shared import (
 from htfa.models.univariate.sarimax.ui.model_options_sarimax import (
     render_sarimax_error_options,
 )
-from htfa.models.univariate.sarimax.ui.state import state
+from htfa.models.univariate.sarimax.ui.state import SARIMAX_SCOPE
 from htfa.models.univariate.common.state import StateStore
 
 
@@ -22,7 +22,7 @@ def render_ardl_options(
     *,
     response_log: bool,
     key_prefix: str = "sarimax_ardl",
-    state_manager: StateStore = state,
+    state_manager: StateStore = SARIMAX_SCOPE.state,
 ) -> ARDLConfig | None:
     """渲染标准 ARDL 的手动滞后与 SARIMA 误差设置。
 

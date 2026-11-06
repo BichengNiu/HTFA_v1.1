@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 from htfa.data.economic_workbook import EconomicWorkbookReader
+from htfa.data.economic_workbook.shared.target_reader import parse_target_sheet
 from htfa.jobs.uae_data import publish_report
 from htfa.monitoring.uae.database import published_source
 
@@ -59,15 +60,15 @@ def test_database_reader_matches_excel_without_any_excel_io(tmp_path, monkeypatc
             check_dtype=False, check_index_type=False,
         )
     with reader.open_workbook(source) as (tables, _):
-        values, metadata = reader.read_target_sheet(
+        values, metadata = parse_target_sheet(
             tables, sheet_name="月度_测试", targets=(("test", "测试指标"),),
             allowed_frequencies={"月"}, expected_unit="点", zero_is_missing=False,
         )
         assert values.loc["2026-08-31", "test"] == 0
         assert metadata["test"].source == "测试官方"
-        raw = reader.read_raw_sheet(tables, sheet_name="月度_测试")
+        raw = tables.parse(sheet_name="月度_测试", header=None)
         raw.iloc[6, 1] = -999
-        assert reader.read_raw_sheet(tables, sheet_name="月度_测试").iloc[6, 1] == 12
+        assert tables.parse(sheet_name="月度_测试", header=None).iloc[6, 1] == 12
 
 
 def test_new_release_invalidates_cached_tables_and_old_references(tmp_path):

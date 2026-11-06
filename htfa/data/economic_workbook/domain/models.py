@@ -48,22 +48,3 @@ class EconomicWorkbookSnapshot:
 
     # 元数据
     module_name: str = "unknown"
-
-    def get_dataframe(self, frequency: str) -> pd.DataFrame:
-        """获取指定频率的DataFrame
-
-        Args:
-            frequency: 频率名称 (如 'weekly', 'monthly')
-
-        Returns:
-            pd.DataFrame: 指定频率的DataFrame，不存在则返回空DataFrame
-        """
-        return self.dataframes.get(frequency, pd.DataFrame())
-
-    def get_all_dataframes(self) -> Dict[str, pd.DataFrame]:
-        """获取所有DataFrame
-
-        Returns:
-            Dict[str, pd.DataFrame]: 所有DataFrame的字典
-        """
-        return self.dataframes

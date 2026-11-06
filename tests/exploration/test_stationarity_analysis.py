@@ -12,7 +12,6 @@ from htfa.exploration.analysis.stationarity import (
     create_time_series_figure,
     prepare_selected_series,
     run_selected_stationarity_tests,
-    summarize_series,
     transform_series,
 )
 
@@ -127,66 +126,6 @@ def test_prepare_selected_series_rejects_duplicate_timestamps():
 
     with pytest.raises(ValueError, match="重复日期"):
         prepare_selected_series(data, "value")
-
-
-def test_summary_uses_ts_summary_without_implicit_plot(monkeypatch):
-    calls = {}
-
-    class FakeSummary:
-        def __init__(self, data, *, alpha):
-            calls["data"] = data
-            calls["alpha"] = alpha
-
-        def summary(self, *, plot):
-            calls["plot"] = plot
-            return "\n".join(
-                [
-                    "Time Series Summary",
-                    "==================================================",
-                    "Name               : value",
-                    "Observations       : 3",
-                    "Valid observations : 2",
-                    "Frequency          : ME",
-                    "Missing timestamps : None",
-                    "Mean               : 2",
-                ]
-            )
-
-    monkeypatch.setattr(stationarity, "TimeSeriesSummary", FakeSummary)
-    series = pd.Series([1.0, np.nan, 3.0], name="value")
-
-    result = summarize_series(series, alpha=0.1)
-
-    assert "时间序列统计摘要" in result
-    assert "名称：value" in result
-    assert "总观测数：3" in result
-    assert "有效观测数：2" in result
-    assert "频率：月度" in result
-    assert "缺失时间点：无" in result
-    assert "均值：2" in result
-    assert "Time Series Summary" not in result
-    pd.testing.assert_series_equal(calls["data"], series)
-    assert calls["alpha"] == 0.1
-    assert calls["plot"] is False
-
-
-def test_summary_uses_explicit_frequency_over_ts_inference(monkeypatch):
-    class FakeSummary:
-        def __init__(self, data, *, alpha):
-            pass
-
-        def summary(self, *, plot):
-            return "Time Series Summary\nFrequency          : ME"
-
-    monkeypatch.setattr(stationarity, "TimeSeriesSummary", FakeSummary)
-
-    result = summarize_series(
-        pd.Series([1.0, 2.0, 3.0]),
-        frequency="Daily",
-    )
-
-    assert "频率：日度" in result
-    assert "频率：月度" not in result
 
 
 def test_time_series_figure_handles_matplotlib_date_deprecation(

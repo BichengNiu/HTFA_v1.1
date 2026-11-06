@@ -10,12 +10,7 @@ import pandas as pd
 from ..core.workbook_parser import parse_economic_workbook
 from ..domain.models import EconomicWorkbookSnapshot
 from ..tables import TableWorkbook
-from .target_reader import (
-    SheetSeriesMetadata,
-    open_workbook as open_economic_workbook,
-    parse_target_sheet,
-    validate_sheet,
-)
+from .target_reader import open_workbook as open_economic_workbook
 
 
 _SOURCE_TOKENS = {
@@ -102,41 +97,6 @@ class EconomicWorkbookReader:
         """打开供主题读取的正式经济工作簿。"""
         with open_economic_workbook(file_input, file_name=file_name) as opened:
             yield opened
-
-    def read_target_sheet(
-        self,
-        excel_file: pd.ExcelFile | TableWorkbook,
-        *,
-        sheet_name: str,
-        targets: tuple[tuple[str, str], ...],
-        allowed_frequencies: set[str],
-        expected_unit: str,
-        zero_is_missing: bool = True,
-    ) -> tuple[pd.DataFrame, dict[str, SheetSeriesMetadata]]:
-        """按目标指标和元数据约束读取一个经济工作簿 sheet。"""
-        return parse_target_sheet(
-            excel_file,
-            sheet_name=sheet_name,
-            targets=targets,
-            allowed_frequencies=allowed_frequencies,
-            expected_unit=expected_unit,
-            zero_is_missing=zero_is_missing,
-        )
-
-    def validate_target_sheet(self, raw: Any, sheet_name: str) -> None:
-        """校验一个经济数据 sheet 的元数据结构。"""
-        validate_sheet(raw, sheet_name)
-
-    def read_raw_sheet(
-        self,
-        excel_file: pd.ExcelFile | TableWorkbook,
-        *,
-        sheet_name: str,
-    ) -> pd.DataFrame:
-        """读取一个经济数据 sheet 的原始二维表。"""
-        if sheet_name not in excel_file.sheet_names:
-            raise ValueError(f"工作簿缺少“{sheet_name}”sheet")
-        return excel_file.parse(sheet_name=sheet_name, header=None)
 
 
 __all__ = ["EconomicWorkbookReader", "extract_industry_name"]

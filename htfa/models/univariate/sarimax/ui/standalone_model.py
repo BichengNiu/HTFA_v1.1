@@ -22,14 +22,7 @@ from htfa.models.univariate.sarimax.ui.data_input import (
     export_sarimax_data_snapshot,
     mark_sarimax_handoff_restore,
 )
-from htfa.models.univariate.sarimax.ui.state import (
-    PERSISTENT_WIDGET_KEYS,
-    RESULT_KEYS,
-    clear_fit_results,
-    clear_widget_state,
-    restore_result_state,
-    state,
-)
+from htfa.models.univariate.sarimax.ui.state import RESULT_KEYS, SARIMAX_SCOPE
 
 
 STANDALONE_VIEW = "sarimax-model"
@@ -48,7 +41,7 @@ _HANDOFF_RESULT_KEYS = RESULT_KEYS + ("forecast_widget_fit_signature",)
 SARIMAX_HANDOFF_WIDGET_KEYS = tuple(
     dict.fromkeys(
         key
-        for key in SARIMAX_DATA_OVERVIEW_WIDGET_KEYS + PERSISTENT_WIDGET_KEYS
+        for key in SARIMAX_DATA_OVERVIEW_WIDGET_KEYS + SARIMAX_SCOPE.persistent_widget_keys
     )
 )
 
@@ -64,12 +57,6 @@ class SARIMAXHandoff:
 
 
 sarimax_handoff_store: HandoffStore[SARIMAXHandoff] = HandoffStore()
-
-
-def is_standalone_sarimax_model_request() -> bool:
-    """当前 URL 是否请求独立动态回归模型页。"""
-
-    return st.query_params.get("view") == STANDALONE_VIEW
 
 
 def export_sarimax_widget_state(st_obj) -> dict[str, object]:
@@ -93,10 +80,10 @@ def export_sarimax_widget_state(st_obj) -> dict[str, object]:
 def export_sarimax_result_state() -> dict[str, object]:
     """导出拟合、诊断和预测缓存，并为每个交接页创建独立副本。"""
     result_state = {
-        key: deepcopy(state.get(key))
+        key: deepcopy(SARIMAX_SCOPE.state.get(key))
         for key in _HANDOFF_RESULT_KEYS
     }
-    result_state["fit_config"] = deepcopy(state.get("fit_config"))
+    result_state["fit_config"] = deepcopy(SARIMAX_SCOPE.state.get("fit_config"))
     return result_state
 
 
@@ -112,8 +99,8 @@ def restore_sarimax_widget_state(st_obj, widget_state: dict[str, object]) -> Non
 def restore_sarimax_result_state(result_state: dict[str, object]) -> None:
     """恢复交接的模型结果缓存，避免与来源页面共享可变对象。"""
 
-    restore_result_state(result_state, keys=_HANDOFF_RESULT_KEYS)
-    state.set("fit_config", deepcopy(result_state.get("fit_config")))
+    SARIMAX_SCOPE.restore_result_state(result_state, keys=_HANDOFF_RESULT_KEYS)
+    SARIMAX_SCOPE.state.set("fit_config", deepcopy(result_state.get("fit_config")))
 
 
 def create_standalone_sarimax_model_url(st_obj) -> str | None:
@@ -223,8 +210,8 @@ def render_standalone_sarimax_model() -> None:
 def _clear_previous_model_state() -> None:
     """切换交接快照时清空当前独立页的旧输入和派生结果。"""
 
-    clear_fit_results()
-    clear_widget_state(st)
+    SARIMAX_SCOPE.clear_fit_results()
+    SARIMAX_SCOPE.clear_widget_state(st)
     for key in list(st.session_state.keys()):
         if isinstance(key, str) and key.startswith(_HANDOFF_PREFIXES):
             st.session_state.pop(key, None)
@@ -246,7 +233,7 @@ def _clear_previous_model_state() -> None:
         ("model_selection", None),
         ("future_exog_editor_signature", None),
     ):
-        state.set(key, value)
+        SARIMAX_SCOPE.state.set(key, value)
 
 
 def _seed_sarimax_input_state(widget_state: dict[str, object]) -> None:
@@ -254,22 +241,23 @@ def _seed_sarimax_input_state(widget_state: dict[str, object]) -> None:
 
     target = widget_state.get("sarimax_target_select")
     if isinstance(target, str):
-        state.set("target_variable", target)
+        SARIMAX_SCOPE.state.set("target_variable", target)
     exog = widget_state.get("sarimax_exog_select", ())
     if isinstance(exog, (list, tuple)):
-        state.set("exog_variables", tuple(str(value) for value in exog))
+        SARIMAX_SCOPE.state.set("exog_variables", tuple(str(value) for value in exog))
     training_range = widget_state.get("sarimax_train_forecast_window")
-    if isinstance(training_range, (list, tuple)) and len(training_range) == 2:
-        try:
-            state.set(
-                "training_time_range",
-                tuple(pd.Timestamp(value) for value in training_range),
-            )
-        except (TypeError, ValueError):
-            pass
+    if training_range is not None:
+        if not isinstance(training_range, (list, tuple)) or len(training_range) != 2:
+            raise ValueError("交接的训练日期必须包含起止两个日期")
+        dates = tuple(pd.Timestamp(value) for value in training_range)
+        if any(pd.isna(value) for value in dates):
+            raise ValueError("交接的训练日期包含空值")
+        if dates[0] > dates[1]:
+            raise ValueError("交接的训练起始日期不能晚于结束日期")
+        SARIMAX_SCOPE.state.set("training_time_range", dates)
     preprocessing = widget_state.get("sarimax_data_preprocessing", ())
     if isinstance(preprocessing, (list, tuple)):
-        state.set(
+        SARIMAX_SCOPE.state.set(
             "data_preprocessing",
             tuple(str(value) for value in preprocessing),
         )
@@ -278,35 +266,28 @@ def _seed_sarimax_input_state(widget_state: dict[str, object]) -> None:
         "无",
     )
     if isinstance(missing_value_method, str):
-        state.set("missing_value_method", missing_value_method)
+        SARIMAX_SCOPE.state.set("missing_value_method", missing_value_method)
     family = widget_state.get("sarimax_model_family", "SARIMAX")
     mode = widget_state.get("sarimax_config_mode", "手动配置")
     if isinstance(family, str) and isinstance(mode, str):
-        state.set("model_selection", (family, mode))
-        state.set(
+        SARIMAX_SCOPE.state.set("model_selection", (family, mode))
+        SARIMAX_SCOPE.state.set(
             "response_log",
             bool(widget_state.get("sarimax_response_log", False)),
         )
 
 
 def _read_handoff_rows(widget_state: dict[str, object]) -> tuple[int, int]:
-    """读取交接数据的行设置，非法值交给组件边界重新校正。"""
+    """读取交接行设置；未编辑时使用控件默认值，非法值直接报错。"""
 
-    try:
-        variable_name_row = int(
-            widget_state.get("sarimax_model_preview_variable_name_row", 1)
-        )
-    except (TypeError, ValueError):
-        variable_name_row = 1
-    try:
-        data_start_row = int(
-            widget_state.get(
-                "sarimax_model_preview_data_start_row",
-                variable_name_row + 1,
-            )
-        )
-    except (TypeError, ValueError):
-        data_start_row = variable_name_row + 1
+    variable_name_row = int(
+        widget_state.get("sarimax_model_preview_variable_name_row", 1)
+    )
+    data_start_row = int(
+        widget_state.get("sarimax_model_preview_data_start_row", variable_name_row + 1)
+    )
+    if variable_name_row < 1 or data_start_row <= variable_name_row:
+        raise ValueError("交接的行设置必须满足：变量名行 ≥ 1，数据起始行 > 变量名行")
     return variable_name_row, data_start_row
 
 
@@ -321,7 +302,6 @@ __all__ = [
     "STANDALONE_VIEW",
     "create_standalone_sarimax_model_url",
     "export_sarimax_widget_state",
-    "is_standalone_sarimax_model_request",
     "render_standalone_sarimax_model",
     "restore_sarimax_widget_state",
     "sarimax_handoff_store",

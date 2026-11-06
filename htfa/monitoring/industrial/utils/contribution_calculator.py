@@ -77,16 +77,16 @@ def calculate_group_contributions(
 
     分组拉动率 = Σ(组内各行业拉动率)
 
-    注意：对于三大产业分组，如果提供了df_overall_growth和industry_to_column_map，
-    将优先使用"总体增速 × 总权重"的方式计算拉动率，以避免细分行业数据不一致性导致的误差。
+    三大产业分组必须提供总体增速和列名映射，使用"总体增速 × 总权重"计算。
+    缺少必要输入直接报错，其他分组使用组内各行业拉动率之和。
 
     Args:
         df_macro: 宏观数据（各行业增速），已过滤2012年及以后
         weights_mapping: 权重映射
         groups: 分组字典 {组名: [指标列表]}
         prefix: 列名前缀
-        df_overall_growth: 总体增速数据（可选），用于三大产业拉动率计算
-        industry_to_column_map: 产业名称到总体增速列名的映射（可选）
+        df_overall_growth: 总体增速数据，三大产业分组必填
+        industry_to_column_map: 产业名称到总体增速列名的映射，三大产业分组必填
 
     Returns:
         DataFrame，列为各分组拉动率，索引为时间
@@ -101,11 +101,16 @@ def calculate_group_contributions(
 
     # 标记是否是三大产业分组
     is_three_industries = (prefix == "三大产业_")
-    use_overall_growth = (
-        is_three_industries
-        and df_overall_growth is not None
-        and industry_to_column_map is not None
-    )
+    if is_three_industries:
+        if df_overall_growth is None or industry_to_column_map is None:
+            raise ValueError("三大产业拉动率计算必须提供总体增速和列名映射")
+        for group_name in groups:
+            if group_name not in industry_to_column_map:
+                raise ValueError(f"缺少产业总体增速列映射：{group_name}")
+            overall_col = industry_to_column_map[group_name]
+            if overall_col not in df_overall_growth.columns:
+                raise ValueError(f"缺少产业总体增速列：{overall_col}")
+    use_overall_growth = is_three_industries
 
     for group_name, indicators in groups.items():
         valid_indicators = [
@@ -117,37 +122,28 @@ def calculate_group_contributions(
             debug_log(f"警告: 分组 {group_name} 没有有效指标", "WARNING")
             continue
 
-        # 对于三大产业，优先使用总体增速计算
-        if use_overall_growth and group_name in industry_to_column_map:
+        if use_overall_growth:
             overall_col = industry_to_column_map[group_name]
 
-            if overall_col in df_overall_growth.columns:
-                # 计算该产业的总权重
-                total_weight_series = pd.Series(0.0, index=df_macro.index)
+            # 计算该产业的总权重
+            total_weight_series = pd.Series(0.0, index=df_macro.index)
 
-                for indicator in valid_indicators:
-                    if indicator in weights_mapping:
-                        weights_row = weights_mapping[indicator]['weights_row']
-                        weight_series = build_weight_series(weights_row, df_macro.index)
-                        total_weight_series += weight_series
+            for indicator in valid_indicators:
+                if indicator in weights_mapping:
+                    weights_row = weights_mapping[indicator]['weights_row']
+                    weight_series = build_weight_series(weights_row, df_macro.index)
+                    total_weight_series += weight_series
 
-                # 对齐索引
-                overall_growth_series = df_overall_growth[overall_col].reindex(df_macro.index)
+            # 对齐索引
+            overall_growth_series = df_overall_growth[overall_col].reindex(df_macro.index)
 
-                # 拉动率 = 总体增速 × 总权重
-                group_contribution = overall_growth_series * total_weight_series
+            # 拉动率 = 总体增速 × 总权重
+            group_contribution = overall_growth_series * total_weight_series
 
-                debug_log(
-                    f"分组 {group_name} 使用总体增速计算拉动率（{len(valid_indicators)} 个指标）",
-                    "INFO"
-                )
-            else:
-                # 如果总体增速列不存在，回退到细分行业加权和
-                group_contribution = individual_contributions[valid_indicators].sum(axis=1)
-                debug_log(
-                    f"警告: 分组 {group_name} 总体增速列 '{overall_col}' 不存在，使用细分行业加权和",
-                    "WARNING"
-                )
+            debug_log(
+                f"分组 {group_name} 使用总体增速计算拉动率（{len(valid_indicators)} 个指标）",
+                "INFO"
+            )
         else:
             # 其他分组使用细分行业加权和
             group_contribution = individual_contributions[valid_indicators].sum(axis=1)
@@ -155,7 +151,7 @@ def calculate_group_contributions(
         column_name = f"{prefix}{group_name}"
         group_contribution_df[column_name] = group_contribution
 
-        if not use_overall_growth or group_name not in industry_to_column_map:
+        if not use_overall_growth:
             debug_log(
                 f"分组 {group_name} 拉动率计算完成，包含 {len(valid_indicators)} 个指标",
                 "DEBUG"

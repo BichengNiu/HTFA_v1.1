@@ -39,12 +39,6 @@ _PERSISTENT_PREFIXES = (
 )
 
 
-def is_standalone_data_overview_request() -> bool:
-    """当前 URL 是否请求独立数据概览页。"""
-
-    return st.query_params.get("view") == STANDALONE_VIEW
-
-
 def create_standalone_data_overview_url(st_obj) -> str | None:
     """为当前共享数据与概览设置创建新标签页 URL。"""
 
@@ -138,6 +132,5 @@ __all__ = [
     "HANDOFF_QUERY_KEY",
     "STANDALONE_VIEW",
     "create_standalone_data_overview_url",
-    "is_standalone_data_overview_request",
     "render_standalone_data_overview",
 ]

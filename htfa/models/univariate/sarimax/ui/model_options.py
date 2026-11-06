@@ -9,7 +9,7 @@ from __future__ import annotations
 import pandas as pd
 
 from htfa.models.univariate.common.state import StateStore
-from htfa.models.univariate.sarimax.ui.state import state
+from htfa.models.univariate.sarimax.ui.state import SARIMAX_SCOPE
 
 from htfa.models.univariate.sarimax.ui.model_options_ardl import render_ardl_options
 from htfa.models.univariate.sarimax.ui.model_options_rdl import render_rdl_options
@@ -32,7 +32,7 @@ def render_model_options(
     intervention_analysis: bool = False,
     model_dates: pd.Index | None = None,
     key_prefix: str = "sarimax",
-    state_manager: StateStore = state,
+    state_manager: StateStore = SARIMAX_SCOPE.state,
 ):
     """渲染模型族特有参数并返回模型配置。
 

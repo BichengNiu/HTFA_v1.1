@@ -9,7 +9,7 @@ from htfa.models.univariate.sarimax.core.config_shared import (
     SARIMAX_OPTIMIZERS,
 )
 from htfa.models.univariate.common.state import StateStore
-from htfa.models.univariate.sarimax.ui.state import state
+from htfa.models.univariate.sarimax.ui.state import SARIMAX_SCOPE
 
 _TREND_COMPONENTS = ("常数项", "线性趋势")
 
@@ -132,7 +132,7 @@ def restore_table_state(
     defaults: pd.DataFrame,
     variable_names: list[str],
     *,
-    state_manager: StateStore = state,
+    state_manager: StateStore = SARIMAX_SCOPE.state,
 ) -> pd.DataFrame:
     """仅在变量结构仍兼容时恢复 data_editor 内容。"""
     saved = state_manager.get(state_key)

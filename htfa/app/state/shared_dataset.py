@@ -35,11 +35,6 @@ def _workspace() -> SessionWorkspace:
     return SessionWorkspace(st.session_state)
 
 
-def get_shared_dataset_row_count() -> int:
-    """返回当前工作表的原始行数。"""
-    return len(st.session_state.get(_state_key("raw_rows"), []))
-
-
 def get_shared_dataset_raw_rows() -> list[list[object]] | None:
     """返回当前工作表已缓存的原始行；没有缓存时返回 ``None``。"""
     return st.session_state.get(_state_key("raw_rows"))
@@ -374,7 +369,6 @@ __all__ = [
     "get_shared_dataset_parse_error",
     "get_shared_dataset_protocol",
     "get_shared_dataset_raw_rows",
-    "get_shared_dataset_row_count",
     "get_shared_dataset_sheet",
     "get_shared_dataset_sheets",
     "get_shared_dataset_snapshot",
