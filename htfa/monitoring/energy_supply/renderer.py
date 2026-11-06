@@ -14,7 +14,6 @@ from htfa.monitoring.energy_supply.dashboard_data import (collector_status, load
 from htfa.monitoring.energy_supply.dashboard_state import DashboardViewState
 from htfa.monitoring.energy_supply.dashboard_views import (render_ais_panel, render_assets_panel, render_map_panel,
     prepare_monitoring_cards, render_ports_panel, render_print_report)
-from htfa.monitoring.energy_supply.download_panel import render_download_panel
 
 def render_energy_supply(st_module=st):
     """Render all four energy monitoring pages inside HTFA."""
@@ -142,12 +141,6 @@ def _render_dashboard(refresh_revision: str) -> None:
                 selected_day,
                 port_error,
             )
-            with st.expander("港口与通道历史数据下载"):
-                render_download_panel(
-                    newest_day, newest_chokepoint_day,
-                    data_revisions=display_revisions,
-                    refresh_revision=refresh_revision,
-                )
     if tab_vessels.open:
         with tab_vessels:
             render_ais_panel(view_state)

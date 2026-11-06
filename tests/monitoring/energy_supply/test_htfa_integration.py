@@ -36,6 +36,9 @@ def test_native_navigation_tabs_and_return_preserve_other_modules():
         assert not app.exception
         assert not app.error
         assert app.get("dataframe")
+        if label == "港口":
+            assert not app.expander
+            assert "生成下载数据" not in [button.label for button in app.button]
     next(b for b in app.sidebar.button if b.label == "阿联酋").click().run()
     assert not app.exception
     assert not app.error

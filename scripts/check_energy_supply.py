@@ -78,14 +78,8 @@ def check(url, output):
                 expect(frame.locator('[data-testid="stDataFrame"]').first).to_be_visible(timeout=90000)
                 expect(frame.locator('[data-testid="stException"]')).to_have_count(0)
                 if label == "港口":
-                    frame.get_by_text("港口与通道历史数据下载", exact=True).click()
-                    frame.get_by_role("button", name="生成下载数据", exact=True).click()
-                    expect(frame.get_by_role("button", name="下载 Excel 工作簿", exact=True)).to_be_visible(timeout=60000)
-                    expect(frame.locator('[data-testid="stAlertContentError"]')).to_have_count(0)
-                    with page.expect_download() as history_download_info:
-                        frame.get_by_role("button", name="下载 Excel 工作簿", exact=True).click()
-                    history_download = history_download_info.value
-                    history_download.save_as(str(output / history_download.suggested_filename))
+                    expect(frame.locator('[data-testid="stExpander"]')).to_have_count(0)
+                    expect(frame.get_by_role("button", name="生成下载数据", exact=True)).to_have_count(0)
                 page.screenshot(path=str(output / f"tab-{label}.png"), full_page=True)
             with page.expect_download() as download_info:
                 frame.get_by_role("button", name="下载数据", exact=True).click()
