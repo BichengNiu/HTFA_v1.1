@@ -146,8 +146,8 @@ def test_domain_core_imports_do_not_preload_streamlit() -> None:
             "htfa.data.economic_workbook.core.workbook_parser",
         },
         "monitoring": {
-            "htfa.monitoring.uae.contracts",
-            "htfa.monitoring.uae.services",
+            "htfa.monitoring.uae.contracts.records",
+            "htfa.monitoring.uae.processing.services",
             "htfa.monitoring.industrial.utils.data_loader",
         },
         "exploration": {"htfa.exploration.analysis.stationarity"},

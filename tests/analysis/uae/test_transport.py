@@ -8,15 +8,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from htfa.monitoring.uae.periods import latest_complete_month
+from htfa.monitoring.uae.processing.periods import latest_complete_month
 from tests.analysis.uae._helpers import report_source
 
-from htfa.monitoring.uae.transport import renderer
+from htfa.monitoring.uae.ui.transport import renderer
 
 
 @pytest.mark.parametrize("left,right", [((), ("value",)), (("value",), ())])
 def test_dual_axis_requires_data_for_both_axes(left, right):
-    from htfa.monitoring.uae.transport.charts import build_dual_axis_figure
+    from htfa.monitoring.uae.ui.transport.charts import build_dual_axis_figure
 
     frame = pd.DataFrame({"value": [1]}, index=pd.to_datetime(["2026-09-30"]))
     with pytest.raises(ValueError, match="分别指定左右轴"):
@@ -25,30 +25,10 @@ def test_dual_axis_requires_data_for_both_axes(left, right):
             title="test", source_text="test", units={"value": "吨"},
             last_month=pd.Period("2026-09", freq="M"),
         )
-from htfa.monitoring.uae.transport.charts import (
-    DUBAI_AIR_CARGO_TITLE,
-    HORMUZ_CALLS_TITLE,
-    US_UAE_AIR_TITLE,
-    build_dual_axis_figure,
-    build_multi_series_figure,
-    UAE_PORT_VOLUME_TITLE,
-)
-from htfa.monitoring.uae.transport.data import (
-    DUBAI_AIR_EXPORT_AWBS,
-    DUBAI_AIR_EXPORT_TOTAL,
-    DUBAI_AIR_IMPORT_AWBS,
-    DUBAI_AIR_IMPORT_TOTAL,
-    US_UAE_AIR_FREIGHT,
-    US_UAE_AIR_PASSENGERS,
-    HORMUZ_TOTAL_CALLS,
-    HORMUZ_TANKER_CALLS,
-    UAE_PORT_EXPORT_TOTAL,
-    UAE_PORT_IMPORT_TOTAL,
-    UAE_PORT_TANKER_EXPORT,
-    UAE_PORT_TANKER_IMPORT,
-    anchor_last_month,
-    load_transport_data,
-)
+from htfa.monitoring.uae.contracts.transport.charts import DUBAI_AIR_CARGO_TITLE, HORMUZ_CALLS_TITLE, US_UAE_AIR_TITLE, UAE_PORT_VOLUME_TITLE
+from htfa.monitoring.uae.ui.transport.charts import build_dual_axis_figure, build_multi_series_figure
+from htfa.monitoring.uae.contracts.transport.data import DUBAI_AIR_EXPORT_AWBS, DUBAI_AIR_EXPORT_TOTAL, DUBAI_AIR_IMPORT_AWBS, DUBAI_AIR_IMPORT_TOTAL, US_UAE_AIR_FREIGHT, US_UAE_AIR_PASSENGERS, HORMUZ_TOTAL_CALLS, HORMUZ_TANKER_CALLS, UAE_PORT_EXPORT_TOTAL, UAE_PORT_IMPORT_TOTAL, UAE_PORT_TANKER_EXPORT, UAE_PORT_TANKER_IMPORT
+from htfa.monitoring.uae.processing.transport.data import anchor_last_month, load_transport_data
 
 _INDICATOR_HEADERS = [
     "阿联酋:港口进口总量:当月值",
@@ -70,7 +50,7 @@ _DOTT_HEADERS = [
 @pytest.mark.parametrize("dual_axis", [False, True])
 def test_transport_charts_render_and_export_with_base_canvas(monkeypatch, dual_axis):
     from matplotlib.figure import Figure
-    from htfa.monitoring.uae.transport import charts
+    from htfa.monitoring.uae.ui.transport import charts
 
     figures = []
 
@@ -612,11 +592,11 @@ def test_section_renders_two_charts_and_explanation(monkeypatch) -> None:
     )
     assert st_obj.columns.call_args.kwargs["gap"] == "small"
     assert st_obj.columns.call_count == 2
-    assert left.pyplot.call_count == 2
-    assert right.pyplot.call_count == 2
+    assert left.image.call_count == 2
+    assert right.image.call_count == 2
     assert left.download_button.call_count == 2
     assert right.download_button.call_count == 2
-    assert st_obj.pyplot.call_count == 0
+    assert st_obj.image.call_count == 0
     assert st_obj.expander.call_count == 1
     assert st_obj.expander.call_args.kwargs["expanded"] is True
     assert render_calls[0]["builder_kwargs"]["unit"] == "百万吨"
@@ -648,7 +628,7 @@ def test_section_loader_failure_shows_error_and_returns_error_status(
 
     assert result["status"] == "error"
     assert st_obj.error.call_count == 1
-    assert st_obj.pyplot.call_count == 0
+    assert st_obj.image.call_count == 0
 
 
 def test_missing_metadata_warns_cell_and_keeps_other_chart(monkeypatch) -> None:
@@ -676,13 +656,13 @@ def test_missing_metadata_warns_cell_and_keeps_other_chart(monkeypatch) -> None:
     assert result["status"] == "success"
     assert left.warning.call_count == 1
     assert right.warning.call_count == 0
-    assert right.pyplot.call_count == 2
+    assert right.image.call_count == 2
     assert right.download_button.call_count == 2
     assert st_obj.error.call_count == 0
 
 
 def test_figures_accept_ts_ndarray_axes(monkeypatch) -> None:
-    from htfa.monitoring.uae.transport import charts
+    from htfa.monitoring.uae.ui.transport import charts
 
     original_plot_series = charts.plot_series
 
@@ -691,7 +671,7 @@ def test_figures_accept_ts_ndarray_axes(monkeypatch) -> None:
         return figure, np.asarray([axis], dtype=object)
 
     monkeypatch.setattr(
-        "htfa.monitoring.uae.transport.charts.plot_series",
+        "htfa.monitoring.uae.ui.transport.charts.plot_series",
         plot_series_with_array_axis,
     )
     data = load_transport_data(report_source(_workbook_bytes()))

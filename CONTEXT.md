@@ -162,6 +162,8 @@ _Avoid_: 将 H 接近 0.5 当作平稳性结论，或将 H 大于 0.5 解释为�
 
 ## Boundary Rules
 
+- UAE 遵循 `ui → processing → data` 三层依赖；快照描述属于共享契约，读取由数据层负责，处理层独立于页面和绘图库。
+
 - 能源保供遵循 `ui → processing → data` 三层依赖；共享契约不执行 I/O，页面只读已发布快照，采集与发布由维护作业显式调度。
 
 - 表格输入解析不依赖 Streamlit 或 session state。

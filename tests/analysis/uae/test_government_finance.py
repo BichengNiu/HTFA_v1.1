@@ -9,59 +9,28 @@ import pytest
 from matplotlib import pyplot as plt
 
 from tests.analysis.uae._helpers import data_lines, report_source
-from htfa.monitoring.uae.government_finance import renderer
-from htfa.monitoring.uae.government_finance.charts import (
-    YOY_SERIES,
-    build_government_finance_yoy_figure,
-)
-from htfa.monitoring.uae.government_finance.data import (
-    GOVERNMENT_CREDIT,
-    GOVERNMENT_DEPOSITS,
-    GRE_CREDIT,
-    GRE_DEPOSITS,
-    calculate_calendar_yoy,
-    load_government_finance_data,
-)
-from htfa.monitoring.uae.government_finance.ded import (
-    ENTERPRISES_DISPLAY,
-    LICENCES_DISPLAY,
-)
-from htfa.monitoring.uae.government_finance.credit import (
-    BUSINESS_INDUSTRIAL_DISPLAY,
-    FOREIGN_CURRENCIES_DISPLAY,
-    FOREIGN_LIABILITIES_DISPLAY,
-    INDIVIDUAL_DISPLAY,
-    NONRESIDENT_DEPOSITS,
-    PRIVATE_CORPORATE_DISPLAY,
-)
-from htfa.monitoring.uae.foreign_labor import (
-    BANGLADESH_CLEARANCES,
-    NEPAL_APPROVALS,
-)
-from htfa.monitoring.uae.government_finance.pmi import PMI_LABEL
-from htfa.monitoring.uae.government_finance.payments import (
-    CHEQUES_AMOUNT_DISPLAY,
-    CHEQUES_NUMBER_DISPLAY,
-    CUSTOMER_TRANSFERS_AMOUNT_DISPLAY,
-    CUSTOMER_TRANSFERS_NUMBER_DISPLAY,
-)
-from htfa.monitoring.uae.government_finance.rates import (
-    EIBOR_ONEYEAR_DISPLAY,
-    EIBOR_OVERNIGHT_DISPLAY,
-    US_OVERNIGHT_DISPLAY,
-)
-from htfa.monitoring.uae.government_finance.search_index import (
-    WORK_DUBAI_COLUMN,
-    WORK_UAE_COLUMN,
-)
-from htfa.monitoring.uae.government_finance.renderer import _render_charts
+from htfa.monitoring.uae.ui.government_finance import renderer
+from htfa.monitoring.uae.contracts.government_finance.charts import YOY_SERIES
+from htfa.monitoring.uae.ui.government_finance.charts import build_government_finance_yoy_figure
+from htfa.monitoring.uae.contracts.government_finance.data import GOVERNMENT_CREDIT, GOVERNMENT_DEPOSITS, GRE_CREDIT, GRE_DEPOSITS
+from htfa.monitoring.uae.processing.government_finance.data import calculate_calendar_yoy, load_government_finance_data
+from htfa.monitoring.uae.contracts.government_finance.ded import ENTERPRISES_DISPLAY, LICENCES_DISPLAY
+from htfa.monitoring.uae.contracts.government_finance.credit import BUSINESS_INDUSTRIAL_DISPLAY, FOREIGN_CURRENCIES_DISPLAY, FOREIGN_LIABILITIES_DISPLAY, INDIVIDUAL_DISPLAY, NONRESIDENT_DEPOSITS, PRIVATE_CORPORATE_DISPLAY
+from htfa.monitoring.uae.contracts.foreign_labor import BANGLADESH_CLEARANCES, NEPAL_APPROVALS
+from htfa.monitoring.uae.contracts.government_finance.pmi import PMI_LABEL
+from htfa.monitoring.uae.contracts.government_finance.payments import CHEQUES_AMOUNT_DISPLAY, CHEQUES_NUMBER_DISPLAY, CUSTOMER_TRANSFERS_AMOUNT_DISPLAY, CUSTOMER_TRANSFERS_NUMBER_DISPLAY
+from htfa.monitoring.uae.contracts.government_finance.rates import EIBOR_ONEYEAR_DISPLAY, EIBOR_OVERNIGHT_DISPLAY, US_OVERNIGHT_DISPLAY
+from htfa.monitoring.uae.contracts.government_finance.search_index import WORK_DUBAI_COLUMN, WORK_UAE_COLUMN
+from htfa.monitoring.uae.ui.government_finance.renderer import _render_charts
 
 
 @pytest.mark.parametrize("freq", ["ME", "MS"])
 @pytest.mark.parametrize("render_name", [
     "_render_charts", "_render_foreign_inflow_chart", "_render_private_credit_chart",
 ])
-def test_credit_download_matches_every_plotted_value(render_name, freq):
+def test_credit_download_matches_every_plotted_value(render_name, freq, monkeypatch):
+    render_spy = MagicMock(wraps=renderer.render_pyplot_figure)
+    monkeypatch.setattr(renderer, "render_pyplot_figure", render_spy)
     dates = pd.date_range("2021-01-01", periods=61, freq=freq)
     dates = dates[dates.to_period("M") != pd.Period("2024-06", freq="M")]
     columns = [
@@ -85,7 +54,7 @@ def test_credit_download_matches_every_plotted_value(render_name, freq):
     )
     st_obj = MagicMock()
     getattr(renderer, render_name)(st_obj, data)
-    figure = st_obj.pyplot.call_args.args[0]
+    figure = render_spy.call_args.args[1]
     try:
         csv = st_obj.download_button.call_args.kwargs["data"].decode("utf-8-sig")
         downloaded = pd.read_csv(StringIO(csv), index_col=0, parse_dates=True)
@@ -257,7 +226,9 @@ def test_yoy_chart_calculates_yoy_before_applying_three_year_window() -> None:
     assert all(pd.notna(line.get_ydata()[0]) for line in lines)
 
 
-def test_chart_row_downloads_yoy_and_the_underlying_levels() -> None:
+def test_chart_row_downloads_yoy_and_the_underlying_levels(monkeypatch) -> None:
+    render_spy = MagicMock(wraps=renderer.render_pyplot_figure)
+    monkeypatch.setattr(renderer, "render_pyplot_figure", render_spy)
     data = load_government_finance_data(
         report_source(_workbook_bytes()),
     )
@@ -265,14 +236,14 @@ def test_chart_row_downloads_yoy_and_the_underlying_levels() -> None:
 
     _render_charts(st_obj, data)
 
-    assert st_obj.pyplot.call_count == 1
+    assert st_obj.image.call_count == 1
     assert st_obj.download_button.call_count == 1
     chart_data = st_obj.download_button.call_args.kwargs["data"].decode("utf-8-sig")
     assert "同比" in chart_data
     assert "原始存量，百万迪拉姆" in chart_data
     assert "上年同期存量，百万迪拉姆" in chart_data
-    figure = st_obj.pyplot.call_args.args[0]
-    assert st_obj.pyplot.call_args.kwargs["bbox_inches"] is None
+    figure = render_spy.call_args.args[1]
+    assert render_spy.call_args.kwargs["bbox_inches"] is None
     assert len(figure.axes) == 1
     assert {
         len(line.get_xdata())
@@ -367,9 +338,7 @@ def test_section_renders_quad_business_and_labor_employment_subsections(
 def test_quad_cell_failure_warns_cell_and_keeps_section(monkeypatch) -> None:
     """某个格子的渲染 KeyError 只能让该格警告，不能拖垮整个区块。"""
 
-    from htfa.monitoring.uae.government_finance.rates import (
-        EIBOR_OVERNIGHT_DISPLAY,
-    )
+    from htfa.monitoring.uae.contracts.government_finance.rates import EIBOR_OVERNIGHT_DISPLAY
 
     missing_key = EIBOR_OVERNIGHT_DISPLAY
 

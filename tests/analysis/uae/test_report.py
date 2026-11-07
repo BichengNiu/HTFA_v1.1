@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from htfa.monitoring.uae import report
+from htfa.monitoring.uae.ui import report
 
 
 def test_high_frequency_topics_are_isolated_when_oil_fails(monkeypatch) -> None:

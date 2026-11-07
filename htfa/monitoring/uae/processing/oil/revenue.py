@@ -1,0 +1,76 @@
+from __future__ import annotations
+import pandas as pd
+from htfa.monitoring.uae.processing.periods import through_last_complete_month
+from htfa.monitoring.uae.contracts.oil.revenue import REVENUE_PRICE_BENCHMARK
+from htfa.monitoring.uae.contracts.oil.revenue import PRICE_COLUMN
+from htfa.monitoring.uae.contracts.oil.revenue import PRICE_BENCHMARK_COLUMN
+from htfa.monitoring.uae.contracts.oil.revenue import PRODUCTION_COLUMN
+from htfa.monitoring.uae.contracts.oil.revenue import DAYS_COLUMN
+from htfa.monitoring.uae.contracts.oil.revenue import REVENUE_COLUMN
+from htfa.monitoring.uae.contracts.oil.revenue import YOY_COLUMN
+from htfa.monitoring.uae.contracts.oil.revenue import YTD_COLUMN
+from htfa.monitoring.uae.contracts.oil.revenue import YTD_YOY_COLUMN
+
+
+def estimate_monthly_oil_revenue(
+    prices: pd.DataFrame, production: pd.Series
+) -> pd.DataFrame:
+    """估算月度石油收入，金额单位为亿美元。
+
+    每月价格统一采用布伦特原油现货价的月均值；
+    价格或产量缺失的月份不生成收入，也不跨月填充。
+    """
+    if REVENUE_PRICE_BENCHMARK not in prices.columns:
+        raise ValueError(f"缺少石油收入估算价格序列：{REVENUE_PRICE_BENCHMARK}")
+    clean_production = production.dropna().sort_index()
+    if clean_production.empty:
+        raise ValueError("原油产量没有有效观测，无法估算石油收入")
+    benchmark_prices = through_last_complete_month(
+        prices[REVENUE_PRICE_BENCHMARK].dropna().sort_index()
+    )
+    if benchmark_prices.empty:
+        raise ValueError("Brent 日度价格没有完整自然月，无法估算石油收入")
+    price_periods = benchmark_prices.index.to_period("M")
+    monthly_price = benchmark_prices.groupby(price_periods).mean()
+    production_periods = clean_production.index.to_period("M")
+    monthly_production = clean_production.groupby(production_periods).mean()
+    periods = pd.period_range(
+        monthly_production.index.min(), monthly_production.index.max(), freq="M"
+    )
+    monthly_price = monthly_price.reindex(periods)
+    monthly_production = monthly_production.reindex(periods)
+    result = pd.DataFrame(index=periods)
+    result[PRICE_COLUMN] = monthly_price
+    result[PRICE_BENCHMARK_COLUMN] = REVENUE_PRICE_BENCHMARK
+    result[PRODUCTION_COLUMN] = monthly_production
+    result[DAYS_COLUMN] = periods.days_in_month.astype(int)
+    result[REVENUE_COLUMN] = (
+        result[PRICE_COLUMN]
+        * result[PRODUCTION_COLUMN]
+        * result[DAYS_COLUMN]
+        / 100000000
+    )
+    result[YOY_COLUMN] = (
+        result[REVENUE_COLUMN].pct_change(periods=12, fill_method=None) * 100
+    )
+    result[YTD_COLUMN] = result[REVENUE_COLUMN].groupby(periods.year).cumsum()
+    result[YTD_YOY_COLUMN] = (
+        result[YTD_COLUMN].pct_change(periods=12, fill_method=None) * 100
+    )
+    result = result.dropna(subset=[REVENUE_COLUMN]).copy()
+    if result.empty:
+        raise ValueError("油价与产量没有可对齐的有效月份，无法估算石油收入")
+    result.index = result.index.to_timestamp(how="end").normalize()
+    result.index.name = "月份"
+    return result
+
+
+def production_display_values(values, last_month, label):
+    """Select the production window and convert barrels/day to ten-thousand barrels/day."""
+    from htfa.monitoring.uae.processing.periods import within_month_window
+
+    return (
+        within_month_window(values, first_month=last_month - 36, last_month=last_month)
+        .div(10_000)
+        .rename(label)
+    )

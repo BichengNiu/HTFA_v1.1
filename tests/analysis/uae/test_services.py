@@ -9,19 +9,9 @@ import pytest
 
 from tests.analysis.uae._helpers import report_source
 
-from htfa.monitoring.uae.contracts import (
-    DataProvenance,
-    ProvenanceKind,
-    UAEDataBundle,
-)
-from htfa.monitoring.uae.indicator_catalog import (
-    INDICATOR_SPECS,
-    INDUSTRY_NAMES,
-)
-from htfa.monitoring.uae.services import (
-    build_growth_panel,
-    load_growth_panel,
-)
+from htfa.monitoring.uae.contracts.records import DataProvenance, ProvenanceKind, UAEDataBundle
+from htfa.monitoring.uae.contracts.indicator_catalog import INDICATOR_SPECS, INDUSTRY_NAMES
+from htfa.monitoring.uae.processing.services import build_growth_panel, load_growth_panel
 
 QUARTERS = pd.period_range("2022Q1", periods=16, freq="Q")
 SOURCE_IDS = {
@@ -237,7 +227,7 @@ def test_growth_panel_keeps_rounding_residual_and_different_price_release_dates(
         assert values.index[-1] == QUARTERS[-1]
         assert pd.notna(values.iloc[-1, 0])
         assert pd.isna(values.iloc[-1, 1])
-    from htfa.monitoring.uae.charts import build_industry_price_volume_quadrant_figure
+    from htfa.monitoring.uae.ui.charts import build_industry_price_volume_quadrant_figure
 
     figure = build_industry_price_volume_quadrant_figure(quadrant, title="量价")
     assert figure.frames

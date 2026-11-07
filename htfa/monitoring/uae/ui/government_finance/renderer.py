@@ -1,0 +1,735 @@
+from __future__ import annotations
+from typing import Any
+import pandas as pd
+import streamlit as st
+from htfa.monitoring.uae.contracts.publication import PublishedUAEData
+
+from htfa.monitoring.uae.ui.downloads import render_chart_download
+from htfa.monitoring.uae.contracts.foreign_labor import (
+    BANGLADESH_CLEARANCES,
+    BANGLADESH_LABEL,
+    NEPAL_APPROVALS,
+    NEPAL_LABEL,
+    ForeignLaborData,
+)
+from htfa.monitoring.uae.ui.foreign_labor import build_foreign_labor_figure
+from htfa.monitoring.uae.processing.foreign_labor import (
+    display_foreign_labor_values,
+    load_foreign_labor_data,
+)
+from htfa.monitoring.uae.contracts.government_finance.charts import YOY_SERIES
+from htfa.monitoring.uae.ui.government_finance.charts import (
+    build_government_finance_yoy_figure,
+)
+from htfa.monitoring.uae.contracts.government_finance.credit import (
+    FOREIGN_SERIES,
+    PRIVATE_CREDIT_SERIES,
+    BUSINESS_INDUSTRIAL_DISPLAY,
+    CbuaeSeriesData,
+    FOREIGN_CURRENCIES_DISPLAY,
+    FOREIGN_LIABILITIES_DISPLAY,
+    INDIVIDUAL_DISPLAY,
+    NONRESIDENT_DEPOSITS,
+    PRIVATE_CORPORATE_DISPLAY,
+)
+from htfa.monitoring.uae.ui.government_finance.credit import (
+    build_foreign_inflow_figure,
+    build_private_credit_yoy_figure,
+)
+from htfa.monitoring.uae.processing.government_finance.credit import (
+    load_foreign_inflow_data,
+    load_private_credit_data,
+)
+from htfa.monitoring.uae.contracts.government_finance.data import (
+    GOVERNMENT_CREDIT,
+    GRE_CREDIT,
+    GovernmentFinanceData,
+)
+from htfa.monitoring.uae.processing.government_finance.data import (
+    calendar_yoy_download,
+    latest_complete_month,
+    load_government_finance_data,
+)
+from htfa.monitoring.uae.contracts.government_finance.ded import (
+    ENTERPRISES_DISPLAY,
+    LICENCES_DISPLAY,
+    DedData,
+)
+from htfa.monitoring.uae.ui.government_finance.ded import build_ded_figure
+from htfa.monitoring.uae.processing.government_finance.ded import load_ded_data
+from htfa.monitoring.uae.contracts.government_finance.pmi import (
+    PMI_LABEL,
+    PMI_DISPLAY_NAME,
+    PmiData,
+)
+from htfa.monitoring.uae.ui.government_finance.pmi import build_pmi_figure
+from htfa.monitoring.uae.processing.government_finance.pmi import (
+    display_pmi_values,
+    load_pmi_data,
+)
+from htfa.monitoring.uae.contracts.government_finance.payments import (
+    CHEQUES_AMOUNT_DISPLAY,
+    CHEQUES_NUMBER_DISPLAY,
+    CUSTOMER_TRANSFERS_AMOUNT_DISPLAY,
+    CUSTOMER_TRANSFERS_NUMBER_DISPLAY,
+    PaymentData,
+)
+from htfa.monitoring.uae.ui.government_finance.payments import (
+    build_cheques_figure,
+    build_customer_transfers_figure,
+)
+from htfa.monitoring.uae.processing.government_finance.payments import (
+    cumulative_to_monthly,
+    payment_display_values,
+    load_payment_data,
+)
+from htfa.monitoring.uae.contracts.government_finance.rates import (
+    EIBOR_ONEYEAR_DISPLAY,
+    EIBOR_OVERNIGHT_DISPLAY,
+    US_OVERNIGHT_DISPLAY,
+    RatesData,
+    RATES_SERIES,
+)
+from htfa.monitoring.uae.ui.government_finance.rates import build_rates_figure
+from htfa.monitoring.uae.processing.government_finance.rates import load_rates_data
+from htfa.monitoring.uae.contracts.government_finance.search_index import (
+    SOURCE_TEXT as SEARCH_SOURCE_TEXT,
+    WORK_DUBAI_COLUMN,
+    WORK_UAE_COLUMN,
+)
+from htfa.monitoring.uae.ui.government_finance.search_index import (
+    build_search_index_figure,
+)
+from htfa.monitoring.uae.processing.government_finance.search_index import (
+    display_search_index_values,
+    load_search_index_data,
+)
+from htfa.monitoring.uae.processing.metrics import (
+    _source_note_from_metadata,
+    format_count_value,
+    format_currency_value,
+    latest_month_value,
+    month_and_year_delta_text,
+    source_text_from_metadata,
+)
+from htfa.monitoring.uae.ui.metrics import render_metric_cards
+from htfa.monitoring.uae.processing.periods import within_month_window
+from htfa.ui_shared.chart_legend import render_pyplot_figure
+from htfa.monitoring.uae.contracts.supplemental_data import FINANCE_CHARTS
+from htfa.monitoring.uae.ui.supplemental_renderer import render_supplemental_charts
+
+FINANCE_EXPLANATION = "\n- **利率**：阿联酋央行发布 EIBOR 隔夜及1年期利率，美联储纽约分行发布美国 EFFR。\n  三条日度序列按自然月取算术平均，并展示到共同的最新完整月份。\n  EFFR 为美国隔夜利率；纽约联储不发布12个月 Term SOFR，本报告不展示该旧序列。\n- **政府贷款与政府控股企业贷款**：由阿联酋央行发布；原始数据为月度存量（百万迪拉姆），\n  反映政府及政府控股企业的银行信贷余额。\n- **银行外债、外币存款**：由阿联酋央行发布；原始数据为月度存量，分别反映银行境外负债和外币资金存款规模。\n- **外国主体存款**：由阿联酋央行发布；原始数据为月度非居民私人企业、个人、政府及非商业实体存款，三项相加后反映非居民在阿联酋银行体系的存款规模，\n  属存量指标，不等同于 FDI 或当期资金流入。\n- **企业及居民信贷**：由阿联酋央行发布；原始数据为私人企业、个人及商业工业部门月度信贷存量，\n  反映国内企业和居民融资规模。\n".strip()
+BUSINESS_ACTIVITY_EXPLANATION = "\n- **DED 企业发证**：由 data.dubai 商业登记库发布；原始数据为月度快照，有发证活动企业数按企业号去重、当月新发执照数按执照号去重，\n  分别反映企业发证活跃度和新执照进入活动。\n- **非油私营部门采购经理指数（PMI）**：由标普全球/全球经济数据平台发布；原始数据为月度景气指数（点）；50 为荣枯线，高于50表示非油私营部门扩张，\n  低于50表示收缩。\n- **客户资金转账与支票清算**：由阿联酋央行发布；原始数据为月度累计笔数和金额；当月值为1月累计值，\n  其余月份为本月累计减上月累计，反映银行支付交易数量和金额。\n".strip()
+LABOR_EMPLOYMENT_EXPLANATION = "\n- **外籍劳动力**：由尼泊尔外国就业局、孟加拉国人力就业培训局发布，原始数据为月度批准（含再入境）和出境许可人数。\n- **谷歌工作搜索热度**：由谷歌趋势发布；原始数据为月度“在迪拜工作”和“在阿联酋工作”相对指数（0—100），数据经过标准化；用于比较两类关键词的相对求职关注度。\n".strip()
+
+
+@st.cache_data(show_spinner=False, max_entries=4)
+def _load_government_finance_cached(content: PublishedUAEData) -> GovernmentFinanceData:
+    return load_government_finance_data(content)
+
+
+@st.cache_data(show_spinner=False, max_entries=4)
+def _load_foreign_labor_cached(content: PublishedUAEData) -> ForeignLaborData:
+    return load_foreign_labor_data(content)
+
+
+@st.cache_data(show_spinner=False, max_entries=4)
+def _load_foreign_inflow_cached(content: PublishedUAEData) -> CbuaeSeriesData:
+    return load_foreign_inflow_data(content)
+
+
+@st.cache_data(show_spinner=False, max_entries=4)
+def _load_private_credit_cached(content: PublishedUAEData) -> CbuaeSeriesData:
+    return load_private_credit_data(content)
+
+
+@st.cache_data(show_spinner=False, max_entries=4)
+def _load_ded_cached(content: PublishedUAEData) -> DedData:
+    return load_ded_data(content)
+
+
+@st.cache_data(show_spinner=False, max_entries=4)
+def _load_pmi_cached(content: PublishedUAEData) -> PmiData:
+    return load_pmi_data(content)
+
+
+@st.cache_data(show_spinner=False, max_entries=4)
+def _load_payment_cached(content: PublishedUAEData) -> PaymentData:
+    return load_payment_data(content)
+
+
+@st.cache_data(show_spinner=False, max_entries=4)
+def _load_search_index_cached(content: PublishedUAEData) -> pd.DataFrame:
+    return load_search_index_data(content)
+
+
+def _format_finance_value(value: float | None, *, unit: str) -> str | None:
+    """格式化财政金融绝对量；工作簿百万迪拉姆换算为统一数量级。"""
+    if unit == "百万迪拉姆":
+        return format_currency_value(value, "迪拉姆", input_scale=1000000)
+    return format_count_value(value, unit)
+
+
+def _render_finance_metrics(
+    st_obj: Any, data: GovernmentFinanceData, content: PublishedUAEData
+) -> None:
+    """财政金融指标卡：覆盖四类图表序列，主值为绝对量并显示环比和同比。"""
+    try:
+        rates = load_rates_data(content)
+        rate_cards = []
+        for label, column in (
+            ("阿联酋隔夜拆借利率", EIBOR_OVERNIGHT_DISPLAY),
+            ("阿联酋1年期拆借利率", EIBOR_ONEYEAR_DISPLAY),
+            ("美国隔夜拆借利率", US_OVERNIGHT_DISPLAY),
+        ):
+            series = rates.values[column]
+            value, as_of = latest_month_value(series)
+            value_text = None if value is None else f"{value:.2f}%"
+            rate_cards.append(
+                (
+                    label,
+                    value_text,
+                    month_and_year_delta_text(series),
+                    _source_note_from_metadata(rates.metadata, column, as_of),
+                )
+            )
+        cards = rate_cards
+
+        def _amount_cards(
+            values: pd.DataFrame,
+            metadata: dict[str, Any],
+            specs: tuple[tuple[str, str, str, str | None], ...],
+        ) -> list[tuple[str, str | None, str | None, str]]:
+            cards = []
+            for label, column, unit, source_column in specs:
+                series = values[column]
+                value, as_of = latest_month_value(series)
+                source_key = source_column or column
+                help_text = _source_note_from_metadata(metadata, source_key, as_of)
+                if column == NONRESIDENT_DEPOSITS:
+                    help_text += "；由非居民私人企业、个人、政府及非商业实体存款合计"
+                cards.append(
+                    (
+                        label,
+                        _format_finance_value(value, unit=unit),
+                        month_and_year_delta_text(series),
+                        help_text,
+                    )
+                )
+            return cards
+
+        foreign = _load_foreign_inflow_cached(content)
+        cards.extend(
+            _amount_cards(
+                foreign.values,
+                foreign.metadata,
+                (
+                    ("银行外债", FOREIGN_LIABILITIES_DISPLAY, "百万迪拉姆", None),
+                    ("外币存款", FOREIGN_CURRENCIES_DISPLAY, "百万迪拉姆", None),
+                    (
+                        "外国主体存款",
+                        NONRESIDENT_DEPOSITS,
+                        "百万迪拉姆",
+                        "非居民私人企业存款",
+                    ),
+                ),
+            )
+        )
+        cards.extend(
+            _amount_cards(
+                data.values,
+                data.metadata,
+                (
+                    ("政府贷款", GOVERNMENT_CREDIT, "百万迪拉姆", None),
+                    ("政府控股企业贷款", GRE_CREDIT, "百万迪拉姆", None),
+                ),
+            )
+        )
+        private = _load_private_credit_cached(content)
+        cards.extend(
+            _amount_cards(
+                private.values,
+                private.metadata,
+                (
+                    ("私人企业信贷", PRIVATE_CORPORATE_DISPLAY, "百万迪拉姆", None),
+                    ("个人信贷", INDIVIDUAL_DISPLAY, "百万迪拉姆", None),
+                    ("工商业贷款", BUSINESS_INDUSTRIAL_DISPLAY, "百万迪拉姆", None),
+                ),
+            )
+        )
+        render_metric_cards(st_obj, cards)
+    except (KeyError, TypeError, ValueError) as exc:
+        st_obj.warning(f"财政金融指标未加载：{exc}")
+
+
+def _render_business_metrics(
+    st_obj: Any, latest_date: pd.Timestamp, content: PublishedUAEData
+) -> None:
+    """企业活动指标卡：企业活动三项与支付数据四项，均显示环比和同比。"""
+    cards = []
+    try:
+        pmi = _load_pmi_cached(content)
+        pmi_series = pmi.values[PMI_LABEL]
+        pmi_value, pmi_as_of = latest_month_value(pmi_series)
+        cards.append(
+            (
+                PMI_DISPLAY_NAME,
+                None if pmi_value is None else f"{pmi_value:.1f}",
+                month_and_year_delta_text(pmi_series),
+                _source_note_from_metadata(pmi.metadata, PMI_LABEL, pmi_as_of),
+            )
+        )
+        ded = _load_ded_cached(content)
+        last_period = latest_date.to_period("M")
+        ded_series = ded.values.loc[
+            pd.PeriodIndex(ded.values.index, freq="M") <= last_period
+        ]
+        for label, column, unit in (
+            ("迪拜发证活动企业数", ENTERPRISES_DISPLAY, "家"),
+            ("迪拜新发执照数", LICENCES_DISPLAY, "张"),
+        ):
+            value, as_of = latest_month_value(ded_series[column])
+            cards.append(
+                (
+                    label,
+                    format_count_value(value, unit),
+                    month_and_year_delta_text(ded_series[column]),
+                    _source_note_from_metadata(ded.metadata, column, as_of),
+                )
+            )
+        payment = _load_payment_cached(content)
+        payment_values = cumulative_to_monthly(payment.values).loc[
+            pd.PeriodIndex(payment.values.index, freq="M") <= last_period
+        ]
+        for label, column, unit in (
+            (
+                CUSTOMER_TRANSFERS_NUMBER_DISPLAY,
+                CUSTOMER_TRANSFERS_NUMBER_DISPLAY,
+                "笔",
+            ),
+            (
+                CUSTOMER_TRANSFERS_AMOUNT_DISPLAY,
+                CUSTOMER_TRANSFERS_AMOUNT_DISPLAY,
+                "百万迪拉姆",
+            ),
+            ("支票清算笔数", CHEQUES_NUMBER_DISPLAY, "张"),
+            ("支票清算金额", CHEQUES_AMOUNT_DISPLAY, "百万迪拉姆"),
+        ):
+            series = payment_values[column]
+            value, as_of = latest_month_value(series)
+            cards.append(
+                (
+                    label,
+                    _format_finance_value(value, unit=unit),
+                    month_and_year_delta_text(series),
+                    _source_note_from_metadata(payment.metadata, column, as_of),
+                )
+            )
+    except (KeyError, TypeError, ValueError) as exc:
+        st_obj.warning(f"企业活动指标未加载：{exc}")
+    if cards:
+        render_metric_cards(st_obj, cards)
+
+
+def _render_labor_metrics(st_obj: Any, content: PublishedUAEData) -> None:
+    """劳动就业指标卡：劳工人数与工作搜索热度的环比和同比。"""
+    try:
+        cards = []
+        labor = _load_foreign_labor_cached(content)
+        for label, column in (
+            ("尼泊尔批准劳工人数", NEPAL_APPROVALS),
+            ("孟加拉国出境许可人数", BANGLADESH_CLEARANCES),
+        ):
+            value, as_of = latest_month_value(labor.values[column])
+            cards.append(
+                (
+                    label,
+                    format_count_value(value, "人"),
+                    month_and_year_delta_text(labor.values[column]),
+                    _source_note_from_metadata(labor.metadata, column, as_of),
+                )
+            )
+        search = _load_search_index_cached(content)
+        for label, column in (
+            ("谷歌「在迪拜工作」搜索热度", WORK_DUBAI_COLUMN),
+            ("谷歌「在阿联酋工作」搜索热度", WORK_UAE_COLUMN),
+        ):
+            value, as_of = latest_month_value(search[column])
+            value_text = None if value is None else f"{value:.0f}"
+            cards.append(
+                (
+                    label,
+                    value_text,
+                    month_and_year_delta_text(search[column]),
+                    f"截至 {(as_of.strftime('%Y-%m') if as_of is not None else '—')}；按月搜索指数；来源：{SEARCH_SOURCE_TEXT}",
+                )
+            )
+        render_metric_cards(st_obj, cards)
+    except (KeyError, TypeError, ValueError, FileNotFoundError) as exc:
+        st_obj.warning(f"劳动就业指标未加载：{exc}")
+
+
+def _render_figure_with_download(
+    st_obj: Any,
+    figure: Any,
+    values: pd.DataFrame,
+    *,
+    title: str,
+    download_key: str,
+    place_legend_bottom: bool = False,
+) -> None:
+    """统一渲染政府金融图表并提供其下载数据。"""
+    render_pyplot_figure(
+        st_obj, figure, bbox_inches=None, place_legend_bottom=place_legend_bottom
+    )
+    render_chart_download(st_obj, values, title=title, key=download_key)
+
+
+def _render_charts(st_obj: Any, data: GovernmentFinanceData) -> None:
+    source_text = source_text_from_metadata(data.metadata)
+    title = "政府贷款与政府控股企业贷款同比"
+    chart_frame = calendar_yoy_download(
+        data.values[[GOVERNMENT_CREDIT, GRE_CREDIT]], dict(YOY_SERIES)
+    )
+    _render_figure_with_download(
+        st_obj,
+        build_government_finance_yoy_figure(
+            data.values, title=title, source_text=source_text
+        ),
+        chart_frame,
+        title=title,
+        download_key="analysis.uae.government_finance.yoy.download",
+        place_legend_bottom=False,
+    )
+
+
+def _render_rates_chart(st_obj: Any, data: RatesData) -> None:
+    last_month = latest_complete_month(data.values).to_period("M")
+    display_values = within_month_window(
+        data.values, first_month=last_month - 36, last_month=last_month
+    )
+    source_text = source_text_from_metadata(data.metadata)
+    title = "阿联酋与美国市场利率（隔夜、1年期）"
+    _render_figure_with_download(
+        st_obj,
+        build_rates_figure(
+            data.values,
+            title=title,
+            source_text=source_text,
+            units={name: data.metadata[name].unit for name in RATES_SERIES},
+        ),
+        display_values,
+        title=title,
+        download_key="analysis.uae.government_finance.rates.download",
+        place_legend_bottom=False,
+    )
+
+
+def _render_foreign_inflow_chart(st_obj: Any, data: CbuaeSeriesData) -> None:
+    source_text = source_text_from_metadata(data.metadata)
+    title = "外资流入同比：银行外债、外币存款与外国主体存款"
+    figure = build_foreign_inflow_figure(
+        data.values, title=title, source_text=source_text
+    )
+    chart_frame = calendar_yoy_download(
+        data.values, {name.removesuffix("同比"): name for name in FOREIGN_SERIES}
+    )
+    _render_figure_with_download(
+        st_obj,
+        figure,
+        chart_frame,
+        title=title,
+        download_key="analysis.uae.government_finance.foreign_inflow.download",
+        place_legend_bottom=False,
+    )
+
+
+def _render_private_credit_chart(st_obj: Any, data: CbuaeSeriesData) -> None:
+    source_text = source_text_from_metadata(data.metadata)
+    title = "企业及居民信贷同比"
+    chart_frame = calendar_yoy_download(
+        data.values, {name.removesuffix("同比"): name for name in PRIVATE_CREDIT_SERIES}
+    )
+    _render_figure_with_download(
+        st_obj,
+        build_private_credit_yoy_figure(
+            data.values, title=title, source_text=source_text
+        ),
+        chart_frame,
+        title=title,
+        download_key="analysis.uae.government_finance.private_credit.download",
+        place_legend_bottom=False,
+    )
+
+
+def _render_ded_chart(st_obj: Any, data: DedData, latest_date: pd.Timestamp) -> None:
+    last_month = latest_date.to_period("M")
+    display_values = within_month_window(
+        data.values, first_month=last_month - 36, last_month=last_month
+    )
+    source_text = source_text_from_metadata(data.metadata)
+    title = "迪拜新发执照数"
+    _render_figure_with_download(
+        st_obj,
+        build_ded_figure(
+            data.values,
+            title=title,
+            source_text=source_text,
+            last_month=last_month,
+            units={LICENCES_DISPLAY: data.metadata[LICENCES_DISPLAY].unit},
+        ),
+        display_values,
+        title=title,
+        download_key="analysis.uae.government_finance.ded.download",
+        place_legend_bottom=False,
+    )
+
+
+def _render_foreign_labor_chart(st_obj: Any, data: ForeignLaborData) -> None:
+    display_values = display_foreign_labor_values(data.values)
+    source_text = source_text_from_metadata(data.metadata, separator="；")
+    title = "尼泊尔和孟加拉国入境阿联酋劳工人数"
+    _render_figure_with_download(
+        st_obj,
+        build_foreign_labor_figure(
+            data.values,
+            title=title,
+            source_text=source_text,
+            units={
+                NEPAL_LABEL: data.metadata[NEPAL_APPROVALS].unit,
+                BANGLADESH_LABEL: data.metadata[BANGLADESH_CLEARANCES].unit,
+            },
+        ),
+        display_values,
+        title=title,
+        download_key="analysis.uae.foreign_labor.monthly.download",
+        place_legend_bottom=True,
+    )
+
+
+def _render_search_index_chart(st_obj: Any, values: pd.DataFrame) -> None:
+    title = "阿联酋工作谷歌搜索热度"
+    display_values = display_search_index_values(values)
+    _render_figure_with_download(
+        st_obj,
+        build_search_index_figure(values, title=title, source_text=SEARCH_SOURCE_TEXT),
+        display_values,
+        title=title,
+        download_key="analysis.uae.search_index.monthly.download",
+        place_legend_bottom=False,
+    )
+
+
+def _render_pmi_chart(st_obj: Any, data: PmiData) -> None:
+    source_text = source_text_from_metadata(data.metadata, separator="；")
+    title = PMI_DISPLAY_NAME
+    display_values = display_pmi_values(data.values)
+    _render_figure_with_download(
+        st_obj,
+        build_pmi_figure(
+            data.values,
+            title=title,
+            source_text=source_text,
+            units={PMI_LABEL: data.metadata[PMI_LABEL].unit},
+        ),
+        display_values,
+        title=title,
+        download_key="analysis.uae.pmi.monthly.download",
+        place_legend_bottom=False,
+    )
+
+
+def _render_customer_transfers_chart(
+    st_obj: Any, data: PaymentData, latest_date: pd.Timestamp
+) -> None:
+    """渲染 FTS 客户转账当月值双轴图及其下载。"""
+    last_month = latest_date.to_period("M")
+    display_values = payment_display_values(
+        data.values,
+        series=(CUSTOMER_TRANSFERS_NUMBER_DISPLAY, CUSTOMER_TRANSFERS_AMOUNT_DISPLAY),
+        last_month=last_month,
+    )
+    source_text = source_text_from_metadata(data.metadata)
+    title = "客户资金转账（FTS）"
+    _render_figure_with_download(
+        st_obj,
+        build_customer_transfers_figure(
+            data.values,
+            title=title,
+            source_text=source_text,
+            last_month=last_month,
+            units={
+                CUSTOMER_TRANSFERS_NUMBER_DISPLAY: data.metadata[
+                    CUSTOMER_TRANSFERS_NUMBER_DISPLAY
+                ].unit,
+                CUSTOMER_TRANSFERS_AMOUNT_DISPLAY: data.metadata[
+                    CUSTOMER_TRANSFERS_AMOUNT_DISPLAY
+                ].unit,
+            },
+        ),
+        display_values,
+        title=title,
+        download_key="analysis.uae.government_finance.customer_transfers.download",
+        place_legend_bottom=False,
+    )
+
+
+def _render_cheques_chart(
+    st_obj: Any, data: PaymentData, latest_date: pd.Timestamp
+) -> None:
+    """渲染支票清算当月值双轴图及其下载。"""
+    last_month = latest_date.to_period("M")
+    display_values = payment_display_values(
+        data.values,
+        series=(CHEQUES_NUMBER_DISPLAY, CHEQUES_AMOUNT_DISPLAY),
+        last_month=last_month,
+    )
+    source_text = source_text_from_metadata(data.metadata)
+    title = "支票清算"
+    _render_figure_with_download(
+        st_obj,
+        build_cheques_figure(
+            data.values,
+            title=title,
+            source_text=source_text,
+            last_month=last_month,
+            units={
+                CHEQUES_NUMBER_DISPLAY: data.metadata[CHEQUES_NUMBER_DISPLAY].unit,
+                CHEQUES_AMOUNT_DISPLAY: data.metadata[CHEQUES_AMOUNT_DISPLAY].unit,
+            },
+        ),
+        display_values,
+        title=title,
+        download_key="analysis.uae.government_finance.cheques.download",
+        place_legend_bottom=False,
+    )
+
+
+def render_government_finance_section(
+    st_obj: Any, content: PublishedUAEData
+) -> dict[str, Any]:
+    """Render official rates, credit, DED and labour comparisons."""
+    st_obj.divider()
+    st_obj.subheader("财政金融")
+    try:
+        with st_obj.spinner("正在读取 CBUAE 月度存款与信贷数据..."):
+            data = _load_government_finance_cached(content)
+        latest_date = latest_complete_month(data.values)
+        with st_obj.container(key="uae-finance-part"):
+            _render_finance_metrics(st_obj, data, content)
+            _render_quad_finance_charts(st_obj, data, content)
+            render_supplemental_charts(st_obj, content, FINANCE_CHARTS)
+            with st_obj.expander(
+                "指标算法与解读", expanded=True, key="uae-indicator-explanation-finance"
+            ):
+                st_obj.markdown(FINANCE_EXPLANATION)
+        _render_business_activity_charts(st_obj, latest_date, content)
+        _render_labor_employment_charts(st_obj, content)
+    except (KeyError, TypeError, ValueError) as exc:
+        st_obj.error(f"政府及国有资本存款与信贷数据加载失败：{exc}")
+        return {"status": "error", "message": str(exc)}
+    return {
+        "status": "success",
+        "source": content.name,
+        "as_of": latest_date.strftime("%Y-%m"),
+    }
+
+
+def _render_business_activity_charts(
+    st_obj: Any, latest_date: pd.Timestamp, content: PublishedUAEData
+) -> None:
+    """企业活动：DED/采购经理指数第一行，客户资金转账/支票清算第二行。"""
+    st_obj.divider()
+    st_obj.subheader("企业活动")
+    _render_business_metrics(st_obj, latest_date, content)
+    ded_column, pmi_column = st_obj.columns(2, gap="small")
+    try:
+        with st_obj.spinner("正在读取迪拜企业发证与新发执照数据..."):
+            ded = _load_ded_cached(content)
+        _render_ded_chart(ded_column, ded, latest_date)
+    except (KeyError, TypeError, ValueError) as exc:
+        ded_column.warning(f"企业发证活动柱图未加载：{exc}")
+    try:
+        with st_obj.spinner("正在读取非油私营部门采购经理指数（PMI）数据..."):
+            pmi = _load_pmi_cached(content)
+        _render_pmi_chart(pmi_column, pmi)
+    except (KeyError, TypeError, ValueError) as exc:
+        pmi_column.warning(f"采购经理指数（PMI）图表未加载：{exc}")
+    customer_transfers_column, cheques_column = st_obj.columns(2, gap="small")
+    try:
+        with st_obj.spinner("正在读取 CBUAE 客户转账与支票清算数据..."):
+            payment = _load_payment_cached(content)
+    except (KeyError, TypeError, ValueError) as exc:
+        customer_transfers_column.warning(f"客户转账图未加载：{exc}")
+        cheques_column.warning(f"支票清算图未加载：{exc}")
+    else:
+        try:
+            _render_customer_transfers_chart(
+                customer_transfers_column, payment, latest_date
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            customer_transfers_column.warning(f"客户转账图未加载：{exc}")
+        try:
+            _render_cheques_chart(cheques_column, payment, latest_date)
+        except (KeyError, TypeError, ValueError) as exc:
+            cheques_column.warning(f"支票清算图未加载：{exc}")
+    with st_obj.expander(
+        "指标算法与解读", expanded=True, key="uae-indicator-explanation-business"
+    ):
+        st_obj.markdown(BUSINESS_ACTIVITY_EXPLANATION)
+
+
+def _render_quad_finance_charts(
+    st_obj: Any, data: GovernmentFinanceData, content: PublishedUAEData
+) -> None:
+    """财政金融 2×2：利率 / 外资流入 / 政府及国有资本信贷 / 企业及居民信贷。
+
+    左上 EIBOR 隔夜/1年与美国 EFFR（月度均值），右上外资流入三指标同比（银行外债/
+    外币存款/外国主体存款），左下政府贷款与政府控股企业贷款同比，右下企业及
+    居民信贷同比。单个格子数据缺失只显示该格警告，不影响其它格。
+    """
+    top_left, top_right = st_obj.columns(2, gap="small")
+    bottom_left, bottom_right = st_obj.columns(2, gap="small")
+    try:
+        with st_obj.spinner("正在读取 EIBOR 与联邦基金利率..."):
+            rates = load_rates_data(content)
+        _render_rates_chart(top_left, rates)
+    except (KeyError, TypeError, ValueError) as exc:
+        top_left.warning(f"利率图未加载：{exc}")
+    try:
+        with st_obj.spinner("正在读取 CBUAE 外资流入数据..."):
+            foreign_inflow = _load_foreign_inflow_cached(content)
+        _render_foreign_inflow_chart(top_right, foreign_inflow)
+    except (KeyError, TypeError, ValueError) as exc:
+        top_right.warning(f"外资流入图未加载：{exc}")
+    _render_charts(bottom_left, data)
+    try:
+        with st_obj.spinner("正在读取 CBUAE 企业及居民信贷数据..."):
+            private_credit = _load_private_credit_cached(content)
+        _render_private_credit_chart(bottom_right, private_credit)
+    except (KeyError, TypeError, ValueError) as exc:
+        bottom_right.warning(f"企业及居民信贷图未加载：{exc}")
+
+
+def _render_labor_employment_charts(st_obj: Any, content: PublishedUAEData) -> None:
+    """谷歌工作搜索热度在左，入境阿联酋劳工人数在右。"""
+    st_obj.divider()
+    st_obj.subheader("劳动就业")
+    _render_labor_metrics(st_obj, content)
+    search_column, labor_column = st_obj.columns(2, gap="small")
+    try:
+        with st_obj.spinner("正在读取谷歌工作搜索热度数据..."):
+            search_index = _load_search_index_cached(content)
+        _render_search_index_chart(search_column, search_index)
+    except (KeyError, TypeError, ValueError, FileNotFoundError) as exc:
+        search_column.warning(f"谷歌搜索热度图表未加载：{exc}")
+    try:
+        with st_obj.spinner("正在读取外籍劳动力月度数据..."):
+            foreign_labor = _load_foreign_labor_cached(content)
+        _render_foreign_labor_chart(labor_column, foreign_labor)
+    except (KeyError, TypeError, ValueError) as exc:
+        labor_column.warning(f"外籍劳动力图表未加载：{exc}")
+    with st_obj.expander(
+        "指标算法与解读", expanded=True, key="uae-indicator-explanation-labor"
+    ):
+        st_obj.markdown(LABOR_EMPLOYMENT_EXPLANATION)

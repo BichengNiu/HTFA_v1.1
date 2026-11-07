@@ -9,7 +9,7 @@ import pytest
 from matplotlib.figure import Figure
 from matplotlib.transforms import Affine2D
 
-from htfa.monitoring.uae import charts
+from htfa.monitoring.uae.ui import charts
 from htfa.ui_shared.chart_legend import _apply_cjk_fonts
 
 

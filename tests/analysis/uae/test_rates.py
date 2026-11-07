@@ -8,17 +8,9 @@ import pytest
 from openpyxl import load_workbook
 
 from tests.analysis.uae._helpers import data_lines, report_source
-from htfa.monitoring.uae.government_finance.rates import (
-    EIBOR_ONEYEAR_DISPLAY,
-    EIBOR_ONEYEAR_INDICATOR,
-    EIBOR_OVERNIGHT_DISPLAY,
-    EIBOR_OVERNIGHT_INDICATOR,
-    RATES_SERIES,
-    US_OVERNIGHT_DISPLAY,
-    US_OVERNIGHT_INDICATOR,
-    build_rates_figure,
-    load_rates_data,
-)
+from htfa.monitoring.uae.contracts.government_finance.rates import EIBOR_ONEYEAR_DISPLAY, EIBOR_ONEYEAR_INDICATOR, EIBOR_OVERNIGHT_DISPLAY, EIBOR_OVERNIGHT_INDICATOR, RATES_SERIES, US_OVERNIGHT_DISPLAY, US_OVERNIGHT_INDICATOR
+from htfa.monitoring.uae.ui.government_finance.rates import build_rates_figure
+from htfa.monitoring.uae.processing.government_finance.rates import load_rates_data
 
 
 def _workbook_bytes() -> bytes:

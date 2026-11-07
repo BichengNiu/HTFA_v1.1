@@ -7,22 +7,12 @@ import pytest
 
 from tests.analysis.uae._helpers import report_source
 
-from htfa.monitoring.uae.government_finance.pmi import (
-    PMI_INDICATOR,
-    build_pmi_figure,
-    display_pmi_values,
-    load_pmi_data,
-)
-from htfa.monitoring.uae.government_finance.search_index import (
-    SEARCH_SHEET,
-    SEARCH_SERIES,
-    START_YEAR,
-    WORK_DUBAI_COLUMN,
-    WORK_UAE_COLUMN,
-    build_search_index_figure,
-    display_search_index_values,
-    load_search_index_data,
-)
+from htfa.monitoring.uae.contracts.government_finance.pmi import PMI_INDICATOR
+from htfa.monitoring.uae.ui.government_finance.pmi import build_pmi_figure
+from htfa.monitoring.uae.processing.government_finance.pmi import display_pmi_values, load_pmi_data
+from htfa.monitoring.uae.contracts.government_finance.search_index import SEARCH_SHEET, SEARCH_SERIES, START_YEAR, WORK_DUBAI_COLUMN, WORK_UAE_COLUMN
+from htfa.monitoring.uae.ui.government_finance.search_index import build_search_index_figure
+from htfa.monitoring.uae.processing.government_finance.search_index import display_search_index_values, load_search_index_data
 
 PMI_SHEET = "月度_LSEG"
 

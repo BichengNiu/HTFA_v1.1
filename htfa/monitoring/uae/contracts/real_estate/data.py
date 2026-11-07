@@ -1,0 +1,48 @@
+from __future__ import annotations
+from dataclasses import dataclass
+import pandas as pd
+from htfa.data.economic_workbook import SheetSeriesMetadata
+
+DLD_SHEET = "月度_DLD"
+OFFPLAN_COUNT = "期房销售笔数"
+OFFPLAN_AMOUNT = "期房销售金额"
+READY_COUNT = "现房销售笔数"
+READY_AMOUNT = "现房销售金额"
+OFFPLAN_RESIDENTIAL_COUNT = "期房住宅笔数"
+OFFPLAN_RESIDENTIAL_AMOUNT = "期房住宅金额"
+READY_RESIDENTIAL_COUNT = "现房住宅笔数"
+READY_RESIDENTIAL_AMOUNT = "现房住宅金额"
+OFFPLAN_COMMERCIAL_COUNT = "期房商业笔数"
+OFFPLAN_COMMERCIAL_AMOUNT = "期房商业金额"
+READY_COMMERCIAL_COUNT = "现房商业笔数"
+READY_COMMERCIAL_AMOUNT = "现房商业金额"
+SALES_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    (OFFPLAN_RESIDENTIAL_COUNT, "迪拜:期房销售-住宅笔数", "笔"),
+    (OFFPLAN_RESIDENTIAL_AMOUNT, "迪拜:期房销售-住宅金额(百万AED)", "百万AED"),
+    (READY_RESIDENTIAL_COUNT, "迪拜:现房销售-住宅笔数", "笔"),
+    (READY_RESIDENTIAL_AMOUNT, "迪拜:现房销售-住宅金额(百万AED)", "百万AED"),
+    (OFFPLAN_COMMERCIAL_COUNT, "迪拜:期房销售-商业笔数", "笔"),
+    (OFFPLAN_COMMERCIAL_AMOUNT, "迪拜:期房销售-商业金额(百万AED)", "百万AED"),
+    (READY_COMMERCIAL_COUNT, "迪拜:现房销售-商业笔数", "笔"),
+    (READY_COMMERCIAL_AMOUNT, "迪拜:现房销售-商业金额(百万AED)", "百万AED"),
+)
+AGGREGATE_TARGETS: tuple[tuple[str, tuple[str, str], str], ...] = (
+    (OFFPLAN_COUNT, (OFFPLAN_RESIDENTIAL_COUNT, OFFPLAN_COMMERCIAL_COUNT), "笔"),
+    (
+        OFFPLAN_AMOUNT,
+        (OFFPLAN_RESIDENTIAL_AMOUNT, OFFPLAN_COMMERCIAL_AMOUNT),
+        "百万AED",
+    ),
+    (READY_COUNT, (READY_RESIDENTIAL_COUNT, READY_COMMERCIAL_COUNT), "笔"),
+    (READY_AMOUNT, (READY_RESIDENTIAL_AMOUNT, READY_COMMERCIAL_AMOUNT), "百万AED"),
+)
+
+
+@dataclass(frozen=True)
+class RealEstateData:
+    """迪拜房地产月度销售数据及期房/现房合计口径。"""
+
+    values: pd.DataFrame
+    metadata: dict[str, SheetSeriesMetadata]
+    raw_values: pd.DataFrame
+    raw_metadata: dict[str, SheetSeriesMetadata]

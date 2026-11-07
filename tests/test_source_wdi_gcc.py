@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 from htfa.jobs.uae_data import db, source_wdi_gcc as source
-from htfa.monitoring.uae.annual_comparison_contracts import GDP_SHEET, GCC_NAME, LEVEL_SUFFIX, GROWTH_SUFFIX
+from htfa.monitoring.uae.contracts.annual_comparison_contracts import GDP_SHEET, GCC_NAME, LEVEL_SUFFIX, GROWTH_SUFFIX
 
 
 def _payload(indicator):

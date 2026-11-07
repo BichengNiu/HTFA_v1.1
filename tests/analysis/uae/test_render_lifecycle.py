@@ -10,9 +10,9 @@ import pytest
 from streamlit.runtime.scriptrunner.script_runner import _clean_problem_modules
 from streamlit.testing.v1 import AppTest
 
-from htfa.monitoring.uae import charts
-from htfa.monitoring.uae.supplemental_charts import build_supplemental_figure
-from htfa.monitoring.uae.supplemental_data import FINANCE_CHARTS
+from htfa.monitoring.uae.ui import charts
+from htfa.monitoring.uae.ui.supplemental_charts import build_supplemental_figure
+from htfa.monitoring.uae.contracts.supplemental_data import FINANCE_CHARTS
 from htfa.ui_shared.chart_legend import render_pyplot_figure
 
 
@@ -20,7 +20,7 @@ def test_csv_download_does_not_rerun_the_report():
     app = AppTest.from_string('''
 import pandas as pd
 import streamlit as st
-from htfa.monitoring.uae.downloads import render_chart_download
+from htfa.monitoring.uae.ui.downloads import render_chart_download
 render_chart_download(st, pd.DataFrame({"GDP": [1, 2]}), title="GDP", key="csv")
 ''').run()
     assert not app.exception

@@ -10,7 +10,7 @@ import pytest
 from htfa.data.economic_workbook import EconomicWorkbookReader
 from htfa.data.economic_workbook.shared.target_reader import parse_target_sheet
 from htfa.jobs.uae_data import publish_report
-from htfa.monitoring.uae.database import published_source
+from htfa.monitoring.uae.data.database import published_source, open_published_tables, table_source
 
 
 def _workbook(path: Path, value: float = 12) -> None:
@@ -52,14 +52,14 @@ def test_database_reader_matches_excel_without_any_excel_io(tmp_path, monkeypatc
         pd, "ExcelFile", lambda *args, **kwargs: pytest.fail("Excel I/O forbidden")
     )
 
-    actual = reader.read(source)
+    actual = reader.read(table_source(source))
 
     for frequency in expected.dataframes:
         pd.testing.assert_frame_equal(
             actual.dataframes[frequency], expected.dataframes[frequency],
             check_dtype=False, check_index_type=False,
         )
-    with reader.open_workbook(source) as (tables, _):
+    with reader.open_workbook(table_source(source)) as (tables, _):
         values, metadata = parse_target_sheet(
             tables, sheet_name="月度_测试", targets=(("test", "测试指标"),),
             allowed_frequencies={"月"}, expected_unit="点", zero_is_missing=False,
@@ -76,17 +76,17 @@ def test_new_release_invalidates_cached_tables_and_old_references(tmp_path):
     _workbook(workbook)
     _publish(database, workbook)
     old = published_source(database)
-    with old.open() as tables:
+    with open_published_tables(old) as tables:
         assert tables.parse("月度_测试", header=None).iloc[6, 1] == 12
     _workbook(workbook, value=99)
     _publish(database, workbook)
     new = published_source(database)
 
     assert new.version != old.version
-    with new.open() as tables:
+    with open_published_tables(new) as tables:
         assert tables.parse("月度_测试", header=None).iloc[6, 1] == 99
     with pytest.raises(ValueError, match="版本已更新"):
-        with old.open():
+        with open_published_tables(old):
             pass
 
 
@@ -108,7 +108,7 @@ def test_failed_publication_keeps_previous_release(tmp_path, monkeypatch):
 
     source = published_source(database)
     assert source.version == previous["version"]
-    with source.open() as tables:
+    with open_published_tables(source) as tables:
         assert tables.parse("月度_测试", header=None).iloc[6, 1] == 12
 
 
@@ -139,7 +139,7 @@ render_complete_sidebar({"监测分析": {"阿联酋": None}})
 
 
 @pytest.mark.parametrize("module,function", [
-    ("data_adapter", "load_real_uae_bundle"),
+    ("data.data_adapter", "load_real_uae_bundle"),
     ("foreign_labor", "load_foreign_labor_data"),
     ("oil.data", "load_oil_market_data"),
     ("oil.war_pressure", "load_war_pressure_data"),
@@ -165,11 +165,11 @@ def test_uae_readers_reject_file_inputs_before_excel_io(monkeypatch, module, fun
 
     monkeypatch.setattr(pd, "ExcelFile", forbid)
     monkeypatch.setattr(pd, "read_excel", forbid)
-    loader = getattr(importlib.import_module("htfa.monitoring.uae." + module), function)
+    loader = getattr(importlib.import_module("htfa.monitoring.uae." + module if module == "data.data_adapter" else "htfa.monitoring.uae.processing." + module), function)
     assert "file_name" not in inspect.signature(loader).parameters
     args = (file_input,)
     if function == "load_chart_data":
-        from htfa.monitoring.uae.supplemental_data import PRICE_CHARTS
+        from htfa.monitoring.uae.contracts.supplemental_data import PRICE_CHARTS
         args += (PRICE_CHARTS[0],)
     with pytest.raises((TypeError, ValueError), match="DuckDB"):
         loader(*args)

@@ -1,0 +1,27 @@
+from __future__ import annotations
+from htfa.monitoring.uae.contracts.real_estate.data import (
+    OFFPLAN_COMMERCIAL_AMOUNT,
+    OFFPLAN_COMMERCIAL_COUNT,
+    OFFPLAN_RESIDENTIAL_AMOUNT,
+    OFFPLAN_RESIDENTIAL_COUNT,
+    READY_COMMERCIAL_AMOUNT,
+    READY_COMMERCIAL_COUNT,
+    READY_RESIDENTIAL_AMOUNT,
+    READY_RESIDENTIAL_COUNT,
+)
+
+COUNT_LABEL = "销售笔数"
+AMOUNT_LABEL = "销售金额"
+AMOUNT_UNIT_FACTOR = 100
+DEFAULT_TITLES = {
+    "期房住宅": "迪拜住宅期房",
+    "期房商业": "迪拜商业地产期房",
+    "现房住宅": "迪拜住宅现房",
+    "现房商业": "迪拜商业地产现房",
+}
+PROPERTY_CONFIG = {
+    "期房住宅": (OFFPLAN_RESIDENTIAL_COUNT, OFFPLAN_RESIDENTIAL_AMOUNT),
+    "期房商业": (OFFPLAN_COMMERCIAL_COUNT, OFFPLAN_COMMERCIAL_AMOUNT),
+    "现房住宅": (READY_RESIDENTIAL_COUNT, READY_RESIDENTIAL_AMOUNT),
+    "现房商业": (READY_COMMERCIAL_COUNT, READY_COMMERCIAL_AMOUNT),
+}

@@ -6,12 +6,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from htfa.monitoring.uae.annual import (
-    ANNUAL_CHARTS, build_annual_figure, capital_formation_values,
-    displayed_annual_values, load_annual_data,
-)
+from htfa.monitoring.uae.contracts.annual import ANNUAL_CHARTS
+from htfa.monitoring.uae.ui.annual import build_annual_figure
+from htfa.monitoring.uae.processing.annual import capital_formation_values, displayed_annual_values, load_annual_data
 from tests.analysis.uae._helpers import report_source
-from htfa.monitoring.uae.annual_comparison_contracts import REPORT_UNITS, GDP_SHEET, GDP_COMPARE_COLUMNS, GCC_NAME
+from htfa.monitoring.uae.contracts.annual_comparison_contracts import REPORT_UNITS, GDP_SHEET, GDP_COMPARE_COLUMNS, GCC_NAME
 
 
 def annual_source():
@@ -66,7 +65,7 @@ def test_annual_tab_renders_all_charts_and_downloads():
     app = AppTest.from_string('''
 import streamlit as st
 from tests.analysis.uae.test_annual import annual_source
-from htfa.monitoring.uae import renderer
+from htfa.monitoring.uae.ui import renderer
 from unittest.mock import patch
 st.session_state["analysis.uae.active_tab"] = "年度数据"
 with patch.object(renderer, "published_source", annual_source), patch.object(renderer, "_latest_high_frequency_month", lambda source: None):
@@ -106,7 +105,7 @@ def test_capital_chart_pairs_absolute_bars_and_percent_lines():
 
 def test_capital_download_contains_all_industry_levels_and_growth(monkeypatch):
     from unittest.mock import MagicMock
-    from htfa.monitoring.uae import annual
+    from htfa.monitoring.uae.ui import annual
 
     frames = load_annual_data(annual_source())
     capture = MagicMock()
@@ -125,7 +124,7 @@ def test_capital_download_contains_all_industry_levels_and_growth(monkeypatch):
 
 def test_gcc_gdp_and_three_sector_charts_precede_investment(monkeypatch):
     from unittest.mock import MagicMock
-    from htfa.monitoring.uae import annual
+    from htfa.monitoring.uae.ui import annual
 
     frames = load_annual_data(annual_source())
     builder, download = MagicMock(), MagicMock()

@@ -10,11 +10,9 @@ from streamlit.testing.v1 import AppTest
 
 from tests.analysis.uae._helpers import report_source
 
-from htfa.monitoring.uae import supplemental_renderer as renderer
-from htfa.monitoring.uae.supplemental_data import (
-    FINANCE_CHARTS, PRICE_CHARTS, PROPERTY_CHARTS, TRANSPORT_CHARTS,
-    load_chart_data,
-)
+from htfa.monitoring.uae.ui import supplemental_renderer as renderer
+from htfa.monitoring.uae.contracts.supplemental_data import FINANCE_CHARTS, PRICE_CHARTS, PROPERTY_CHARTS, TRANSPORT_CHARTS
+from htfa.monitoring.uae.processing.supplemental_data import load_chart_data
 
 
 @pytest.fixture
@@ -130,9 +128,9 @@ def test_failed_extra_chart_does_not_hide_sibling_or_create_subsection(monkeypat
 def test_new_charts_render_in_app_without_subsections():
     app = AppTest.from_string('''
 import streamlit as st
-from htfa.monitoring.uae.database import published_source
-from htfa.monitoring.uae.supplemental_data import FINANCE_CHARTS, PROPERTY_CHARTS, TRANSPORT_CHARTS
-from htfa.monitoring.uae.supplemental_renderer import render_supplemental_charts, render_prices_section
+from htfa.monitoring.uae.data.database import published_source
+from htfa.monitoring.uae.contracts.supplemental_data import FINANCE_CHARTS, PROPERTY_CHARTS, TRANSPORT_CHARTS
+from htfa.monitoring.uae.ui.supplemental_renderer import render_supplemental_charts, render_prices_section
 p = published_source()
 for specs in (FINANCE_CHARTS, PROPERTY_CHARTS, TRANSPORT_CHARTS):
     render_supplemental_charts(st, p, specs)
@@ -182,8 +180,8 @@ def test_price_cpi_metrics_show_changes_in_percentage_points():
 def test_real_estate_renders_five_charts_without_extra_captions():
     app = AppTest.from_string('''
 import streamlit as st
-from htfa.monitoring.uae.database import published_source
-from htfa.monitoring.uae.real_estate.renderer import render_real_estate_section
+from htfa.monitoring.uae.data.database import published_source
+from htfa.monitoring.uae.ui.real_estate.renderer import render_real_estate_section
 p = published_source()
 render_real_estate_section(st, p)
 ''').run(timeout=60)

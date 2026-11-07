@@ -1,0 +1,375 @@
+from __future__ import annotations
+from collections.abc import Iterable
+from typing import Any
+import pandas as pd
+from htfa.monitoring.uae.contracts.publication import PublishedUAEData
+
+from htfa.monitoring.uae.contracts.records import (
+    DataProvenance,
+    EvidenceClass,
+    EvidenceItem,
+    UAEDataBundle,
+)
+from htfa.monitoring.uae.data.data_adapter import load_real_uae_bundle
+from htfa.monitoring.uae.processing.growth import calculate_industry_diagnostics
+from htfa.monitoring.uae.contracts.indicator_catalog import (
+    INDUSTRY_NAMES,
+    NOMINAL_INDUSTRY_IDS,
+    REAL_INDUSTRY_IDS,
+)
+from htfa.monitoring.uae.contracts.results import MacroPanelResult
+from htfa.monitoring.uae.contracts.services import _GDP_ROUNDING_ABSOLUTE_TOLERANCE
+
+
+def _period_label(value: Any) -> str:
+    if isinstance(value, pd.Period):
+        return str(value)
+    timestamp = pd.Timestamp(value)
+    if timestamp.is_quarter_end or timestamp.month in {1, 4, 7, 10}:
+        return f"{timestamp.year}Q{timestamp.quarter}"
+    return timestamp.strftime("%Y-%m")
+
+
+def _latest(series: pd.Series) -> tuple[Any, float]:
+    clean = series.dropna()
+    if clean.empty:
+        raise ValueError(f"指标{series.name or ''}没有有效观测")
+    return (clean.index[-1], float(clean.iloc[-1]))
+
+
+def _growth(series: pd.Series, periods: int) -> pd.Series:
+    return (series / series.shift(periods) - 1) * 100
+
+
+def _provenance_subset(
+    bundle: UAEDataBundle, indicator_ids: Iterable[str]
+) -> dict[str, DataProvenance]:
+    return {
+        indicator_id: bundle.require_provenance(indicator_id)
+        for indicator_id in indicator_ids
+    }
+
+
+def _build_price_volume_series(
+    bundle: UAEDataBundle,
+    *,
+    nominal_id: str,
+    real_id: str,
+    real_yoy_id: str,
+    real_label: str,
+    deflator_label: str,
+    nominal_level_label: str,
+    real_level_label: str,
+    deflator_level_label: str,
+) -> pd.DataFrame:
+    """读取实际当季同比，并由现价与不变价水平构造平减指数。"""
+    nominal = bundle.require_series(nominal_id)
+    real = bundle.require_series(real_id)
+    real_yoy = bundle.require_series(real_yoy_id)
+    deflator = nominal.div(real).mul(100)
+    deflator_yoy = deflator.div(deflator.shift(4)).sub(1).mul(100)
+    return (
+        pd.concat(
+            [
+                real_yoy.rename(real_label),
+                deflator_yoy.rename(deflator_label),
+                nominal.rename(nominal_level_label),
+                real.rename(real_level_label),
+                deflator.rename(deflator_level_label),
+            ],
+            axis=1,
+            sort=False,
+        )
+        .dropna(how="all")
+        .sort_index()
+    )
+
+
+def _build_industry_price_volume_quadrant(
+    *,
+    nonoil_real_gdp: pd.Series,
+    real_levels: dict[str, pd.Series],
+    nominal_levels: dict[str, pd.Series],
+) -> pd.DataFrame:
+    """构造逐季度行业量价截面，并验证实际增加值占比核算闭合。"""
+    real_frame = pd.DataFrame(real_levels)
+    nominal_frame = pd.DataFrame(nominal_levels)
+    aligned = pd.concat(
+        [
+            nonoil_real_gdp.rename("非油实际GDP"),
+            real_frame.add_prefix("实际｜"),
+            nominal_frame.add_prefix("现价｜"),
+        ],
+        axis=1,
+        join="inner",
+    ).dropna()
+    if aligned.empty:
+        raise ValueError("行业量价四象限没有共同有效季度")
+    nonoil = aligned["非油实际GDP"]
+    if (real_frame <= 0).any().any() or (nominal_frame <= 0).any().any():
+        raise ValueError("行业量价四象限要求现价和不变价增加值均为正数")
+    if (nonoil <= 0).any():
+        raise ValueError("行业量价四象限要求非油实际GDP为正数")
+    real_growth = real_frame.div(real_frame.shift(4)).sub(1).mul(100)
+    deflator = nominal_frame.div(real_frame).mul(100)
+    deflator_growth = deflator.div(deflator.shift(4)).sub(1).mul(100)
+    shares = real_frame.div(nonoil, axis=0)
+    share_error = shares.sum(axis=1).sub(1).abs()
+    max_share_error = float(share_error.max())
+    outside = (share_error > 1e-08) & (
+        share_error * nonoil.abs() > _GDP_ROUNDING_ABSOLUTE_TOLERANCE
+    )
+    if outside.any():
+        raise ValueError(
+            f"行业实际GDP占非油实际GDP比例未加总为1：最大误差为{max_share_error:.12g}"
+        )
+    snapshots: list[pd.DataFrame] = []
+    for period in aligned.index:
+        snapshot = pd.DataFrame(
+            {
+                "季度": _period_label(period),
+                "行业": list(real_frame.columns),
+                "实际增加值增速": real_growth.loc[period].to_numpy(),
+                "行业隐含平减指数增速": deflator_growth.loc[period].to_numpy(),
+                "实际GDP占非油GDP比例": shares.loc[period].to_numpy(),
+                "非油实际GDP（十亿迪拉姆）": float(nonoil.loc[period]),
+            }
+        ).dropna()
+        if len(snapshot) == len(real_frame.columns):
+            snapshots.append(snapshot)
+    if not snapshots:
+        raise ValueError("行业量价四象限没有可计算同比增速的季度")
+    return pd.concat(snapshots, ignore_index=True).set_index(["季度", "行业"])
+
+
+def _build_growth_downloads(
+    series_groups: dict[str, pd.DataFrame],
+    real_levels: pd.DataFrame,
+    nominal_levels: dict[str, pd.Series],
+) -> dict[str, pd.DataFrame]:
+    """保留绘图数据，并为行业派生结果补入可复算的原始水平与基期。"""
+    downloads = dict(series_groups)
+    raw = real_levels.add_prefix("计算输入｜").add_suffix("（十亿迪拉姆）")
+    raw.index = pd.PeriodIndex(raw.index, freq="Q").to_timestamp(how="end").normalize()
+    for title in ("非油实际GDP行业拉动", "行业扩张广度指数", "行业增长集中度"):
+        display = series_groups[title].copy()
+        display.index = (
+            pd.PeriodIndex(display.index, freq="Q").to_timestamp(how="end").normalize()
+        )
+        downloads[title] = display.join(raw, how="outer")
+    inputs = []
+    for industry, nominal in nominal_levels.items():
+        levels = pd.DataFrame(
+            {
+                "实际增加值（十亿迪拉姆）": real_levels[industry],
+                "现价增加值（十亿迪拉姆）": nominal.reindex(real_levels.index),
+                "非油实际GDP（十亿迪拉姆）": real_levels["非油实际GDP"],
+            }
+        )
+        levels["行业隐含平减指数（现价/不变价×100）"] = (
+            levels["现价增加值（十亿迪拉姆）"]
+            .div(levels["实际增加值（十亿迪拉姆）"])
+            .mul(100)
+        )
+        records = pd.concat(
+            [levels.add_prefix("计算输入｜"), levels.shift(4).add_prefix("上年同期｜")],
+            axis=1,
+        )
+        records["季度"] = pd.PeriodIndex(records.index, freq="Q").astype(str)
+        records["行业"] = industry
+        inputs.append(records.set_index(["季度", "行业"]))
+    raw_long = pd.concat(inputs)
+    for title in ("行业量价四象限图", "行业增长持续性与状态矩阵"):
+        downloads[title] = series_groups[title].join(raw_long)
+    return downloads
+
+
+def build_growth_panel(bundle: UAEDataBundle) -> MacroPanelResult:
+    """GDP量价关系、部门拉动以及季度非油行业拉动。"""
+    real_gdp = bundle.require_series("growth.real_gdp").dropna()
+    nonoil = bundle.require_series("growth.nonoil_real_gdp").dropna()
+    oil = (real_gdp - nonoil).rename("石油")
+    price_volume_groups = {
+        "实际GDP增速与GDP平减指数同比": _build_price_volume_series(
+            bundle,
+            nominal_id="growth.nominal_gdp",
+            real_id="growth.real_gdp",
+            real_yoy_id="growth.real_gdp_yoy",
+            real_label="实际GDP当季同比",
+            deflator_label="GDP平减指数同比",
+            nominal_level_label="名义GDP（十亿阿联酋迪拉姆）",
+            real_level_label="实际GDP（十亿阿联酋迪拉姆）",
+            deflator_level_label="GDP平减指数（现价/不变价×100）",
+        ),
+        "非石油实际GDP增速与非石油GDP平减指数同比": _build_price_volume_series(
+            bundle,
+            nominal_id="growth.nonoil_nominal_gdp",
+            real_id="growth.nonoil_real_gdp",
+            real_yoy_id="growth.nonoil_real_gdp_yoy",
+            real_label="非石油实际GDP当季同比",
+            deflator_label="非石油GDP平减指数同比",
+            nominal_level_label="名义非石油GDP（十亿阿联酋迪拉姆）",
+            real_level_label="实际非石油GDP（十亿阿联酋迪拉姆）",
+            deflator_level_label="非石油GDP平减指数（现价/不变价×100）",
+        ),
+    }
+    industry_series = {
+        INDUSTRY_NAMES[industry_id]
+        .display_name: bundle.require_series(f"industry.{industry_id}.real")
+        .dropna()
+        for industry_id in INDUSTRY_NAMES
+    }
+    nominal_industry_series = {
+        INDUSTRY_NAMES[industry_id]
+        .display_name: bundle.require_series(f"industry.{industry_id}.nominal")
+        .dropna()
+        for industry_id in INDUSTRY_NAMES
+    }
+    industry_quadrant = _build_industry_price_volume_quadrant(
+        nonoil_real_gdp=nonoil,
+        real_levels=industry_series,
+        nominal_levels=nominal_industry_series,
+    )
+    quarterly_nonoil = pd.concat(
+        {"非油实际GDP": nonoil, **industry_series}, axis=1, join="inner"
+    ).dropna()
+    industry_diagnostics = calculate_industry_diagnostics(
+        quarterly_nonoil["非油实际GDP"],
+        {column: quarterly_nonoil[column] for column in industry_series},
+        periods=4,
+        absolute_tolerance=_GDP_ROUNDING_ABSOLUTE_TOLERANCE,
+        relative_tolerance=1e-10,
+    )
+    industry_contributions = industry_diagnostics.contribution_result
+    if not industry_contributions.additivity.within_tolerance.all():
+        raise ValueError("季度非油行业加总未通过非油实际GDP一致性校验")
+    raw_industry_pull = industry_contributions.contributions
+    average_industry_shares = (
+        quarterly_nonoil[list(industry_series)]
+        .div(quarterly_nonoil["非油实际GDP"], axis=0)
+        .mean()
+    )
+    top_five_industries = list(average_industry_shares.nlargest(5).index)
+    top_five_pull = raw_industry_pull[top_five_industries]
+    other_pull = (
+        raw_industry_pull.drop(columns=top_five_industries)
+        .sum(axis=1, min_count=1)
+        .rename("其他行业")
+    )
+    total_growth = _growth(real_gdp, 4).rename("实际GDP同比")
+    nonoil_growth = _growth(nonoil, 4).rename("非油GDP同比")
+    oil_production_id = "oil.crude_production"
+    oil_production = bundle.require_series(oil_production_id).dropna()
+    nonoil_pull = (
+        (nonoil - nonoil.shift(4))
+        .div(real_gdp.shift(4))
+        .mul(100)
+        .rename("非石油经济部门拉动")
+    )
+    oil_pull = (
+        (oil - oil.shift(4)).div(real_gdp.shift(4)).mul(100).rename("石油经济部门拉动")
+    )
+    total_period, total_value = _latest(total_growth)
+    nonoil_period, nonoil_value = _latest(nonoil_growth)
+    evidence = (
+        EvidenceItem(
+            label="实际GDP同比",
+            value=total_value,
+            unit="%",
+            evidence_class=EvidenceClass.ACCOUNTING,
+            as_of=_period_label(total_period),
+        ),
+        EvidenceItem(
+            label="非油GDP同比",
+            value=nonoil_value,
+            unit="%",
+            evidence_class=EvidenceClass.ACCOUNTING,
+            as_of=_period_label(nonoil_period),
+        ),
+    )
+    trend = (
+        pd.concat(
+            [
+                nonoil_pull,
+                oil_pull,
+                real_gdp.rename("实际GDP（十亿阿联酋迪拉姆）"),
+                nonoil.rename("非油实际GDP（十亿阿联酋迪拉姆）"),
+                oil.rename("石油实际GDP（十亿阿联酋迪拉姆）"),
+                oil_production.rename(
+                    "石油及其他液体产量（"
+                    + bundle.require_provenance(oil_production_id).unit
+                    + "）"
+                ),
+            ],
+            axis=1,
+            sort=False,
+        )
+        .reindex(real_gdp.index)
+        .dropna(how="all")
+        .sort_index()
+    )
+    quarterly_industry_pull = pd.concat(
+        [
+            top_five_pull,
+            other_pull,
+            industry_contributions.total_growth.rename("非油GDP同比"),
+        ],
+        axis=1,
+    ).dropna(how="all")
+    series_groups = {
+        **price_volume_groups,
+        "GDP部门拉动": trend,
+        "非油实际GDP行业拉动": quarterly_industry_pull,
+        "行业量价四象限图": industry_quadrant,
+        "行业扩张广度指数": industry_diagnostics.breadth,
+        "行业增长集中度": industry_diagnostics.concentration,
+        "行业增长持续性与状态矩阵": industry_diagnostics.persistence,
+    }
+    source_ids = (
+        "growth.real_gdp",
+        "growth.nominal_gdp",
+        "growth.nonoil_real_gdp",
+        "growth.nonoil_nominal_gdp",
+        "growth.real_gdp_yoy",
+        "growth.nonoil_real_gdp_yoy",
+        oil_production_id,
+        *REAL_INDUSTRY_IDS,
+        *NOMINAL_INDUSTRY_IDS,
+    )
+    return MacroPanelResult(
+        key="growth",
+        evidence=evidence,
+        limitation="行业拉动是基于不变价增加值的核算分解，说明增长来自哪些行业，不解释这些行业为何增长。",
+        series_groups=series_groups,
+        download_groups=_build_growth_downloads(
+            series_groups, quarterly_nonoil, nominal_industry_series
+        ),
+        provenance=_provenance_subset(bundle, source_ids),
+        methodology_notes=(
+            "GDP平减指数按现价GDP除以不变价GDP并乘以100构造，再计算季度同比增速；图表下载同时包含两种GDP水平和所用平减指数序列。",
+            "实际GDP当季同比直接读取指标字典中的不变价当季同比序列，不由GDP水平值重新计算。",
+            "实际GDP同比与平减指数同比均为增长率，共用同一纵轴展示；两者仍不能直接相加。",
+            "堆叠柱形分别使用非油和石油实际GDP同比增量除以上年同期总体实际GDP，单位为百分点。",
+            "两部门拉动逐季度相加等于实际GDP同比增速。",
+            "季度行业拉动使用各行业本季度与上年同季度的不变价增加值之差，除以上年同季度非油实际GDP，单位为百分点。",
+            "在完整数据范围内逐季度计算各行业实际GDP占非油实际GDP的比例，并按季度占比的算术平均值固定选取前5个行业。",
+            "前5个行业在所有季度保持不变，其余11个行业合并为“其他行业”。",
+            "全部16个非油行业在季度层面加总等于非油实际GDP；各行业拉动之和与非油GDP同比核算值一致，不设置残差。",
+            "行业隐含平减指数按各行业现价增加值除以不变价增加值并乘以100构造；横纵轴均使用季度同比增速。",
+            "气泡面积表示行业实际GDP占当季非油实际GDP比例；各季度占比须通过1e-8相对容差或FCSC百万AED公布精度的加总校验。",
+            "四象限动画对所有季度使用固定坐标范围、固定行业颜色和统一气泡面积尺度，保证跨期视觉可比。",
+            "行业广度后台保留等权与加权派生结果；图表仅展示不加权的正增长行业比例和连续四季度正增长行业比例。",
+            "行业增长集中度地图对16个行业的正负贡献绝对值统一归一化，不再只对正向贡献计算HHI。",
+            "贡献平衡指数为行业净贡献除以贡献绝对值合计并乘100；负值表示拖累占主导，0表示完全抵消，正值表示拉动占主导。",
+            "绝对贡献HHI按固定16行业标准化到0—100；0对应16行业等额变动，100对应单一行业主导。",
+            "气泡面积使用全部行业贡献绝对值合计，悬浮信息报告非油GDP同比和最大正负贡献行业；行业贡献缺失或全部为0时不绘制。",
+            "集中度图使用Plotly季度帧和图内时间轴：淡色气泡保留截至所选季度的历史，深色描边气泡突出当前季度，并支持从头播放和暂停。",
+            "集中度纵轴理论范围为0—100；显示上限按完整样本最大值留出20%余量后向上取整，最低20、最高100，且所有季度帧共用固定范围。",
+            "行业状态以当季增速相对截至上季的自身历史均值判断高低，以当季同比相对上季度同比判断加速、放缓或改善、恶化。",
+        ),
+    )
+
+
+def load_growth_panel(source: PublishedUAEData) -> MacroPanelResult:
+    """基于 DuckDB 发布快照构建宏观监测结果。"""
+    return build_growth_panel(load_real_uae_bundle(source))

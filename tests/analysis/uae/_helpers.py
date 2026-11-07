@@ -25,7 +25,8 @@ def report_source(content):
     import duckdb
     import pandas as pd
     from htfa.jobs.uae_data.publish_report import _heading
-    from htfa.monitoring.uae.database import PublishedUAEData, published_source
+    from htfa.monitoring.uae.contracts.publication import PublishedUAEData
+    from htfa.monitoring.uae.data.database import published_source
 
     if isinstance(content, PublishedUAEData):
         return content
@@ -39,6 +40,7 @@ def report_source(content):
     # Fixtures need not have a dictionary; source tables still start at index 1.
     dictionary = tables.pop("指标字典", pd.DataFrame())
     with duckdb.connect(str(database)) as con:
+        con.begin()
         con.execute("CREATE SCHEMA report")
         con.execute("CREATE TABLE report.release AS SELECT 'fixture' AS version, "
                     "1 AS schema_version, TIMESTAMP '2026-10-18' AS published_at")
@@ -60,4 +62,5 @@ def report_source(content):
                           if pd.notna(value)]
                 if values:
                     con.executemany("INSERT INTO report.observations VALUES (?,?,?,?)", values)
+        con.commit()
     return published_source(database)

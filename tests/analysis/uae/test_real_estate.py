@@ -7,23 +7,14 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
-from htfa.monitoring.uae.periods import latest_complete_month
+from htfa.monitoring.uae.processing.periods import latest_complete_month
 from tests.analysis.uae._helpers import report_source
 
-from htfa.monitoring.uae.real_estate import renderer
-from htfa.monitoring.uae.real_estate.charts import (
-    AMOUNT_LABEL,
-    COUNT_LABEL,
-    PROPERTY_CONFIG,
-    build_sales_figure,
-)
-from htfa.monitoring.uae.real_estate.data import (
-    OFFPLAN_AMOUNT,
-    OFFPLAN_COUNT,
-    READY_AMOUNT,
-    READY_COUNT,
-    load_real_estate_data,
-)
+from htfa.monitoring.uae.ui.real_estate import renderer
+from htfa.monitoring.uae.contracts.real_estate.charts import AMOUNT_LABEL, COUNT_LABEL, PROPERTY_CONFIG
+from htfa.monitoring.uae.ui.real_estate.charts import build_sales_figure
+from htfa.monitoring.uae.contracts.real_estate.data import OFFPLAN_AMOUNT, OFFPLAN_COUNT, READY_AMOUNT, READY_COUNT
+from htfa.monitoring.uae.processing.real_estate.data import load_real_estate_data
 
 _OFFPLAN_RESIDENTIAL_COUNT = "迪拜:期房销售-住宅笔数"
 _OFFPLAN_RESIDENTIAL_AMOUNT = "迪拜:期房销售-住宅金额(百万AED)"
@@ -139,7 +130,7 @@ def test_latest_complete_month_requires_all_four_aggregates() -> None:
 def test_anchor_last_month_skips_the_in_progress_month() -> None:
     """最新月若恰为当前自然月（尚未过完）→ 回退一个月；否则取数据最新月。"""
 
-    from htfa.monitoring.uae.real_estate.data import anchor_last_month
+    from htfa.monitoring.uae.processing.real_estate.data import anchor_last_month
 
     data = load_real_estate_data(report_source(_workbook_bytes()))
 
@@ -247,7 +238,7 @@ def test_build_sales_figure_renders_each_property_segment() -> None:
 def test_sales_display_values_converts_amount_to_yi_aed() -> None:
     """展示表金额由百万 AED 折算为亿 AED，笔数不变。"""
 
-    from htfa.monitoring.uae.real_estate.charts import sales_display_values
+    from htfa.monitoring.uae.processing.real_estate.charts import sales_display_values
 
     data = load_real_estate_data(report_source(_workbook_bytes()))
     last_month = data.values.index.max().to_period("M")
@@ -324,7 +315,7 @@ def test_section_renders_four_cross_segment_charts_and_explanation(
         (second_row[1], "期房商业"),
     ]
     assert all(
-        column.pyplot.call_count == 1
+        column.image.call_count == 1
         for row in (first_row, second_row)
         for column in row
     )
@@ -333,7 +324,7 @@ def test_section_renders_four_cross_segment_charts_and_explanation(
         for row in (first_row, second_row)
         for column in row
     )
-    assert st_obj.pyplot.call_count == 0
+    assert st_obj.image.call_count == 0
     assert st_obj.expander.call_count == 1
     # 说明正文渲染在 expander 的 with 体内（直接调用的 st_obj.markdown）
     assert st_obj.markdown.call_count == 1
@@ -355,7 +346,7 @@ def test_section_loader_failure_shows_error_and_returns_error_status(
 
     assert result["status"] == "error"
     assert st_obj.error.call_count == 1
-    assert st_obj.pyplot.call_count == 0
+    assert st_obj.image.call_count == 0
 
 
 @pytest.mark.parametrize("missing_column", PROPERTY_CONFIG["期房商业"])
@@ -388,10 +379,10 @@ def test_missing_metadata_warns_cell_and_keeps_other_charts(
     assert result["status"] == "success"
     assert second_row[1].warning.call_count == 1
     rendered_columns = [first_row[0], first_row[1], second_row[0]]
-    assert all(column.pyplot.call_count == 1 for column in rendered_columns)
+    assert all(column.image.call_count == 1 for column in rendered_columns)
     assert all(
         column.download_button.call_count == 1
         for column in rendered_columns
     )
-    assert second_row[1].pyplot.call_count == 0
+    assert second_row[1].image.call_count == 0
     assert st_obj.error.call_count == 0

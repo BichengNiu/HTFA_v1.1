@@ -10,8 +10,8 @@ import pytest
 from openpyxl import load_workbook
 
 from htfa.jobs.uae_data import db, source_oil, publish_report
-from htfa.monitoring.uae.database import published_source
-from htfa.monitoring.uae.oil.data import load_oil_market_data
+from htfa.monitoring.uae.data.database import published_source
+from htfa.monitoring.uae.processing.oil.data import load_oil_market_data
 
 
 def _price_payload() -> bytes:

@@ -6,10 +6,7 @@ import math
 
 import pandas as pd
 
-from htfa.monitoring.uae.annual_comparison_contracts import (
-    COUNTRIES, GDP_LEVEL, GDP_GROWTH, SECTOR_INDICATORS, GDP_SHEET, GCC_NAME,
-    LEVEL_SUFFIX, GROWTH_SUFFIX, REPORT_UNITS,
-)
+from htfa.monitoring.uae.contracts.annual_comparison_contracts import COUNTRIES, GDP_LEVEL, GDP_GROWTH, SECTOR_INDICATORS, GDP_SHEET, GCC_NAME, LEVEL_SUFFIX, GROWTH_SUFFIX, REPORT_UNITS
 from . import db
 from .paths import DATA_DIR
 from ._official_download import download_file

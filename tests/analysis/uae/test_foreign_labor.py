@@ -6,16 +6,9 @@ import pandas as pd
 
 from tests.analysis.uae._helpers import report_source
 
-from htfa.monitoring.uae.foreign_labor import (
-    BANGLADESH_CLEARANCES,
-    BANGLADESH_LABEL,
-    FOREIGN_LABOR_SHEET,
-    NEPAL_APPROVALS,
-    NEPAL_LABEL,
-    build_foreign_labor_figure,
-    display_foreign_labor_values,
-    load_foreign_labor_data,
-)
+from htfa.monitoring.uae.contracts.foreign_labor import BANGLADESH_CLEARANCES, BANGLADESH_LABEL, FOREIGN_LABOR_SHEET, NEPAL_APPROVALS, NEPAL_LABEL
+from htfa.monitoring.uae.ui.foreign_labor import build_foreign_labor_figure
+from htfa.monitoring.uae.processing.foreign_labor import display_foreign_labor_values, load_foreign_labor_data
 from htfa.ui_shared.chart_legend import place_chart_legend_at_bottom
 
 

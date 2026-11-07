@@ -135,7 +135,7 @@ def test_merge_reads_database_values_and_provenance(tmp_path, monkeypatch):
     con.execute("UPDATE emsteel_monthly SET value=2222.125 WHERE period='2024-01-31'")
     con.close()
     connect = db.connect
-    monkeypatch.setattr(db, "connect", lambda **kwargs: connect(path, **kwargs))
+    monkeypatch.setattr(db, "connect", lambda _database=None, **kwargs: connect(path, **kwargs))
     book_path = tmp_path / "book.xlsx"
     book = Workbook()
     book.active.title = "指标字典"

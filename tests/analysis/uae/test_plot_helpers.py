@@ -4,10 +4,8 @@ from matplotlib.figure import Figure
 
 import pytest
 
-from htfa.monitoring.uae.plot_helpers import (
-    format_compact_y_axis,
-    source_note,
-)
+from htfa.monitoring.uae.ui.plot_helpers import format_compact_y_axis
+from htfa.monitoring.uae.processing.sources import source_note
 
 
 def test_compact_axis_converts_pre_scaled_dirham_units_once() -> None:

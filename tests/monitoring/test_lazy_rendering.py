@@ -30,7 +30,7 @@ class _TabsHost:
 
 
 def test_high_frequency_topics_render_all_sections_in_order(monkeypatch) -> None:
-    from htfa.monitoring.uae import report
+    from htfa.monitoring.uae.ui import report
 
     called: list[str] = []
 
@@ -88,7 +88,7 @@ def test_preview_renderer_only_renders_the_open_tab(monkeypatch) -> None:
 
 
 def test_uae_monitoring_only_renders_the_open_top_level_tab(monkeypatch) -> None:
-    from htfa.monitoring.uae import renderer
+    from htfa.monitoring.uae.ui import renderer
 
     class _MonitoringHost(_TabsHost):
         def spinner(self, _label):
@@ -104,7 +104,10 @@ def test_uae_monitoring_only_renders_the_open_top_level_tab(monkeypatch) -> None
             return None
 
     source = SimpleNamespace(name="uae.duckdb", published_at="2026-10-15")
-    host = _MonitoringHost(open_index=0)
+    host = _MonitoringHost(open_index=next(
+        index for index, (_, view) in enumerate(renderer.TAB_CONFIG)
+        if view == "growth_overview"
+    ))
     rendered: list[tuple[str, ...]] = []
     monkeypatch.setattr(renderer, "published_source", lambda: source)
     monkeypatch.setattr(renderer, "_latest_high_frequency_month", lambda *_args: None)
@@ -133,7 +136,7 @@ def test_uae_monitoring_only_renders_the_open_top_level_tab(monkeypatch) -> None
 
 
 def test_government_finance_loader_is_cached_by_database_snapshot(monkeypatch) -> None:
-    from htfa.monitoring.uae.government_finance import renderer
+    from htfa.monitoring.uae.ui.government_finance import renderer
 
     calls: list[str] = []
 
@@ -154,7 +157,7 @@ def test_government_finance_loader_is_cached_by_database_snapshot(monkeypatch) -
 
 
 def test_high_frequency_tab_never_reads_shared_workbook(monkeypatch) -> None:
-    from htfa.monitoring.uae import renderer
+    from htfa.monitoring.uae.ui import renderer
 
     class _MonitoringHost(_TabsHost):
         def spinner(self, _label):
@@ -169,7 +172,10 @@ def test_high_frequency_tab_never_reads_shared_workbook(monkeypatch) -> None:
         def caption(self, _message: str) -> None:
             return None
 
-    host = _MonitoringHost(open_index=2)
+    host = _MonitoringHost(open_index=next(
+        index for index, (_, view) in enumerate(renderer.TAB_CONFIG)
+        if view == "oil_fiscal"
+    ))
     monkeypatch.setattr(
         renderer, "published_source",
         lambda: SimpleNamespace(name="uae.duckdb", published_at="2026-10-15"),

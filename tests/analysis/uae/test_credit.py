@@ -6,31 +6,9 @@ import pandas as pd
 import pytest
 
 from tests.analysis.uae._helpers import data_lines, report_source
-from htfa.monitoring.uae.government_finance.credit import (
-    BUSINESS_INDUSTRIAL,
-    BUSINESS_INDUSTRIAL_DISPLAY,
-    FOREIGN_CURRENCIES,
-    FOREIGN_CURRENCIES_DISPLAY,
-    FOREIGN_LIABILITIES,
-    FOREIGN_LIABILITIES_DISPLAY,
-    FOREIGN_SERIES,
-    INDIVIDUAL,
-    INDIVIDUAL_DISPLAY,
-    NONRESIDENT_CORPORATE,
-    NONRESIDENT_CORPORATE_DISPLAY,
-    NONRESIDENT_GOVERNMENT,
-    NONRESIDENT_GOVERNMENT_DISPLAY,
-    NONRESIDENT_INDIVIDUALS,
-    NONRESIDENT_INDIVIDUALS_DISPLAY,
-    NONRESIDENT_DEPOSITS,
-    PRIVATE_CORPORATE,
-    PRIVATE_CORPORATE_DISPLAY,
-    PRIVATE_CREDIT_SERIES,
-    build_foreign_inflow_figure,
-    build_private_credit_yoy_figure,
-    load_foreign_inflow_data,
-    load_private_credit_data,
-)
+from htfa.monitoring.uae.contracts.government_finance.credit import BUSINESS_INDUSTRIAL, BUSINESS_INDUSTRIAL_DISPLAY, FOREIGN_CURRENCIES, FOREIGN_CURRENCIES_DISPLAY, FOREIGN_LIABILITIES, FOREIGN_LIABILITIES_DISPLAY, FOREIGN_SERIES, INDIVIDUAL, INDIVIDUAL_DISPLAY, NONRESIDENT_CORPORATE, NONRESIDENT_CORPORATE_DISPLAY, NONRESIDENT_GOVERNMENT, NONRESIDENT_GOVERNMENT_DISPLAY, NONRESIDENT_INDIVIDUALS, NONRESIDENT_INDIVIDUALS_DISPLAY, NONRESIDENT_DEPOSITS, PRIVATE_CORPORATE, PRIVATE_CORPORATE_DISPLAY, PRIVATE_CREDIT_SERIES
+from htfa.monitoring.uae.ui.government_finance.credit import build_foreign_inflow_figure, build_private_credit_yoy_figure
+from htfa.monitoring.uae.processing.government_finance.credit import load_foreign_inflow_data, load_private_credit_data
 
 
 def _workbook_bytes() -> bytes:

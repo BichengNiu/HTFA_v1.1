@@ -97,7 +97,7 @@ def render_monitoring_analysis_content(sub_module: str | None) -> None:
 
         render_industrial_analysis(st)
     elif sub_module == "阿联酋":
-        from htfa.monitoring.uae.renderer import render_uae_monitoring
+        from htfa.monitoring.uae.ui.renderer import render_uae_monitoring
 
         render_uae_monitoring(st)
     elif sub_module == "能源保供":

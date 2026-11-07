@@ -6,20 +6,8 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
-from htfa.monitoring.uae.metrics import (
-    change_in_points,
-    latest_calendar_yoy_and_pp,
-    latest_month_value,
-    month_and_year_delta_text,
-    month_over_month_change,
-    pct_delta_text,
-    points_delta_text,
-    format_scaled_value,
-    format_count_value,
-    format_currency_value,
-    render_metric_cards,
-    source_text_from_metadata,
-)
+from htfa.monitoring.uae.processing.metrics import change_in_points, latest_calendar_yoy_and_pp, latest_month_value, month_and_year_delta_text, month_over_month_change, pct_delta_text, points_delta_text, format_scaled_value, format_count_value, format_currency_value, source_text_from_metadata
+from htfa.monitoring.uae.ui.metrics import render_metric_cards
 
 
 def _series(values, index):

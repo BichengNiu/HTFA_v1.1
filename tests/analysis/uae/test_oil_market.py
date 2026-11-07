@@ -11,28 +11,13 @@ from matplotlib.text import Annotation
 
 from tests.analysis.uae._helpers import report_source
 
-from htfa.monitoring.uae.oil import renderer
-from htfa.monitoring.uae.periods import (
-    common_latest_month,
-    within_month_window,
-)
-from htfa.monitoring.uae.oil.charts import (
-    DUBAI_PRICE_LABEL,
-    build_oil_price_figure,
-    build_oil_production_figure,
-    build_oil_revenue_only_figure,
-    build_oil_rig_count_figure,
-)
-from htfa.monitoring.uae.oil.data import load_oil_market_data
-from htfa.monitoring.uae.oil.revenue import (
-    DAYS_COLUMN,
-    PRICE_BENCHMARK_COLUMN,
-    REVENUE_COLUMN,
-    YOY_COLUMN,
-    YTD_COLUMN,
-    YTD_YOY_COLUMN,
-    estimate_monthly_oil_revenue,
-)
+from htfa.monitoring.uae.ui.oil import renderer
+from htfa.monitoring.uae.processing.periods import common_latest_month, within_month_window
+from htfa.monitoring.uae.contracts.oil.charts import DUBAI_PRICE_LABEL
+from htfa.monitoring.uae.ui.oil.charts import build_oil_price_figure, build_oil_production_figure, build_oil_revenue_only_figure, build_oil_rig_count_figure
+from htfa.monitoring.uae.processing.oil.data import load_oil_market_data
+from htfa.monitoring.uae.contracts.oil.revenue import DAYS_COLUMN, PRICE_BENCHMARK_COLUMN, REVENUE_COLUMN, YOY_COLUMN, YTD_COLUMN, YTD_YOY_COLUMN
+from htfa.monitoring.uae.processing.oil.revenue import estimate_monthly_oil_revenue
 
 
 def test_oil_panel_requires_explicit_workbook_payload() -> None:

@@ -2,11 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from htfa.monitoring.uae.growth import (
-    calculate_growth_contributions,
-    calculate_industry_diagnostics,
-    validate_additivity,
-)
+from htfa.monitoring.uae.processing.growth import calculate_growth_contributions, calculate_industry_diagnostics, validate_additivity
 
 
 def quarterly(values, name):

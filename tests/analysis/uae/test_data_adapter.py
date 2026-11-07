@@ -1,6 +1,4 @@
-from htfa.monitoring.uae.indicator_catalog import (
-    INDICATOR_SPECS,
-)
+from htfa.monitoring.uae.contracts.indicator_catalog import INDICATOR_SPECS
 
 
 def test_catalog_maps_uploaded_oil_liquids_production_exactly():

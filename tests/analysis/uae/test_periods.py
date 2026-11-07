@@ -4,14 +4,7 @@ import pandas as pd
 import pytest
 
 from htfa.data.temporal import last_complete_month_end
-from htfa.monitoring.uae.periods import (
-    anchor_last_month,
-    common_latest_month,
-    latest_complete_month,
-    through_last_complete_month,
-    through_month,
-    within_month_window,
-)
+from htfa.monitoring.uae.processing.periods import anchor_last_month, common_latest_month, latest_complete_month, through_last_complete_month, through_month, within_month_window
 
 
 def test_partial_latest_daily_month_rolls_back_to_previous_month() -> None:

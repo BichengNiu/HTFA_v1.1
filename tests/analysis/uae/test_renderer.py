@@ -9,10 +9,8 @@ import pandas as pd
 
 from tests.analysis.uae._helpers import report_source
 
-from htfa.monitoring.uae.renderer import (
-    _latest_high_frequency_month,
-    _render_report_header,
-)
+from htfa.monitoring.uae.processing.report_dates import _latest_high_frequency_month
+from htfa.monitoring.uae.ui.renderer import _render_report_header
 
 
 def _high_frequency_workbook() -> bytes:
@@ -83,7 +81,7 @@ def test_report_header_places_organization_and_data_month_on_meta_line() -> None
 
 def test_macro_data_tab_has_four_charts_without_explanations():
     from streamlit.testing.v1 import AppTest
-    from htfa.monitoring.uae.renderer import GROWTH_OVERVIEW_GROUPS, GROWTH_INDUSTRY_GROUPS
+    from htfa.monitoring.uae.ui.renderer import GROWTH_OVERVIEW_GROUPS, GROWTH_INDUSTRY_GROUPS
 
     assert GROWTH_OVERVIEW_GROUPS == (
         "实际GDP增速与GDP平减指数同比",
@@ -94,7 +92,7 @@ def test_macro_data_tab_has_four_charts_without_explanations():
     assert "非油实际GDP行业拉动" not in GROWTH_INDUSTRY_GROUPS
     app = AppTest.from_string('''
 import streamlit as st
-from htfa.monitoring.uae.renderer import render_uae_monitoring
+from htfa.monitoring.uae.ui.renderer import render_uae_monitoring
 st.session_state["analysis.uae.active_tab"] = "宏观数据"
 render_uae_monitoring()
 ''').run(timeout=90)
@@ -109,13 +107,13 @@ render_uae_monitoring()
 
 def test_missing_configured_chart_is_not_silently_skipped():
     import pytest
-    from htfa.monitoring.uae.renderer import _ordered_series_groups
+    from htfa.monitoring.uae.ui.renderer import _ordered_series_groups
     with pytest.raises(KeyError, match="required chart"):
         _ordered_series_groups({}, ("required chart",))
 
 
 def test_growth_cache_rebuilds_old_result_for_current_schema(monkeypatch):
-    from htfa.monitoring.uae import renderer
+    from htfa.monitoring.uae.ui import renderer
 
     old_title = "GDP部门拉动与石油产量同比"
     current_title = "GDP部门拉动"
@@ -134,7 +132,7 @@ def test_growth_cache_rebuilds_old_result_for_current_schema(monkeypatch):
 
 
 def test_unavailable_macro_result_is_reported_without_rendering(monkeypatch):
-    from htfa.monitoring.uae import renderer
+    from htfa.monitoring.uae.ui import renderer
 
     host = MagicMock()
     tabs = [MagicMock() for _ in range(4)]

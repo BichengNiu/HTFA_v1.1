@@ -1,11 +1,7 @@
 import pandas as pd
 import pytest
 
-from htfa.monitoring.uae.contracts import (
-    DataProvenance,
-    ProvenanceKind,
-    UAEDataBundle,
-)
+from htfa.monitoring.uae.contracts.records import DataProvenance, ProvenanceKind, UAEDataBundle
 
 
 def _provenance(indicator_id, kind=ProvenanceKind.REAL):

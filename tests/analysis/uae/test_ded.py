@@ -8,14 +8,9 @@ import pytest
 
 from tests.analysis.uae._helpers import report_source
 
-from htfa.monitoring.uae.government_finance.ded import (
-    ENTERPRISES_DISPLAY,
-    ENTERPRISES_INDICATOR,
-    LICENCES_DISPLAY,
-    LICENCES_INDICATOR,
-    build_ded_figure,
-    load_ded_data,
-)
+from htfa.monitoring.uae.contracts.government_finance.ded import ENTERPRISES_DISPLAY, ENTERPRISES_INDICATOR, LICENCES_DISPLAY, LICENCES_INDICATOR
+from htfa.monitoring.uae.ui.government_finance.ded import build_ded_figure
+from htfa.monitoring.uae.processing.government_finance.ded import load_ded_data
 from Ts.TsPlots.style import GRAY
 
 

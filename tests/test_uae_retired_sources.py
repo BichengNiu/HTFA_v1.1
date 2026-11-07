@@ -46,7 +46,7 @@ def test_retirement_preserves_replacement_and_unrelated_data(tmp_path, monkeypat
         assert con.execute("SELECT value FROM emsteel_monthly").fetchone() == (123,)
         assert con.execute("SELECT indicator_name FROM meta_indicator_dictionary").fetchall() == [("新钢材",)]
     connect = db.connect
-    monkeypatch.setattr(db, "connect", lambda **kw: connect(database, **kw))
+    monkeypatch.setattr(db, "connect", lambda _database=None, **kw: connect(database, **kw))
     path = tmp_path / "data.xlsx"
     book = Workbook()
     book.active.title = "指标字典"
@@ -86,7 +86,7 @@ def test_retirement_removes_legacy_hotel_columns_without_removing_other_scad_dat
         db.init_schema(con)
         retire_database(con)
     connect = db.connect
-    monkeypatch.setattr(db, "connect", lambda **kw: connect(database, **kw))
+    monkeypatch.setattr(db, "connect", lambda _database=None, **kw: connect(database, **kw))
     path = tmp_path / "legacy.xlsx"
     book = Workbook()
     sheet = book.active
