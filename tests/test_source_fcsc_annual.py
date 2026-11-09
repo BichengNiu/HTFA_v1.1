@@ -10,13 +10,13 @@ import pytest
 from htfa.jobs.uae_data import db, source_fcsc_annual as source
 
 
-def _csv(dataset, *, years=(2010, 2011), frequency="A"):
+def _csv(dataset, *, years=(2010, 2011), frequency="A", country="826"):
     foreign = dataset.startswith("DF_FI")
     record = {
         "DATAFLOW": f"FCSA:{dataset}(1.0)", "REF_AREA": "AE", "FREQ": frequency,
         "UNIT_MEASURE": "AED" if foreign else "MILAED", "UNIT_MULT": "",
         "MEASURE": "FDI" if foreign else "CAPITAL", "EXPEND": "EXPEND4",
-        "COUNTRY": "826" if dataset == "DF_FI_COUNTRY" else "_T",
+        "COUNTRY": country if dataset == "DF_FI_COUNTRY" else "_T",
         "OBS_VALUE": "1000000000" if foreign else "1000", "TIME_PERIOD": "2010",
     }
     record["ECON_ACTIV" if foreign else "ISIC"] = "_T" if dataset == "DF_FI_COUNTRY" else "C"
@@ -35,17 +35,21 @@ def test_annual_parser_rejects_frequency_and_duplicate_dimensions():
         source.parse_csv(_csv("DF_NA_FIX_CUR", years=(2010, 2010)), "DF_NA_FIX_CUR")
 
 
-def test_update_normalizes_only_after_database_load_and_rejects_coverage_regression(tmp_path, monkeypatch):
+@pytest.mark.parametrize("country,country_label", [("826", "英国"), ("384", "Côte d'Ivoire")])
+def test_update_normalizes_only_after_database_load_and_rejects_coverage_regression(
+    tmp_path, monkeypatch, country, country_label,
+):
     monkeypatch.setattr(source, "DATA_DIR", tmp_path)
     raw = tmp_path / "raw" / "fcsc_annual"
     raw.mkdir(parents=True)
     for dataset in source.DATASETS:
-        (raw / f"{dataset}.csv").write_bytes(_csv(dataset))
+        (raw / f"{dataset}.csv").write_bytes(_csv(dataset, country=country))
     with duckdb.connect() as con:
         db.init_schema(con)
         assert source.update(con, skip_download=True)["rows"] == 10
         specs = source.sheet_specs(con)
         assert len(specs) == 5
+        assert specs[-1]["indicators"] == [f"{source.SHEETS[-1]}:{country_label}"]
         assert all(value == 1 for spec in specs for _, values in spec["rows"] for value in values.values())
         assert con.execute(f"SELECT value FROM {source.TABLE} WHERE dataset='DF_FI_TYPE' LIMIT 1").fetchone()[0] == 1e9
         (raw / "DF_NA_FIX_CUR.csv").write_bytes(_csv("DF_NA_FIX_CUR", years=(2011,)))

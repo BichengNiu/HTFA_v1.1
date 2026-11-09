@@ -78,7 +78,9 @@ def _indicator(sheet, label):
 
 def sheet_specs(con):
     """Build report sheets entirely from the authoritative observation table."""
-    countries = json.loads(Path(__file__).with_name("fcsc_country_labels.json").read_text())
+    countries = json.loads(
+        Path(__file__).with_name("fcsc_country_labels.json").read_text(encoding="utf-8")
+    )
     countries.update({"826": "英国", "356": "印度", "840": "美国", "756": "瑞士",
                       "682": "沙特阿拉伯", "250": "法国", "528": "荷兰", "999": "其他来源地"})
     series = {sheet: {} for sheet in SHEETS}
