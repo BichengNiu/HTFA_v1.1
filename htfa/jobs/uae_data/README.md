@@ -35,8 +35,9 @@ T-100 统一采用仓库内 `download_t100.py` 直接访问BTS官方表单，强
 官网“Latest Available Data”与实际美阿航段月份，便于识别源站滞后和下载漏月。
 2026-11-03 复核：官方表说明页、下载页及重新下载的2026年包都只到2026年7月。
 
-线上自动数据更新已取消，GitHub Actions 仅执行应用保活，见
-[streamlit-keepalive.md](../../../docs/streamlit-keepalive.md)。数据维护使用上述本地入口。
+每日云端数据更新已恢复，UAE 高频来源与能源保供统一在迪拜时间09:00运行；
+Linux 使用 OOXML 写表，无需 Windows Excel。范围、失败保护、凭据与运行记录见
+[daily-data-refresh.md](../../../docs/daily-data-refresh.md)。上述本地维护入口继续可用。
 
 PortWatch 从官方 ArcGIS Hub 在线目录读取字段和源版本，严格核对公开权限、
 发布者、图层及服务 URL；实际观测仍从原 FeatureServer 的行 ID 清单分批抓取，

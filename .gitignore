@@ -30,6 +30,8 @@ htmlcov/
 *~
 .ipynb_checkpoints/
 .cache/
+data/UAE/*.publication.lock
+data/UAE/daily-candidate-*/
 
 # UAE pipeline intermediate outputs
 /htfa/jobs/uae_data/backups/

@@ -210,6 +210,12 @@ def run_powershell_sheet_writer(
 ) -> None:
     """调用 PowerShell 写表助手并统一处理失败消息。"""
 
+    if os.name != "nt":
+        from .portable_sheet_writer import write_payload_sheet
+
+        write_payload_sheet(helper_path.name, workbook_path, payload_path, sheet_name)
+        return
+
     completed = run_powershell_command(
         _POWERSHELL_BASE
         + (

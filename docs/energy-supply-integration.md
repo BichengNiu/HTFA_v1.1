@@ -39,7 +39,8 @@ Streamlit、Matplotlib 或直接发送网络请求。维护作业继续由 `htfa
 维护作业通过显式候选库上下文写入；线程池传递该上下文。
 
 采集迁入 `htfa/jobs/energy_supply/`，由 `.github/workflows/energy-supply.yml`
-每日迪拜时间 08:00、13:00 及每小时第 17 分检查本窗口未成功来源。
+每日迪拜时间09:00，与UAE高频来源统一执行（2026-11-10起）；旧08:00、13:00及
+每小时补检已由本每日任务替换，详见 [daily-data-refresh.md](daily-data-refresh.md)。
 原仓库的计划触发已移除，手动发布 job 也已禁用（`b79b695`），HTFA 是唯一计划采集端。
 HTFA 保活与数据发布工作流共用 `htfa-main-writer` 并发组。
 

@@ -49,7 +49,7 @@ def publish_workbook(con, workbook_path: Path) -> dict:
     """Atomically publish all report series after workbook protocol validation.
 
     ``con`` is the writable pipeline connection. ``workbook_path`` is the
-    successfully merged local workbook; cloud processes never invoke this job.
+    successfully merged maintenance workbook; read-only web pages never invoke this job.
     A failed parse or insert rolls back the entire publication.
     """
     path = Path(workbook_path)

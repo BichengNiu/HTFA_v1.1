@@ -697,11 +697,41 @@ def _dictionary_rows() -> list[dict]:
     ]
 
 
+def load_database_daily_observations(con) -> list[dict]:
+    """Resume a cloud worker from published history when raw CSV is unavailable."""
+    cursor = con.execute("SELECT * FROM detail.wam_military_strike_daily ORDER BY date")
+    columns = [item[0] for item in cursor.description]
+    rows = [dict(zip(columns, values)) for values in cursor.fetchall()]
+    if not rows or rows[0]["date"] != START_DATE:
+        raise ValueError("WAM database history is empty or does not start at the required date")
+    previous = START_DATE.fromordinal(START_DATE.toordinal() - 1)
+    for row in rows:
+        if (row["date"] - previous).days != 1:
+            raise ValueError("WAM database history has a date gap or duplicate")
+        previous = row["date"]
+        counts = [row[key] for key in ("ballistic_missiles", "cruise_missiles", "uavs", "unclassified_missiles")]
+        if any(value is None or value < 0 or int(value) != value for value in counts):
+            raise ValueError("WAM database history contains invalid weapon counts")
+        pressure = row["strike_intensity_log"]
+        if not math.isfinite(pressure) or abs(pressure - weighted_pressure(*counts[:3])) > 5e-8:
+            raise ValueError("WAM database history contains inconsistent pressure")
+        if row["attack_any"] != (sum(counts) > 0):
+            raise ValueError("WAM database history contains inconsistent attack flag")
+        if row["attack_any"] and not any(row[key] for key in ("source_url", "source_url_2", "source_url_3")):
+            raise ValueError("WAM database attack history lacks source evidence")
+    return rows
+
+
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     """Refresh source archives when requested, then validate and load WAM data."""
 
     fetch_note = ""
-    base_daily = load_daily_observations()
+    database_baseline = False
+    try:
+        base_daily = load_daily_observations()
+    except FileNotFoundError:
+        base_daily = load_database_daily_observations(con)
+        database_baseline = True
     auto_rows: list[dict] = []
     if not skip_download:
         # Refresh official sitemaps on every online run. Reuse archived article
@@ -739,7 +769,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         )
     daily = (
         base_daily + auto_rows
-        if auto_rows
+        if auto_rows or database_baseline
         else load_effective_daily_observations()
     )
     monthly = build_monthly_observations(daily)
