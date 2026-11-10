@@ -1031,7 +1031,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     payment_selected = _payment_rows_selected(payment_rows, primary_start)
     rows = _long_rows(selected) + payment_selected
     with transaction(con):
-        db.replace(con, "cbuae_monthly", rows)
+        db.merge_observations(con, "cbuae_monthly", rows, ("period", "indicator"))
         db.upsert_dictionary_rows(con, _dictionary_rows())
 
     payment_periods = sorted({row["period"].strftime("%Y-%m") for row in payment_selected})

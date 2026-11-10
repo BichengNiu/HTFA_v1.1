@@ -358,6 +358,39 @@ def replace(con, table: str, rows: Iterable[dict[str, Any]]) -> int:
     return len(records)
 
 
+def merge_observations(con, table: str, rows: Iterable[dict[str, Any]], keys: tuple[str, ...]) -> int:
+    """Merge downloaded observations without deleting uncovered history.
+
+    An absent or null incoming value cannot erase an existing numeric value.
+    Other revisions replace the complete row, including its source provenance.
+    The caller owns the transaction.
+    """
+    records = [dict(row) for row in rows]
+    if not records:
+        raise ValueError(f"No observations to merge into {table}")
+    columns = list(records[0])
+    if not set(keys) <= set(columns) or "value" not in columns:
+        raise ValueError("Observation merge requires keys and a value column")
+    seen = set()
+    for row in records:
+        key = tuple(row[name] for name in keys)
+        if set(row) != set(columns) or key in seen or any(item is None for item in key):
+            raise ValueError("Inconsistent or duplicate observation keys")
+        seen.add(key)
+    quote = lambda name: '"' + name.replace('"', '""') + '"'
+    target = ".".join(quote(part) for part in table.split("."))
+    names = ",".join(map(quote, columns))
+    conflict = ",".join(map(quote, keys))
+    changes = ",".join(f"{quote(name)}=excluded.{quote(name)}" for name in columns if name not in keys)
+    con.executemany(
+        f"INSERT INTO {target} AS existing ({names}) VALUES ({','.join('?' for _ in columns)}) "
+        f"ON CONFLICT ({conflict}) DO UPDATE SET {changes} "
+        "WHERE excluded.value IS NOT NULL OR existing.value IS NULL",
+        [tuple(row[name] for name in columns) for row in records],
+    )
+    return len(records)
+
+
 def upsert_dictionary_rows(con, rows: Iterable[dict[str, Any]]) -> None:
     """Merge indicator dictionary rows keyed on ``indicator_name``."""
 

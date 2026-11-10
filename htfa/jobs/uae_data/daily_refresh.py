@@ -18,6 +18,7 @@ import traceback
 
 from .paths import DATA_DIR, DB_PATH, WORKBOOK_PATH
 from .source_registry import SOURCES
+from .history_validation import validate_history
 
 # The quarterly/annual jobs remain manual. Energy has its own live collector;
 # source_energy_supply.update alone only rebuilds existing facts.
@@ -114,6 +115,13 @@ def refresh(results_dir, *, sources=HIGH_FREQUENCY_SOURCES, collect_energy=True)
             copy_pair(candidate, checkpoint)
             print(f"[daily] {name}: started", flush=True)
             outcome = run_worker(name, candidate, results_dir)
+            if outcome.get("status") != "error":
+                try:
+                    outcome["history_validation"] = validate_history(
+                        checkpoint / DB_PATH.name, candidate / DB_PATH.name,
+                    )
+                except Exception as exc:
+                    outcome = {"status": "error", "error": str(exc), "collection": outcome}
             summary["sources"][name] = outcome
             if outcome.get("status") == "error":
                 # A killed DuckDB writer can leave a WAL for the rejected
@@ -126,11 +134,18 @@ def refresh(results_dir, *, sources=HIGH_FREQUENCY_SOURCES, collect_energy=True)
                 print(f"[daily] {name}: {outcome.get('status', 'ok')}", flush=True)
         if successful:
             final = run_worker("finalize", candidate, results_dir)
+            if final.get("status") != "error":
+                try:
+                    final["history_validation"] = validate_history(
+                        DB_PATH, candidate / DB_PATH.name, include_report=True,
+                    )
+                    validate_progress(inspect(DB_PATH), inspect(candidate / DB_PATH.name))
+                except Exception as exc:
+                    final = {"status": "error", "error": str(exc)}
             summary["publication"] = final
             if final.get("status") == "error":
                 summary["status"] = "error"
             else:
-                validate_progress(inspect(DB_PATH), inspect(candidate / DB_PATH.name))
                 install_pair(candidate / DB_PATH.name, candidate / WORKBOOK_PATH.name, DB_PATH, WORKBOOK_PATH)
                 summary["status"] = "partial" if any(
                     result.get("status") == "error" or any(

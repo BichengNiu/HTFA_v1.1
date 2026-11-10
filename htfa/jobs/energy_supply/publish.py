@@ -17,6 +17,7 @@ import tempfile
 from htfa.jobs.uae_data import db, source_energy_supply
 from htfa.jobs.uae_data.paths import DB_PATH, WORKBOOK_PATH
 from htfa.jobs.uae_data.publish_report import publish_workbook
+from htfa.jobs.uae_data.history_validation import validate_history
 from htfa.jobs.uae_data.uae_metadata import complete_metadata, sync_workbook_dictionary
 from .snapshot_retry import decision
 from .snapshot_update import collect_candidate, inspect, validate_progress
@@ -102,6 +103,7 @@ def run(*, publish=False, retry_only=True, prepare_only=False,
             with db.connect(candidate) as con:
                 summary["report"] = publish_workbook(con, candidate_workbook)
             validate_progress(before, inspect(candidate))
+            summary["history_validation"] = validate_history(database, candidate, include_report=True)
             if publish:
                 install_pair(candidate, candidate_workbook, database, workbook)
             summary["installed"] = publish

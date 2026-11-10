@@ -109,6 +109,7 @@ def test_daily_failed_source_rolls_back_pair_and_finalization_is_atomic(tmp_path
     monkeypatch.setattr(publish, "publication_lock", lambda path: nullcontext())
     monkeypatch.setattr(snapshot_update, "inspect", lambda path: {})
     monkeypatch.setattr(snapshot_update, "validate_progress", lambda before, after: None)
+    monkeypatch.setattr(daily_refresh, "validate_history", lambda *args, **kwargs: {"status": "ok"})
     def run(name, directory, results_dir):
         if name == "first":
             (directory / database.name).write_bytes(b"good-db")

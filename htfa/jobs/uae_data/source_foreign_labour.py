@@ -499,6 +499,11 @@ def parse_philippines() -> dict[str, dict[str, Any]]:
         lambda: {"total": 0, "new_hires": 0, "rehires": 0}
     )
     for (year, month), values in sorted(ytd.items()):
+        if month > 1 and (year, month - 1) not in ytd:
+            raise RuntimeError(
+                f"Missing preceding DMW YTD at {year}-{month - 1:02d}; "
+                "cannot treat a multi-month difference as one monthly observation"
+            )
         previous = previous_by_year[year]
         deltas = {key: values[key] - previous[key] for key in values}
         if any(value < 0 for value in deltas.values()):
@@ -712,7 +717,8 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     rows = build_rows()
     long_rows = _rows_to_long(rows)
     with transaction(con):
-        db.replace(con, "foreign_labour_monthly", long_rows)
+        db.merge_observations(con, "foreign_labour_monthly", long_rows, ("period", "series"))
+        validate(_rows_from_db(con), None)
     note = f"{len(long_rows)} 条序列观测（{rows[-1]['date']} 至 {rows[0]['date']}）"
     return {"status": "ok", "rows": len(long_rows), "note": note}
 
