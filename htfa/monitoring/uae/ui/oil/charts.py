@@ -3,7 +3,11 @@ from collections.abc import Mapping
 from matplotlib.figure import Figure
 import pandas as pd
 from Ts.TsPlots import plot_series
-from htfa.monitoring.uae.processing.periods import common_latest_month, through_month
+from htfa.monitoring.uae.processing.periods import (
+    common_latest_month,
+    through_last_complete_month,
+    through_month,
+)
 from htfa.monitoring.uae.contracts.oil.revenue import PRICE_COLUMN, REVENUE_COLUMN
 from htfa.monitoring.uae.contracts.oil.war_pressure import PRESSURE_LABEL, RAW_LABELS
 from htfa.monitoring.uae.ui.plot_helpers import (
@@ -237,8 +241,9 @@ def build_oil_price_figure(
         .dropna(how="all")
         .sort_index()
     )
-    last_month = common_latest_month([(label, frame[label]) for label in frame.columns])
-    frame = through_month(frame, last_month)
+    frame = through_last_complete_month(frame)
+    if any(frame[column].dropna().empty for column in frame.columns):
+        raise ValueError("Brent 与 Dubai 原油价格均需包含完整月份的有效观测")
     figure, returned_axis = plot_series(
         frame,
         facet=False,

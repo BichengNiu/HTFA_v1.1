@@ -225,6 +225,11 @@ def _render_charts(st_obj: Any, data: OilMarketData, revenue: pd.DataFrame) -> N
     dubai_price = _monthly_mean_series(data.prices[DUBAI_PRICE_INDICATOR[0]]).rename(
         DUBAI_PRICE_LABEL
     )
+    brent_price = _monthly_mean_series(data.prices[REVENUE_PRICE_BENCHMARK]).rename(
+        PRICE_COLUMN
+    )
+    if brent_price.empty:
+        raise ValueError("Brent 原油月均价格没有完整有效观测")
     if dubai_price.empty:
         raise ValueError("Dubai 原油月均价格没有完整有效观测")
     price_source_text = "、".join(dict.fromkeys((price_source, dubai_metadata.source)))
@@ -240,16 +245,22 @@ def _render_charts(st_obj: Any, data: OilMarketData, revenue: pd.DataFrame) -> N
         data.rig_count, first_month=rig_last_month - 36, last_month=rig_last_month
     ).rename(MARKET_RIG_COUNT_LABEL)
     revenue_last_month = common_latest_month(
-        [(REVENUE_COLUMN, revenue[REVENUE_COLUMN]), (DUBAI_PRICE_LABEL, dubai_price)]
+        [(REVENUE_COLUMN, revenue[REVENUE_COLUMN])]
     )
     revenue_window = within_month_window(
         revenue, first_month=revenue_last_month - 36, last_month=revenue_last_month
     )
+    price_last_month = max(brent_price.index.max(), dubai_price.index.max()).to_period("M")
+    price_window = within_month_window(
+        brent_price.to_frame(),
+        first_month=price_last_month - 36,
+        last_month=price_last_month,
+    )
     dubai_window = within_month_window(
-        dubai_price, first_month=revenue_last_month - 36, last_month=revenue_last_month
+        dubai_price, first_month=price_last_month - 36, last_month=price_last_month
     )
     price_download = (
-        revenue_window[[PRICE_COLUMN]]
+        price_window[[PRICE_COLUMN]]
         .rename(columns={PRICE_COLUMN: REVENUE_PRICE_LABEL})
         .join(dubai_window, how="outer")
         .sort_index()
@@ -303,7 +314,7 @@ def _render_charts(st_obj: Any, data: OilMarketData, revenue: pd.DataFrame) -> N
         render_pyplot_figure(
             st_obj,
             build_oil_price_figure(
-                revenue_window, price_source_text, dubai_price=dubai_window
+                price_window, price_source_text, dubai_price=dubai_window
             ),
             bbox_inches=None,
             place_legend_bottom=False,

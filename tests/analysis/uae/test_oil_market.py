@@ -330,6 +330,85 @@ def test_render_charts_uses_requested_two_by_two_rows(monkeypatch) -> None:
     ]
 
 
+def test_oil_price_figure_preserves_each_series_latest_observation():
+    from matplotlib import pyplot as plt
+
+    dates = pd.to_datetime(["2026-08-31", "2026-09-30", "2026-10-31"])
+    prices = pd.DataFrame({"月均油价": [90.0, 100.0, 110.0]}, index=dates)
+    dubai = pd.Series([85.0, 95.0], index=dates[:2])
+    figure = build_oil_price_figure(prices, "EIA / IMF", dubai)
+    try:
+        brent, dubai_line = figure.axes[0].get_lines()
+        assert pd.Timestamp(brent.get_xdata()[-1]) == dates[-1]
+        assert brent.get_ydata()[-1] == 110.0
+        valid = pd.notna(dubai_line.get_ydata())
+        assert pd.Timestamp(dubai_line.get_xdata()[valid][-1]) == dates[1]
+        assert pd.isna(dubai_line.get_ydata()[-1])
+    finally:
+        plt.close(figure)
+
+
+def test_oil_price_figure_requires_complete_observations_for_both_prices():
+    month = pd.Timestamp.today().to_period("M")
+    dates = pd.DatetimeIndex([(month - 1).end_time.normalize(), month.start_time])
+    prices = pd.DataFrame({"月均油价": [90.0, 100.0]}, index=dates)
+    dubai = pd.Series([95.0], index=dates[-1:])
+    with pytest.raises(ValueError, match="完整月份"):
+        build_oil_price_figure(prices, "EIA / IMF", dubai)
+
+
+@pytest.mark.parametrize("production_months", [1, 2])
+def test_price_and_revenue_downloads_use_independent_observation_windows(
+    monkeypatch, production_months,
+):
+    from dataclasses import replace
+
+    data = load_oil_market_data(report_source(_workbook_bytes()))
+    prices = pd.DataFrame({
+        "布伦特现货": pd.Series(
+            [90.0, 100.0, 110.0, 200.0],
+            index=pd.to_datetime([
+                "2026-09-30", "2026-10-01", "2026-10-30",
+                pd.Timestamp.today().normalize(),
+            ]),
+        ),
+        "迪拜现货": pd.Series([88.0], index=pd.to_datetime(["2026-09-30"])),
+    })
+    production = pd.Series(
+        [3_000_000.0, 3_100_000.0][:production_months],
+        index=pd.to_datetime(["2026-09-30", "2026-10-31"])[:production_months],
+        name=data.production.name,
+    )
+    data = replace(data, prices=prices, production=production)
+    revenue = estimate_monthly_oil_revenue(prices, production)
+    builders = {}
+    for name in (
+        "build_oil_production_figure", "build_oil_rig_count_figure",
+        "build_oil_price_figure", "build_oil_revenue_only_figure",
+    ):
+        builders[name] = MagicMock()
+        monkeypatch.setattr(renderer, name, builders[name])
+    monkeypatch.setattr(renderer, "render_pyplot_figure", lambda *args, **kwargs: None)
+    downloads = MagicMock()
+    monkeypatch.setattr(renderer, "render_chart_download", downloads)
+    st_obj = MagicMock()
+    st_obj.columns.side_effect = lambda *args, **kwargs: [MagicMock(), MagicMock()]
+
+    renderer._render_charts(st_obj, data, revenue)
+
+    price_frame = builders["build_oil_price_figure"].call_args.args[0]
+    assert price_frame.index.max() == pd.Timestamp("2026-10-31")
+    assert price_frame["月均油价"].iloc[-1] == 105.0
+    rendered_revenue = builders["build_oil_revenue_only_figure"].call_args.args[0]
+    assert rendered_revenue.index.max() == production.index.max()
+    price_download = next(
+        entry.args[1] for entry in downloads.call_args_list
+        if entry.kwargs["title"] == "石油价格"
+    )
+    assert price_download.index.max() == pd.Timestamp("2026-10-31")
+    assert pd.isna(price_download.loc["2026-10-31", DUBAI_PRICE_LABEL])
+
+
 def test_monthly_revenue_calculates_yoy_and_ytd() -> None:
     dates = pd.date_range("2024-01-31", periods=13, freq="ME")
     prices = pd.DataFrame(
