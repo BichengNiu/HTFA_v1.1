@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pandas as pd
 import streamlit as st
 
 import htfa.monitoring.energy_supply.processing.pipeline_catalog as pipeline_catalog
@@ -155,6 +156,20 @@ def render_map_panel(
         ),
         height=735,
     )
+    if show_assets:
+        unlocated = [
+            row
+            for asset in state.map_assets
+            if not asset.get("map_drawable")
+            for row in asset.get("production_rows", [])
+        ]
+        if unlocated:
+            st.dataframe(
+                pd.DataFrame(unlocated),
+                hide_index=True,
+                width="stretch",
+                column_config={"数据来源": st.column_config.LinkColumn("数据来源")},
+            )
     with st.container(horizontal=True, key=energy_key("map_refresh_actions")):
         st.button(
             "保存图片", type="primary", width="content", on_click=queue_map_screenshot
