@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-from htfa.app.state.session_state import NamespacedStateManager
-from htfa.models.univariate.common.state import ModelStateLifecycle
+from htfa.ui_shared.session_state import NamespacedStateManager
+from htfa.models.univariate.common.processing.state import ModelStateLifecycle
 
 
 _COMMON_WIDGET_SUFFIXES = (

@@ -7,9 +7,27 @@ import pytest
 
 from tests.analysis.uae._helpers import report_source
 
-from htfa.monitoring.uae.contracts.government_finance.payments import PAYMENT_SHEET, PAYMENT_LABELS, CHEQUES_AMOUNT, CHEQUES_AMOUNT_DISPLAY, CHEQUES_NUMBER, CHEQUES_NUMBER_DISPLAY, CUSTOMER_TRANSFERS_AMOUNT, CUSTOMER_TRANSFERS_AMOUNT_DISPLAY, CUSTOMER_TRANSFERS_NUMBER, CUSTOMER_TRANSFERS_NUMBER_DISPLAY
-from htfa.monitoring.uae.processing.government_finance.payments import payment_display_values, cumulative_to_monthly, load_payment_data
-from htfa.monitoring.uae.ui.government_finance.payments import build_cheques_figure, build_customer_transfers_figure
+from htfa.monitoring.uae.contracts.government_finance.payments import (
+    PAYMENT_SHEET,
+    PAYMENT_LABELS,
+    CHEQUES_AMOUNT,
+    CHEQUES_AMOUNT_DISPLAY,
+    CHEQUES_NUMBER,
+    CHEQUES_NUMBER_DISPLAY,
+    CUSTOMER_TRANSFERS_AMOUNT,
+    CUSTOMER_TRANSFERS_AMOUNT_DISPLAY,
+    CUSTOMER_TRANSFERS_NUMBER,
+    CUSTOMER_TRANSFERS_NUMBER_DISPLAY,
+)
+from htfa.monitoring.uae.processing.government_finance.payments import (
+    payment_display_values,
+    cumulative_to_monthly,
+    load_payment_data,
+)
+from htfa.monitoring.uae.ui.government_finance.payments import (
+    build_cheques_figure,
+    build_customer_transfers_figure,
+)
 
 
 def _workbook_bytes(
@@ -139,7 +157,7 @@ def test_payment_loader_rejects_missing_indicator() -> None:
 def test_payment_loader_rejects_invalid_numeric_value() -> None:
     with pytest.raises(ValueError, match="不是数值"):
         from htfa.data.economic_workbook.tables import TableWorkbook
-        from htfa.data.economic_workbook.shared.target_reader import parse_target_sheet
+        from htfa.data.economic_workbook.target_reader import parse_target_sheet
         from htfa.monitoring.uae.contracts.government_finance.payments import PAYMENT_INDICATORS
 
         with pd.ExcelFile(BytesIO(_workbook_bytes(invalid_amount=True))) as book:

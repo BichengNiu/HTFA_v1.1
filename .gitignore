@@ -100,3 +100,7 @@ data/nul
 /build/
 /runtime/
 /wheelhouse/
+
+# Local reference binaries; only their documentation is versioned.
+/references/*
+!/references/README.md

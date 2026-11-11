@@ -20,8 +20,8 @@ from htfa.app.state.shared_dataset import (
     get_shared_dataset_fingerprint,
     get_shared_dataset_sheet,
 )
-from htfa.app.state.session_state import NamespacedStateManager
-from htfa.exploration.analysis.stationarity import (
+from htfa.ui_shared.session_state import NamespacedStateManager
+from htfa.exploration.processing.analysis.stationarity import (
     prepare_selected_series,
     resolve_correlation_lags,
     transform_series,

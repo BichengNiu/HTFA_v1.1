@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from htfa.data.file_content import file_fingerprint, read_file_bytes
-from htfa.exploration.core.data_source import (
+from htfa.exploration.processing.data_source import (
     ExploreDataset,
     load_explore_dataset,
 )

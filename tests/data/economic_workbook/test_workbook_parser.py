@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 from openpyxl import Workbook, load_workbook
 
-from htfa.data.economic_workbook.core.workbook_parser import parse_economic_workbook
+from htfa.data.economic_workbook.parser import parse_economic_workbook
 
 
 def _build_workbook(
@@ -234,3 +234,15 @@ def test_parse_workbook_converts_zero_values_to_missing():
 
     assert pd.isna(series.iloc[0])
     assert series.iloc[1] == 11.0
+
+
+def test_preview_workflow_keeps_values_and_dictionary_industries():
+    from htfa.processing.economic_workbook.preview import EconomicPreviewWorkflow
+
+    payload = EconomicPreviewWorkflow("test", "preview.test").load(_build_workbook())
+
+    assert payload["daily_df"].iloc[:, 0].tolist() == [10.0, 11.0]
+    assert payload["monthly_df"].iloc[:, 0].tolist() == [20.0]
+    assert payload["daily_industries"] == ["金融"]
+    assert payload["monthly_industries"] == ["能源"]
+    assert payload["clean_industry_map"]["金融"] == [payload["source_map"]["指标A"]]

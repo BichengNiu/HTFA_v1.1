@@ -126,7 +126,7 @@ def table_source(source):
 
 def read_report_tables(source):
     """Read and validate the report tables for date selection."""
-    from htfa.data.economic_workbook.shared.target_reader import validate_sheet
+    from htfa.data.economic_workbook.target_reader import validate_sheet
 
     result = {}
     with open_published_tables(source) as tables:

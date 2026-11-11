@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from htfa.models.univariate.common.model_library import (
+from htfa.models.univariate.common.processing.model_library import (
     ModelContext,
     ModelLibrary,
     ModelRecord,

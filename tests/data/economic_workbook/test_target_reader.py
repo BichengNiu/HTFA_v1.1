@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-from htfa.data.economic_workbook.shared.target_reader import parse_target_sheet
+from htfa.data.economic_workbook.target_reader import parse_target_sheet
 from htfa.data.economic_workbook.tables import TableWorkbook
 
 

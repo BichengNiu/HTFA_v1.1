@@ -3,7 +3,7 @@ from io import BytesIO
 import pandas as pd
 from openpyxl import load_workbook
 
-from htfa.data.economic_workbook.core.summary_export import build_summary_workbook
+from htfa.processing.economic_workbook.exports import build_summary_workbook
 
 
 def test_summary_workbook_contains_calculation_note_sheet():

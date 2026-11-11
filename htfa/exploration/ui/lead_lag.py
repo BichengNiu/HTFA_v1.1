@@ -20,13 +20,13 @@ matplotlib.rcParams["font.family"] = _MATPLOTLIB_FONT_FAMILY
 matplotlib.rcParams["font.sans-serif"] = _MATPLOTLIB_FONT_FAMILY
 matplotlib.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
 
-from htfa.exploration.analysis.lead_lag import (
+from htfa.exploration.processing.analysis.lead_lag import (
     perform_combined_lead_lag_analysis,
 )
-from htfa.exploration.preprocessing.frequency_alignment import (
+from htfa.exploration.processing.preprocessing.frequency_alignment import (
     align_series_for_analysis,
 )
-from htfa.exploration.preprocessing.standardization import standardize_series
+from htfa.exploration.processing.preprocessing.standardization import standardize_series
 from htfa.exploration.ui.base import TimeSeriesAnalysisComponent
 from htfa.exploration.ui.multivariate_state import (
     build_lead_lag_result_signature,

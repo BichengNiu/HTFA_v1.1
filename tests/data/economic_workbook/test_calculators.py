@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from htfa.data.economic_workbook.shared.calculators import _calculate_reference_values
+from htfa.processing.economic_workbook.calculators import _calculate_reference_values
 
 
 def test_yearly_reference_values_do_not_borrow_from_older_years():

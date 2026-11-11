@@ -8,26 +8,28 @@ import pandas as pd
 
 from htfa.ui_shared.chart_legend import render_pyplot_figure
 from htfa.data.tabular import numeric_variable_names
-from htfa.exploration.analysis.stationarity import (
+from htfa.exploration.processing.analysis.stationarity import (
     TABLE_FREQUENCIES,
     TEST_LABELS,
     TEST_TREND_LABELS,
     TEST_TREND_OPTIONS,
     TRANSFORMATIONS,
-    create_time_series_figure,
-    matplotlib_date_compatibility,
     normalize_frequency,
     prepare_selected_series,
     resolve_year_over_year_lag,
     run_selected_stationarity_tests,
     transform_series,
 )
-from htfa.exploration.core.data_source import (
+from htfa.exploration.ui.stationarity_charts import (
+    create_time_series_figure,
+    matplotlib_date_compatibility,
+)
+from htfa.exploration.processing.data_source import (
     FREQUENCY_LABELS,
     ExploreDataset,
     format_table_option,
 )
-from htfa.exploration.preprocessing.frequency_alignment import (
+from htfa.exploration.processing.preprocessing.frequency_alignment import (
     infer_series_frequency,
 )
 from htfa.exploration.ui.base import TimeSeriesAnalysisComponent

@@ -13,8 +13,8 @@ from htfa.app.state.shared_dataset import (
     get_shared_dataset_file,
 )
 from htfa.workspace import SessionWorkspace
-from htfa.exploration.core.data_source import ExploreDataset, format_table_option
-from htfa.exploration.core.series_utils import clean_dataframe_columns
+from htfa.exploration.processing.data_source import ExploreDataset, format_table_option
+from htfa.exploration.processing.series_utils import clean_dataframe_columns
 from htfa.exploration.ui.dataset_context import get_explore_dataset
 from htfa.exploration.ui.dtw import DTWAnalysisComponent
 from htfa.exploration.ui.lead_lag import LeadLagAnalysisComponent

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from htfa.models.univariate.common.state import StateStore
+from htfa.models.univariate.common.processing.state import StateStore
 from htfa.models.univariate.sarimax.ui.state import SARIMAX_SCOPE
 
 from htfa.models.univariate.sarimax.ui.model_options_ardl import render_ardl_options

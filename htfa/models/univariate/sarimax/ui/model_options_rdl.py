@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from htfa.models.univariate.sarimax.core.rdl_config import (
+from htfa.models.univariate.sarimax.contracts.rdl_config import (
     RDLConfig,
     RDLInputConfig,
     RDLInterventionConfig,
@@ -18,7 +18,7 @@ from htfa.models.univariate.sarimax.ui.model_options_sarimax import (
     render_sarimax_error_options,
 )
 from htfa.models.univariate.sarimax.ui.state import SARIMAX_SCOPE
-from htfa.models.univariate.common.state import StateStore
+from htfa.models.univariate.common.processing.state import StateStore
 
 
 def render_rdl_options(

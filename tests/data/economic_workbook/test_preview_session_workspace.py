@@ -3,7 +3,7 @@ from __future__ import annotations
 from io import BytesIO
 
 from htfa.workspace import SessionWorkspace
-from htfa.data.economic_workbook.modules import create_economic_workbook_renderer
+from htfa.ui_shared.economic_workbook.registry import create_economic_workbook_renderer
 
 
 def _upload(content: bytes, name: str) -> BytesIO:

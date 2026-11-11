@@ -74,7 +74,7 @@ def test_forecast_planning_module_has_no_ui_or_ts_dependency():
     """预测规划保持为可独立测试的纯 core 模块。"""
     import ast
 
-    from htfa.models.univariate.sarimax.core import forecast_planning
+    from htfa.models.univariate.sarimax.processing import forecast_planning
 
     tree = ast.parse(Path(forecast_planning.__file__).read_text(encoding="utf-8"))
     imported_modules = {
@@ -114,7 +114,7 @@ def test_downstream_result_publication_is_not_owned_by_page_sections():
 def test_model_family_implementations_are_split_from_facades():
     """模型族拟合和参数控件必须由各自 module 承担。"""
     core_modeling = (
-        PROJECT_ROOT / "htfa/models/univariate/sarimax/core/modeling.py"
+        PROJECT_ROOT / "htfa/models/univariate/sarimax/processing/modeling.py"
     ).read_text(encoding="utf-8")
     options_facade = (
         PROJECT_ROOT / "htfa/models/univariate/sarimax/ui/model_options.py"
@@ -136,7 +136,7 @@ def test_model_family_implementations_are_split_from_facades():
         "model_options_ardl.py",
     ):
         assert (PROJECT_ROOT / "htfa/models/univariate/sarimax" / (
-            "core" if module.endswith("modeling.py") else "ui"
+            "processing" if module.endswith("modeling.py") else "ui"
         ) / module).exists()
 
 

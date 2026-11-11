@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-from htfa.monitoring.industrial.utils.contribution_calculator import (
+from htfa.monitoring.industrial.processing.contribution_calculator import (
     calculate_group_contributions,
 )
 

@@ -13,8 +13,8 @@ import plotly.graph_objects as go
 
 from htfa.ui_shared.chart_legend import place_chart_legend_at_bottom
 from htfa.ui_shared.fonts import plotly_font_family
-from htfa.exploration.analysis.dtw_batch import perform_batch_dtw_calculation
-from htfa.exploration.core.series_utils import fingerprint_dataframe
+from htfa.exploration.processing.analysis.dtw_batch import perform_batch_dtw_calculation
+from htfa.exploration.processing.series_utils import fingerprint_dataframe
 from htfa.exploration.ui.base import TimeSeriesAnalysisComponent
 from htfa.exploration.ui.multivariate_state import (
     build_dtw_backend_options,

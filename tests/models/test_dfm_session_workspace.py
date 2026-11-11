@@ -5,7 +5,7 @@ from io import BytesIO
 import pandas as pd
 
 from htfa.workspace import SessionWorkspace
-from htfa.models.dfm.train.ui.components.file_uploader_component import (
+from htfa.models.dfm.ui.train.components.file_uploader_component import (
     FileUploaderComponent,
 )
 

@@ -40,7 +40,7 @@ def test_only_fixed_weights_and_versioned_uae_data_use_streamlit_process_cache()
             cached[path.relative_to(PROJECT_ROOT).as_posix()] = functions
 
     assert cached == {
-        "htfa/monitoring/industrial/utils/data_cache.py": {
+        "htfa/monitoring/industrial/ui/data_cache.py": {
             "load_weights_data"
         },
         "htfa/monitoring/uae/ui/renderer.py": {

@@ -15,7 +15,7 @@ from Ts.TsPlots import plot_series
 from htfa.ui_shared.chart_legend import render_pyplot_figure
 from htfa.ui_shared.matplotlib_compat import matplotlib_date_compatibility
 from htfa.models.univariate.common.contracts import ForecastResult
-from htfa.models.univariate.sarimax.core.forecast_planning import normalise_model_dates
+from htfa.models.univariate.sarimax.processing.forecast_planning import normalise_model_dates
 
 logger = logging.getLogger(__name__)
 

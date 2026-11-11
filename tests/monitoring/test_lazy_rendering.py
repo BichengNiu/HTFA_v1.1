@@ -62,7 +62,7 @@ def test_high_frequency_topics_render_all_sections_in_order(monkeypatch) -> None
 def test_preview_renderer_only_renders_the_open_tab(monkeypatch) -> None:
     import streamlit as st
 
-    from htfa.data.economic_workbook.shared.renderer import EconomicWorkbookRenderer
+    from htfa.ui_shared.economic_workbook.renderer import EconomicWorkbookRenderer
 
     class _Reader:
         def get_state_namespace(self) -> str:

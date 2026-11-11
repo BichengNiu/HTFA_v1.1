@@ -1,7 +1,7 @@
 """应用会话状态与共享数据集适配器。"""
 
 from . import shared_dataset
-from .session_state import (
+from htfa.ui_shared.session_state import (
     NamespacedStateManager,
     clear_economic_workbook_state,
     clear_state_by_prefix,

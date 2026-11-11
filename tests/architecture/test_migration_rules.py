@@ -146,14 +146,14 @@ def test_domain_core_imports_do_not_preload_streamlit() -> None:
         "data": {
             "htfa.data.file_content",
             "htfa.data.tabular",
-            "htfa.data.economic_workbook.core.workbook_parser",
+            "htfa.data.economic_workbook.parser",
         },
         "monitoring": {
             "htfa.monitoring.uae.contracts.records",
             "htfa.monitoring.uae.processing.services",
-            "htfa.monitoring.industrial.utils.data_loader",
+            "htfa.monitoring.industrial.processing.data_input",
         },
-        "exploration": {"htfa.exploration.analysis.stationarity"},
+        "exploration": {"htfa.exploration.processing.analysis.stationarity"},
         "models/univariate": {"htfa.models.univariate.common.contracts"},
         "models/dfm": set(),
     }
@@ -230,8 +230,8 @@ def _is_core_source_file(source_file, parts: list[str]) -> bool:
 
 
 def test_industrial_data_loader_is_pure_and_cache_adapter_is_explicit() -> None:
-    loader = PROJECT_ROOT / "htfa/monitoring/industrial/utils/data_loader.py"
-    cache_adapter = PROJECT_ROOT / "htfa/monitoring/industrial/utils/data_cache.py"
+    loader = PROJECT_ROOT / "htfa/monitoring/industrial/processing/data_input.py"
+    cache_adapter = PROJECT_ROOT / "htfa/monitoring/industrial/ui/data_cache.py"
 
     loader_source = loader.read_text(encoding="utf-8")
     cache_source = cache_adapter.read_text(encoding="utf-8")

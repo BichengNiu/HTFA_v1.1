@@ -5,10 +5,10 @@ from __future__ import annotations
 import pandas as pd
 
 from htfa.data.tabular import numeric_variable_names
-from htfa.exploration.analysis.stationarity import (
+from htfa.exploration.processing.analysis.stationarity import (
     prepare_selected_series,
 )
-from htfa.exploration.analysis.structural_break import (
+from htfa.exploration.processing.analysis.structural_break import (
     STRUCTURAL_BREAK_LAG_METHODS,
     STRUCTURAL_BREAK_MODELS,
     run_zivot_andrews_test,

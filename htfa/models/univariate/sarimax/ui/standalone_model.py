@@ -12,7 +12,7 @@ import pandas as pd
 import streamlit as st
 
 from htfa.workspace import DatasetSnapshot, HandoffStore
-from htfa.models.univariate.common.model_library import (
+from htfa.models.univariate.common.processing.model_library import (
     MODEL_LIBRARY_TOKEN_KEY,
     model_library_store,
 )

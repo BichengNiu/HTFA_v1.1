@@ -1,6 +1,6 @@
 import pandas as pd
 
-from htfa.data.economic_workbook.shared.plotting import plot_indicator
+from htfa.ui_shared.economic_workbook.plotting import plot_indicator
 
 
 def _trace(figure, name):

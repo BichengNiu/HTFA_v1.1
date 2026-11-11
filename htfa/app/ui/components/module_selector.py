@@ -7,7 +7,7 @@ from collections.abc import Sequence
 import streamlit as st
 
 from htfa.app import set_current_main_module, set_current_sub_module
-from htfa.ui_shared.debug_helpers import debug_button_click
+from htfa.diagnostics import debug_button_click
 
 
 FIRST_COLUMN_MODULES = {"数据预览", "模型分析"}

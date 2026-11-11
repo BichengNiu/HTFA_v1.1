@@ -13,7 +13,7 @@ from htfa.app.state.shared_dataset import (
     restore_shared_dataset_snapshot,
 )
 from htfa.workspace import SessionWorkspace
-from htfa.exploration.core.overview_handoff import (
+from htfa.exploration.processing.overview_handoff import (
     OverviewHandoff,
     overview_handoff_store,
 )

@@ -9,10 +9,10 @@ import pandas as pd
 from htfa.ui_shared.chart_legend import render_pyplot_figure
 from htfa.ui_shared.matplotlib_compat import matplotlib_date_compatibility
 from htfa.workspace import stable_signature
-from htfa.models.univariate.common.workflow import ModelWorkflow
-from htfa.models.univariate.sarimax.core.adapters import DynamicRegressionAdapter
-from htfa.models.univariate.sarimax.core.modeling import build_rdl_intervention_analysis
-from htfa.models.univariate.sarimax.core.rdl_config import RDL_INTERVENTION_NAME
+from htfa.models.univariate.common.processing.workflow import ModelWorkflow
+from htfa.models.univariate.sarimax.processing.adapters import DynamicRegressionAdapter
+from htfa.models.univariate.sarimax.processing.modeling import build_rdl_intervention_analysis
+from htfa.models.univariate.sarimax.contracts.rdl_config import RDL_INTERVENTION_NAME
 from htfa.models.univariate.sarimax.ui.state import ModelPageScope, SARIMAX_SCOPE
 
 logger = logging.getLogger(__name__)

@@ -2,7 +2,7 @@
 
 ## 模块职责
 
-- HTFA 是进程内模块化单体。五个领域模块为 `data`、`monitoring`、`exploration`、`models/univariate`、`models/dfm`；`app`、`workspace`、`ui_shared`、`jobs` 是横向基础设施。领域按业务能力划分，不按页面标签划分。
+- HTFA 是进程内模块化单体。五个领域模块为 `data`、`monitoring`、`exploration`、`models/univariate`、`models/dfm`；`app`、`workspace`、共享 `processing`、`ui_shared`、`jobs` 是横向能力。领域按业务能力划分，不按页面标签划分。
 - 应用组装层可以依赖领域 UI；领域核心不得依赖应用组装层、Streamlit 或其他领域页面。模型家族之间不得相互引用。
 - 普通表格解析、原始行、数据集契约与数值变量识别归 `htfa.data.tabular`；共享概览 UI 归 `htfa.ui_shared.data_overview`，依赖方向从 UI 到解析层。文件字节读取与指纹归 `htfa.data.file_content`。
 - 探索页的数据源适配、零值处理与状态清理留在探索领域；模型页组合共享入口，不成为共享模块的依赖。
@@ -14,9 +14,14 @@
 - 普通表格解析不得依赖经济工作簿业务白名单、Streamlit 或会话状态。解析失败应清空当前数据框和下游结果；原始行可继续作为明确读取设置的输入材料。
 - UAE 主题与 DFM 输入复用经济工作簿读取器，不得各自实现第二套工作簿解析规则。
 
-## 监测三层依赖
+## 业务三层依赖
 
-- UAE 与能源保供均遵循 `ui → processing → data`。`contracts` 只承载类型、指标协议与静态来源定义，不执行 I/O。
+- UAE、能源保供、工业监测、探索与各模型领域统一遵循 `ui → processing → data`；共享数据协议也按职责分层。`contracts` 承载类型、配置验证、指标协议与静态来源定义，不执行文件、数据库或网络 I/O。
+- 每个业务拥有自己的层；复杂的 DFM 流程在 `processing` 内按预处理、训练、分解与结果分析划分，展示代码统一归 `ui`。没有独立数据访问职责的领域复用共享数据层，不创建空目录。
+- 共享 `htfa.data.economic_workbook` 负责协议解析、读取、契约和序列化；摘要口径、覆盖统计和预览用例归 `htfa.processing.economic_workbook`，预览页面和绘图归 `htfa.ui_shared.economic_workbook`。
+- 处理层中的用例编排可调用数据层；纯计算只接收数据和参数。普通表格上传对象与 Streamlit 状态转换由 UI 适配，继续使用唯一表格解析入口；纯数值列识别和类型契约可以直接复用。
+- 通用 Streamlit 状态适配归 `htfa.ui_shared.session_state`；`workspace` 与模型生命周期规则不依赖 Streamlit。
+- 数据层负责文件序列化与存储；处理层组织导出表及口径说明，展示层提供下载按钮。进度通知通过回调传出，不把 Streamlit 对象传入处理层。
 - 数据层负责连接、查询、版本和来源校验、事务、分页完整性及数据访问适配；不依赖计算层、页面或维护作业。
 - 计算层负责聚合、日期窗口、同比环比、单位转换、目录业务补全及下载数据构建；不依赖 Streamlit、绘图库、数据库执行接口或网络传输库。
 - 显示层负责页面、图表、打印、下载按钮及查询缓存；页面不直接执行 SQL、写库或调用采集客户端。主题失败应相互隔离。

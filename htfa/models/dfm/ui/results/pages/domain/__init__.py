@@ -1,0 +1,12 @@
+"""
+DFM Results Domain Models
+DFM结果域模型
+"""
+
+from htfa.models.dfm.ui.results.pages.domain.metadata_accessor import (
+    DFMMetadataAccessor,
+    ModelMetrics,
+    TrainingInfo,
+)
+
+__all__ = ['DFMMetadataAccessor', 'ModelMetrics', 'TrainingInfo']

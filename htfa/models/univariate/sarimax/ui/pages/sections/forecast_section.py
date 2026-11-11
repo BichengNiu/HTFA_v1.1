@@ -10,7 +10,7 @@ import pandas as pd
 from htfa.workspace import stable_signature
 from htfa.data.tabular import numeric_variable_names
 from htfa.models.univariate.common.contracts import ForecastRequest
-from htfa.models.univariate.common.forecast_evaluation import (
+from htfa.models.univariate.common.processing.forecast_evaluation import (
     ForecastAccuracyReport,
     build_accuracy_workbook,
     evaluate_current_forecast,
@@ -20,7 +20,7 @@ from htfa.models.univariate.common.forecast_evaluation import (
     evaluate_training_rolling,
 )
 from htfa.models.univariate.common.ui.forecast_view import render_forecast_result
-from htfa.models.univariate.sarimax.core.forecast_planning import (
+from htfa.models.univariate.sarimax.processing.forecast_planning import (
     actual_values_for_dates,
     build_forecast_calendar,
     build_future_exog,
@@ -28,11 +28,11 @@ from htfa.models.univariate.sarimax.core.forecast_planning import (
     resolve_prediction_positions,
     serialise_frame,
 )
-from htfa.models.univariate.sarimax.core.data_loader import (
+from htfa.models.univariate.sarimax.processing.data_loader import (
     dataset_time_index,
     prepare_modeling_inputs,
 )
-from htfa.models.univariate.sarimax.core.modeling import (
+from htfa.models.univariate.sarimax.processing.modeling import (
     MAX_ROLLING_ORIGINS,
     evaluation_seasonal_period,
     run_fixed_holdout_evaluation,
@@ -40,8 +40,8 @@ from htfa.models.univariate.sarimax.core.modeling import (
     run_training_rolling_evaluation,
     translate_ts_error,
 )
-from htfa.models.univariate.sarimax.core.adapters import DynamicRegressionAdapter
-from htfa.models.univariate.common.workflow import ModelWorkflow
+from htfa.models.univariate.sarimax.processing.adapters import DynamicRegressionAdapter
+from htfa.models.univariate.common.processing.workflow import ModelWorkflow
 from htfa.models.univariate.sarimax.ui.pages.sections.forecast_chart import (
     render_forecast_chart,
     render_forecast_error_chart,

@@ -11,7 +11,7 @@ from htfa.ui_shared.data_overview import BuiltinDataSource, overview_widget_keys
 
 from htfa.workspace import DatasetSnapshot, FileAsset
 from htfa.models.univariate.common.ui.data_input import create_data_input_module
-from htfa.models.univariate.sarimax.core.data_loader import (
+from htfa.models.univariate.sarimax.processing.data_loader import (
     DATA_REPLACEMENT_OPTIONS,
     MISSING_VALUE_OPTIONS,
     preprocess_modeling_frame,

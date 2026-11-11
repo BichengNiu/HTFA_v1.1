@@ -10,10 +10,8 @@ import pandas as pd
 import streamlit as st
 
 from htfa.ui_shared.chart_legend import render_pyplot_figure
-from htfa.exploration.analysis.stationarity import (
-    create_correlogram_figure,
-    resolve_correlation_lags,
-)
+from htfa.exploration.processing.analysis.stationarity import resolve_correlation_lags
+from htfa.exploration.ui.stationarity_charts import create_correlogram_figure
 
 PACF_METHODS = ("ywm", "yw", "ols")
 GRID_MODE_OPTIONS = {

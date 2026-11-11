@@ -15,14 +15,14 @@ from htfa.models.univariate.common.contracts import (
     ModelingInput,
     ResidualDiagnosticView,
 )
-from htfa.models.univariate.common.workflow import ModelWorkflow
+from htfa.models.univariate.common.processing.workflow import ModelWorkflow
 from htfa.models.univariate.common.ui.data_input import create_data_input_module
-from htfa.models.univariate.sarimax.core import adapters
-from htfa.models.univariate.sarimax.core.adapters import (
+from htfa.models.univariate.sarimax.processing import adapters
+from htfa.models.univariate.sarimax.processing.adapters import (
     ARDLAdapter,
     SARIMAXAdapter,
 )
-from htfa.models.univariate.sarimax.core.model_config import ARDLConfig, SARIMAXConfig
+from htfa.models.univariate.sarimax.contracts.model_config import ARDLConfig, SARIMAXConfig
 from htfa.ui_shared.data_overview.ui.data_source import BuiltinDataSource
 from htfa.models.univariate.common.ui.forecast_view import build_forecast_table
 

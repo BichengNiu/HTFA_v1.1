@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from htfa.models.univariate.common.state import ModelStateLifecycle
+from htfa.models.univariate.common.processing.state import ModelStateLifecycle
 
 
 class Store:

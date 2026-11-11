@@ -26,7 +26,7 @@ def test_retired_feature_package_and_core_wrappers_are_absent() -> None:
 
 
 def test_explore_core_depends_on_canonical_tabular_contract():
-    source = Path("htfa/exploration/core/data_source.py").read_text(
+    source = Path("htfa/exploration/processing/data_source.py").read_text(
         encoding="utf-8"
     )
 

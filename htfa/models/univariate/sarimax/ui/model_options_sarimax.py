@@ -5,8 +5,8 @@ from __future__ import annotations
 import pandas as pd
 from Ts.TsModels import TimeSeriesOperator
 
-from htfa.models.univariate.sarimax.core.config_shared import SARIMAX_RANGE_LIMITS
-from htfa.models.univariate.sarimax.core.sarimax_config import (
+from htfa.models.univariate.sarimax.contracts.config_shared import SARIMAX_RANGE_LIMITS
+from htfa.models.univariate.sarimax.contracts.sarimax_config import (
     AutoSARIMAXConfig,
     SARIMAXConfig,
 )
@@ -18,7 +18,7 @@ from htfa.models.univariate.sarimax.ui.model_options_shared import (
     restore_table_state,
 )
 from htfa.models.univariate.sarimax.ui.state import SARIMAX_SCOPE
-from htfa.models.univariate.common.state import StateStore
+from htfa.models.univariate.common.processing.state import StateStore
 
 _AUTO_RANGE_DEFAULTS = {
     "p": (0, 3),

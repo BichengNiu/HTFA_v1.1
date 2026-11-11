@@ -5,16 +5,19 @@ from __future__ import annotations
 import logging
 
 from htfa.workspace import artifact_signature
-from htfa.models.univariate.common.model_library import ModelContext
+from htfa.models.univariate.common.processing.model_library import ModelContext
 from htfa.models.univariate.common.ui.model_inputs import ModelInputModule
 from htfa.models.univariate.common.ui.result_view import render_estimation_result
-from htfa.models.univariate.common.workflow import ModelWorkflow
-from htfa.models.univariate.sarimax.core.adapters import DynamicRegressionAdapter, is_automatic_config
-from htfa.models.univariate.sarimax.core.data_loader import (
+from htfa.models.univariate.common.processing.workflow import ModelWorkflow
+from htfa.models.univariate.sarimax.processing.adapters import (
+    DynamicRegressionAdapter,
+    is_automatic_config,
+)
+from htfa.models.univariate.sarimax.processing.data_loader import (
     PREPROCESSING_OPTIONS, dataset_time_index, effective_modeling_date_bounds,
     prepare_modeling_inputs,
 )
-from htfa.models.univariate.sarimax.core.modeling import (
+from htfa.models.univariate.sarimax.processing.modeling import (
     fit_input_warnings,
     translate_ts_error,
     validate_fit_inputs,

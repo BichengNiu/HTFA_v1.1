@@ -1,3 +1,4 @@
+from htfa.exploration.ui import stationarity_charts
 from types import SimpleNamespace
 import warnings
 
@@ -6,13 +7,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from htfa.exploration.analysis import stationarity
-from htfa.exploration.analysis.stationarity import (
-    create_correlogram_figure,
-    create_time_series_figure,
+from htfa.exploration.processing.analysis import stationarity
+from htfa.exploration.processing.analysis.stationarity import (
     prepare_selected_series,
     run_selected_stationarity_tests,
     transform_series,
+)
+from htfa.exploration.ui.stationarity_charts import (
+    create_correlogram_figure,
+    create_time_series_figure,
 )
 
 
@@ -152,8 +155,8 @@ def test_correlogram_uses_ts_plots_and_drops_missing_values(monkeypatch):
         calls["pacf"] = (data.copy(), kwargs)
         return kwargs["ax"].figure, kwargs["ax"]
 
-    monkeypatch.setattr(stationarity, "plot_acf", record_acf)
-    monkeypatch.setattr(stationarity, "plot_pacf", record_pacf)
+    monkeypatch.setattr(stationarity_charts, "plot_acf", record_acf)
+    monkeypatch.setattr(stationarity_charts, "plot_pacf", record_pacf)
     series = pd.Series([1.0, np.nan, 2.0, 3.0, 5.0, 8.0], name="value")
 
     figure = create_correlogram_figure(

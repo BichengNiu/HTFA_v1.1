@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from htfa.workspace import DatasetSnapshot, FileAsset
-from htfa.exploration.core.overview_handoff import (
+from htfa.exploration.processing.overview_handoff import (
     OverviewHandoff,
     OverviewHandoffStore,
 )

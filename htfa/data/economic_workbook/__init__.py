@@ -1,13 +1,16 @@
 """经济工作簿输入协议及其预览能力。"""
 
-from .core.workbook_parser import (
+from htfa.data.economic_workbook.parser import (
     DICTIONARY_SHEET_NAME,
     FREQUENCIES,
     normalize_indicator_name,
 )
-from .domain.models import EconomicWorkbookSnapshot, IndicatorMetadata
-from .shared.loader import EconomicWorkbookReader
-from .shared.target_reader import (
+from htfa.data.economic_workbook.contracts.models import (
+    EconomicWorkbookSnapshot,
+    IndicatorMetadata,
+)
+from htfa.data.economic_workbook.loader import EconomicWorkbookReader
+from htfa.data.economic_workbook.target_reader import (
     METADATA_LABELS,
     SheetSeriesMetadata,
     format_updated_at,

@@ -6,7 +6,7 @@ from typing import Any
 
 import pandas as pd
 
-from htfa.exploration.core.series_utils import fingerprint_dataframe
+from htfa.exploration.processing.series_utils import fingerprint_dataframe
 
 
 def parse_dtw_alignment_mode(choice: str) -> tuple[bool, bool]:

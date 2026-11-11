@@ -1,6 +1,6 @@
 import pandas as pd
 
-from htfa.data.economic_workbook.core.calculation_rules import (
+from htfa.processing.economic_workbook.calculation_rules import (
     group_indicators_by_calculation,
     uses_difference_calculation,
 )

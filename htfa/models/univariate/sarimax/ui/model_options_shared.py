@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import pandas as pd
 
-from htfa.models.univariate.sarimax.core.config_shared import (
+from htfa.models.univariate.sarimax.contracts.config_shared import (
     SARIMAX_COV_TYPES,
     SARIMAX_OPTIMIZERS,
 )
-from htfa.models.univariate.common.state import StateStore
+from htfa.models.univariate.common.processing.state import StateStore
 from htfa.models.univariate.sarimax.ui.state import SARIMAX_SCOPE
 
 _TREND_COMPONENTS = ("常数项", "线性趋势")

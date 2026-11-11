@@ -1,6 +1,7 @@
 from __future__ import annotations
 import re
 import pandas as pd
+from htfa.data.exports import serialize_csv
 
 
 def chart_data_csv(frame: pd.DataFrame | pd.Series) -> bytes:
@@ -15,7 +16,7 @@ def chart_data_csv(frame: pd.DataFrame | pd.Series) -> bytes:
         )
     elif data.index.name is None:
         data.index.name = "日期"
-    return data.to_csv(index=True).encode("utf-8-sig")
+    return serialize_csv(data)
 
 
 def safe_download_name(title: str) -> str:

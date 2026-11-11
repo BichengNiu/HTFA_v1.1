@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-from htfa.exploration.core.series_utils import prepare_time_index
+from htfa.exploration.processing.series_utils import prepare_time_index
 
 
 @pytest.mark.parametrize("dates", [["2026-01-01", "invalid"], ["2026-01-01", None]])

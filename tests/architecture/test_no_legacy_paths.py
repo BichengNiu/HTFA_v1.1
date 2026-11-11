@@ -55,7 +55,7 @@ MIGRATION_SURFACE_ROOTS = (
     PROJECT_ROOT / "htfa/data/tabular",
     PROJECT_ROOT / "htfa/ui_shared/data_overview",
     PROJECT_ROOT / "htfa/app/state/shared_dataset.py",
-    PROJECT_ROOT / "htfa/exploration/core/data_source.py",
+    PROJECT_ROOT / "htfa/exploration/processing/data_source.py",
     PROJECT_ROOT / "htfa/exploration/ui/shared_dataset_source.py",
     PROJECT_ROOT / "htfa/models/univariate/sarimax/ui/data_input.py",
     PROJECT_ROOT / "htfa/monitoring/uae",
@@ -153,7 +153,7 @@ def test_uae_monitoring_uses_the_economic_workbook_protocol() -> None:
                 alias.name == "parse_target_sheet" for alias in node.names
             ):
                 assert node.level == 0 and node.module == (
-                    "htfa.data.economic_workbook.shared.target_reader"
+                    "htfa.data.economic_workbook.target_reader"
                 ), source_file
 
 
@@ -161,8 +161,8 @@ def test_dfm_preparation_uses_the_economic_workbook_protocol() -> None:
     """DFM 输入处理不得再自行打开工作簿。"""
     forbidden = re.compile(r"pd\.ExcelFile|pd\.read_excel\s*\(")
     for root in (
-        PROJECT_ROOT / "htfa/models/dfm/prep",
-        PROJECT_ROOT / "htfa/models/dfm/train",
+        PROJECT_ROOT / "htfa/models/dfm/processing/prep",
+        PROJECT_ROOT / "htfa/models/dfm/processing/train",
     ):
         for source_file in root.rglob("*.py"):
             assert not forbidden.search(
@@ -173,10 +173,10 @@ def test_dfm_preparation_uses_the_economic_workbook_protocol() -> None:
 def test_industrial_monitoring_uses_the_economic_workbook_protocol() -> None:
     """工业监测不得保留默认文件回退或自己的 Excel 读取器。"""
     analysis_source = (
-        PROJECT_ROOT / "htfa/monitoring/industrial/industrial_analysis.py"
+        PROJECT_ROOT / "htfa/monitoring/industrial/ui/industrial_analysis.py"
     ).read_text(encoding="utf-8", errors="ignore")
     loader_source = (
-        PROJECT_ROOT / "htfa/monitoring/industrial/utils/data_loader.py"
+        PROJECT_ROOT / "htfa/monitoring/industrial/processing/data_input.py"
     ).read_text(encoding="utf-8", errors="ignore")
     assert "load_default_monitoring_data" not in analysis_source
     assert not re.search(r"pd\.ExcelFile|pd\.read_excel\s*\(", loader_source)

@@ -74,7 +74,7 @@ def detect_navigation_level(main_module: str, sub_module: str | None) -> str:
 
 def render_data_preview_content(sub_module: str | None) -> None:
     """渲染选中的数据预览领域。"""
-    from htfa.data.economic_workbook.modules import (
+    from htfa.ui_shared.economic_workbook.registry import (
         create_economic_workbook_renderer,
     )
 
@@ -91,7 +91,7 @@ def render_data_preview_content(sub_module: str | None) -> None:
 def render_monitoring_analysis_content(sub_module: str | None) -> None:
     """渲染选中的监测分析领域。"""
     if sub_module == "工业":
-        from htfa.monitoring.industrial.industrial_analysis import (
+        from htfa.monitoring.industrial.ui.industrial_analysis import (
             render_industrial_analysis,
         )
 
@@ -111,10 +111,10 @@ def render_monitoring_analysis_content(sub_module: str | None) -> None:
 def render_model_analysis_content(sub_module: str | None) -> None:
     """渲染模型分析子模块标签页。"""
     if sub_module == "DFM 模型":
-        from htfa.models.dfm.decomp.ui.pages import render_dfm_news_analysis_page
-        from htfa.models.dfm.prep.ui.pages import render_dfm_data_prep_page
-        from htfa.models.dfm.results.ui.pages import render_dfm_model_analysis_page
-        from htfa.models.dfm.train.ui.pages import render_dfm_model_training_page
+        from htfa.models.dfm.ui.decomp.pages import render_dfm_news_analysis_page
+        from htfa.models.dfm.ui.prep.pages import render_dfm_data_prep_page
+        from htfa.models.dfm.ui.results.pages import render_dfm_model_analysis_page
+        from htfa.models.dfm.ui.train.pages import render_dfm_model_training_page
 
         all_tabs = [
             ("数据准备", lambda: render_dfm_data_prep_page(st)),

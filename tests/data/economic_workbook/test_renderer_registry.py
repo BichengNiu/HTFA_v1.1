@@ -4,12 +4,12 @@ import pytest
 
 import htfa.data as data
 import htfa.data.economic_workbook as economic_workbook
-from htfa.data.economic_workbook.modules import (
+from htfa.ui_shared.economic_workbook.registry import (
     ECONOMIC_WORKBOOK_MODULES,
     create_economic_workbook_renderer,
 )
-from htfa.data.economic_workbook.shared.loader import EconomicWorkbookReader
-from htfa.data.economic_workbook.shared.renderer import EconomicWorkbookRenderer
+from htfa.processing.economic_workbook.preview import EconomicPreviewWorkflow
+from htfa.ui_shared.economic_workbook.renderer import EconomicWorkbookRenderer
 
 
 def test_preview_modules_are_declared_config_not_class_per_module():
@@ -17,7 +17,7 @@ def test_preview_modules_are_declared_config_not_class_per_module():
 
     industrial = create_economic_workbook_renderer("industrial")
     assert isinstance(industrial, EconomicWorkbookRenderer)
-    assert isinstance(industrial.reader, EconomicWorkbookReader)
+    assert isinstance(industrial.workflow, EconomicPreviewWorkflow)
     assert industrial.module_title == "工业数据预览"
     assert industrial.state_namespace == "economic_workbook.industrial"
     assert industrial.default_relative_path is None

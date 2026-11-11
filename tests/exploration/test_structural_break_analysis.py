@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from htfa.exploration.analysis import structural_break
-from htfa.exploration.analysis.structural_break import (
+from htfa.exploration.processing.analysis import structural_break
+from htfa.exploration.processing.analysis.structural_break import (
     STRUCTURAL_BREAK_LAG_METHODS,
     STRUCTURAL_BREAK_MODELS,
     run_zivot_andrews_test,

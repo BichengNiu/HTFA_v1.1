@@ -11,7 +11,7 @@ import pandas as pd
 from htfa.data.tabular import numeric_variable_names
 
 from htfa.models.univariate.common.contracts import ModelingInput
-from htfa.models.univariate.common.state import StateStore
+from htfa.models.univariate.common.processing.state import StateStore
 
 
 PrepareInputs = Callable[..., tuple[pd.Series, pd.DataFrame | None, pd.Index]]

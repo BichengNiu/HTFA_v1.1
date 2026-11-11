@@ -8,11 +8,8 @@ from .contracts import (
     ModelingInput,
     ResidualDiagnosticView,
 )
-from .state import ModelStateLifecycle, StateStore
-from .workflow import (
-    ModelAdapter,
-    ModelWorkflow,
-)
+from htfa.models.univariate.common.processing.state import ModelStateLifecycle, StateStore
+from htfa.models.univariate.common.processing.workflow import ModelAdapter, ModelWorkflow
 
 __all__ = [
     "EstimationResultView",

@@ -3,7 +3,7 @@ from htfa.monitoring.uae.data.database import open_published_tables
 import pandas as pd
 from htfa.monitoring.uae.contracts.publication import PublishedUAEData
 from htfa.monitoring.uae.data.database import require_published_source
-from htfa.data.economic_workbook.shared.target_reader import parse_target_sheet
+from htfa.data.economic_workbook.target_reader import parse_target_sheet
 from htfa.monitoring.uae.contracts.government_finance.rates import RATES_SHEET
 from htfa.monitoring.uae.contracts.government_finance.rates import RATES_INDICATORS
 from htfa.monitoring.uae.contracts.government_finance.rates import ALLOWED_FREQUENCIES

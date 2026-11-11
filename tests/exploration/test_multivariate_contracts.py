@@ -4,16 +4,16 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from htfa.exploration.analysis import lead_lag
-from htfa.exploration.analysis.config import LeadLagAnalysisConfig
-from htfa.exploration.analysis.dtw_batch import perform_batch_dtw_calculation
-from htfa.exploration.core.data_source import load_explore_dataset
-from htfa.exploration.core.series_utils import fingerprint_dataframe
-from htfa.exploration.metrics.kl_divergence import (
+from htfa.exploration.processing.analysis import lead_lag
+from htfa.exploration.processing.analysis.config import LeadLagAnalysisConfig
+from htfa.exploration.processing.analysis.dtw_batch import perform_batch_dtw_calculation
+from htfa.exploration.processing.data_source import load_explore_dataset
+from htfa.exploration.processing.series_utils import fingerprint_dataframe
+from htfa.exploration.processing.metrics.kl_divergence import (
     kl_divergence,
     series_to_distribution,
 )
-from htfa.exploration.preprocessing.frequency_alignment import (
+from htfa.exploration.processing.preprocessing.frequency_alignment import (
     resample_series_to_frequency,
 )
 from htfa.exploration.ui import dataset_context
