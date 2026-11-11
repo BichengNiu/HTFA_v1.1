@@ -54,7 +54,7 @@ MIGRATION_SURFACE_ROOTS = (
     PROJECT_ROOT / "htfa/data/economic_workbook",
     PROJECT_ROOT / "htfa/data/tabular",
     PROJECT_ROOT / "htfa/ui_shared/data_overview",
-    PROJECT_ROOT / "htfa/app/state/shared_dataset.py",
+    PROJECT_ROOT / "htfa/ui_shared/shared_dataset.py",
     PROJECT_ROOT / "htfa/exploration/processing/data_source.py",
     PROJECT_ROOT / "htfa/exploration/ui/shared_dataset_source.py",
     PROJECT_ROOT / "htfa/models/univariate/sarimax/ui/data_input.py",

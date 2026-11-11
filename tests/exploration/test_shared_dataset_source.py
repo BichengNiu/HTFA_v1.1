@@ -87,31 +87,31 @@ def test_shared_source_builds_from_the_canonical_snapshot(monkeypatch):
     captured = {}
 
     monkeypatch.setattr(
-        "htfa.app.state.shared_dataset.get_shared_dataset_fingerprint",
+        "htfa.ui_shared.shared_dataset.get_shared_dataset_fingerprint",
         lambda: "fingerprint",
     )
     monkeypatch.setattr(
-        "htfa.app.state.shared_dataset.get_shared_dataset_protocol",
+        "htfa.ui_shared.shared_dataset.get_shared_dataset_protocol",
         lambda: "tabular",
     )
     monkeypatch.setattr(
-        "htfa.app.state.shared_dataset.get_shared_dataset_name",
+        "htfa.ui_shared.shared_dataset.get_shared_dataset_name",
         lambda: "sample.xlsx",
     )
     monkeypatch.setattr(
-        "htfa.app.state.shared_dataset.get_shared_dataset_sheets",
+        "htfa.ui_shared.shared_dataset.get_shared_dataset_sheets",
         lambda: ["数据"],
     )
     monkeypatch.setattr(
-        "htfa.app.state.shared_dataset.get_shared_dataset_data",
+        "htfa.ui_shared.shared_dataset.get_shared_dataset_data",
         lambda: None,
     )
     monkeypatch.setattr(
-        "htfa.app.state.shared_dataset.get_shared_dataset_raw_rows",
+        "htfa.ui_shared.shared_dataset.get_shared_dataset_raw_rows",
         lambda: raw_rows,
     )
     monkeypatch.setattr(
-        "htfa.app.state.shared_dataset.get_shared_dataset_sheet",
+        "htfa.ui_shared.shared_dataset.get_shared_dataset_sheet",
         lambda: "数据",
     )
 

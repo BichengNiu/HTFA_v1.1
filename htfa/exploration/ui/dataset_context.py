@@ -9,7 +9,7 @@ from htfa.exploration.processing.data_source import (
     ExploreDataset,
     load_explore_dataset,
 )
-from htfa.app.state.shared_dataset import get_shared_dataset_file
+from htfa.ui_shared.shared_dataset import get_shared_dataset_file
 
 DATASET_STATE_KEY = "exploration.dataset.parsed"
 DATASET_DEPENDENT_WIDGET_KEYS = (

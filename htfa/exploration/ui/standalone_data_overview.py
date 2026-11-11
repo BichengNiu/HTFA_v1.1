@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 
 import streamlit as st
 
-from htfa.app.state.shared_dataset import (
+from htfa.ui_shared.shared_dataset import (
     export_shared_dataset_snapshot,
     restore_shared_dataset_snapshot,
 )

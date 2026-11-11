@@ -9,7 +9,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from htfa.app.state.shared_dataset import (
+from htfa.ui_shared.shared_dataset import (
     get_shared_dataset_file,
 )
 from htfa.workspace import SessionWorkspace

@@ -17,7 +17,7 @@ from ..module_selector import (
     render_main_module_selector,
     render_sub_module_selector,
 )
-from htfa.app.state.shared_dataset import render_shared_dataset_uploader
+from htfa.ui_shared.shared_dataset import render_shared_dataset_uploader
 
 
 def render_complete_sidebar(

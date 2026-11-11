@@ -6,7 +6,7 @@ import logging
 
 import streamlit as st
 
-from htfa.app.state.shared_dataset import get_shared_dataset_file
+from htfa.ui_shared.shared_dataset import get_shared_dataset_file
 from htfa.workspace import SessionWorkspace
 from htfa.exploration.ui.data_overview import (
     CORRELOGRAM_TRANSFORMATION_PREFIX,

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 
 from htfa.data.tabular import TabularFileSnapshot, build_dataframe_from_rows
-from htfa.app.state import shared_dataset
+from htfa.ui_shared import shared_dataset
 
 
 class SharedDatasetSource:

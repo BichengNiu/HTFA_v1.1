@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 from htfa.monitoring.industrial.processing.data_input import load_macro_data
 from htfa.monitoring.industrial.ui.data_cache import load_weights_data
 
-from htfa.app.state.shared_dataset import get_shared_dataset_file, get_shared_dataset_name
+from htfa.ui_shared.shared_dataset import get_shared_dataset_file, get_shared_dataset_name
 
 
 def load_and_cache_data(uploaded_file) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame]]:

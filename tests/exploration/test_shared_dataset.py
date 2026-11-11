@@ -5,7 +5,7 @@ import pandas as pd
 
 from htfa.data.file_content import file_fingerprint
 from htfa.data.tabular import load_dataframe
-from htfa.app.state.shared_dataset import (
+from htfa.ui_shared.shared_dataset import (
     clear_shared_dataset,
     export_shared_dataset_snapshot,
     get_shared_dataset_data,
@@ -14,7 +14,7 @@ from htfa.app.state.shared_dataset import (
     render_shared_dataset_uploader,
     restore_shared_dataset_snapshot,
 )
-from htfa.app.state import shared_dataset
+from htfa.ui_shared import shared_dataset
 
 
 class UploadedBytes(io.BytesIO):

@@ -16,7 +16,7 @@ from htfa.ui_shared.data_overview.ui.widget_keys import (
 )
 from Ts.TsUtils import hurst_exponent
 
-from htfa.app.state.shared_dataset import (
+from htfa.ui_shared.shared_dataset import (
     get_shared_dataset_fingerprint,
     get_shared_dataset_sheet,
 )
