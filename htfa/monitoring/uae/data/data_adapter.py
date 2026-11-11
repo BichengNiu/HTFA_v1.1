@@ -12,7 +12,7 @@ from htfa.monitoring.uae.contracts.indicator_catalog import (
     INDICATOR_SPECS,
     UAE_SIGNATURE_IDS,
 )
-from htfa.data.economic_workbook.parser import parse_economic_workbook
+from htfa.preview.data.economic_workbook.parser import parse_economic_workbook
 from htfa.monitoring.uae.contracts.data_adapter import UAE_ANALYSIS_INDICATOR_NAMES
 
 

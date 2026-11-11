@@ -1,7 +1,7 @@
 from io import BytesIO
 
-from htfa.data.file_content import file_fingerprint, read_file_bytes
-from htfa.data.tabular import TabularInputSource
+from htfa.workspace.data.files import file_fingerprint, read_file_bytes
+from htfa.exploration.data.tabular import TabularInputSource
 
 
 TABULAR_SOURCE = TabularInputSource()

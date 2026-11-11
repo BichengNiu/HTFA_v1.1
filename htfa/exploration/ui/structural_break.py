@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from htfa.data.tabular import numeric_variable_names
+from htfa.exploration.data.tabular import numeric_variable_names
 from htfa.exploration.processing.analysis.stationarity import (
     prepare_selected_series,
 )

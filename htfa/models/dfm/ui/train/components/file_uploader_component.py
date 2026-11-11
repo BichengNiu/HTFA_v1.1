@@ -10,11 +10,10 @@ from typing import Tuple, Optional, Dict
 from hashlib import sha256
 
 from htfa.models.dfm.processing.utils.text_utils import normalize_variable_name
-from htfa.data.tabular import TabularInputSource
+from htfa.models.dfm.data.workbooks import read_training_tables
 from htfa.workspace import SessionWorkspace
 
 
-_TABULAR_INPUT_SOURCE = TabularInputSource()
 
 
 class FileUploaderComponent:
@@ -245,7 +244,7 @@ class FileUploaderComponent:
 
             # 通过普通表格输入协议读取'数据'和'映射'sheet
             print("[模型训练] 通过普通表格输入协议读取文件...")
-            tables = _TABULAR_INPUT_SOURCE.read(excel_file, excel_file.name)
+            tables = read_training_tables(excel_file)
             input_df = tables.get('数据')
             industry_map_df = tables.get('映射')
             if input_df is None or industry_map_df is None:

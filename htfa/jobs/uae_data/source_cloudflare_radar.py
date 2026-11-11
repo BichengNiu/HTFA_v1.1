@@ -26,7 +26,7 @@ import os
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from htfa.data.temporal import last_complete_month_end
+from htfa.monitoring.uae.processing.temporal import last_complete_month_end
 
 from .db import transaction
 from .paths import DATA_DIR

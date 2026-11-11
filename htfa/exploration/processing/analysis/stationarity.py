@@ -31,7 +31,7 @@ from htfa.exploration.processing.series_utils import (
 from htfa.exploration.processing.validation import (
     validate_real_series as _validate_numeric_series,
 )
-from htfa.data.tabular import numeric_variable_names as _numeric_variable_names
+from htfa.exploration.data.tabular import numeric_variable_names as _numeric_variable_names
 
 logger = logging.getLogger(__name__)
 

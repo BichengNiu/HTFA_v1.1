@@ -2,7 +2,7 @@ from __future__ import annotations
 import pandas as pd
 from htfa.monitoring.uae.contracts.publication import PublishedUAEData
 
-from htfa.data.economic_workbook import SheetSeriesMetadata
+from htfa.preview.data.economic_workbook import SheetSeriesMetadata
 from htfa.monitoring.uae.processing.periods import (
     anchor_last_month as _anchor_last_month,
 )

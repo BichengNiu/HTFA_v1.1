@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-from htfa.data.tabular import TabularFileSnapshot, build_overview_dataset
+from htfa.exploration.data.tabular import TabularFileSnapshot, build_overview_dataset
 from htfa.ui_shared.data_overview import DataOverview, create_data_overview
 from htfa.ui_shared.data_overview.ui import data_source as data_source_module
 from htfa.ui_shared.data_overview.ui.data_source import BuiltinDataSource

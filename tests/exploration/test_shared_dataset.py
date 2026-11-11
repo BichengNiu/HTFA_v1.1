@@ -3,8 +3,8 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-from htfa.data.file_content import file_fingerprint
-from htfa.data.tabular import load_dataframe
+from htfa.workspace.data.files import file_fingerprint
+from htfa.exploration.data.tabular import load_dataframe
 from htfa.ui_shared.shared_dataset import (
     clear_shared_dataset,
     export_shared_dataset_snapshot,

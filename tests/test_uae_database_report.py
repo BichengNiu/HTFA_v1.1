@@ -7,8 +7,8 @@ from openpyxl import Workbook
 import pandas as pd
 import pytest
 
-from htfa.data.economic_workbook import EconomicWorkbookReader
-from htfa.data.economic_workbook.target_reader import parse_target_sheet
+from htfa.preview.data.economic_workbook import EconomicWorkbookReader
+from htfa.preview.data.economic_workbook.target_reader import parse_target_sheet
 from htfa.jobs.uae_data import publish_report
 from htfa.monitoring.uae.data.database import published_source, open_published_tables, table_source
 

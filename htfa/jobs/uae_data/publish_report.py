@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from htfa.data.economic_workbook import EconomicWorkbookReader
+from htfa.preview.data.economic_workbook import EconomicWorkbookReader
 from htfa.monitoring.uae.data.database import REPORT_SCHEMA_VERSION
 
 from . import db

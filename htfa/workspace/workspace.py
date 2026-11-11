@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from typing import Any, Literal
 
-from htfa.data.file_content import file_fingerprint, read_file_bytes
+from htfa.workspace.data.files import file_fingerprint, read_file_bytes
 
 
 _ASSETS_PREFIX = "workspace.assets."

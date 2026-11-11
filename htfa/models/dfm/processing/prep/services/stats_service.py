@@ -14,13 +14,9 @@ logger = logging.getLogger(__name__)
 
 # 频率周期映射（从统一常量导入）
 from htfa.models.dfm.processing.prep.modules.config_constants import FREQ_DAYS_MAP
-from htfa.data.economic_workbook import EconomicWorkbookReader
+from htfa.models.dfm.data.workbooks import read_preparation_tables
 
 
-_WORKBOOK_READER = EconomicWorkbookReader(
-    "dfm_stats",
-    "models.dfm.prep.stats",
-)
 
 
 class StatsService:
@@ -43,7 +39,7 @@ class StatsService:
             all_dates_found = []
             all_variables = set()
 
-            tables = _WORKBOOK_READER.read_tables(file_content)
+            tables = read_preparation_tables(file_content)
             sheet_names = tuple(tables)
 
             # 读取指标字典获取频率映射
@@ -155,7 +151,7 @@ class StatsService:
             DataFrame: [变量名, 频率, 缺失值占比, 开始日期, 结束日期]
         """
         try:
-            tables = _WORKBOOK_READER.read_tables(file_content)
+            tables = read_preparation_tables(file_content)
             sheet_names = tuple(tables)
 
             # 读取频率映射

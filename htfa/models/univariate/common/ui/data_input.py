@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from htfa.ui_shared.data_overview import DataSource, create_data_overview
+from htfa.models.univariate.data.datasets import build_model_dataset
 
 
 @dataclass(frozen=True)
@@ -46,6 +47,7 @@ class DataInputModule:
 
     def __post_init__(self) -> None:
         renderer = create_data_overview(
+            dataset_builder=build_model_dataset,
             key_prefix=self.key_prefix,
             state_namespace=self.state_namespace,
             data_source=self.data_source,

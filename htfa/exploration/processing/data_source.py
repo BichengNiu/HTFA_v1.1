@@ -8,8 +8,8 @@ from typing import Any
 
 import pandas as pd
 
-from htfa.data.file_content import file_fingerprint, read_file_bytes
-from htfa.data.tabular import TabularInputSource
+from htfa.workspace.data.files import file_fingerprint, read_file_bytes
+from htfa.exploration.data.tabular import TabularInputSource
 
 FREQUENCY_LABELS = {
     "daily": "日度数据",

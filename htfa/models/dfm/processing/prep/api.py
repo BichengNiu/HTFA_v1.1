@@ -15,12 +15,13 @@ import pandas as pd
 from typing import Dict, Any, Optional, Union
 from pathlib import Path
 from io import BytesIO
-from htfa.data.file_content import file_fingerprint, read_file_bytes
 import logging
 import threading
 from datetime import datetime
 
-from htfa.data.economic_workbook import EconomicWorkbookReader
+from htfa.models.dfm.data.workbooks import (
+    read_preparation_tables, normalize_preparation_input, preparation_fingerprint,
+)
 from htfa.models.dfm.processing.prep.processor import DataPreparationProcessor
 from htfa.models.dfm.contracts.parallel import ParallelConfig
 from htfa.models.dfm.processing.utils.text_utils import normalize_text
@@ -31,10 +32,6 @@ logger = logging.getLogger(__name__)
 # 线程安全的缓存机制
 _MAPPING_CACHE = {}
 _CACHE_LOCK = threading.Lock()
-_WORKBOOK_READER = EconomicWorkbookReader(
-    "dfm",
-    "models.dfm.prep",
-)
 
 def load_mappings_once(
     excel_path: Union[str, Any],
@@ -70,12 +67,12 @@ def load_mappings_once(
         logger.info("步骤1/7: 加载映射表...")
 
         # 处理文件输入
-        excel_input = _handle_file_input(excel_path)
+        excel_input = normalize_preparation_input(excel_path)
 
         # 检查缓存（线程安全）
         if use_cache:
             cache_key = (
-                _get_cache_key(excel_input),
+                preparation_fingerprint(excel_input),
                 reference_sheet_name,
                 reference_column_name,
             )
@@ -90,7 +87,7 @@ def load_mappings_once(
 
         # 通过统一经济工作簿读取器加载映射表
         logger.info("  从经济工作簿读取器加载映射表...")
-        tables = _WORKBOOK_READER.read_tables(excel_input)
+        tables = read_preparation_tables(excel_input)
         try:
             df = tables[reference_sheet_name]
         except KeyError as exc:
@@ -256,8 +253,8 @@ def prepare_dfm_data_simple(
         logger.info(f"      起始日期={data_start_date}, 结束日期={data_end_date}, 目标频率={target_freq}")
 
         # 步骤1: 处理文件输入
-        excel_input = _handle_file_input(uploaded_file)
-        workbook_tables = _WORKBOOK_READER.read_tables(excel_input)
+        excel_input = normalize_preparation_input(uploaded_file)
+        workbook_tables = read_preparation_tables(excel_input)
 
         # 步骤1: 加载映射表（带缓存）
         mapping_result = load_mappings_once(
@@ -362,36 +359,8 @@ def prepare_dfm_data_simple(
 
 # 私有辅助函数
 
-def _handle_file_input(file_input: Union[str, Path, Any]) -> str | BytesIO:
-    """
-    处理文件输入；上传内容保留在内存中，路径输入保持为路径。
-
-    Args:
-        file_input: 文件路径（str）或文件对象
-
-    Returns:
-        文件路径或独立的内存字节流
-    """
-    if isinstance(file_input, str):
-        return file_input
-    if isinstance(file_input, Path):
-        return str(file_input)
-    if hasattr(file_input, "getvalue"):
-        return BytesIO(file_input.getvalue())
-    if hasattr(file_input, "read"):
-        original_position = file_input.tell() if hasattr(file_input, "tell") else None
-        if hasattr(file_input, "seek"):
-            file_input.seek(0)
-        content = file_input.read()
-        if original_position is not None:
-            file_input.seek(original_position)
-        return BytesIO(content)
-    raise TypeError(f"不支持的文件输入类型: {type(file_input)}")
 
 
-def _get_cache_key(excel_input: str | BytesIO) -> str:
-    """以文件内容生成稳定缓存键。"""
-    return file_fingerprint(read_file_bytes(excel_input))
 
 
 def _extract_mapping(

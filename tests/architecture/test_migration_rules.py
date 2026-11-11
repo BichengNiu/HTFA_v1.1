@@ -12,7 +12,7 @@ from tooling.source_tree import python_sources
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DOMAIN_NAMES = (
-    "data",
+    "preview",
     "monitoring",
     "exploration",
     "models/univariate",
@@ -51,9 +51,9 @@ def test_architecture_contracts_are_recorded_in_domain_docs() -> None:
 
 
 def test_data_overview_has_one_internal_ownership_boundary() -> None:
-    assert (PROJECT_ROOT / "htfa/data/tabular/__init__.py").is_file()
+    assert (PROJECT_ROOT / "htfa/exploration/data/tabular/__init__.py").is_file()
     assert (PROJECT_ROOT / "htfa/ui_shared/data_overview/__init__.py").is_file()
-    assert not (PROJECT_ROOT / "htfa/data/tabular_input.py").exists()
+    assert not (PROJECT_ROOT / "htfa/exploration/data/tabular_input.py").exists()
     assert not (PROJECT_ROOT / "components/__init__.py").exists()
     assert not list(python_sources((PROJECT_ROOT / "components")))
 
@@ -145,10 +145,10 @@ def test_model_domains_have_no_cross_family_or_application_imports() -> None:
 
 def test_domain_core_imports_do_not_preload_streamlit() -> None:
     explicit_modules = {
-        "data": {
-            "htfa.data.file_content",
-            "htfa.data.tabular",
-            "htfa.data.economic_workbook.parser",
+        "preview": {
+            "htfa.workspace.data.files",
+            "htfa.exploration.data.tabular",
+            "htfa.preview.data.economic_workbook.parser",
         },
         "monitoring": {
             "htfa.monitoring.uae.contracts.records",
@@ -183,7 +183,7 @@ def test_domain_core_imports_do_not_preload_streamlit() -> None:
 
 def _discovered_core_modules() -> dict[str, set[str]]:
     roots = {
-        "data": PROJECT_ROOT / "htfa/data",
+        "preview": PROJECT_ROOT / "htfa/preview",
         "monitoring": PROJECT_ROOT / "htfa/monitoring",
         "exploration": PROJECT_ROOT / "htfa/exploration",
         "models/univariate": PROJECT_ROOT / "htfa/models/univariate",

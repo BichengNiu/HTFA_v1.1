@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from htfa.data.tabular import build_overview_dataset
+from htfa.exploration.data.tabular import build_overview_dataset
 from htfa.ui_shared.data_overview.core.parsing import (
     detect_frequency,
     parse_float,

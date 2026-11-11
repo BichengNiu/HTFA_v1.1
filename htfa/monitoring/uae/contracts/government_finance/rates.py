@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import pandas as pd
-from htfa.data.economic_workbook import SheetSeriesMetadata
+from htfa.preview.data.economic_workbook import SheetSeriesMetadata
 
 RATES_SHEET = "日度_Wind"
 EIBOR_OVERNIGHT_DISPLAY = "阿联酋银行间市场拆借利率（隔夜）"

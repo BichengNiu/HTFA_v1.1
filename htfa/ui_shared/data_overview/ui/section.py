@@ -15,7 +15,7 @@ from typing import Any, Callable
 import pandas as pd
 import streamlit as st
 
-from htfa.data.tabular import (
+from htfa.exploration.data.tabular import (
     build_overview_dataset,
     numeric_variable_names,
     suggest_time_column,

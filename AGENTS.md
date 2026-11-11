@@ -17,7 +17,7 @@
 
 `app.py` is the Streamlit entry point. Application code lives under `htfa/`, maintenance and data-source jobs under `htfa/jobs/`, deployment configuration under `tooling/`, and reusable documentation under `docs/`. UAE data assets belong in `htfa/monitoring/uae/assets/`; other local data belongs in `data/`; local binary references belong in `references-local/`. Do not commit credentials, databases, raw data, binary research files, logs, caches, or temporary exports.
 
-**共享能力的内部边界**位于 `htfa/`：`htfa/data/tabular/` 只负责普通表格文件读取、解析和数据集契约；`htfa/ui_shared/data_overview/` 只负责可复用的 Streamlit 数据概览 UI。探索页的数据源适配器留在 `htfa/exploration/ui/`，模型页只依赖这两个明确入口，不再存在独立 `components/` 或顶层 `data_overview` 包。
+**功能内分层边界**：每个功能拥有自己的 `data / processing / ui`；不得恢复顶层公共数据层或公共处理层。经济工作簿协议归 `htfa/preview/data/`，普通表格协议归 `htfa/exploration/data/tabular/`；各模型通过自己的数据层构造模型输入。纯解析规则保留唯一实现，功能间只复用明确的纯协议接口，不依赖其他功能的页面。共享概览控件继续归 `htfa/ui_shared/data_overview/`，不拥有业务读取规则。
 
 ## Run and test
 
@@ -27,7 +27,7 @@
 - HTFA SARIMAX regression tests (12 passed):
   `runtime\python.exe -m pytest -c tooling\pytest.ini tests\models\test_sarimax_ui_flow.py tests\models\test_sarimax_boundaries.py -q`
 - Shared UI and tabular tests:
-  `runtime\python.exe -m pytest -c tooling\pytest.ini tests\ui_shared\data_overview tests\data\tabular -q`
+  `runtime\python.exe -m pytest -c tooling\pytest.ini tests\ui_shared\data_overview tests\exploration\data\tabular -q`
 - UI flows are verified with `streamlit.testing.v1.AppTest` (upload sample data → navigate → expand controls → assert no exception).
 
 ## ⚠️ Mandatory workflow: plotting and model features

@@ -30,7 +30,7 @@ from pypdf import PdfReader
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from htfa.data.temporal import calendar_month_end
+from htfa.monitoring.uae.processing.temporal import calendar_month_end
 from .db import transaction
 from .paths import DATA_DIR
 

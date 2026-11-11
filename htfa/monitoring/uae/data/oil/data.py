@@ -2,7 +2,7 @@ from __future__ import annotations
 from htfa.monitoring.uae.data.database import open_published_tables
 from htfa.monitoring.uae.contracts.publication import PublishedUAEData
 from htfa.monitoring.uae.data.database import require_published_source
-from htfa.data.economic_workbook.target_reader import parse_target_sheet
+from htfa.preview.data.economic_workbook.target_reader import parse_target_sheet
 from htfa.monitoring.uae.contracts.oil.data import EIA_DAILY_SHEET
 from htfa.monitoring.uae.contracts.oil.data import OPEC_MONTHLY_SHEET
 from htfa.monitoring.uae.contracts.oil.data import DUBAI_MONTHLY_SHEET

@@ -14,8 +14,8 @@ from typing import Protocol
 import pandas as pd
 import streamlit as st
 
-from htfa.data.file_content import file_fingerprint
-from htfa.data.tabular import (
+from htfa.workspace.data.files import file_fingerprint
+from htfa.exploration.data.tabular import (
     FileParseError,
     TabularFileSnapshot,
     TabularInputSource,

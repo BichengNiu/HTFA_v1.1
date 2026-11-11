@@ -7,7 +7,7 @@ from pathlib import Path
 from htfa.monitoring.uae.contracts.paths import ASSETS_DIR
 import duckdb
 import pandas as pd
-from htfa.data.economic_workbook.tables import EconomicTableSource, TableWorkbook
+from htfa.preview.contracts.tables import EconomicTableSource, TableWorkbook
 
 DEFAULT_DATABASE = ASSETS_DIR / "uae.duckdb"
 REPORT_SCHEMA_VERSION = 1
@@ -127,7 +127,7 @@ def table_source(source):
 
 def read_report_tables(source):
     """Read and validate the report tables for date selection."""
-    from htfa.data.economic_workbook.target_reader import validate_sheet
+    from htfa.preview.data.economic_workbook.target_reader import validate_sheet
 
     result = {}
     with open_published_tables(source) as tables:

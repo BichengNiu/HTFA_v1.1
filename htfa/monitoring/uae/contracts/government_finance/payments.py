@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import pandas as pd
-from htfa.data.economic_workbook import SheetSeriesMetadata
+from htfa.preview.data.economic_workbook import SheetSeriesMetadata
 
 PAYMENT_SHEET = "月度_CBUAE"
 CUSTOMER_TRANSFERS_NUMBER = "阿联酋:FTS客户转账笔数(累计)Customer Transfers Number"

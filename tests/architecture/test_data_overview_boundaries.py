@@ -25,8 +25,8 @@ def _run_fresh_process(source: str) -> subprocess.CompletedProcess[str]:
 def test_pure_file_parsing_import_does_not_load_ui_or_streamlit() -> None:
     result = _run_fresh_process(
         """
-from htfa.data.tabular import build_overview_dataset
-from htfa.data.file_content import file_fingerprint
+from htfa.exploration.data.tabular import build_overview_dataset
+from htfa.workspace.data.files import file_fingerprint
 
 assert callable(build_overview_dataset)
 assert callable(file_fingerprint)
@@ -35,13 +35,12 @@ assert not any(
     for name in sys.modules
 )
 assert not any(
-    name == "htfa.workspace"
-    or name.startswith("htfa.workspace.")
+    name in {"htfa.workspace.workspace", "htfa.workspace.handoff", "htfa.workspace.signatures"}
     for name in sys.modules
 )
 assert not any(
-    name == "htfa.data.economic_workbook"
-    or name.startswith("htfa.data.economic_workbook.")
+    name == "htfa.preview.data.economic_workbook"
+    or name.startswith("htfa.preview.data.economic_workbook.")
     for name in sys.modules
 )
 """

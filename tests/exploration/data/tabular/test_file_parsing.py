@@ -1,0 +1,226 @@
+"""纯表格输入 parser 的行为契约。"""
+
+from __future__ import annotations
+
+import io
+
+import pandas as pd
+import pytest
+
+from htfa.exploration.data.tabular import TabularInputSource
+from htfa.exploration.data.tabular.file_parsing import (
+    FileParseError,
+    build_dataframe_from_rows,
+    list_excel_sheets,
+    load_dataframe,
+    read_raw_rows,
+)
+from htfa.workspace.data.files import file_fingerprint
+
+
+TABULAR_SOURCE = TabularInputSource()
+
+
+def test_file_fingerprint_depends_only_on_content():
+    content = b"date,value\n2025-01-31,1\n"
+
+    assert file_fingerprint(content) == file_fingerprint(content)
+    assert file_fingerprint(content) != file_fingerprint(content + b"\n")
+
+
+@pytest.mark.parametrize("encoding", ["utf-8", "gbk", "gb2312"])
+def test_read_raw_rows_decodes_supported_csv_encodings(encoding):
+    content = "日期,数值\n2025-01-31,1\n".encode(encoding)
+
+    assert read_raw_rows(content, "data.csv") == [
+        ["日期", "数值"],
+        ["2025-01-31", "1"],
+    ]
+
+
+def test_load_dataframe_parses_csv_and_infers_numeric_and_time_columns():
+    content = b"date,value\n2025-01-31,1.5\n2025-02-28,2.5\n"
+
+    result = load_dataframe(content, "data.csv")
+
+    assert result.columns.tolist() == ["date", "value"]
+    assert pd.api.types.is_datetime64_any_dtype(result["date"])
+    assert result["value"].tolist() == [1.5, 2.5]
+
+
+def test_load_dataframe_infers_numeric_columns_with_blank_cells():
+    """CSV 数值列含空单元格时仍保留为可建模的数值列。"""
+    content = b"date,value,exog\n2025-01-31,1.5,10\n2025-02-28,2.5,\n"
+
+    result = load_dataframe(content, "data.csv")
+
+    assert pd.api.types.is_numeric_dtype(result["exog"])
+    assert result["exog"].iloc[0] == 10.0
+    assert pd.isna(result["exog"].iloc[1])
+
+
+def test_load_dataframe_uses_selected_rows_and_explicit_time_column():
+    content = (
+        "说明行\n"
+        "sales,date\n"
+        "10,2020-01-01\n"
+        "11,2020-02-01\n"
+    ).encode()
+
+    result = load_dataframe(
+        content,
+        "data.csv",
+        variable_name_row=1,
+        data_start_row=2,
+        time_column="date",
+    )
+
+    assert result.columns.tolist() == ["sales", "date"]
+    assert result["sales"].tolist() == [10, 11]
+    assert result["date"].tolist() == [
+        pd.Timestamp("2020-01-01"),
+        pd.Timestamp("2020-02-01"),
+    ]
+
+
+def test_build_dataframe_can_explicitly_leave_time_column_unparsed():
+    rows = [["date", "value"], ["not-a-date", 3]]
+
+    result = build_dataframe_from_rows(rows, time_column=None)
+
+    assert result["date"].tolist() == ["not-a-date"]
+
+
+def test_build_dataframe_suffixes_duplicate_names_and_ignores_blank_trailing_cells():
+    rows = [
+        ["date", "value", "value", None],
+        ["2020-01-01", 1, 10, None],
+    ]
+
+    result = build_dataframe_from_rows(rows, time_column="date")
+
+    assert result.columns.tolist() == ["date", "value", "value__2"]
+    assert result["value"].tolist() == [1]
+    assert result["value__2"].tolist() == [10]
+
+
+def test_build_dataframe_rejects_nonblank_cells_beyond_header_width():
+    rows = [["date", "value"], ["2020-01-01", 1, "unexpected"]]
+
+    with pytest.raises(FileParseError, match="超过变量名行的列数"):
+        build_dataframe_from_rows(rows)
+
+
+@pytest.mark.parametrize(
+    ("rows", "kwargs", "message"),
+    [
+        ([[], [1]], {}, "变量名行为空"),
+        ([["date"], ["2020-01-01"]], {"data_start_row": 0}, "晚于变量名行"),
+        ([["date"], ["2020-01-01"]], {"data_start_row": 3}, "超出数据范围"),
+        ([["date"], ["not-a-date"]], {"time_column": "date"}, "无法解析"),
+    ],
+)
+def test_build_dataframe_reports_structural_and_time_errors(rows, kwargs, message):
+    with pytest.raises(FileParseError, match=message):
+        build_dataframe_from_rows(rows, **kwargs)
+
+
+def test_read_raw_rows_rejects_unsupported_file_format():
+    with pytest.raises(FileParseError, match="不支持的文件格式：json"):
+        read_raw_rows(b"{}", "data.json")
+
+
+def test_excel_helpers_list_sheets_and_read_selected_sheet(tmp_path):
+    path = tmp_path / "sample.xlsx"
+    with pd.ExcelWriter(path, engine="openpyxl") as writer:
+        pd.DataFrame([["date", "value"], ["2020-01-01", 1]]).to_excel(
+            writer,
+            header=False,
+            index=False,
+            sheet_name="数据",
+        )
+        pd.DataFrame([["other"], [2]]).to_excel(
+            writer,
+            header=False,
+            index=False,
+            sheet_name="其他",
+        )
+
+    content = path.read_bytes()
+
+    assert list_excel_sheets(content, path.name) == ["数据", "其他"]
+    assert read_raw_rows(content, path.name, sheet_name="数据") == [
+        ["date", "value"],
+        ["2020-01-01", 1],
+    ]
+
+
+def test_file_parser_does_not_require_file_objects():
+    content = io.BytesIO(b"date,value\n2025-01-31,1\n")
+
+    with pytest.raises(TypeError):
+        load_dataframe(content, "data.csv")
+
+
+def _ordinary_workbook() -> io.BytesIO:
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2026-01-01", "2026-02-01"]),
+                "value": [0, 2],
+            }
+        ).to_excel(writer, index=False, sheet_name="月度")
+        pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2026-01-01"]),
+                "other": [3],
+            }
+        ).to_excel(writer, index=False, sheet_name="补充")
+    output.seek(0)
+    return output
+
+
+def _economic_workbook_marker() -> io.BytesIO:
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        pd.DataFrame(
+            {
+                "指标名称": ["指标A"],
+                "类型": ["指数"],
+                "行业": ["金融"],
+                "数据来源": ["Wind"],
+                "预测变量": ["是"],
+            }
+        ).to_excel(writer, index=False, sheet_name="指标字典")
+    output.seek(0)
+    return output
+
+
+def test_ordinary_excel_protocol_keeps_zero_and_reads_each_nonempty_sheet():
+    tables = TABULAR_SOURCE.read(_ordinary_workbook(), "普通表格.xlsx")
+
+    assert list(tables) == ["月度", "补充"]
+    assert tables["月度"]["value"].tolist() == [0, 2]
+
+
+def test_ordinary_protocol_rejects_economic_workbook_without_fallback():
+    with pytest.raises(FileParseError, match="经济工作簿输入协议"):
+        TABULAR_SOURCE.read(_economic_workbook_marker(), "经济工作簿.xlsx")
+
+    with pytest.raises(FileParseError, match="经济工作簿输入协议"):
+        TABULAR_SOURCE.read_source(
+            _economic_workbook_marker(), "经济工作簿.xlsx"
+        )
+
+
+def test_tabular_source_retains_raw_rows_when_default_layout_needs_row_selection():
+    source = TABULAR_SOURCE.read_source(
+        "说明\n来源：测试\ndate,value\n2026-01-01,1\n".encode(),
+        "带前导行.csv",
+    )
+
+    assert source.frame is None
+    assert source.parse_error is not None
+    assert source.raw_rows[2] == ["date", "value"]
+    assert source.row_count == 4

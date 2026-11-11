@@ -9,7 +9,7 @@ DFM影响分解API接口
 import os
 import tempfile
 from htfa.models.dfm.data.artifacts import create_output_directory, write_csv
-from htfa.data.file_content import read_file_bytes
+from htfa.workspace.data.files import read_file_bytes
 import pandas as pd
 import logging
 from typing import Dict, Any, Optional, List, Tuple

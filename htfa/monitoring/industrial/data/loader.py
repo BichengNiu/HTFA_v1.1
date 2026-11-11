@@ -2,7 +2,7 @@
 import logging
 from typing import Optional
 import pandas as pd
-from htfa.data.economic_workbook import EconomicWorkbookReader
+from htfa.preview.data.economic_workbook import EconomicWorkbookReader
 logger = logging.getLogger(__name__)
 _WORKBOOK_READER = EconomicWorkbookReader("industrial_monitoring", "monitoring.industrial")
 

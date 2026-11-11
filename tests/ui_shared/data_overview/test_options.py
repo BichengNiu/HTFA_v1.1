@@ -7,7 +7,7 @@ import inspect
 import pandas as pd
 from Ts.TsPlots import plot_series
 
-from htfa.data.tabular import build_overview_dataset
+from htfa.exploration.data.tabular import build_overview_dataset
 from htfa.ui_shared.data_overview.core.options import (
     build_chart_options,
     build_table_options,

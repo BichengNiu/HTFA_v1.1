@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import pandas as pd
-from htfa.data.economic_workbook import SheetSeriesMetadata
+from htfa.preview.data.economic_workbook import SheetSeriesMetadata
 
 DLD_SHEET = "月度_DLD"
 OFFPLAN_COUNT = "期房销售笔数"

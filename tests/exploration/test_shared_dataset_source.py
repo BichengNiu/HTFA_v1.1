@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from htfa.data.tabular import load_dataframe
+from htfa.exploration.data.tabular import load_dataframe
 from htfa.exploration.ui.shared_dataset_source import SharedDatasetSource
 from htfa.exploration.ui import shared_dataset_source
 
@@ -67,7 +67,7 @@ def test_shared_reader_reuses_supplied_raw_rows_without_reopening_file(
         raise AssertionError("不应重新读取上传文件")
 
     monkeypatch.setattr(
-        "htfa.data.tabular.file_parsing.read_raw_rows",
+        "htfa.exploration.data.tabular.file_parsing.read_raw_rows",
         fail_if_file_is_read,
     )
     frame = load_dataframe(

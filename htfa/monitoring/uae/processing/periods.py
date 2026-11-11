@@ -1,7 +1,7 @@
 from __future__ import annotations
 from collections.abc import Sequence
 import pandas as pd
-from htfa.data.temporal import latest_complete_month_end_from_values
+from htfa.monitoring.uae.processing.temporal import latest_complete_month_end_from_values
 
 
 def latest_complete_month(

@@ -46,7 +46,7 @@ from .paths import DATA_DIR
 
 import requests
 
-from htfa.data.temporal import calendar_month_end, last_complete_month_end
+from htfa.monitoring.uae.processing.temporal import calendar_month_end, last_complete_month_end
 
 from . import db  # noqa: E402
 

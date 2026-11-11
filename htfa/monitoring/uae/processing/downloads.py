@@ -1,7 +1,7 @@
 from __future__ import annotations
 import re
 import pandas as pd
-from htfa.data.exports import serialize_csv
+from htfa.monitoring.uae.data.exports import serialize_csv
 
 
 def chart_data_csv(frame: pd.DataFrame | pd.Series) -> bytes:

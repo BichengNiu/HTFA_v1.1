@@ -27,7 +27,7 @@ from urllib.request import Request, urlopen
 
 from openpyxl import load_workbook
 
-from htfa.data.temporal import month_end_from_period
+from htfa.monitoring.uae.processing.temporal import month_end_from_period
 from ._official_download import write_json_atomic
 from .db import transaction
 from .paths import DATA_DIR

@@ -23,7 +23,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
-from htfa.data.temporal import last_complete_month_end
+from htfa.monitoring.uae.processing.temporal import last_complete_month_end
 
 from .paths import DATA_DIR
 from .workbook_sheet_writer import write_indicator_sheets

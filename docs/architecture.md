@@ -2,10 +2,10 @@
 
 ## 模块职责
 
-- HTFA 是进程内模块化单体。五个领域模块为 `data`、`monitoring`、`exploration`、`models/univariate`、`models/dfm`；`app`、`workspace`、共享 `processing`、`ui_shared`、`jobs` 是横向能力。领域按业务能力划分，不按页面标签划分。
+- HTFA 是进程内模块化单体。五个领域模块为 `preview`、`monitoring`、`exploration`、`models/univariate`、`models/dfm`；`app`、`workspace`、`ui_shared`、`jobs` 是横向能力。领域按业务能力划分，不按页面标签划分。
 - 应用组装层可以依赖领域 UI；领域核心不得依赖应用组装层、Streamlit 或其他领域页面。模型家族之间不得相互引用。
-- 普通表格解析、原始行、数据集契约与数值变量识别归 `htfa.data.tabular`；共享概览 UI 归 `htfa.ui_shared.data_overview`，依赖方向从 UI 到解析层。文件字节读取与指纹归 `htfa.data.file_content`。
-- 探索页的数据源适配、零值处理与状态清理留在探索领域；模型页组合共享入口，不成为共享模块的依赖。
+- 普通表格解析、原始行、数据集契约与数值变量识别归 `htfa.exploration.data.tabular`；共享概览 UI 归 `htfa.ui_shared.data_overview`，依赖方向从 UI 到解析层。文件字节读取与指纹归 `htfa.workspace.data.files`。
+- 每个功能拥有自己的 `data`、`processing`、`ui`，不建立顶层公共数据层或公共处理层。解析协议由明确的功能维护唯一实现，其他功能通过自己的数据入口消费协议；不复制解析器，也不依赖对方页面。
 
 ## 输入协议
 
@@ -17,8 +17,10 @@
 ## 业务三层依赖
 
 - UAE、能源保供、工业监测、探索与各模型领域统一遵循 `ui → processing → data`；共享数据协议也按职责分层。`contracts` 承载类型、配置验证、指标协议与静态来源定义，不执行文件、数据库或网络 I/O。
-- 每个业务拥有自己的层；复杂的 DFM 流程在 `processing` 内按预处理、训练、分解与结果分析划分，展示代码统一归 `ui`。没有独立数据访问职责的领域复用共享数据层，不创建空目录。
-- 共享 `htfa.data.economic_workbook` 负责协议解析、读取、契约和序列化；摘要口径、覆盖统计和预览用例归 `htfa.processing.economic_workbook`，预览页面和绘图归 `htfa.ui_shared.economic_workbook`。
+- 每个业务拥有自己的层；复杂的 DFM 流程在 `processing` 内按预处理、训练、分解与结果分析划分，展示代码统一归 `ui`。不建立重复数据层，不为没有独立数据访问职责的子流程创建空目录。
+- 数据预览功能 `preview` 拥有经济工作簿协议；其 `data` 负责读取与文件序列化，`contracts` 负责元数据与表源协议，`processing` 负责摘要和预览用例，`ui` 负责预览页面及图表。
+- 普通表格输入协议归探索功能 `exploration/data/tabular`；DFM 工作簿入口归 `models/dfm/data/workbooks.py`，单变量模型的数据集构建与导出归 `models/univariate/data`。监测各模块的数据读取与导出继续由各自 `data` 拥有。
+- 文件字节与内容指纹属于会话文件资产，由 `workspace/data/files.py` 维护；导入该数据模块不初始化工作区会话服务。UAE 日期覆盖规则归其处理层，不放入公共数据目录。
 - 处理层中的用例编排可调用数据层；纯计算只接收数据和参数。普通表格上传对象与 Streamlit 状态转换由 UI 适配，继续使用唯一表格解析入口；纯数值列识别和类型契约可以直接复用。
 - 通用 Streamlit 状态适配归 `htfa.ui_shared.session_state`；`workspace` 与模型生命周期规则不依赖 Streamlit。
 - 数据层负责文件序列化与存储；处理层组织导出表及口径说明，展示层提供下载按钮。进度通知通过回调传出，不把 Streamlit 对象传入处理层。

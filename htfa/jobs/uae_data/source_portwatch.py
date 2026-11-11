@@ -38,7 +38,7 @@ from pathlib import Path
 from threading import BoundedSemaphore
 from urllib.parse import urlencode
 
-from htfa.data.temporal import last_complete_month_end
+from htfa.monitoring.uae.processing.temporal import last_complete_month_end
 
 from .paths import DATA_DIR
 

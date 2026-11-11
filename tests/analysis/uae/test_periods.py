@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-from htfa.data.temporal import last_complete_month_end
+from htfa.monitoring.uae.processing.temporal import last_complete_month_end
 from htfa.monitoring.uae.processing.periods import anchor_last_month, common_latest_month, latest_complete_month, through_last_complete_month, through_month, within_month_window
 
 

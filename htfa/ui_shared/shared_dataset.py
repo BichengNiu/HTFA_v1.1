@@ -8,8 +8,8 @@ from typing import Literal, Optional
 import pandas as pd
 import streamlit as st
 
-from htfa.data.economic_workbook import EconomicWorkbookReader
-from htfa.data.tabular import (
+from htfa.preview.data.economic_workbook import EconomicWorkbookReader
+from htfa.exploration.data.tabular import (
     FileParseError,
     TabularFileSnapshot,
     TabularInputSource,

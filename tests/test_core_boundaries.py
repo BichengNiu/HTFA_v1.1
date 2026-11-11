@@ -30,6 +30,6 @@ def test_explore_core_depends_on_canonical_tabular_contract():
         encoding="utf-8"
     )
 
-    assert "htfa.data.tabular" in source
+    assert "htfa.exploration.data.tabular" in source
     assert "htfa.data.tabular_input" not in source
     assert "parse_economic_workbook" not in source

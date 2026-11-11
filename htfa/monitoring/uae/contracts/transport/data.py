@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import pandas as pd
-from htfa.data.economic_workbook import SheetSeriesMetadata
+from htfa.preview.data.economic_workbook import SheetSeriesMetadata
 
 PORTWATCH_SHEET = "月度_PortWatch"
 DUBAI_CUSTOMS_AIR_SHEET = "月度_迪拜海关航空"

@@ -156,8 +156,8 @@ def test_payment_loader_rejects_missing_indicator() -> None:
 
 def test_payment_loader_rejects_invalid_numeric_value() -> None:
     with pytest.raises(ValueError, match="不是数值"):
-        from htfa.data.economic_workbook.tables import TableWorkbook
-        from htfa.data.economic_workbook.target_reader import parse_target_sheet
+        from htfa.preview.contracts.tables import TableWorkbook
+        from htfa.preview.data.economic_workbook.target_reader import parse_target_sheet
         from htfa.monitoring.uae.contracts.government_finance.payments import PAYMENT_INDICATORS
 
         with pd.ExcelFile(BytesIO(_workbook_bytes(invalid_amount=True))) as book:

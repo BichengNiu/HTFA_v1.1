@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import pandas as pd
 
-from htfa.data.tabular import OverviewDataset, numeric_variable_names
+from htfa.exploration.data.tabular import numeric_variable_names
+from htfa.models.univariate.common.contracts.dataset import ModelDataset
 from Ts.TsUtils import interpolate_missing
 
 DATA_REPLACEMENT_OPTIONS = ("去零", "去负")
@@ -144,12 +145,12 @@ def preprocess_modeling_frame(
     return result
 
 
-def dataset_time_index(dataset: OverviewDataset) -> pd.DatetimeIndex | None:
+def dataset_time_index(dataset: ModelDataset) -> pd.DatetimeIndex | None:
     """返回当前数据集的完整、递增日期索引。
 
     Parameters
     ----------
-    dataset : OverviewDataset
+    dataset : ModelDataset
         数据概览解析后的数据集。
 
     Returns
@@ -175,14 +176,14 @@ def dataset_time_index(dataset: OverviewDataset) -> pd.DatetimeIndex | None:
 
 
 def forecast_sample_dates(
-    dataset: OverviewDataset,
+    dataset: ModelDataset,
     training_end: pd.Timestamp,
 ) -> pd.DatetimeIndex | None:
     """返回训练结束日之后仍位于当前数据集内的预测样本日期。
 
     Parameters
     ----------
-    dataset : OverviewDataset
+    dataset : ModelDataset
         数据概览解析后的数据集。
     training_end : pandas.Timestamp
         训练样本结束日期，结束日属于训练样本。
@@ -207,7 +208,7 @@ def forecast_sample_dates(
 
 
 def prepare_modeling_inputs(
-    dataset: OverviewDataset,
+    dataset: ModelDataset,
     target: str,
     exog_columns: tuple[str, ...] = (),
     time_range: tuple[pd.Timestamp, pd.Timestamp] | None = None,
@@ -218,7 +219,7 @@ def prepare_modeling_inputs(
 
     Parameters
     ----------
-    dataset : OverviewDataset
+    dataset : ModelDataset
         Dataset already parsed and cleaned by the data overview page.
     target : str
         Target variable column name.
@@ -329,7 +330,7 @@ def prepare_modeling_inputs(
 
 
 def effective_modeling_date_bounds(
-    dataset: OverviewDataset,
+    dataset: ModelDataset,
     target: str,
     exog_columns: tuple[str, ...] = (),
     preprocessing: tuple[str, ...] = (),
@@ -339,7 +340,7 @@ def effective_modeling_date_bounds(
 
     Parameters
     ----------
-    dataset : OverviewDataset
+    dataset : ModelDataset
         数据概览解析后的数据集。
     target : str
         目标变量列名。

@@ -54,10 +54,10 @@ def test_processing_does_not_execute_storage_or_transport_operations():
 
 def test_migrated_domains_do_not_keep_legacy_package_implementations():
     retired = [
-        'htfa/data/economic_workbook/shared',
-        'htfa/data/economic_workbook/core',
-        'htfa/data/economic_workbook/domain',
-        'htfa/data/economic_workbook/modules',
+        'htfa/preview/data/economic_workbook/shared',
+        'htfa/preview/data/economic_workbook/core',
+        'htfa/preview/data/economic_workbook/domain',
+        'htfa/preview/data/economic_workbook/modules',
         'htfa/monitoring/industrial/utils',
         'htfa/monitoring/industrial/charts',
         'htfa/exploration/core',

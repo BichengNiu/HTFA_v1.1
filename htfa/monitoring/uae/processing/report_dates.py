@@ -2,7 +2,7 @@ from __future__ import annotations
 import pandas as pd
 from htfa.monitoring.uae.data.database import read_report_tables
 from htfa.monitoring.uae.contracts.publication import PublishedUAEData
-from htfa.data.temporal import last_complete_month_end
+from htfa.monitoring.uae.processing.temporal import last_complete_month_end
 
 _HIGH_FREQUENCY_LABELS = frozenset(
     {"日", "日度", "周", "周度", "旬", "旬度", "月", "月度"}

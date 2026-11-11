@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 import streamlit as st
-from htfa.data.file_content import file_fingerprint
+from htfa.workspace.data.files import file_fingerprint
 from htfa.ui_shared.data_overview import BuiltinDataSource, overview_widget_keys
 
 from htfa.workspace import DatasetSnapshot, FileAsset

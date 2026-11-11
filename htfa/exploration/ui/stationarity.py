@@ -7,7 +7,7 @@ import logging
 import pandas as pd
 
 from htfa.ui_shared.chart_legend import render_pyplot_figure
-from htfa.data.tabular import numeric_variable_names
+from htfa.exploration.data.tabular import numeric_variable_names
 from htfa.exploration.processing.analysis.stationarity import (
     TABLE_FREQUENCIES,
     TEST_LABELS,

@@ -14,7 +14,7 @@ LEGACY_DIRECTORIES = (
     PROJECT_ROOT / "dashboard",
     PROJECT_ROOT / "components",
     PROJECT_ROOT / "htfa/monitoring/uae/assets/scripts",
-    PROJECT_ROOT / "htfa/data/tabular_input.py",
+    PROJECT_ROOT / "htfa/exploration/data/tabular_input.py",
     PROJECT_ROOT / "htfa/monitoring/uae/sheet_reader.py",
 )
 ACTIVE_TEXT_ROOTS = (
@@ -53,8 +53,8 @@ MIGRATION_BRIDGE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 MIGRATION_SURFACE_ROOTS = (
-    PROJECT_ROOT / "htfa/data/economic_workbook",
-    PROJECT_ROOT / "htfa/data/tabular",
+    PROJECT_ROOT / "htfa/preview/data/economic_workbook",
+    PROJECT_ROOT / "htfa/exploration/data/tabular",
     PROJECT_ROOT / "htfa/ui_shared/data_overview",
     PROJECT_ROOT / "htfa/ui_shared/shared_dataset.py",
     PROJECT_ROOT / "htfa/exploration/processing/data_source.py",
@@ -155,7 +155,7 @@ def test_uae_monitoring_uses_the_economic_workbook_protocol() -> None:
                 alias.name == "parse_target_sheet" for alias in node.names
             ):
                 assert node.level == 0 and node.module == (
-                    "htfa.data.economic_workbook.target_reader"
+                    "htfa.preview.data.economic_workbook.target_reader"
                 ), source_file
 
 

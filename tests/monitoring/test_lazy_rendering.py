@@ -62,14 +62,13 @@ def test_high_frequency_topics_render_all_sections_in_order(monkeypatch) -> None
 def test_preview_renderer_only_renders_the_open_tab(monkeypatch) -> None:
     import streamlit as st
 
-    from htfa.ui_shared.economic_workbook.renderer import EconomicWorkbookRenderer
+    from htfa.preview.ui.renderer import EconomicWorkbookRenderer
 
-    class _Reader:
-        def get_state_namespace(self) -> str:
-            return "economic_workbook.uae"
+    from htfa.preview.processing.preview import EconomicPreviewWorkflow
 
     host = _TabsHost(open_index=0)
-    renderer = EconomicWorkbookRenderer(_Reader(), module_title="测试")
+    workflow = EconomicPreviewWorkflow("uae", "economic_workbook.uae")
+    renderer = EconomicWorkbookRenderer(workflow, module_title="测试")
     rendered: list[str] = []
     monkeypatch.setattr(renderer, "_has_any_data", lambda: True)
     monkeypatch.setattr(renderer, "_render_overview_tab", lambda: rendered.append("overview"))

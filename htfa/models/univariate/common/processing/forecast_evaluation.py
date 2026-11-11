@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from htfa.data.exports import serialize_workbook
+from htfa.models.univariate.data.exports import serialize_workbook
 from dataclasses import dataclass
 from typing import Iterable
 

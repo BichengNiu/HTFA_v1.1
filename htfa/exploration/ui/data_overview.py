@@ -7,7 +7,7 @@ from collections.abc import Hashable
 from copy import deepcopy
 
 import pandas as pd
-from htfa.data.tabular import OverviewDataset, build_overview_dataset, numeric_variable_names
+from htfa.exploration.data.tabular import OverviewDataset, build_overview_dataset, numeric_variable_names
 from htfa.ui_shared.data_overview import create_data_overview
 from htfa.ui_shared.data_overview.ui.widget_keys import (
     overview_widget_keys,

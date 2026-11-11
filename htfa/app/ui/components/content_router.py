@@ -74,7 +74,7 @@ def detect_navigation_level(main_module: str, sub_module: str | None) -> str:
 
 def render_data_preview_content(sub_module: str | None) -> None:
     """渲染选中的数据预览领域。"""
-    from htfa.ui_shared.economic_workbook.registry import (
+    from htfa.preview.ui.registry import (
         create_economic_workbook_renderer,
     )
 

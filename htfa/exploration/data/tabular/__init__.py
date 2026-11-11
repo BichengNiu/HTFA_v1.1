@@ -1,0 +1,20 @@
+"""普通表格数据能力：文件读取、解析与数据集契约。"""
+
+from htfa.exploration.data.tabular.dataset import OverviewDataset, build_overview_dataset, numeric_variable_names, suggest_time_column
+from htfa.exploration.data.tabular.file_parsing import ECONOMIC_WORKBOOK_SHEET, FileParseError, TabularFileSnapshot, build_dataframe_from_rows, list_excel_sheets, load_dataframe, read_raw_rows
+from htfa.exploration.data.tabular.source import TabularInputSource
+
+__all__ = [
+    "FileParseError",
+    "ECONOMIC_WORKBOOK_SHEET",
+    "OverviewDataset",
+    "TabularFileSnapshot",
+    "TabularInputSource",
+    "build_dataframe_from_rows",
+    "build_overview_dataset",
+    "list_excel_sheets",
+    "load_dataframe",
+    "numeric_variable_names",
+    "read_raw_rows",
+    "suggest_time_column",
+]
