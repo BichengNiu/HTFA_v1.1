@@ -38,11 +38,12 @@ def test_migration_decisions_are_recorded_in_domain_docs() -> None:
     ):
         assert (PROJECT_ROOT / relative_path).is_file()
 
-    plan = (
-        PROJECT_ROOT / "docs/plans/2026-09-05-five-domain-module-migration.md"
+    architecture = (
+        PROJECT_ROOT / "docs/adr/0006-five-domain-modular-monolith.md"
     ).read_text(encoding="utf-8")
     for domain_name in DOMAIN_NAMES:
-        assert f"`htfa/{domain_name}`" in plan
+        assert f"`{domain_name}`" in architecture
+        assert (PROJECT_ROOT / "htfa" / domain_name).is_dir()
 
 
 def test_data_overview_has_one_internal_ownership_boundary() -> None:

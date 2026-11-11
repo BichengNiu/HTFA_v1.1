@@ -34,7 +34,6 @@ INTENTIONAL_CHECK_FILES = {
 }
 HISTORICAL_DOCUMENT_ROOTS = (
     PROJECT_ROOT / "docs/adr",
-    PROJECT_ROOT / "docs/plans",
 )
 LEGACY_PATH_PATTERN = re.compile(
     r"(?:from\s+dashboard\b|import\s+dashboard\b|"
