@@ -477,10 +477,6 @@ try {
             Write-Host "========================================"
             Write-Host ""
             Ensure-Runtime
-            if ([string]::IsNullOrWhiteSpace($env:HTFA_DEBUG_MODE)) {
-                $env:HTFA_DEBUG_MODE = "true"
-            }
-            Write-Host "[INFO] Debug mode: $env:HTFA_DEBUG_MODE"
             Write-Host "[INFO] To update source code, run: htfa.bat update"
             exit (Invoke-Run)
         }

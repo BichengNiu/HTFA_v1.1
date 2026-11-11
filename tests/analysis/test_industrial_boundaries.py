@@ -43,3 +43,10 @@ def test_relative_barmode_is_declared_in_config_not_subclass_overrides():
     EnterpriseIndicatorsChart()._apply_layout(figure, pd.DataFrame())
 
     assert figure.layout.barmode == "relative"
+
+
+def test_industrial_pages_import_without_the_retired_utility_facade():
+    from htfa.monitoring.industrial.ui import enterprise_analysis, macro_analysis
+
+    assert callable(enterprise_analysis.render_enterprise_profit_analysis_with_data)
+    assert callable(macro_analysis.render_macro_operations_analysis_with_data)

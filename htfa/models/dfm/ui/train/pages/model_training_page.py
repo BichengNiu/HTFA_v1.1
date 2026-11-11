@@ -33,8 +33,6 @@ from htfa.models.dfm.ui.train.utils.date_helpers import (
 # 配置日志记录器
 logger = logging.getLogger(__name__)
 
-# 导入调试日志工具
-from htfa.diagnostics import debug_log
 
 # 创建全局状态管理器实例
 _state = NamespacedStateManager('train_model')
@@ -62,7 +60,7 @@ def _reset_training_state():
 
     for key in training_keys:
         _state.set(key, None)
-        debug_log(f"状态重置 - 已清理状态键: {key}", "DEBUG")
+        logger.debug(f"状态重置 - 已清理状态键: {key}")
 
     # 重置为初始状态
     _state.set('dfm_training_status', '等待开始')
@@ -71,7 +69,7 @@ def _reset_training_state():
     _state.set('dfm_model_results_paths', None)
     _state.set('dfm_model_results', None)
 
-    debug_log("状态重置 - 已重置所有训练状态到初始值", "DEBUG")
+    logger.debug("状态重置 - 已重置所有训练状态到初始值")
 
 
 def _initialize_training_state(st_instance):
@@ -111,7 +109,7 @@ def _initialize_training_state(st_instance):
         _state.set('dfm_training_status', '训练完成')
         training_status = '训练完成'
 
-    debug_log(f"UI状态检查 - 当前训练状态: {training_status}", "DEBUG")
+    logger.debug(f"UI状态检查 - 当前训练状态: {training_status}")
 
 
 def _load_training_inputs(st_instance):

@@ -11,12 +11,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 # 导入统一的工具函数
-from htfa.monitoring.industrial.utils import (
+from htfa.monitoring.industrial.processing.data_converter import (
     convert_cumulative_to_yoy,
     convert_margin_to_yoy_diff,
-    load_enterprise_profit_data,
-    create_excel_download_button
 )
+from htfa.monitoring.industrial.processing.data_input import load_enterprise_profit_data
+from htfa.monitoring.industrial.ui.download_utils import create_excel_download_button
 
 # 导入新的图表组件
 from htfa.monitoring.industrial.ui.charts import (
@@ -137,7 +137,7 @@ def render_enterprise_profit_analysis_with_data(
     st_obj.markdown("---")
 
     # 图表2：分行业利润拆解
-    from htfa.monitoring.industrial.utils import load_industry_profit_data
+    from htfa.monitoring.industrial.processing.data_input import load_industry_profit_data
     from htfa.monitoring.industrial.processing.contribution_calculator import (
         calculate_profit_contributions,
     )
@@ -228,10 +228,8 @@ def render_enterprise_efficiency_analysis_with_data(
         return
 
     # 加载企业经营数据
-    from htfa.monitoring.industrial.utils import (
-        load_enterprise_operations_data,
-        convert_cumulative_to_current,
-    )
+    from htfa.monitoring.industrial.processing.data_input import load_enterprise_operations_data
+    from htfa.monitoring.industrial.processing.data_converter import convert_cumulative_to_current
 
     df_operations = load_enterprise_operations_data(uploaded_file)
 

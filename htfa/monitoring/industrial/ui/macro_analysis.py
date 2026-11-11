@@ -16,19 +16,18 @@ from htfa.ui_shared.chart_legend import place_chart_legend_at_bottom
 logger = logging.getLogger(__name__)
 
 # 导入统一的工具函数
-from htfa.monitoring.industrial.utils import (
-    filter_data_from_2012,
-    load_overall_industrial_data,
-    create_grouping_mappings,
-    # 新增：统一Fragment组件
+from htfa.monitoring.industrial.processing.weight_calculator import filter_data_from_2012
+from htfa.monitoring.industrial.processing.data_input import load_overall_industrial_data
+from htfa.monitoring.industrial.ui.fragment_components import (
     create_chart_with_time_selector_fragment,
-    # 新增：统一下载工具
+)
+from htfa.monitoring.industrial.ui.download_utils import (
+    create_grouping_mappings,
     create_excel_download_button,
     create_download_with_annotation,
     prepare_grouping_annotation_data,
-    # 新增：统一图表创建器
-    create_time_series_chart
 )
+from htfa.monitoring.industrial.ui.chart_creator_unified import create_time_series_chart
 
 # 导入拉动率计算模块
 from htfa.monitoring.industrial.processing.contribution_calculator import (
@@ -40,7 +39,6 @@ from htfa.monitoring.industrial.processing.weighted_calculation import (
 )
 # 导入统一状态管理
 from htfa.monitoring.industrial.ui.state_manager import industrial_state
-from htfa.diagnostics import debug_log
 from htfa.monitoring.industrial.contracts.constants import (
     TOTAL_INDUSTRIAL_GROWTH_COLUMN,
     STATE_KEY_MACRO_DATA,
@@ -60,25 +58,25 @@ def _compute_contributions(df_macro, df_weights, target_columns, uploaded_file):
     if not target_columns:
         return
 
-    debug_log("开始计算拉动率", "INFO")
+    logger.info("开始计算拉动率")
     try:
         if uploaded_file is None:
-            debug_log("未找到上传文件，无法加载总体增速", "WARNING")
+            logger.warning("未找到上传文件，无法加载总体增速")
             _clear_contribution_states()
             return
 
         df_overall = load_overall_industrial_data(uploaded_file)
         if df_overall is None or len(df_overall.columns) == 0:
-            debug_log("总体增速数据加载失败或为空", "WARNING")
+            logger.warning("总体增速数据加载失败或为空")
             _clear_contribution_states()
             return
 
         if TOTAL_INDUSTRIAL_GROWTH_COLUMN not in df_overall.columns:
-            debug_log(f"总体增速列 '{TOTAL_INDUSTRIAL_GROWTH_COLUMN}' 未找到", "WARNING")
+            logger.warning(f"总体增速列 '{TOTAL_INDUSTRIAL_GROWTH_COLUMN}' 未找到")
             _clear_contribution_states()
             return
 
-        debug_log(f"使用标准列名: {TOTAL_INDUSTRIAL_GROWTH_COLUMN}", "INFO")
+        logger.info(f"使用标准列名: {TOTAL_INDUSTRIAL_GROWTH_COLUMN}")
         total_growth_series = df_overall[TOTAL_INDUSTRIAL_GROWTH_COLUMN]
         df_with_total = pd.concat([total_growth_series, df_macro], axis=1).dropna(how='all')
 
@@ -96,12 +94,12 @@ def _compute_contributions(df_macro, df_weights, target_columns, uploaded_file):
         industrial_state.set(STATE_KEY_TOTAL_GROWTH, contribution_results['total_growth'])
         industrial_state.set(STATE_KEY_VALIDATION_RESULT, contribution_results['validation'])
 
-        debug_log(f"拉动率计算完成，验证结果: {contribution_results['validation']['passed']}", "INFO")
+        logger.info(f"拉动率计算完成，验证结果: {contribution_results['validation']['passed']}")
 
     except Exception as e:
-        debug_log(f"拉动率计算失败: {e}", "ERROR")
+        logger.error(f"拉动率计算失败: {e}")
         import traceback
-        debug_log(f"错误详情: {traceback.format_exc()}", "ERROR")
+        logger.error(f"错误详情: {traceback.format_exc()}")
         _clear_contribution_states()
 
 

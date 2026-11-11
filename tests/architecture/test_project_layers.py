@@ -69,3 +69,15 @@ def test_migrated_domains_do_not_keep_legacy_package_implementations():
     retired.extend('htfa/models/dfm/' + name for name in ['prep', 'train', 'decomp', 'results', 'utils'])
     for relative in retired:
         assert not list(python_sources((ROOT / relative))), relative
+
+
+def test_internal_imports_resolve_to_existing_source_modules():
+    """Deleted facades must not leave broken imports inside page functions."""
+    modules = {
+        '.'.join(path.relative_to(ROOT).with_suffix('').parts).removesuffix('.__init__')
+        for path in python_sources(PACKAGE)
+    }
+    for path in python_sources(PACKAGE):
+        for name in imports(path):
+            if name.startswith('htfa.'):
+                assert name in modules, (path, name)

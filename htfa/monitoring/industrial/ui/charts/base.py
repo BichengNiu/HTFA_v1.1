@@ -199,7 +199,7 @@ class BaseChartCreator:
         Returns:
             过滤后的数据
         """
-        from htfa.monitoring.industrial.utils import filter_data_by_time_range
+        from htfa.monitoring.industrial.processing.time_filter import filter_data_by_time_range
         return filter_data_by_time_range(df, time_range, custom_start_date, custom_end_date)
 
 

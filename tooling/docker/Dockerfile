@@ -12,8 +12,7 @@ ENV PYTHONPATH=/app \
     STREAMLIT_SERVER_PORT=8501 \
     STREAMLIT_SERVER_ADDRESS=0.0.0.0 \
     STREAMLIT_SERVER_HEADLESS=true \
-    STREAMLIT_BROWSER_GATHER_USAGE_STATS=false \
-    HTFA_DEBUG_MODE=false
+    STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
 
 # 健康检查使用 curl；Python 依赖只使用二进制或官方镜像可安装产物。
 RUN apt-get update && apt-get install -y --no-install-recommends \

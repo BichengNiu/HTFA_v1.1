@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 
 import streamlit as st
 
 from htfa.app import set_current_main_module, set_current_sub_module
-from htfa.diagnostics import debug_button_click
+
+
+logger = logging.getLogger(__name__)
 
 
 FIRST_COLUMN_MODULES = {"数据预览", "模型分析"}
@@ -66,7 +69,7 @@ def _render_option_buttons(
             for option in column_options:
                 key = f"{key_prefix}_col{column_index + 1}_{option}"
                 if st.button(option, type="secondary", key=key, width="stretch"):
-                    debug_button_click(label, f"从 {current} 切换到 {option}")
+                    logger.debug(f"{label}: 从 {current} 切换到 {option}")
                     selected = option
     return selected
 

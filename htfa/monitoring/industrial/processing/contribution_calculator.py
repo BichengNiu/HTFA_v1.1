@@ -5,10 +5,10 @@
 拉动率公式：拉动率 = 增速 × 权重
 """
 
+import logging
 from typing import Dict, List, Tuple, Optional
 import pandas as pd
 
-from htfa.diagnostics import debug_log
 from htfa.monitoring.industrial.contracts.constants import TOTAL_INDUSTRIAL_GROWTH_COLUMN
 from htfa.monitoring.industrial.processing.data_converter import convert_cumulative_to_yoy
 from htfa.monitoring.industrial.processing.weight_calculator import build_weight_series
@@ -16,6 +16,9 @@ from htfa.monitoring.industrial.processing.weighted_calculation import (
     build_weights_mapping,
     categorize_indicators,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 def calculate_individual_contributions(
@@ -34,7 +37,7 @@ def calculate_individual_contributions(
     Returns:
         DataFrame，列为各行业拉动率，索引为时间
     """
-    debug_log("开始计算单个行业拉动率", "DEBUG")
+    logger.debug("开始计算单个行业拉动率")
 
     weights_series_mapping = {
         indicator: build_weight_series(info['weights_row'], df_macro.index)
@@ -56,13 +59,10 @@ def calculate_individual_contributions(
         contribution_df[indicator] = contribution_series
 
     if missing_weights:
-        debug_log(
-            f"警告: {len(missing_weights)} 个指标缺少权重，这些行业的拉动率将被忽略",
-            "WARNING"
-        )
-        debug_log(f"缺少权重的指标: {missing_weights}", "WARNING")
+        logger.warning(f"警告: {len(missing_weights)} 个指标缺少权重，这些行业的拉动率将被忽略")
+        logger.warning(f"缺少权重的指标: {missing_weights}")
 
-    debug_log(f"单个行业拉动率计算完成，共 {len(contribution_df.columns)} 个行业", "DEBUG")
+    logger.debug(f"单个行业拉动率计算完成，共 {len(contribution_df.columns)} 个行业")
 
     return contribution_df
 
@@ -94,7 +94,7 @@ def calculate_group_contributions(
     Returns:
         DataFrame，列为各分组拉动率，索引为时间
     """
-    debug_log(f"开始计算分组拉动率（前缀: {prefix}），共 {len(groups)} 组", "DEBUG")
+    logger.debug(f"开始计算分组拉动率（前缀: {prefix}），共 {len(groups)} 组")
 
     individual_contributions = calculate_individual_contributions(
         df_macro, weights_mapping
@@ -122,7 +122,7 @@ def calculate_group_contributions(
         ]
 
         if not valid_indicators:
-            debug_log(f"警告: 分组 {group_name} 没有有效指标", "WARNING")
+            logger.warning(f"警告: 分组 {group_name} 没有有效指标")
             continue
 
         if use_overall_growth:
@@ -143,10 +143,7 @@ def calculate_group_contributions(
             # 拉动率 = 总体增速 × 总权重
             group_contribution = overall_growth_series * total_weight_series
 
-            debug_log(
-                f"分组 {group_name} 使用总体增速计算拉动率（{len(valid_indicators)} 个指标）",
-                "INFO"
-            )
+            logger.info(f"分组 {group_name} 使用总体增速计算拉动率（{len(valid_indicators)} 个指标）")
         else:
             # 其他分组使用细分行业加权和
             group_contribution = individual_contributions[valid_indicators].sum(axis=1)
@@ -155,10 +152,7 @@ def calculate_group_contributions(
         group_contribution_df[column_name] = group_contribution
 
         if not use_overall_growth:
-            debug_log(
-                f"分组 {group_name} 拉动率计算完成，包含 {len(valid_indicators)} 个指标",
-                "DEBUG"
-            )
+            logger.debug(f"分组 {group_name} 拉动率计算完成，包含 {len(valid_indicators)} 个指标")
 
     return group_contribution_df
 
@@ -179,7 +173,7 @@ def validate_contributions(
     Returns:
         (验证通过, 拉动率总和Series, 差值Series)
     """
-    debug_log("开始验证拉动率总和", "DEBUG")
+    logger.debug("开始验证拉动率总和")
 
     contribution_df_aligned = contribution_df.reindex(total_growth.index)
     contribution_sum = contribution_df_aligned.sum(axis=1)
@@ -191,27 +185,18 @@ def validate_contributions(
 
     validation_passed = max_diff <= tolerance
 
-    debug_log(
-        f"拉动率验证结果: 最大误差={max_diff:.4f}百分点, "
+    logger.info(f"拉动率验证结果: 最大误差={max_diff:.4f}百分点, "
         f"平均误差={mean_diff:.4f}百分点, "
-        f"容忍阈值={tolerance}百分点",
-        "INFO"
-    )
+        f"容忍阈值={tolerance}百分点")
 
     if not validation_passed:
-        debug_log(
-            f"警告: 拉动率总和与总体增速差异超过容忍阈值 "
-            f"(最大误差 {max_diff:.4f} > {tolerance})",
-            "WARNING"
-        )
+        logger.warning(f"警告: 拉动率总和与总体增速差异超过容忍阈值 "
+            f"(最大误差 {max_diff:.4f} > {tolerance})")
 
         max_diff_date = difference.abs().idxmax()
-        debug_log(
-            f"最大误差发生在: {max_diff_date}, "
+        logger.warning(f"最大误差发生在: {max_diff_date}, "
             f"拉动率总和={contribution_sum.loc[max_diff_date]:.4f}, "
-            f"总体增速={total_growth.loc[max_diff_date]:.4f}",
-            "WARNING"
-        )
+            f"总体增速={total_growth.loc[max_diff_date]:.4f}")
 
     return validation_passed, contribution_sum, difference
 
@@ -241,7 +226,7 @@ def calculate_all_contributions(
             'validation': 验证结果
         }
     """
-    debug_log("开始统一拉动率计算流程", "INFO")
+    logger.info("开始统一拉动率计算流程")
 
     # 使用标准列名
     if total_growth_column is None:
@@ -282,7 +267,7 @@ def calculate_all_contributions(
         '电力、热力、燃气及水生产和供应业': UTILITIES_INDUSTRY_COLUMN
     }
 
-    debug_log(f"三大产业列名映射: {industry_to_column_map}", "INFO")
+    logger.info(f"三大产业列名映射: {industry_to_column_map}")
 
     industry_contribution = calculate_group_contributions(
         df_macro, weights_mapping, industry_groups, '三大产业_',
@@ -311,14 +296,11 @@ def calculate_all_contributions(
         }
     }
 
-    debug_log(
-        f"拉动率计算完成: "
+    logger.info(f"拉动率计算完成: "
         f"出口依赖 {len(export_contribution.columns)} 组, "
         f"上中下游 {len(stream_contribution.columns)} 组, "
         f"三大产业 {len(industry_contribution.columns)} 组, "
-        f"单个行业 {len(individual_contribution.columns)} 个",
-        "INFO"
-    )
+        f"单个行业 {len(individual_contribution.columns)} 个")
 
     return result
 
@@ -387,9 +369,9 @@ def _build_profit_to_iva_mapping(profit_yoy_df: pd.DataFrame, df_weights: pd.Dat
                         break
 
         if not matched:
-            debug_log(f"警告：未找到匹配的权重数据 - {industry_name}", "WARNING")
+            logger.warning(f"警告：未找到匹配的权重数据 - {industry_name}")
 
-    debug_log(f"列名映射完成，成功映射 {len(profit_to_iva_mapping)}/{len(profit_yoy_df.columns)} 个行业", "INFO")
+    logger.info(f"列名映射完成，成功映射 {len(profit_to_iva_mapping)}/{len(profit_yoy_df.columns)} 个行业")
     return profit_to_iva_mapping
 
 
@@ -408,14 +390,14 @@ def _calculate_profit_individual_contributions(
         if (current_date not in profit_cumulative_df.index or
             base_date not in profit_cumulative_df.index or
             base_date not in total_profit_by_month.index):
-            debug_log(f"跳过日期 {current_date}：基期 {base_date} 数据不存在", "DEBUG")
+            logger.debug(f"跳过日期 {current_date}：基期 {base_date} 数据不存在")
             continue
 
         total_profit_base = total_profit_by_month.loc[base_date]
 
         # 避免除以零
         if total_profit_base == 0 or pd.isna(total_profit_base):
-            debug_log(f"跳过日期 {current_date}：基期总利润为零或缺失", "DEBUG")
+            logger.debug(f"跳过日期 {current_date}：基期总利润为零或缺失")
             continue
 
         for profit_col in profit_yoy_df.columns:
@@ -433,7 +415,7 @@ def _calculate_profit_individual_contributions(
                 contribution = (profit_current - profit_base) / total_profit_base * 100
                 individual_contribution_df.loc[current_date, profit_col] = contribution
             except Exception as e:
-                debug_log(f"计算 {profit_col} 在 {current_date} 的拉动率时出错: {e}", "WARNING")
+                logger.warning(f"计算 {profit_col} 在 {current_date} 的拉动率时出错: {e}")
                 continue
 
     return individual_contribution_df
@@ -457,7 +439,7 @@ def _calculate_profit_stream_contributions(
         if profit_cols_in_group:
             group_contribution = individual_contribution_df[profit_cols_in_group].sum(axis=1)
             stream_contribution_df[f"上中下游_{stream_name}"] = group_contribution
-            debug_log(f"分组 {stream_name} 拉动率计算完成，包含 {len(profit_cols_in_group)} 个行业", "DEBUG")
+            logger.debug(f"分组 {stream_name} 拉动率计算完成，包含 {len(profit_cols_in_group)} 个行业")
 
     return stream_contribution_df
 
@@ -481,13 +463,13 @@ def calculate_profit_contributions(
             'validation': 验证结果字典
         }
     """
-    debug_log("开始计算工业企业利润拉动率", "INFO")
+    logger.info("开始计算工业企业利润拉动率")
 
     # 步骤1-2: 转换累计同比 + 计算总体增速
     profit_yoy_df, total_growth, jan_feb_mask = _convert_profit_to_yoy(df_industry_profit)
 
-    debug_log(f"输入数据形状: {df_industry_profit.shape}", "INFO")
-    debug_log(f"累计同比数据形状（已过滤1-2月）: {profit_yoy_df.shape}", "INFO")
+    logger.info(f"输入数据形状: {df_industry_profit.shape}")
+    logger.info(f"累计同比数据形状（已过滤1-2月）: {profit_yoy_df.shape}")
 
     # 步骤3: 建立列名映射
     profit_to_iva_mapping = _build_profit_to_iva_mapping(profit_yoy_df, df_weights)
@@ -497,7 +479,7 @@ def calculate_profit_contributions(
     weights_mapping = build_weights_mapping(df_weights, iva_columns)
     _, stream_groups, _ = categorize_indicators(weights_mapping)
 
-    debug_log(f"上中下游分组: {list(stream_groups.keys())}", "INFO")
+    logger.info(f"上中下游分组: {list(stream_groups.keys())}")
 
     # 步骤5: 计算单个行业拉动率
     profit_cumulative_df = df_industry_profit[~jan_feb_mask]
@@ -505,14 +487,14 @@ def calculate_profit_contributions(
         profit_yoy_df, profit_cumulative_df
     )
 
-    debug_log(f"单个行业拉动率计算完成，共 {len(individual_contribution_df.columns)} 个行业", "DEBUG")
+    logger.debug(f"单个行业拉动率计算完成，共 {len(individual_contribution_df.columns)} 个行业")
 
     # 步骤6: 按上中下游分组汇总
     stream_contribution_df = _calculate_profit_stream_contributions(
         individual_contribution_df, stream_groups, profit_to_iva_mapping, profit_yoy_df.index
     )
 
-    debug_log(f"上中下游分组拉动率计算完成: {list(stream_contribution_df.columns)}", "INFO")
+    logger.info(f"上中下游分组拉动率计算完成: {list(stream_contribution_df.columns)}")
 
     # 步骤7: 验证
     validation_passed, contribution_sum, difference = validate_contributions(
@@ -530,11 +512,8 @@ def calculate_profit_contributions(
         }
     }
 
-    debug_log(
-        f"利润拉动率计算完成: "
+    logger.info(f"利润拉动率计算完成: "
         f"上中下游 {len(stream_contribution_df.columns)} 组, "
-        f"单个行业 {len(individual_contribution_df.columns)} 个",
-        "INFO"
-    )
+        f"单个行业 {len(individual_contribution_df.columns)} 个")
 
     return result
