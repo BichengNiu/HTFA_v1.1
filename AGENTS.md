@@ -67,8 +67,9 @@ Any change touching plotting (chart style, axes, legend, titles, grid, multi-axi
 - 执行提交或推送前，必须确认 `git branch --show-current` 返回 `main`，并核对本地 `main` 与远端 `origin/main` 的关系。
 - 后续提交统一直接推送到远端 `main`；如发现当前不在 `main`，先停止并切回 `main`，不得在其他分支继续修改。
 
-仓库远端只应收到**正式源文件与两份数据文件**（`htfa/monitoring/uae/assets/uae.duckdb` 经 Git LFS、
-`htfa/monitoring/uae/assets/阿联酋.xlsx`）；任何缓存、临时、中间产物、调试文件一律**不入 git、不推送**。
+仓库远端只应收到**正式源文件与工作簿**（`htfa/monitoring/uae/assets/阿联酋.xlsx`）；
+`htfa/monitoring/uae/assets/uae.duckdb` 仅保存在本地，不由 Git 或 Git LFS 跟踪，不提交、不推送。
+任何缓存、临时、中间产物、调试文件一律**不入 git、不推送**。
 
 **绝不 add/提交/推送**（无论 .gitignore 是否已忽略，都不要碰）：
 
@@ -89,7 +90,7 @@ Any change touching plotting (chart style, axes, legend, titles, grid, multi-axi
 
 **防线**：`tooling/hooks/pre-push` 已通过 `git config core.hooksPath tooling/hooks` 启用，
 推送前会拦截任何暂存的临时/缓存文件；被拦截时回到第 1 步清理后重推。
-`.gitignore` 已整体覆盖上述临时形态（`*.duckdb*` 全局忽略，仅 `htfa/monitoring/uae/assets/uae.duckdb` 特例入库，走 LFS）。
+`.gitignore` 已整体覆盖上述临时形态，`*.duckdb*` 全局忽略，正式数据库也不入 Git。
 
 ## Code changes
 

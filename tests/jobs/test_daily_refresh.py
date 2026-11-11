@@ -164,31 +164,3 @@ def test_wam_cloud_uses_database_baseline_and_still_requires_online_scan(tmp_pat
         con.execute("UPDATE detail.wam_military_strike_daily SET uavs=1")
         with pytest.raises(ValueError, match="inconsistent pressure"):
             source_wam.load_database_daily_observations(con)
-
-
-@pytest.mark.parametrize("remote", [b"verified LFS data", b"truncated"])
-def test_remote_verification_reads_exact_commit_and_rejects_corrupt_object(monkeypatch, remote):
-    import hashlib
-    from htfa.monitoring.uae.jobs import verify_publication
-    expected = b"verified LFS data"
-    pointer = f"version https://git-lfs.github.com/spec/v1\noid sha256:{hashlib.sha256(expected).hexdigest()}\nsize {len(expected)}\n"
-    monkeypatch.setattr(verify_publication.subprocess, "check_output", lambda *a, **k: pointer)
-    class Response:
-        def __enter__(self):
-            return self
-        def __exit__(self, *args):
-            pass
-        def raise_for_status(self):
-            pass
-        def iter_content(self, *args):
-            yield remote
-    def get(url, **kwargs):
-        assert "/" + "a" * 40 + "/htfa/monitoring/uae/assets/uae.duckdb" in url
-        assert kwargs["stream"]
-        return Response()
-    monkeypatch.setattr(verify_publication.requests, "get", get)
-    if remote == expected:
-        assert verify_publication.verify("a" * 40)["status"] == "verified"
-    else:
-        with pytest.raises(RuntimeError, match="size/SHA256"):
-            verify_publication.verify("a" * 40)

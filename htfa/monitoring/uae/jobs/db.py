@@ -2,7 +2,7 @@
 
 Every ``source_*.py`` module uses the helpers here so that all registered data
 sources land in one database (``htfa/monitoring/uae/assets/uae.duckdb``) with one metadata
-convention. The production database is tracked through Git LFS.
+convention. The production database stays local and is not tracked by Git.
 """
 
 from __future__ import annotations

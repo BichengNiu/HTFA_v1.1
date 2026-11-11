@@ -47,7 +47,6 @@ htfa/monitoring/uae/assets/daily-candidate-*/
 /data/**
 !/data/**/
 !/data/**/README.md
-# 唯一推送的数据库文件（经 Git LFS，见 .gitattributes）
 
 # Binary reference material stays local
 /references-local/**
@@ -64,7 +63,6 @@ htfa/monitoring/uae/assets/daily-candidate-*/
 # Databases, logs, temporary files, and generated outputs
 *.db
 *.duckdb*
-# 唯一需要入库/推送的数据库（经 Git LFS）
 *.sqlite
 *.sqlite3
 *.tmp
@@ -97,5 +95,4 @@ data/nul
 /htfa/monitoring/uae/assets/*
 !/htfa/monitoring/uae/assets/*.md
 !/htfa/monitoring/uae/assets/auto_update_all.bat
-!/htfa/monitoring/uae/assets/uae.duckdb
 !/htfa/monitoring/uae/assets/阿联酋.xlsx

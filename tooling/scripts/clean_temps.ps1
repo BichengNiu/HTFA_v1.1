@@ -5,7 +5,7 @@
 备份、残留在根目录的调试脚本与输出。
 
 绝不删除真实数据：
-  - htfa/monitoring/uae/assets/uae.duckdb（Git LFS 推送的数据库）
+  - htfa/monitoring/uae/assets/uae.duckdb（本地正式数据库，不入 Git）
   - htfa/monitoring/uae/assets/阿联酋.xlsx（成品工作簿）
   - htfa/monitoring/uae/assets/raw/**（原始数据，本地保留，不入库）
   - htfa/monitoring/uae/assets/.env（密钥）、工作搜索热度.csv、users.db、sheet.txt
