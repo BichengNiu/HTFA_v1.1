@@ -183,7 +183,7 @@ def test_remote_verification_reads_exact_commit_and_rejects_corrupt_object(monke
         def iter_content(self, *args):
             yield remote
     def get(url, **kwargs):
-        assert "/" + "a" * 40 + "/data/UAE/uae.duckdb" in url
+        assert "/" + "a" * 40 + "/htfa/monitoring/uae/assets/uae.duckdb" in url
         assert kwargs["stream"]
         return Response()
     monkeypatch.setattr(verify_publication.requests, "get", get)

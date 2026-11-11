@@ -155,7 +155,7 @@ render_complete_sidebar({"监测分析": {"阿联酋": None}})
     ("transport.data", "load_transport_data"),
     ("supplemental_data", "load_chart_data"),
 ])
-@pytest.mark.parametrize("file_input", [b"excel bytes", "data/UAE/阿联酋.xlsx"])
+@pytest.mark.parametrize("file_input", [b"excel bytes", "htfa/monitoring/uae/assets/阿联酋.xlsx"])
 def test_uae_readers_reject_file_inputs_before_excel_io(monkeypatch, module, function, file_input):
     import importlib
     import inspect

@@ -6,7 +6,7 @@
 - 发布机构：Dubai Customs（Open 许可，无需密钥）
 - 粒度：运单行项目（line items），22 列，含 goods description、货运类型、
   件数、重量/体积及单位、起运/目的机场城市与代码、创建/修改时间戳。
-- 原始文件：``data/UAE/raw/dubai_customs_air/csv/<shard>.csv.gz``（由
+- 原始文件：``htfa/monitoring/uae/assets/raw/dubai_customs_air/csv/<shard>.csv.gz``（由
   ``htfa.jobs.uae_data.download_dubai_customs_air`` 自动从 data.dubai
   manifest 发现并从 cdn.data.dubai 下载全量分片；每片约 100 万行）。
 

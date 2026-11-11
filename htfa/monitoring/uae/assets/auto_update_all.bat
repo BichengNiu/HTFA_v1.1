@@ -1,7 +1,7 @@
 ﻿@echo off
 rem Manual online refresh: fetch all sources, load DuckDB, and merge Excel.
 rem Run this batch manually; it does not create or require a scheduled task.
-cd /d "%~dp0..\.."
+cd /d "%~dp0..\..\..\.."
 if errorlevel 1 goto :failed
 if not exist "runtime\python.exe" (
     echo [ERROR] runtime\python.exe not found. Run htfa.bat first.

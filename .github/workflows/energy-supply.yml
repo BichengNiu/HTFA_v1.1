@@ -57,9 +57,9 @@ jobs:
       - name: Restore validated raw download cache
         uses: actions/cache@v4
         with:
-          path: data/UAE/raw
-          key: uae-raw-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: uae-raw-${{ runner.os }}-
+          path: htfa/monitoring/uae/assets/raw
+          key: uae-assets-raw-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: uae-assets-raw-${{ runner.os }}-
       - name: Collect, publish and verify the database and workbook together
         shell: bash
         run: |
@@ -70,17 +70,17 @@ jobs:
           publication_complete=false
           for attempt in 1 2; do
             git pull --ff-only origin main
-            git lfs pull --include=data/UAE/uae.duckdb
+            git lfs pull --include=htfa/monitoring/uae/assets/uae.duckdb
             base=$(git rev-parse HEAD)
             python -m htfa.jobs.uae_data.daily_refresh --results-dir "$RUNNER_TEMP/daily-refresh"
             git fetch origin main
             if [[ "$base" != "$(git rev-parse origin/main)" ]]; then
-              git restore --source=HEAD -- data/UAE/uae.duckdb data/UAE/阿联酋.xlsx
+              git restore --source=HEAD -- htfa/monitoring/uae/assets/uae.duckdb htfa/monitoring/uae/assets/阿联酋.xlsx
               continue
             fi
             pwsh -NoProfile -File tooling/scripts/clean_temps.ps1
             git status --short
-            git add -- data/UAE/uae.duckdb data/UAE/阿联酋.xlsx
+            git add -- htfa/monitoring/uae/assets/uae.duckdb htfa/monitoring/uae/assets/阿联酋.xlsx
             if git diff --cached --quiet; then
               echo 'No new validated observations; no commit created.' >> "$GITHUB_STEP_SUMMARY"
               publication_complete=true
@@ -97,7 +97,7 @@ jobs:
             break
           done
           test "$publication_complete" = true
-          test -z "$(git status --porcelain -- data/UAE/uae.duckdb data/UAE/阿联酋.xlsx)"
+          test -z "$(git status --porcelain -- htfa/monitoring/uae/assets/uae.duckdb htfa/monitoring/uae/assets/阿联酋.xlsx)"
       - name: Report every source status
         if: always()
         shell: python

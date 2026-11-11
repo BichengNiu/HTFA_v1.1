@@ -1,6 +1,6 @@
 """Small, conservative helpers for downloading official source files.
 
-The UAE jobs deliberately keep downloaded files under ``data/UAE/raw``.  This
+The UAE jobs deliberately keep downloaded files under ``htfa/monitoring/uae/assets/raw``.  This
 module supplies explicit HTTP transports, atomic writes, and a minimum-size
 check; source-specific discovery and parsing stay in their own modules.
 """

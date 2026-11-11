@@ -4,7 +4,7 @@
 在线更新从 IMF 官方 ArcGIS 服务获取港口活动和海峡过境数据。
 
 ``update()``：从 IMF 港口目录定位 UAE 港口，分页校验官方数据并保存 CSV →
-``data/UAE/raw/portwatch/`` 下缓存的 CSV →
+``htfa/monitoring/uae/assets/raw/portwatch/`` 下缓存的 CSV →
 逐行解析（列名全量校验防漂移，数值缺失即 fail loud）→ 事务内整表替换：
 
 - ``portwatch_uae_daily``：宽表镜像，主键 (date, portid)，每行一日一港口，

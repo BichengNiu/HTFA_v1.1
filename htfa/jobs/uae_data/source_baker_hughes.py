@@ -2,7 +2,7 @@
 
 逻辑移植自 ``scripts/data_sources/baker_hughes/update_baker_hughes_monthly.py``：
 先从 Baker Hughes Worldwide Rig Count 官方页面发现并下载最新工作簿，再从
-``data/UAE/raw/baker_hughes/`` 下按"源表最新观测月"选择有效工作簿（不依赖文件名），
+``htfa/monitoring/uae/assets/raw/baker_hughes/`` 下按"源表最新观测月"选择有效工作簿（不依赖文件名），
 提取阿布扎比/迪拜/沙迦的 Oil 活跃钻机数并按月汇总，入库 ``baker_hughes_monthly``。
 目标工作簿的最新状态检测（``target_is_current``）用于避免重复写入。
 """

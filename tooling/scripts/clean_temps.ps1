@@ -5,10 +5,10 @@
 备份、残留在根目录的调试脚本与输出。
 
 绝不删除真实数据：
-  - data/UAE/uae.duckdb（Git LFS 推送的数据库）
-  - data/UAE/阿联酋.xlsx（成品工作簿）
-  - data/UAE/raw/**（原始数据，本地保留，不入库）
-  - data/UAE/.env（密钥）、工作搜索热度.csv、users.db、sheet.txt
+  - htfa/monitoring/uae/assets/uae.duckdb（Git LFS 推送的数据库）
+  - htfa/monitoring/uae/assets/阿联酋.xlsx（成品工作簿）
+  - htfa/monitoring/uae/assets/raw/**（原始数据，本地保留，不入库）
+  - htfa/monitoring/uae/assets/.env（密钥）、工作搜索热度.csv、users.db、sheet.txt
   - data/工业、data/暂存
 
 用法（仓库根）：
@@ -26,8 +26,8 @@ $pathComparison = if ([IO.Path]::DirectorySeparatorChar -eq '\') {
 } else { [StringComparison]::Ordinal }
 $protectedPaths = @(
     '.git', '.env', 'references-local', 'users.db', 'data\users.db', 'sheet.txt',
-    'data\UAE\raw', 'data\UAE\.env', 'data\UAE\uae.duckdb',
-    'data\UAE\阿联酋.xlsx', 'data\UAE\工作搜索热度.csv', 'data\工业', 'data\暂存'
+    'htfa\monitoring\uae\assets\raw', 'htfa\monitoring\uae\assets\UAE Micro Data', 'htfa\monitoring\uae\assets\.env', 'htfa\monitoring\uae\assets\uae.duckdb',
+    'htfa\monitoring\uae\assets\阿联酋.xlsx', 'htfa\monitoring\uae\assets\工作搜索热度.csv', 'data\工业', 'data\暂存'
 ) | ForEach-Object {
     [IO.Path]::GetFullPath((Join-Path $root $_.Replace('\', [string][IO.Path]::DirectorySeparatorChar)))
 }
@@ -90,13 +90,13 @@ foreach ($name in @('__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache'
 }
 Remove-ItemNow (Join-Path $root '.coverage')
 
-# 2) 数据管线临时目录与中间文件（data/UAE 内）
-Remove-ItemNow (Join-Path $root 'data\UAE\backups') -Recurse
-Remove-ItemNow (Join-Path $root 'data\UAE\processed') -Recurse
-Remove-ItemNow (Join-Path $root 'data\UAE\.cache') -Recurse
+# 2) 数据管线临时目录与中间文件（htfa/monitoring/uae/assets 内）
+Remove-ItemNow (Join-Path $root 'htfa\monitoring\uae\assets\backups') -Recurse
+Remove-ItemNow (Join-Path $root 'htfa\monitoring\uae\assets\processed') -Recurse
+Remove-ItemNow (Join-Path $root 'htfa\monitoring\uae\assets\.cache') -Recurse
 Remove-ItemNow (Join-Path $root 'htfa\jobs\uae_data\backups') -Recurse
 Remove-ItemNow (Join-Path $root 'htfa\jobs\uae_data\processed') -Recurse
-Get-ChildItem -Path (Join-Path $root 'data\UAE') -File -Force -ErrorAction SilentlyContinue |
+Get-ChildItem -Path (Join-Path $root 'htfa\monitoring\uae\assets') -File -Force -ErrorAction SilentlyContinue |
     Where-Object {
         $_.Name -like '.mesteel-wide-*.csv' -or $_.Name -like '.dld_indices_*.csv' -or
         $_.Name -like '*.duckdb.wal' -or $_.Name -like '*.duckdb.tmp' -or
@@ -108,7 +108,7 @@ Get-ChildItem -Path (Join-Path $root 'data\UAE') -File -Force -ErrorAction Silen
 # 3) 通用临时文件（全仓；跳过 .git / runtime / .venv / node_modules / raw / references-local）
 Get-ChildItem -Path $root -Recurse -File -Force -ErrorAction SilentlyContinue |
     Where-Object {
-        $_.FullName -notmatch '[/\\]\.git[/\\]|[/\\]runtime[/\\]|[/\\]\.venv[/\\]|[/\\]node_modules[/\\]|[/\\]data[/\\]UAE[/\\]raw[/\\]|[/\\]references-local[/\\]' -and
+        $_.FullName -notmatch '[/\\]\.git[/\\]|[/\\]runtime[/\\]|[/\\]\.venv[/\\]|[/\\]node_modules[/\\]|[/\\]htfa[/\\]monitoring[/\\]uae[/\\]assets[/\\]raw[/\\]|[/\\]references-local[/\\]' -and
         ($_.Name -like '*.pyc' -or $_.Name -like '*.pyo' -or $_.Name -like '*.tmp' -or
          $_.Name -like '*.temp' -or $_.Name -like '*.log' -or $_.Name -like '*.cache' -or
          $_.Name -like '~$*')

@@ -1,6 +1,6 @@
 """从 OPEC MOMR/EIA/IMF 抓取阿联酋原油产量与基准油价。
 
-数据链路为：OPEC MOMR + EIA XLS + IMF PCPS API → ``data/UAE/raw/oil/`` →
+数据链路为：OPEC MOMR + EIA XLS + IMF PCPS API → ``htfa/monitoring/uae/assets/raw/oil/`` →
 DuckDB 长表 → ``月度_OPEC``/``日度_EIA``/``月度_Dubai`` 宽表。Excel 只由
 ``merge()`` 重建，不在抓取阶段直接写入指标数据。
 """

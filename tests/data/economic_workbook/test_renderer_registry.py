@@ -25,7 +25,7 @@ def test_preview_modules_are_declared_config_not_class_per_module():
     uae = create_economic_workbook_renderer("uae")
     assert uae.module_title == "阿联酋数据预览"
     assert uae.state_namespace == "economic_workbook.uae"
-    assert uae.default_relative_path == Path("data") / "UAE" / "阿联酋.xlsx"
+    assert uae.default_relative_path == Path("htfa/monitoring/uae/assets") / "阿联酋.xlsx"
 
 
 def test_preview_renderer_rejects_unknown_module():

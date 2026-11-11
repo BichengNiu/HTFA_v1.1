@@ -21,8 +21,9 @@ from itertools import count
 from pathlib import Path
 
 import duckdb
+from htfa.monitoring.uae.contracts.paths import ASSETS_DIR
 
-DB_PATH = Path(__file__).resolve().parents[4] / "data" / "UAE" / "uae.duckdb"
+DB_PATH = ASSETS_DIR / "uae.duckdb"
 
 ROOT = Path(__file__).resolve().parents[1]
 _LOCK = threading.RLock()

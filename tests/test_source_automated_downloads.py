@@ -105,4 +105,4 @@ def test_t100_downloader_uses_repository_relative_output():
         / "htfa" / "jobs" / "uae_data" / "download_t100.py"
     ).read_text(encoding="utf-8")
     assert "def download_recent(directory" in script
-    assert "C:/Users/NIU/Desktop/HTFA_v1.1/data/UAE/raw/t100/csv" not in script
+    assert "C:/Users/NIU/Desktop/HTFA_v1.1/htfa/monitoring/uae/assets/raw/t100/csv" not in script

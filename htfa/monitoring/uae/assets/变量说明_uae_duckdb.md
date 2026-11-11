@@ -1,7 +1,7 @@
 # `uae.duckdb` 变量说明
 
 > 检查日期：2026-09-15
-> 数据库：`data/UAE/uae.duckdb`
+> 数据库：`htfa/monitoring/uae/assets/uae.duckdb`
 > 说明：本文件根据 DuckDB 实际表内容、`meta_indicator_dictionary`、`meta_column_dictionary` 和 `meta_source_runs` 整理。缺失月份不会自动补 0，也不会前向填充；没有记录的月份与记录存在但数值为 `NULL` 分开统计。
 
 ## 一、数据库概况
@@ -20,7 +20,7 @@ The updater creates the current physical schemas only. It does not migrate legac
 | IMF PCPS / `imf_dubai_crude_monthly` | `全球: 名义商品价格: 迪拜原油` | 月；1992-01—IMF 最新发布月；当前公开序列无缺失月 | IMF PCPS `G001.POILDUB.USD.M` 的月度观测按月末日期入库；数值单位为美元/桶；IMF 可能修订历史值，更新时整表替换 | IMF Primary Commodity Price System 官方 SDMX API |
 | CBUAE / `cbuae_monthly` | 23 项：FTS 国内资金转账 6 项；国内信贷 3 项；外币存款 1 项；支票清算 2 项；银行国外资产/负债 2 项；非居民存款 5 项；政府及政府控股企业信贷/存款 4 项 | 月；大部分 2020-03—2026-06；每项 76 期 | 前 19 项无缺月、无 NULL；政府/政府控股企业 4 项为 2020-01—2026-06，共 77 期，但缺 2020-02；空值以不插行表达 | 阿联酋中央银行 CBUAE 月度公报；新旧公报口径已在 `source_cbuae.py` 统一 |
 | WAM / `detail.wam_military_strike_daily`、`wam_military_strike_monthly` | 弹道导弹、巡航导弹、UAV；辅助未分类导弹、攻击天数、观测天数；月度原始战争压力为每日 `9×log1p(弹道)+3×log1p(巡航)+log1p(无人机)` 按月求和，再按战争窗口 min-max 归一化为 0–100 | 日度 2026-02-28—2026-08-22，共 176 天；月度 7 期；2026-08 为截至 8月22日的部分月份 | 日度 `strike_intensity_log` 保留原始加权值；月度 `strike_intensity_index` 为非累计 0–100 指数；未分类导弹不进入压力指标；月度 `observation_days` 显式标记部分月份 | 根据公开新闻整理；原始来源页归档于 `raw/wam/source_manifest.json`，处理逻辑见 `source_wam.py` |
-| Cloudflare Radar / `cloudflare_radar_daily` | `阿联酋:Cloudflare Radar网络流量(相对水平%)`、周度相对水平 | 日/周；共 142 条观测，2025-08-18—2026-08-18；日度 90 条、周度 52 条 | 已入库值无 NULL；指标为各自窗口内 min-max 归一化代理指标，不是绝对流量 | Cloudflare Radar UAE；原始 JSON/CSV 保存在 `data/UAE/raw/cloudflare_radar/` |
+| Cloudflare Radar / `cloudflare_radar_daily` | `阿联酋:Cloudflare Radar网络流量(相对水平%)`、周度相对水平 | 日/周；共 142 条观测，2025-08-18—2026-08-18；日度 90 条、周度 52 条 | 已入库值无 NULL；指标为各自窗口内 min-max 归一化代理指标，不是绝对流量 | Cloudflare Radar UAE；原始 JSON/CSV 保存在 `htfa/monitoring/uae/assets/raw/cloudflare_radar/` |
 | GFS / `gfs_quarterly`、`gfs_annual` | 29 个政府财政科目：收入、税收、社会缴款、赠款、其他收入；费用及其子项；总/净营业余额；支出；净贷款或净借款；金融资产净获得及子项；非金融资产净投资及子项；负债净发生及子项。完整变量名为 `阿联酋:GFS:季度:<科目>` 或 `阿联酋:GFS:年度:<科目>` | 季度：28 个科目 2012Q1—2026Q1，共 57 期；“支出”科目 2016Q1—2026Q1，共 41 期。年度：28 个科目 2012—2025，共 14 年；“支出”科目 2016—2025，共 10 年 | 已入库值均非 NULL；“支出”在 2012—2015 年源文件中没有发布，不应视为异常缺报 | UAE Ministry of Finance（MOF）Government Finance Statistics；官方 PDF 提取 |
 | PMI / `pmi_monthly` | `阿联酋非油私营部门采购经理人指数(PMI)` | 月；2023-07—2026-07；37 期 | 连续、无 NULL | S&P Global / Trading Economics 公开样本 |
 | UN Comtrade 资本品 / `comtrade_monthly` | 金额与数量各 5 项：制造业设备、土木及基建施工设备、能源项目设备、钻探设备、港口及铁路专项设备；变量名分别为 `阿联酋:进口:<类别>:当月值` 和 `阿联酋:进口:<类别>:台数:当月值` | 月；土木、制造、港口铁路 2017-01—2026-06，共 114 期；能源项目、钻探 2017-01—2026-05，共 113 期 | 各系列在自身时间范围内连续，无 NULL；2026-06 对能源项目和钻探尚未入库 | UN Comtrade；设备分类由 HS6 组合，金额为百万美元，数量为台/件 |
@@ -36,7 +36,7 @@ The updater creates the current physical schemas only. It does not migrate legac
 | UAEWPS / `uaewps_monthly` | `阿联酋:WPS平均工资同比%(3个月移动平均)`、`阿联酋:WPS覆盖员工数同比%(3个月移动平均)` | 季；2024Q2—2026Q1；9 期 | 工资指标完整；覆盖员工数在 2024Q2 为 1 个 NULL；QER 报告有额外源警告，缺值不应插补 | CBUAE Quarterly Economic Review（QER）WPS 图表 |
 | Salik / `salik_active_vehicles_quarterly` | `阿联酋:Salik注册活跃车辆:季末值` | 季；2022Q1—2025Q1；13 期 | 连续、无 NULL；仅季末，不是月度数据；已写入 `季度_Salik` | Salik Company PJSC 投资者关系报告/演示材料 |
 | 工作搜索热度 / `employment_search_index` | `work in dubai`、`work in uae` | 月；2004-01—2026-09；每项 273 期 | 连续、无 NULL；日期可能为月初，不强制改为月末；2026-09 为当前月部分数据 | 默认自动抓取 Google Trends UAE 图表接口；在线失败直接报错；只有显式离线重算才读 `raw/employment/` JSON，`visa uae` 未进入管线 |
-| RTA / `rta_transport_monthly`、`rta_transport_daily` | 月度公交、水运、出租车趟次/车队；日度水运人次、公交平均速度，共 6 项 | 月度 222 行（公交 78、水运 42、出租车趟次/车队各 51）；日度 3,943 行（水运 2,828、公交速度 1,115），日度范围 2016-12—2026-08 | DuckDB 只保存聚合长表；RTA 明细 CSV 全部保存在 `data/UAE/raw/rta/`，不复制进主库，缺失月份/日期按缺行表达 | RTA Open Data（Data Dubai）；聚合逻辑见 `htfa/jobs/uae_data/source_rta.py` |
+| RTA / `rta_transport_monthly`、`rta_transport_daily` | 月度公交、水运、出租车趟次/车队；日度水运人次、公交平均速度，共 6 项 | 月度 222 行（公交 78、水运 42、出租车趟次/车队各 51）；日度 3,943 行（水运 2,828、公交速度 1,115），日度范围 2016-12—2026-08 | DuckDB 只保存聚合长表；RTA 明细 CSV 全部保存在 `htfa/monitoring/uae/assets/raw/rta/`，不复制进主库，缺失月份/日期按缺行表达 | RTA Open Data（Data Dubai）；聚合逻辑见 `htfa/jobs/uae_data/source_rta.py` |
 
 ## 二、数据库字典补全后的变量边界
 
@@ -66,7 +66,7 @@ The updater creates the current physical schemas only. It does not migrate legac
 - 月度分析前按指标自身的时间范围建立日历表，显式保留缺报月份；不要统一把缺行填成 0。
 - 需要连续序列的模型优先使用 CBUAE、PMI、GFS、DLD 周度、Dubai Customs 合计项等完整度较高的变量；对 DOT、MEsteel、DLD 销售、外籍劳动力、Emirates Post 先做覆盖率检查。
 - DED 应增加“有效日期范围/未来日期”质检；DLD 应继续保留异常日期视图，不要让异常交易进入长期趋势聚合。
-- 若新增变量或把未登记变量接入工作簿，遵循项目规定：先写入 `data/UAE/uae.duckdb`，再由 DuckDB 合并到 `data/UAE/阿联酋.xlsx`，不要直接改 Excel 指标数据。
+- 若新增变量或把未登记变量接入工作簿，遵循项目规定：先写入 `htfa/monitoring/uae/assets/uae.duckdb`，再由 DuckDB 合并到 `htfa/monitoring/uae/assets/阿联酋.xlsx`，不要直接改 Excel 指标数据。
 
 ## 五、复核 SQL
 

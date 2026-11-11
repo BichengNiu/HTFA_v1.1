@@ -1,7 +1,7 @@
 """Unified DuckDB infrastructure for the ``data/`` pipeline.
 
 Every ``source_*.py`` module uses the helpers here so that all registered data
-sources land in one database (``data/UAE/uae.duckdb``) with one metadata
+sources land in one database (``htfa/monitoring/uae/assets/uae.duckdb``) with one metadata
 convention. The production database is tracked through Git LFS.
 """
 

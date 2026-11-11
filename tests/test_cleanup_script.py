@@ -40,8 +40,9 @@ def _run(script, *options):
 def test_cleanup_removes_temporary_files_but_preserves_data_and_tracked_sources(tmp_path):
     root, script = _project(tmp_path)
     protected = [
-        "data/UAE/uae.duckdb", "data/UAE/阿联酋.xlsx", "data/UAE/.env",
-        "data/UAE/raw/__pycache__/keep.pyc", "data/UAE/raw/keep.tmp",
+        "htfa/monitoring/uae/assets/uae.duckdb", "htfa/monitoring/uae/assets/阿联酋.xlsx", "htfa/monitoring/uae/assets/.env",
+        "htfa/monitoring/uae/assets/raw/__pycache__/keep.pyc", "htfa/monitoring/uae/assets/raw/keep.tmp",
+        "htfa/monitoring/uae/assets/UAE Micro Data/keep.tmp",
         "data/工业/keep.log", "data/暂存/keep.tmp", "users.db",
         "references-local/keep.tmp", ".git/keep.tmp", "_tracked.py",
     ]
@@ -49,7 +50,7 @@ def test_cleanup_removes_temporary_files_but_preserves_data_and_tracked_sources(
         _put(root, name)
     subprocess.run(["git", "-C", str(root), "add", "--", "_tracked.py"], check=True)
     temporary = ["_probe.py", "scratch/__pycache__/remove.pyc", "scratch/output.log",
-                 "data/UAE/processed/test.csv", ".cache/probe.py", ".cache/before/uae.duckdb"]
+                 "htfa/monitoring/uae/assets/processed/test.csv", ".cache/probe.py", ".cache/before/uae.duckdb"]
     for name in temporary:
         _put(root, name, b"temporary")
     _run(script, "-IncludeAgentCache")

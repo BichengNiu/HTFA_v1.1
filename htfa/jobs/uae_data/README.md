@@ -1,7 +1,7 @@
 # htfa/jobs/uae_data —— UAE 数据维护作业
 
 本目录是 `htfa.jobs.uae_data` 包；数据资产（`uae.duckdb`、`阿联酋.xlsx`、
-`raw/`、`.env`）仍位于 `data/UAE/`。所有路径由 `paths.py` 集中解析，作业模块
+`raw/`、`.env`）仍位于 `htfa/monitoring/uae/assets/`。所有路径由 `paths.py` 集中解析，作业模块
 使用包内相对导入，不依赖运行时 `sys.path` 注入。
 
 ## 入口
@@ -73,7 +73,7 @@ GDP 图以十亿美元为左轴、实际增速百分比为右轴；产业占比�
 完整报告快照；工作簿其他列不变。2026-10-18 核验：不变价及 EIA 季度数据至
 2026Q2，现价至 2026Q1；需要两种价格的量价图只使用共同有效季度。
 
-阿联酋监测页面默认只读 `data/UAE/uae.duckdb`，本地与 Streamlit Cloud 均无需上传
+阿联酋监测页面默认只读 `htfa/monitoring/uae/assets/uae.duckdb`，本地与 Streamlit Cloud 均无需上传
 工作簿。统一合并在全部来源和指标字典成功后，由 `publish_report.py` 将完整工作簿
 按原列位置和日期发布到 `report.sheets`、`report.periods`、`report.observations` 长表，
 `report.release` 记录内容版本和 UTC 发布时间。首次发布同时补入仅存于工作簿的
@@ -104,7 +104,7 @@ Salik 投资者 PDF 使用固定的 Chrome 请求方式；抓取失败直接
 尼历月份直接解释成公历自然月。
 
 DED 发证月份超过当前月份的记录保留在原始快照及
-`data/UAE/raw/ded/DED_data/future_issue_dates.json` 审计件中，不进入月度指标。
+`htfa/monitoring/uae/assets/raw/ded/DED_data/future_issue_dates.json` 审计件中，不进入月度指标。
 不猜测或修正源站日期。DOT 在线 update 已强制重抓最近三年年包；是否能到
 最新自然月取决于 BTS 的 T-100 International Segment 公布进度。
 
@@ -151,7 +151,7 @@ EIA Brent 同时读取官方 XLS 和 RBRTE daily API 完整分页，校验系列
 专用来源写入乘用车、商用车两列台数，金额及零件明细仍保存在 DuckDB。
 
 Comtrade 仅由 `source_comtrade.merge()` 写入工作表，使用共享原子写表 helper，
-备份保存在 `data/UAE/backups/`；不再导出中间 CSV，也不在 extended 合并中重复写表。
+备份保存在 `htfa/monitoring/uae/assets/backups/`；不再导出中间 CSV，也不在 extended 合并中重复写表。
 
 DED 仅由 `source_ded.merge()` 使用共享原子写表工具写入四个指标，保留写前备份；旧三指标写表器与 extended 中的重复写表入口已删除。
 

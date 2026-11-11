@@ -16,7 +16,7 @@ ECONOMIC_WORKBOOK_MODULES = {
         "module_name": "uae",
         "state_namespace": "economic_workbook.uae",
         "module_title": "阿联酋数据预览",
-        "default_relative_path": Path("data") / "UAE" / "阿联酋.xlsx",
+        "default_relative_path": Path("htfa/monitoring/uae/assets") / "阿联酋.xlsx",
     },
 }
 

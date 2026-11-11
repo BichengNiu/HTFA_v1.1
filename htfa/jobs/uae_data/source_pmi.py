@@ -1,7 +1,7 @@
 """S&P Global 阿联酋非油私营部门 PMI 月度入库与写表。
 
 逻辑移植自 ``scripts/data_sources/uae_pmi/``（download_uae_pmi.py 下载 +
-process_uae_pmi.py 解析/质检/写）。原始缓存写入 ``data/UAE/raw/pmi/`` 下的
+process_uae_pmi.py 解析/质检/写）。原始缓存写入 ``htfa/monitoring/uae/assets/raw/pmi/`` 下的
 tradingeconomics_chart.json、source_metadata.json、quality_report.json。
 入库表 ``pmi_monthly`` 的 period 为月末、value 保留一位小数。受管工作表名为
 ``月度_LSEG``（当前工作簿 schema），单元格级来源标注真实公开来源。
@@ -594,9 +594,9 @@ def _dictionary_rows() -> list[dict]:
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     """下载（按需）→ 解析 → 质检 → 事务内入库。
 
-    - ``skip_download=True``：只用 data/UAE/raw/pmi/ 下既有缓存，缺失即报错。
+    - ``skip_download=True``：只用 htfa/monitoring/uae/assets/raw/pmi/ 下既有缓存，缺失即报错。
     - 否则在缓存缺失或 ``force=True`` 时调用``download`` 刷新缓存。
-    - 质检报告写入 data/UAE/raw/pmi/quality_report.json；任一检查不过即抛错
+    - 质检报告写入 htfa/monitoring/uae/assets/raw/pmi/quality_report.json；任一检查不过即抛错
       （与旧 process_uae_pmi.py 行为一致）。
     - 公开样本会滚动截断历史；按月更新本次观测，保留样本窗口外的库内历史。
     """

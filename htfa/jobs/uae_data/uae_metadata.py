@@ -42,7 +42,7 @@ def _indicator(
 
 
 # These are the numeric series described in section 2 of
-# data/UAE/变量说明_uae_duckdb.md but previously absent from the database
+# htfa/monitoring/uae/assets/变量说明_uae_duckdb.md but previously absent from the database
 # indicator dictionary.  Workbook-facing names intentionally match the
 # existing sheets where a sheet already exists.
 INDICATOR_DEFINITIONS: tuple[dict[str, Any], ...] = (

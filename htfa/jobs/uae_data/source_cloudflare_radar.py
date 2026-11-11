@@ -6,7 +6,7 @@
 更新模式：
 1. **API 模式（首选，有 token 时）**：调
    `GET /client/v4/radar/netflows/timeseries?name=ae_netflows&location=AE&dateRange=52w&aggInterval=1d`
-   token 从环境变量 `CF_RADAR_TOKEN` 或 `data/UAE/.env` 的 `CF_RADAR_TOKEN=` 行读取；
+   token 从环境变量 `CF_RADAR_TOKEN` 或 `htfa/monitoring/uae/assets/.env` 的 `CF_RADAR_TOKEN=` 行读取；
    原始 JSON 存 `raw/cloudflare_radar/netflows_<yyyyMMdd>.json` 留档。
 2. **离线重算**：仅显式指定 ``--skip-download`` 时读取最新 API JSON 原始缓存。
    在线 API、认证或响应校验失败都会直接报错。
@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS {TABLE} (
 
 
 def _load_token() -> str | None:
-    """从环境变量或 data/UAE/.env 读取 CF_RADAR_TOKEN（不打印值）。"""
+    """从环境变量或 htfa/monitoring/uae/assets/.env 读取 CF_RADAR_TOKEN（不打印值）。"""
     token = os.environ.get("CF_RADAR_TOKEN")
     if token:
         return token.strip()
@@ -204,9 +204,9 @@ def _api_rows() -> tuple[list[dict], str]:
     token = _load_token()
     if not token:
         raise RuntimeError(
-            "未找到 CF_RADAR_TOKEN（环境变量或 data/UAE/.env）。"
+            "未找到 CF_RADAR_TOKEN（环境变量或 htfa/monitoring/uae/assets/.env）。"
             "请到 https://dash.cloudflare.com → My Profile → API Tokens 创建免费 "
-            "Token（Permissions: Account → Radar → Read），写入 data/UAE/.env：\n"
+            "Token（Permissions: Account → Radar → Read），写入 htfa/monitoring/uae/assets/.env：\n"
             "    CF_RADAR_TOKEN=<你的 token>"
         )
     stamp = date.today().strftime("%Y%m%d")

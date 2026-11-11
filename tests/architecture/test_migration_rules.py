@@ -8,6 +8,8 @@ import subprocess
 import sys
 
 
+from tooling.source_tree import python_sources
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DOMAIN_NAMES = (
     "data",
@@ -53,7 +55,7 @@ def test_data_overview_has_one_internal_ownership_boundary() -> None:
     assert (PROJECT_ROOT / "htfa/ui_shared/data_overview/__init__.py").is_file()
     assert not (PROJECT_ROOT / "htfa/data/tabular_input.py").exists()
     assert not (PROJECT_ROOT / "components/__init__.py").exists()
-    assert not list((PROJECT_ROOT / "components").rglob("*.py"))
+    assert not list(python_sources((PROJECT_ROOT / "components")))
 
     for source_file in _production_python_files():
         source = source_file.read_text(encoding="utf-8")
@@ -74,15 +76,15 @@ def _imported_modules(source_file: Path) -> set[str]:
 
 
 def _production_python_files() -> tuple[Path, ...]:
-    files = list((PROJECT_ROOT / "htfa").rglob("*.py"))
-    files.extend((PROJECT_ROOT / "scripts").rglob("*.py"))
+    files = list(python_sources((PROJECT_ROOT / "htfa")))
+    files.extend(python_sources((PROJECT_ROOT / "scripts")))
     files.append(PROJECT_ROOT / "app.py")
     return tuple(files)
 
 
 def test_legacy_dashboard_imports_and_source_paths_are_gone() -> None:
     assert not (PROJECT_ROOT / "dashboard/__init__.py").exists()
-    assert not list((PROJECT_ROOT / "dashboard").rglob("*.py"))
+    assert not list(python_sources((PROJECT_ROOT / "dashboard")))
 
     for source_file in _production_python_files():
         assert all(
@@ -96,7 +98,7 @@ def test_uae_maintenance_jobs_have_one_package_boundary() -> None:
     assert (jobs_root / "update_data.py").is_file()
     assert (jobs_root / "merge_workbook.py").is_file()
     assert (jobs_root / "paths.py").is_file()
-    assert not list((PROJECT_ROOT / "data/UAE/scripts").rglob("*.py"))
+    assert not list(python_sources((PROJECT_ROOT / "htfa/monitoring/uae/assets/scripts")))
 
     for source_file in jobs_root.glob("*.py"):
         modules = _imported_modules(source_file)
@@ -108,7 +110,7 @@ def test_uae_maintenance_jobs_have_one_package_boundary() -> None:
     for relative_path in (
         "htfa/jobs/uae_data/update_data.bat",
         "htfa/jobs/uae_data/merge_workbook.bat",
-        "data/UAE/auto_update_all.bat",
+        "htfa/monitoring/uae/assets/auto_update_all.bat",
     ):
         launcher = (PROJECT_ROOT / relative_path).read_text(
             encoding="utf-8-sig"
@@ -119,7 +121,7 @@ def test_uae_maintenance_jobs_have_one_package_boundary() -> None:
 
 
 def test_model_domains_have_no_cross_family_or_application_imports() -> None:
-    dfm_files = (PROJECT_ROOT / "htfa/models/dfm").rglob("*.py")
+    dfm_files = python_sources((PROJECT_ROOT / "htfa/models/dfm"))
     for source_file in dfm_files:
         modules = _imported_modules(source_file)
         assert not any(
@@ -132,7 +134,7 @@ def test_model_domains_have_no_cross_family_or_application_imports() -> None:
                 for module in modules
             ), source_file
 
-    univariate_files = (PROJECT_ROOT / "htfa/models/univariate").rglob("*.py")
+    univariate_files = python_sources((PROJECT_ROOT / "htfa/models/univariate"))
     for source_file in univariate_files:
         modules = _imported_modules(source_file)
         assert not any(
@@ -190,7 +192,7 @@ def _discovered_core_modules() -> dict[str, set[str]]:
     discovered: dict[str, set[str]] = {}
     for domain_name, root in roots.items():
         modules: set[str] = set()
-        for source_file in root.rglob("*.py"):
+        for source_file in python_sources(root):
             if source_file.name == "__init__.py":
                 continue
             relative = source_file.relative_to(PROJECT_ROOT).with_suffix("")

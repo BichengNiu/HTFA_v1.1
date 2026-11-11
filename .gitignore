@@ -30,8 +30,8 @@ htmlcov/
 *~
 .ipynb_checkpoints/
 .cache/
-data/UAE/*.publication.lock
-data/UAE/daily-candidate-*/
+htfa/monitoring/uae/assets/*.publication.lock
+htfa/monitoring/uae/assets/daily-candidate-*/
 
 # UAE pipeline intermediate outputs
 /htfa/jobs/uae_data/backups/
@@ -47,18 +47,7 @@ data/UAE/daily-candidate-*/
 /data/**
 !/data/**/
 !/data/**/README.md
-!/data/UAE/*.py
-!/data/UAE/*.ps1
-!/data/UAE/*.bat
-!/data/UAE/scripts/*.py
-!/data/UAE/scripts/*.ps1
-!/data/UAE/scripts/*.bat
-!/data/UAE/*.md
-!/data/UAE/数据说明.md
 # 唯一推送的数据库文件（经 Git LFS，见 .gitattributes）
-!/data/UAE/uae.duckdb
-/data/UAE/raw/
-/data/UAE/工作搜索热度.csv
 
 # Binary reference material stays local
 /references-local/**
@@ -76,7 +65,6 @@ data/UAE/daily-candidate-*/
 *.db
 *.duckdb*
 # 唯一需要入库/推送的数据库（经 Git LFS）
-!/data/UAE/uae.duckdb
 *.sqlite
 *.sqlite3
 *.tmp
@@ -104,3 +92,10 @@ data/nul
 # Local reference binaries; only their documentation is versioned.
 /references/*
 !/references/README.md
+
+# UAE module assets: raw evidence, credentials and research files stay local.
+/htfa/monitoring/uae/assets/*
+!/htfa/monitoring/uae/assets/*.md
+!/htfa/monitoring/uae/assets/auto_update_all.bat
+!/htfa/monitoring/uae/assets/uae.duckdb
+!/htfa/monitoring/uae/assets/阿联酋.xlsx

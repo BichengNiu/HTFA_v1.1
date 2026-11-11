@@ -5,6 +5,8 @@ import ast
 import importlib.util
 from pathlib import Path
 
+from tooling.source_tree import python_sources
+
 ROOT = Path(__file__).resolve().parents[2]
 PACKAGE = ROOT / 'htfa'
 
@@ -22,7 +24,7 @@ def imports(path):
 
 
 def test_foundation_processing_and_contracts_have_no_presentation_dependency():
-    for path in PACKAGE.rglob('*.py'):
+    for path in python_sources(PACKAGE):
         parts = path.relative_to(PACKAGE).parts
         if parts[0] in {'jobs', 'app', 'ui_shared'} or 'ui' in parts:
             continue
@@ -40,7 +42,7 @@ def test_foundation_processing_and_contracts_have_no_presentation_dependency():
 
 def test_processing_does_not_execute_storage_or_transport_operations():
     forbidden = {'read_excel', 'read_csv', 'ExcelWriter', 'to_excel', 'to_csv', 'executemany', 'urlopen'}
-    for path in PACKAGE.rglob('*.py'):
+    for path in python_sources(PACKAGE):
         if 'processing' not in path.relative_to(PACKAGE).parts:
             continue
         for node in ast.walk(ast.parse(path.read_text(encoding='utf-8'))):
@@ -66,4 +68,4 @@ def test_migrated_domains_do_not_keep_legacy_package_implementations():
     ]
     retired.extend('htfa/models/dfm/' + name for name in ['prep', 'train', 'decomp', 'results', 'utils'])
     for relative in retired:
-        assert not list((ROOT / relative).rglob('*.py')), relative
+        assert not list(python_sources((ROOT / relative))), relative

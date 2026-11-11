@@ -1,6 +1,6 @@
 """Unified fetch → clean → load pipeline for every ``data/`` source.
 
-Runs each ``source_*.py`` module against the single ``data/UAE/uae.duckdb``
+Runs each ``source_*.py`` module against the single ``htfa/monitoring/uae/assets/uae.duckdb``
 database, then merges the requested sources from DuckDB into the workbook.
 All requested source updates run so the command reports every failure. Any
 update failure stops the workbook merge, preventing old DuckDB rows from being
@@ -44,7 +44,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--skip-download",
         action="store_true",
-        help="Do not fetch from the network; parse and load from data/UAE/raw/ only.",
+        help="Do not fetch from the network; parse and load from htfa/monitoring/uae/assets/raw/ only.",
     )
     parser.add_argument(
         "--force",

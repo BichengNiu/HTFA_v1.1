@@ -53,7 +53,7 @@ UA = (
 CHUNK_SIZE = 1024 * 1024
 RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
-# 输入与审计输出固定在 data/UAE/raw/ded/DED_data，不跟随 cwd
+# 输入与审计输出固定在 htfa/monitoring/uae/assets/raw/ded/DED_data，不跟随 cwd
 RAW_DED = DATA_DIR / "raw" / "ded"
 OUT = RAW_DED / "DED_data"
 RAW = OUT / "raw"
@@ -825,7 +825,7 @@ def update(
 def merge(workbook_path: Path) -> dict[str, object]:
     """从正式库重建「月度_DED」，使用共享原子写表工具。
 
-    写入前在 data/UAE/raw/ded/backups/ 留时间戳备份；Excel 占用时抛出明确错误。
+    写入前在 htfa/monitoring/uae/assets/raw/ded/backups/ 留时间戳备份；Excel 占用时抛出明确错误。
     """
 
     target = Path(workbook_path).resolve()
@@ -841,7 +841,7 @@ def merge(workbook_path: Path) -> dict[str, object]:
     if not spec["rows"]:
         raise RuntimeError("ded_monthly 数据为空，无可写入内容。")
 
-    # 写入前备份（遵循项目惯例；备份目录改到 data/UAE/raw/ded/backups/）
+    # 写入前备份（遵循项目惯例；备份目录改到 htfa/monitoring/uae/assets/raw/ded/backups/）
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup = BACKUP_DIR / f"阿联酋_before_ded_{stamp}.xlsx"

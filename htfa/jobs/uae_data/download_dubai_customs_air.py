@@ -42,7 +42,10 @@ UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 )
-DEFAULT_OUT = Path(__file__).resolve().parents[3] / "data" / "UAE" / "raw" / "dubai_customs_air" / "csv"
+DEFAULT_OUT = (
+    Path(__file__).resolve().parents[3]
+    / "htfa/monitoring/uae/assets/raw/dubai_customs_air/csv"
+)
 RANGE_BYTES = 4 * 1024 * 1024
 
 

@@ -789,7 +789,7 @@ def _fetch_and_stage(files, directory):
 
 
 def _download_all() -> None:
-    """完整下载 Data Dubai 官方 bulk 快照并合并到 data/UAE/raw/dld/。
+    """完整下载 Data Dubai 官方 bulk 快照并合并到 htfa/monitoring/uae/assets/raw/dld/。
 
     输出：DLD_Transactions_ALL.csv / DLD_download_manifest.json。
     """

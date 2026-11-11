@@ -4,8 +4,8 @@
 投资者演示 PDF 中的官方 KPI「Registered active vehicles (mn)」。Salik 只按季度披露该
 绝对数（无月度序列）。
 
-- 原始件：`data/UAE/raw/salik/*.pdf`（由投资者关系页自动发现和下载）。
-- 编译序列：`data/UAE/raw/salik/registered_active_vehicles_quarterly.csv`
+- 原始件：`htfa/monitoring/uae/assets/raw/salik/*.pdf`（由投资者关系页自动发现和下载）。
+- 编译序列：`htfa/monitoring/uae/assets/raw/salik/registered_active_vehicles_quarterly.csv`
   （period_end, vehicles_mn, source, note；各数值注明出处文件，横图读数可能取整）。
 - 入库表：`salik_active_vehicles_quarterly`（period 季末日, value 百万辆, source, note）。
 

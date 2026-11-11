@@ -1,7 +1,7 @@
 """UAE 财政部 GFS 数据源：提取 → 清洗 → 入库 → 回写工作簿。
 
 逻辑源自 scripts/data_sources/gfs/update_gfs.py（整体移植），唯一的介质差异：
-- 输入目录从 data/GFS 改为 data/UAE/raw/gfs/；
+- 输入目录从 data/GFS 改为 htfa/monitoring/uae/assets/raw/gfs/；
 - 解析结果不再直接写工作簿，而是先入 DuckDB（gfs_quarterly / gfs_annual），
   merge() 再从库查询回写「季度_GFS」「年度_GFS」及「指标字典」。
 
@@ -9,7 +9,7 @@
 - 年度值只用原件中年发表列，绝不由季度加总（MOF 明确说明两者可以不同）；
 - 没有值的单元格不入库（保留缺失语义），行/列顺序照旧；
 - 写工作簿仍采用 ZIP 层 OOXML 补丁（只改目标部件，其余部件字节不变），
-  写后逐单元格校验并生成 data/UAE/raw/gfs/validation_report.json。
+  写后逐单元格校验并生成 htfa/monitoring/uae/assets/raw/gfs/validation_report.json。
 """
 
 from __future__ import annotations

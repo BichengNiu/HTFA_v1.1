@@ -10,6 +10,7 @@ services:
     volumes:
       # 数据持久化
       - ../../data:/app/data
+      - ../../htfa/monitoring/uae/assets:/app/htfa/monitoring/uae/assets
       - ../../logs:/app/logs
       - ../../config:/app/config
     environment:

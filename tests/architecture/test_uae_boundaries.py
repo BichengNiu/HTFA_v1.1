@@ -8,6 +8,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from tooling.source_tree import python_sources
+
 PROJECT = Path(__file__).resolve().parents[2]
 ROOT = PROJECT / "htfa/monitoring/uae"
 PREFIX = "htfa.monitoring.uae"
@@ -49,7 +51,7 @@ def test_uae_dependencies_only_point_down_the_three_layers():
         ),
     }
     for layer, banned in forbidden.items():
-        for path in (ROOT / layer).rglob("*.py"):
+        for path in python_sources((ROOT / layer)):
             for module in _imports(path):
                 assert not any(
                     module == name or module.startswith(name + ".") for name in banned
@@ -72,7 +74,7 @@ def test_uae_dependencies_only_point_down_the_three_layers():
 def test_uae_layers_have_no_import_cycles():
     sources = {
         ".".join(path.relative_to(PROJECT).with_suffix("").parts): path
-        for path in ROOT.rglob("*.py")
+        for path in python_sources(ROOT)
         if path.name != "__init__.py"
     }
     visited, active = set(), set()
@@ -94,7 +96,7 @@ def test_uae_layers_have_no_import_cycles():
 def test_uae_imports_do_not_access_a_database_or_network():
     modules = sorted(
         ".".join(path.relative_to(PROJECT).with_suffix("").parts)
-        for path in ROOT.rglob("*.py")
+        for path in python_sources(ROOT)
         if path.name != "__init__.py"
     )
     script = f"""
@@ -121,7 +123,7 @@ with patch.object(duckdb, 'connect', forbidden), patch.object(request, 'urlopen'
 
 def test_uae_callers_have_no_old_flat_imports():
     for folder in (PROJECT / "htfa", PROJECT / "tests", PROJECT / "scripts"):
-        for path in folder.rglob("*.py"):
+        for path in python_sources(folder):
             for module in _imports(path):
                 if module.startswith(PREFIX + "."):
                     layer = module[len(PREFIX) + 1 :].split(".")[0]
@@ -152,11 +154,11 @@ def test_script_strings_have_no_legacy_uae_imports():
         r"(?!contracts(?:\.|\s)|data(?:\.|\s)|processing(?:\.|\s)|ui(?:\.|\s))"
     )
     for folder in (PROJECT / "htfa", PROJECT / "tests", PROJECT / "scripts"):
-        for path in folder.rglob("*.py"):
+        for path in python_sources(folder):
             assert not pattern.search(path.read_text(encoding="utf-8")), path
 
 
 def test_default_publication_path_is_independent_of_layer_depth():
     from htfa.monitoring.uae.data.database import DEFAULT_DATABASE
 
-    assert DEFAULT_DATABASE == PROJECT / "data/UAE/uae.duckdb"
+    assert DEFAULT_DATABASE == PROJECT / "htfa/monitoring/uae/assets/uae.duckdb"

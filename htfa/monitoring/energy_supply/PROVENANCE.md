@@ -9,7 +9,7 @@ Leaflet、MarkerCluster 和 fflate 静态代码保留在 `ui/vendor/`，各自�
 
 初始 DuckDB 快照：193212416 字节，SHA256
 `1e3c5b8007878a269c0c22f7d40a202065cd87e03cf9a5532dc4c120382e2154`。
-已导入 HTFA 唯一数据库 `data/UAE/uae.duckdb` 的 `energy_supply` schema，
+已导入 HTFA 唯一数据库 `htfa/monitoring/uae/assets/uae.duckdb` 的 `energy_supply` schema，
 并保留来源文件字节、哈希、历史事实、双语名称和稳定主键。额外保留原项目
 `audits/port_type_review_2026-10-16.json` 的类型核查证据。原始审计材料不单独提交。
 

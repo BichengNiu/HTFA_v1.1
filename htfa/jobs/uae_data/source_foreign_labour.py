@@ -1,7 +1,7 @@
 """UAE 外籍劳工流入代理指标：入库与写表。
 
 逻辑移植自 ``data/foreignEmployer/``（download_data.py 下载 +
-process_data.py 解析/质检/写表）。原始文件写入 ``data/UAE/raw/foreign_labour/``；
+process_data.py 解析/质检/写表）。原始文件写入 ``htfa/monitoring/uae/assets/raw/foreign_labour/``；
 入库表 ``foreign_labour_monthly`` 以 (period, series) 长表保存全部序列（含辅助
 字段）；工作簿 ``月度_外籍劳动力`` 只写 8 列（日期+三国原始官方指标+合计）。
 """

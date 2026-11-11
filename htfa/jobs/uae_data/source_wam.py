@@ -1,7 +1,7 @@
 """UAE military strike exposure and war-pressure index (WAM registry).
 
 The reviewed daily registry and the generated automatic extension are stored
-in ``data/UAE/raw/wam/``.  This module validates both, preserves the daily
+in ``htfa/monitoring/uae/assets/raw/wam/``.  This module validates both, preserves the daily
 detail in DuckDB, aggregates the three weapon counts and the daily three-log
 pressure measure by month, and rebuilds ``月度_WAM`` from DuckDB.
 

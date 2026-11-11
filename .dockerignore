@@ -74,3 +74,8 @@ desktop.ini
 *.zip
 *.tar.gz
 *.rar
+
+# Ship the publication pair, never raw evidence, research downloads or secrets.
+htfa/monitoring/uae/assets/*
+!htfa/monitoring/uae/assets/uae.duckdb
+!htfa/monitoring/uae/assets/阿联酋.xlsx

@@ -2,7 +2,7 @@
 
 数据源（美国运输统计局 BTS，官方指定）：
 T-100 International Segment (All Carriers) —— 每月更新、滞后约 3-6 个月，
-1990 年起。本模块解析 ``data/UAE/raw/t100/csv/uae_<year>.zip``（由
+1990 年起。本模块解析 ``htfa/monitoring/uae/assets/raw/t100/csv/uae_<year>.zip``（由
 ``download_t100.py`` 从 transtats.bts.gov 官方表单按年下载并保留官方字段；
 记录官方最新可用月份与实际下载覆盖），保留 US↔UAE 双向航段并月度聚合成指标入
 ``dot_t100_monthly``。
@@ -256,7 +256,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     if not zips:
         raise FileNotFoundError(
             f"未找到 {CSV_DIR}/uae_*.zip；请先运行 "
-            f"data/UAE/raw/t100/download_uae_years.mjs 下载 UAE 过滤年包"
+            f"htfa/monitoring/uae/assets/raw/t100/download_uae_years.mjs 下载 UAE 过滤年包"
         )
     nodata_years = {
         int(path.name.split("_")[1].split(".")[0])

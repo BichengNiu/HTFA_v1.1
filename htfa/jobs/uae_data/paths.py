@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 import os
+from htfa.monitoring.uae.contracts.paths import ASSETS_DIR
 
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = PACKAGE_DIR.parents[2]
 # Scheduled workers use an isolated candidate directory; the application keeps
 # the production default unless the maintenance process explicitly overrides it.
-DATA_DIR = Path(os.environ.get("HTFA_UAE_DATA_DIR", PROJECT_ROOT / "data" / "UAE")).resolve()
+DATA_DIR = Path(os.environ.get("HTFA_UAE_DATA_DIR", ASSETS_DIR)).resolve()
 SCRIPTS_DIR = PACKAGE_DIR
 RAW_DIR = DATA_DIR / "raw"
 DB_PATH = DATA_DIR / "uae.duckdb"

@@ -7,11 +7,13 @@ from pathlib import Path
 import re
 
 
+from tooling.source_tree import python_sources, repository_files
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 LEGACY_DIRECTORIES = (
     PROJECT_ROOT / "dashboard",
     PROJECT_ROOT / "components",
-    PROJECT_ROOT / "data/UAE/scripts",
+    PROJECT_ROOT / "htfa/monitoring/uae/assets/scripts",
     PROJECT_ROOT / "htfa/data/tabular_input.py",
     PROJECT_ROOT / "htfa/monitoring/uae/sheet_reader.py",
 )
@@ -20,7 +22,7 @@ ACTIVE_TEXT_ROOTS = (
     PROJECT_ROOT / "htfa",
     PROJECT_ROOT / "scripts",
     PROJECT_ROOT / "tooling",
-    PROJECT_ROOT / "data/UAE",
+    PROJECT_ROOT / "htfa/monitoring/uae/assets",
     PROJECT_ROOT / "tests",
     PROJECT_ROOT / "docs",
     PROJECT_ROOT / "CONTEXT.md",
@@ -67,7 +69,7 @@ MIGRATION_SURFACE_ROOTS = (
 def _python_files() -> tuple[Path, ...]:
     files = [PROJECT_ROOT / "app.py"]
     for root_name in ("htfa", "scripts", "tooling", "tests"):
-        files.extend((PROJECT_ROOT / root_name).rglob("*.py"))
+        files.extend(python_sources((PROJECT_ROOT / root_name)))
     return tuple(path for path in files if path.is_file())
 
 
@@ -77,7 +79,7 @@ def _active_text_files() -> tuple[Path, ...]:
         if root.is_file():
             files.append(root)
         else:
-            files.extend(path for path in root.rglob("*") if path.is_file())
+            files.extend(path for path in repository_files(root) if path.is_file())
     return tuple(
         path
         for path in files
@@ -131,7 +133,7 @@ def test_migration_surface_has_no_compatibility_bridges() -> None:
         if root.is_file():
             files.append(root)
         else:
-            files.extend(root.rglob("*.py"))
+            files.extend(python_sources(root))
 
     for source_file in files:
         source = source_file.read_text(encoding="utf-8", errors="ignore")
@@ -143,7 +145,7 @@ def test_uae_monitoring_uses_the_economic_workbook_protocol() -> None:
     forbidden = re.compile(
         r"\bopen_uae_workbook\b|pd\.(?:read_excel|ExcelFile)\s*\("
     )
-    for source_file in (PROJECT_ROOT / "htfa/monitoring/uae").rglob("*.py"):
+    for source_file in python_sources((PROJECT_ROOT / "htfa/monitoring/uae")):
         source = source_file.read_text(encoding="utf-8", errors="ignore")
         assert not forbidden.search(source), source_file
         for node in ast.walk(ast.parse(source)):
@@ -164,7 +166,7 @@ def test_dfm_preparation_uses_the_economic_workbook_protocol() -> None:
         PROJECT_ROOT / "htfa/models/dfm/processing/prep",
         PROJECT_ROOT / "htfa/models/dfm/processing/train",
     ):
-        for source_file in root.rglob("*.py"):
+        for source_file in python_sources(root):
             assert not forbidden.search(
                 source_file.read_text(encoding="utf-8", errors="ignore")
             ), source_file

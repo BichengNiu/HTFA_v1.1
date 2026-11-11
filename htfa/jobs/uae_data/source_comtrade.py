@@ -1,7 +1,7 @@
 """UN Comtrade 阿联酋设备进口：下载 → 聚合 → 入库与写表。
 
 逻辑移植自 ``data/capitalImports/``（下载 + 聚合/质检）。原始 JSON 缓存
-写入 ``data/UAE/raw/comtrade/``；API 密钥读 ``data/UAE/.env``。入库表三张：
+写入 ``htfa/monitoring/uae/assets/raw/comtrade/``；API 密钥读 ``htfa/monitoring/uae/assets/.env``。入库表三张：
 comtrade_monthly（五类金额/台数）、detail.comtrade_partner_detail（镜像申报国明细）、
 detail.comtrade_quantity_detail（HS6 数量明细）。工作簿 sheet 为 ``月度_UNComtrade``。
 """
@@ -85,7 +85,7 @@ def load_api_key() -> str:
                 break
     if not key:
         raise RuntimeError(
-            "COMTRADE_API_KEY is missing. Add it to data/UAE/.env."
+            "COMTRADE_API_KEY is missing. Add it to htfa/monitoring/uae/assets/.env."
         )
     return key
 

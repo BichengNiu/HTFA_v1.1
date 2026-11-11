@@ -1,7 +1,7 @@
-"""Merge DuckDB data back into the relevant ``data/UAE/阿联酋.xlsx`` sheets.
+"""Merge DuckDB data back into the relevant ``htfa/monitoring/uae/assets/阿联酋.xlsx`` sheets.
 
 Each ``source_*.py`` module owns its workbook sheets and reads their values
-from ``data/UAE/uae.duckdb``. Writers use Excel COM or atomic OOXML writes.
+from ``htfa/monitoring/uae/assets/uae.duckdb``. Writers use Excel COM or atomic OOXML writes.
 
 Close the workbook in Excel before merging; every writer keeps its backup
 and rollback behaviour.

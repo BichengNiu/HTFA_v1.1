@@ -6,7 +6,7 @@ from htfa.jobs.uae_data import update_data
 
 
 ROOT = Path(__file__).resolve().parents[1]
-BATCH = ROOT / "data" / "UAE" / "auto_update_all.bat"
+BATCH = ROOT / "htfa" / "monitoring" / "uae" / "assets" / "auto_update_all.bat"
 
 
 def test_auto_update_batch_does_not_force_cache_only_mode() -> None:

@@ -17,7 +17,7 @@
 | 466229 | marine_ridership | 日（交易级） | 官方 JSON 日期字段，用于水运日度计数 |
 | 459803 | bus_ridership | 日（交易级） | 公交刷卡交易，原始文件仅保存在 raw，不入库 |
 
-原始 CSV/JSON 全部保存在 ``data/UAE/raw/rta/``；DuckDB 只保留
+原始 CSV/JSON 全部保存在 ``htfa/monitoring/uae/assets/raw/rta/``；DuckDB 只保留
 ``rta_transport_monthly`` / ``rta_transport_daily`` 两张聚合指标表。
 这样既保留可追溯的原始数据，又避免把千万级交易明细复制进主库。
 
@@ -555,7 +555,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         f"月度聚合 {sum(len(values) for values in (bus_monthly, marine_monthly, taxi_trips, taxi_fleet))} 行；"
         f"日度聚合 {len(bus_speed_daily) + len(marine_daily)} 行；"
         f"水运按官方 JSON 日期字段完整计数 {sum(marine_daily.values()):,} 条；"
-        "raw 明细仅保存在 data/UAE/raw/rta/，不写入 DuckDB"
+        "raw 明细仅保存在 htfa/monitoring/uae/assets/raw/rta/，不写入 DuckDB"
     )
     return {
         "status": "ok",

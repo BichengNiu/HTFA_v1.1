@@ -4,11 +4,12 @@ from htfa.monitoring.uae.contracts.publication import PublishedUAEData
 from functools import lru_cache
 import json
 from pathlib import Path
+from htfa.monitoring.uae.contracts.paths import ASSETS_DIR
 import duckdb
 import pandas as pd
 from htfa.data.economic_workbook.tables import EconomicTableSource, TableWorkbook
 
-DEFAULT_DATABASE = Path(__file__).resolve().parents[4] / "data/UAE/uae.duckdb"
+DEFAULT_DATABASE = ASSETS_DIR / "uae.duckdb"
 REPORT_SCHEMA_VERSION = 1
 
 

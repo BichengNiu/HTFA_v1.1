@@ -1,7 +1,7 @@
 """CBUAE 政府/政府控股企业存贷款与外资流向指标月度入库与写表。
 
 逻辑移植自 ``scripts/data_sources/cbuae/update_cbuae_monthly.py``：扫描
-``data/UAE/raw/cbuae/`` 下全部 YYYY-MM.xlsx / YYYY-MM.pdf 统计公报，读取全银行口径的
+``htfa/monitoring/uae/assets/raw/cbuae/`` 下全部 YYYY-MM.xlsx / YYYY-MM.pdf 统计公报，读取全银行口径的
 国内信贷、居民/非居民存款、按币种存款、国外资产负债等多张表，为每个观测月保留
 最新 vintage；只发布 PDF 的期间解析 PDF 版本公报。入库为长表 ``cbuae_monthly``
 （(period, indicator) 一行），单位百万迪拉姆。数据一律直接来自 CBUAE 公报，不依赖

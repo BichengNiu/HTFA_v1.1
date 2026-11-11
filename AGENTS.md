@@ -6,7 +6,7 @@
 
 ## ⚠️ 数据变量硬性规则（Data pipeline rule，必守）
 
-**所有新增数据变量，必须先写入 `data/UAE/uae.duckdb`，再经由 duckdb 更新到 `data/UAE/阿联酋.xlsx`。** 任何数据源禁止绕过 duckdb 直接改写 Excel 里的指标数据。
+**所有新增数据变量，必须先写入 `htfa/monitoring/uae/assets/uae.duckdb`，再经由 duckdb 更新到 `htfa/monitoring/uae/assets/阿联酋.xlsx`。** 任何数据源禁止绕过 duckdb 直接改写 Excel 里的指标数据。
 
 - 扩展某来源的变量：在对应 `htfa/jobs/uae_data/source_*.py` 中解析原始数据 → 入长表 → 在 `merge()` / Excel 写表 helper 中一并还原宽表。
 - 已规范化（入库→合并）的做法参考 `source_cbuae.py`：`update()` 解析原文入库 `cbuae_monthly`（(period, indicator) 长表），`merge()` 从库读取并调用 `write_cbuae_sheet.ps1` 重建 `月度_CBUAE`；缺失值以 `None` 写入并留空单元格。
@@ -15,7 +15,7 @@
 
 ## Project layout
 
-`app.py` is the Streamlit entry point. Application code lives under `htfa/`, maintenance and data-source jobs under `htfa/jobs/`, deployment configuration under `tooling/`, and reusable documentation under `docs/`. Local data belongs in `data/`; local binary references belong in `references-local/`. Do not commit credentials, databases, raw data, binary research files, logs, caches, or temporary exports.
+`app.py` is the Streamlit entry point. Application code lives under `htfa/`, maintenance and data-source jobs under `htfa/jobs/`, deployment configuration under `tooling/`, and reusable documentation under `docs/`. UAE data assets belong in `htfa/monitoring/uae/assets/`; other local data belongs in `data/`; local binary references belong in `references-local/`. Do not commit credentials, databases, raw data, binary research files, logs, caches, or temporary exports.
 
 **共享能力的内部边界**位于 `htfa/`：`htfa/data/tabular/` 只负责普通表格文件读取、解析和数据集契约；`htfa/ui_shared/data_overview/` 只负责可复用的 Streamlit 数据概览 UI。探索页的数据源适配器留在 `htfa/exploration/ui/`，模型页只依赖这两个明确入口，不再存在独立 `components/` 或顶层 `data_overview` 包。
 
@@ -67,13 +67,13 @@ Any change touching plotting (chart style, axes, legend, titles, grid, multi-axi
 - 执行提交或推送前，必须确认 `git branch --show-current` 返回 `main`，并核对本地 `main` 与远端 `origin/main` 的关系。
 - 后续提交统一直接推送到远端 `main`；如发现当前不在 `main`，先停止并切回 `main`，不得在其他分支继续修改。
 
-仓库远端只应收到**正式源文件与两份数据文件**（`data/UAE/uae.duckdb` 经 Git LFS、
-`data/UAE/阿联酋.xlsx`）；任何缓存、临时、中间产物、调试文件一律**不入 git、不推送**。
+仓库远端只应收到**正式源文件与两份数据文件**（`htfa/monitoring/uae/assets/uae.duckdb` 经 Git LFS、
+`htfa/monitoring/uae/assets/阿联酋.xlsx`）；任何缓存、临时、中间产物、调试文件一律**不入 git、不推送**。
 
 **绝不 add/提交/推送**（无论 .gitignore 是否已忽略，都不要碰）：
 
-- `data/UAE/raw/**`、`data/UAE/.env`、`data/UAE/工作搜索热度.csv`、`data/UAE/uae.duckdb.wal` / `.tmp`
-- `data/UAE/backups/`、`data/UAE/processed/`、`.cache/`、`.mesteel-wide-*.csv`、`.dld_indices_*.csv`
+- `htfa/monitoring/uae/assets/raw/**`、`htfa/monitoring/uae/assets/.env`、`htfa/monitoring/uae/assets/工作搜索热度.csv`、`htfa/monitoring/uae/assets/uae.duckdb.wal` / `.tmp`
+- `htfa/monitoring/uae/assets/backups/`、`htfa/monitoring/uae/assets/processed/`、`.cache/`、`.mesteel-wide-*.csv`、`.dld_indices_*.csv`
 - `__pycache__/`、`.pytest_cache/`、`.mypy_cache/`、`.coverage`、`htmlcov/`
 - `*.pyc`、`*.pyo`、`*.tmp`、`*.temp`、`*.log`、`*.cache`、`~$*`
 - 仓库根的调试残留（未跟踪的 `_*.py` / `_*.ps1` / `_*.json` / `_*.csv`）
@@ -89,7 +89,7 @@ Any change touching plotting (chart style, axes, legend, titles, grid, multi-axi
 
 **防线**：`tooling/hooks/pre-push` 已通过 `git config core.hooksPath tooling/hooks` 启用，
 推送前会拦截任何暂存的临时/缓存文件；被拦截时回到第 1 步清理后重推。
-`.gitignore` 已整体覆盖上述临时形态（`*.duckdb*` 全局忽略，仅 `data/UAE/uae.duckdb` 特例入库，走 LFS）。
+`.gitignore` 已整体覆盖上述临时形态（`*.duckdb*` 全局忽略，仅 `htfa/monitoring/uae/assets/uae.duckdb` 特例入库，走 LFS）。
 
 ## Code changes
 

@@ -1,5 +1,5 @@
 ﻿@echo off
-rem Fetch, clean and load all data sources into data\UAE\uae.duckdb.
+rem Fetch, clean and load all data sources into htfa\monitoring\uae\assets\uae.duckdb.
 rem Usage: update_data.bat [--source cbuae,gfs] [--skip-download] [--force]
 cd /d "%~dp0..\..\.."
 if errorlevel 1 goto :failed
