@@ -142,10 +142,10 @@ EIA Brent 同时读取官方 XLS 和 RBRTE daily API 完整分页，校验系列
 - `.bat` / `.ps1` 必须保持 **UTF-8 带 BOM**（PowerShell 按 GBK 读中文会乱码/删表失败）。
 - `raw/<源>/download_*.py` 等既有本地工具随 raw 数据存放。
   BTS 本地更新使用 `download_t100.py` 获取官方最近三年数据，无需本地 raw 脚本；
-  既有 T-100 Node 下载器存在时仍兼容调用。
+  既有 T-100 Node 下载器仅供手动获取离线年包。
 
 来源模块仅供总控导入，不提供独立执行或内嵌自检入口；维护检查使用 `tests/`
-中的来源测试。更新和合并各注册同一组 25 个来源，`--source salik` 等单来源
+中的来源测试。更新和合并各注册同一组有效来源，`--source salik` 等单来源
 命令只写该来源的工作表。搜索热度直接从 DuckDB 写入工作簿，不再导出页面
 已不使用的 `工作搜索热度.csv`；本地既有 CSV 不删除。汽车进口工作表仅由
 专用来源写入乘用车、商用车两列台数，金额及零件明细仍保存在 DuckDB。
@@ -153,13 +153,12 @@ EIA Brent 同时读取官方 XLS 和 RBRTE daily API 完整分页，校验系列
 Comtrade 仅由 `source_comtrade.merge()` 写入工作表，使用共享原子写表 helper，
 备份保存在 `htfa/monitoring/uae/assets/backups/`；不再导出中间 CSV，也不在 extended 合并中重复写表。
 
-DED 仅由 `source_ded.merge()` 使用共享原子写表工具写入四个指标，保留写前备份；旧三指标写表器与 extended 中的重复写表入口已删除。
+DED 仅由 `source_ded.merge()` 使用共享原子写表工具写入快照聚合指标，保留写前备份。
 
 ### 官方来源读取约定
 
 - RTA 公交速度 CSV 先统一换行格式，保留全部字段和记录；水运固定使用官方 JSON 导出，逐条读取原文完整的 `txn_date` 字段计数。JSON 拼接分隔符不计为记录，每条记录缺日期、重复日期字段或日期无效均报错，不启用忽略错误行。
 - RTA 在线运行保存各数据集的 `download_manifest.json`；显式离线模式只读取清单指定文件并核对大小，不访问元数据接口、不扫描混用历史版本。缺失清单或文件即报错。
-- TDRA 旧解析器作为归档工具保留，不参加活动更新。
 - Google Trends 使用同一 Chrome 请求会话获取查询令牌和时间线；429 有限退避重试，仍失败则报错，不自动转用缓存。
 - 迪拜海关航空下载器为正式源码 `download_dubai_customs_air.py`：按当前完整清单下载，支持 HTTP Range 断点续传，校验响应长度及 gzip CRC 后原子替换。单次请求和重试次数有限，不再按整批累计 30 分钟强制终止；缺少任一分片即拒绝入库。
 - 嵌入式运行时的 `python313._pth` 包含项目根目录，支持直接执行 `runtime\python.exe -m htfa.monitoring.uae.jobs.update_data`；运行时生成脚本同步维护此配置。

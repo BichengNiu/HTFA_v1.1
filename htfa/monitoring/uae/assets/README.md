@@ -29,7 +29,6 @@ DuckDB，并自动同步到工作簿；完整来源清单与口径见 `数据说
 - `db.py`：共享 DuckDB 连接 / 建表 / 运行日志；
 - `source_*.py`：每个数据源一个模块（下载器、解析清洗、入库、写表）；
 - `write_*.ps1` / `merge_*.ps1`：Excel COM 写表助手（保留工作簿批注、链接等部件）；
-- `fetch_official_news.py`：自动扫描 DED 官方新闻并提取候选值；冲突或来源不明确的值不会自动入库。
 
 > 说明：`raw/t100/*.mjs`（US DOT T-100 原始下载器）按源随 raw 数据存放，不随脚本
 > 迁入 scripts/；`raw/<源>/download_*.py` 同理属于各源原始工具。
