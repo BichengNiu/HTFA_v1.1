@@ -7,8 +7,8 @@ from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 
-from htfa.jobs.uae_data import db  # noqa: E402
-from htfa.jobs.uae_data import source_comtrade as source  # noqa: E402
+from htfa.monitoring.uae.jobs import db  # noqa: E402
+from htfa.monitoring.uae.jobs import source_comtrade as source  # noqa: E402
 
 
 def _write_reporters(tmp_path: Path) -> Path:

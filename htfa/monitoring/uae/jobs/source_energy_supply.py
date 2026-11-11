@@ -1,6 +1,6 @@
 """Publish energy monitoring report indicators from collected DuckDB facts.
 
-Collection is owned exclusively by ``htfa.jobs.energy_supply.publish``.
+Collection is owned exclusively by ``htfa.monitoring.energy_supply.jobs.publish``.
 Monthly PortWatch series describe sums of observed days, never full-month
 estimates. Source daily records, geometry and individual AIS observations stay
 in the energy schema and remain available through the original download UI.

@@ -12,7 +12,7 @@ import json
 import duckdb
 import pytest
 
-from htfa.jobs.uae_data import source_dld as dld  # noqa: E402
+from htfa.monitoring.uae.jobs import source_dld as dld  # noqa: E402
 
 
 def _write_bulk_archive(path, columns, rows):

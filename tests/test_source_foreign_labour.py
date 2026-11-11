@@ -4,8 +4,8 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from htfa.jobs.uae_data import db  # noqa: E402
-from htfa.jobs.uae_data import source_foreign_labour as source  # noqa: E402
+from htfa.monitoring.uae.jobs import db  # noqa: E402
+from htfa.monitoring.uae.jobs import source_foreign_labour as source  # noqa: E402
 
 
 def _make_bangladesh(year: int, month: int, value: int) -> None:

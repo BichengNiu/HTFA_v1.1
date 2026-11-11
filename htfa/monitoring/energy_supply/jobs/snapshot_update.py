@@ -86,7 +86,7 @@ def collect_candidate(
     with data_store.job_database(candidate):
         import htfa.monitoring.energy_supply.processing.ais as ais
         import htfa.monitoring.energy_supply.processing.portwatch_history as portwatch_history
-        from htfa.jobs.energy_supply import collector
+        from htfa.monitoring.energy_supply.jobs import collector
 
         data_store.initialize()
         import htfa.monitoring.energy_supply.processing.pipeline_catalog as pipeline_catalog
@@ -118,7 +118,7 @@ def collect_candidate(
                 for kind in ("assets", "ports", "chokepoints")
             }
         )
-        from htfa.jobs.energy_supply.snapshot_retry import (
+        from htfa.monitoring.energy_supply.jobs.snapshot_retry import (
             SOURCES,
             decision,
             successful_sources,

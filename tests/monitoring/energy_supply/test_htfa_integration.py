@@ -11,9 +11,9 @@ import pytest
 from openpyxl import Workbook, load_workbook
 from streamlit.testing.v1 import AppTest
 
-from htfa.jobs.energy_supply import publish, snapshot_update
-from htfa.jobs.uae_data import db, source_energy_supply
-from htfa.jobs.uae_data.paths import DB_PATH
+from htfa.monitoring.energy_supply.jobs import publish, snapshot_update
+from htfa.monitoring.uae.jobs import db, source_energy_supply
+from htfa.monitoring.uae.jobs.paths import DB_PATH
 import htfa.monitoring.energy_supply.data.storage as data_store
 import htfa.monitoring.energy_supply.processing.ais as ais
 

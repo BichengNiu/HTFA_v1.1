@@ -34,8 +34,8 @@ htfa/monitoring/uae/assets/*.publication.lock
 htfa/monitoring/uae/assets/daily-candidate-*/
 
 # UAE pipeline intermediate outputs
-/htfa/jobs/uae_data/backups/
-/htfa/jobs/uae_data/processed/
+/htfa/monitoring/uae/jobs/backups/
+/htfa/monitoring/uae/jobs/processed/
 
 # Untracked root-level debugging artifacts
 /_*.py

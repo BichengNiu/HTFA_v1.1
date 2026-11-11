@@ -7,7 +7,7 @@ import json
 from openpyxl import Workbook, load_workbook
 import pytest
 
-from htfa.jobs.uae_data import daily_refresh, portable_sheet_writer
+from htfa.monitoring.uae.jobs import daily_refresh, portable_sheet_writer
 
 
 def payload():
@@ -97,7 +97,7 @@ def test_linux_pmi_writer_updates_dictionary_and_preserves_missing(tmp_path):
 
 @pytest.mark.parametrize("final_status", ["ok", "error"])
 def test_daily_failed_source_rolls_back_pair_and_finalization_is_atomic(tmp_path, monkeypatch, final_status):
-    from htfa.jobs.energy_supply import publish, snapshot_update
+    from htfa.monitoring.energy_supply.jobs import publish, snapshot_update
     data = tmp_path / "data"
     data.mkdir()
     database, excel = data / "uae.duckdb", data / "阿联酋.xlsx"
@@ -138,7 +138,7 @@ def test_daily_scope_contains_live_energy_worker_and_no_annual_quarterly_jobs():
 
 
 def test_wam_cloud_uses_database_baseline_and_still_requires_online_scan(tmp_path, monkeypatch):
-    from htfa.jobs.uae_data import db, source_wam
+    from htfa.monitoring.uae.jobs import db, source_wam
     monkeypatch.setattr(source_wam, "DAILY_PATH", tmp_path / "missing.csv")
     def missing_registry():
         raise FileNotFoundError("raw registry unavailable")
@@ -169,7 +169,7 @@ def test_wam_cloud_uses_database_baseline_and_still_requires_online_scan(tmp_pat
 @pytest.mark.parametrize("remote", [b"verified LFS data", b"truncated"])
 def test_remote_verification_reads_exact_commit_and_rejects_corrupt_object(monkeypatch, remote):
     import hashlib
-    from htfa.jobs.uae_data import verify_publication
+    from htfa.monitoring.uae.jobs import verify_publication
     expected = b"verified LFS data"
     pointer = f"version https://git-lfs.github.com/spec/v1\noid sha256:{hashlib.sha256(expected).hexdigest()}\nsize {len(expected)}\n"
     monkeypatch.setattr(verify_publication.subprocess, "check_output", lambda *a, **k: pointer)

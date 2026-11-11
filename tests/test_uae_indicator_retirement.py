@@ -5,8 +5,8 @@ from datetime import date
 from openpyxl import Workbook, load_workbook
 import pytest
 
-from htfa.jobs.uae_data import db, source_dld as dld
-from htfa.jobs.uae_data.retired_sources import (
+from htfa.monitoring.uae.jobs import db, source_dld as dld
+from htfa.monitoring.uae.jobs.retired_sources import (
     RETIRED_INDICATORS, RETIRED_WEEKLY_COLUMNS, retire_database, retire_workbook,
 )
 
@@ -36,7 +36,7 @@ def test_retirement_cleans_old_tables_aliases_rows_and_columns_idempotently():
 
 
 def test_workbook_retirement_resolves_names_after_column_reordering(tmp_path, monkeypatch):
-    import htfa.jobs.uae_data.uae_metadata as metadata
+    import htfa.monitoring.uae.jobs.uae_metadata as metadata
 
     database = tmp_path / "uae.duckdb"
     with db.connect(database) as con:

@@ -8,8 +8,8 @@ from pathlib import Path
 
 import duckdb
 
-from htfa.jobs.uae_data import source_rta  # noqa: E402
-from htfa.jobs.uae_data import db  # noqa: E402
+from htfa.monitoring.uae.jobs import source_rta  # noqa: E402
+from htfa.monitoring.uae.jobs import db  # noqa: E402
 
 
 def _csv(tmp_path: Path, name: str, content: str) -> Path:

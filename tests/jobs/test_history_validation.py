@@ -6,8 +6,8 @@ import json
 import duckdb
 import pytest
 
-from htfa.jobs.uae_data import db
-from htfa.jobs.uae_data.history_validation import validate_history
+from htfa.monitoring.uae.jobs import db
+from htfa.monitoring.uae.jobs.history_validation import validate_history
 
 
 def make_database(path, periods):
@@ -68,7 +68,7 @@ def test_history_guard_allows_revisions_and_additions(tmp_path):
 
 def test_cbuae_partial_bulletin_keeps_lfs_history(tmp_path, monkeypatch):
     from decimal import Decimal
-    from htfa.jobs.uae_data import source_cbuae as source
+    from htfa.monitoring.uae.jobs import source_cbuae as source
     monkeypatch.setattr(source, "RAW_DIR", tmp_path)
     (tmp_path / "2026-01.xlsx").touch()
     observation = source.Observation(
@@ -90,7 +90,7 @@ def test_cbuae_partial_bulletin_keeps_lfs_history(tmp_path, monkeypatch):
 
 def test_foreign_labour_refuses_ytd_gap_on_cold_cache(tmp_path, monkeypatch):
     from openpyxl import Workbook
-    from htfa.jobs.uae_data import source_foreign_labour as source
+    from htfa.monitoring.uae.jobs import source_foreign_labour as source
     monkeypatch.setattr(source, "RAW_DIR", tmp_path)
     folder = tmp_path / "philippines"
     folder.mkdir()
@@ -126,8 +126,8 @@ def test_report_guard_matches_names_after_column_reordering_and_rejects_loss(tmp
 
 def test_daily_rolls_back_a_successful_worker_that_deleted_history(tmp_path, monkeypatch):
     from contextlib import nullcontext
-    from htfa.jobs.energy_supply import publish
-    from htfa.jobs.uae_data import daily_refresh
+    from htfa.monitoring.energy_supply.jobs import publish
+    from htfa.monitoring.uae.jobs import daily_refresh
     directory = tmp_path / "data"
     directory.mkdir()
     database, workbook = directory / "uae.duckdb", directory / "阿联酋.xlsx"

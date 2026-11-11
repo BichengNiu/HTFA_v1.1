@@ -14,11 +14,11 @@ from pathlib import Path
 import shutil
 import tempfile
 
-from htfa.jobs.uae_data import db, source_energy_supply
-from htfa.jobs.uae_data.paths import DB_PATH, WORKBOOK_PATH
-from htfa.jobs.uae_data.publish_report import publish_workbook
-from htfa.jobs.uae_data.history_validation import validate_history
-from htfa.jobs.uae_data.uae_metadata import complete_metadata, sync_workbook_dictionary
+from htfa.monitoring.uae.jobs import db, source_energy_supply
+from htfa.monitoring.uae.jobs.paths import DB_PATH, WORKBOOK_PATH
+from htfa.monitoring.uae.jobs.publish_report import publish_workbook
+from htfa.monitoring.uae.jobs.history_validation import validate_history
+from htfa.monitoring.uae.jobs.uae_metadata import complete_metadata, sync_workbook_dictionary
 from .snapshot_retry import decision
 from .snapshot_update import collect_candidate, inspect, validate_progress
 

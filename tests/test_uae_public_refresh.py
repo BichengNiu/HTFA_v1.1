@@ -7,10 +7,10 @@ import duckdb
 import pytest
 from openpyxl import Workbook, load_workbook
 
-from htfa.jobs.uae_data import source_ded as ded
-from htfa.jobs.uae_data import source_foreign_labour as labour
-from htfa.jobs.uae_data import source_public_market as market
-from htfa.jobs.uae_data import source_salik as salik
+from htfa.monitoring.uae.jobs import source_ded as ded
+from htfa.monitoring.uae.jobs import source_foreign_labour as labour
+from htfa.monitoring.uae.jobs import source_public_market as market
+from htfa.monitoring.uae.jobs import source_salik as salik
 
 
 def test_adx_deduplicates_daily_closes_and_preserves_conflicts_as_null():

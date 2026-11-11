@@ -11,8 +11,8 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-from htfa.jobs.uae_data import source_ded as sd
-from htfa.jobs.uae_data import db
+from htfa.monitoring.uae.jobs import source_ded as sd
+from htfa.monitoring.uae.jobs import db
 
 HEADER = [
     "issue_date", "commerce_number", "main_license_number",

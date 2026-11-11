@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 from openpyxl import Workbook
 
-from htfa.jobs.uae_data import (
+from htfa.monitoring.uae.jobs import (
     _official_download,
     db,
     fetch_wam,

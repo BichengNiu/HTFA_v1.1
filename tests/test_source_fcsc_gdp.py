@@ -7,7 +7,7 @@ from datetime import date, datetime
 import pytest
 from openpyxl import Workbook, load_workbook
 
-from htfa.jobs.uae_data import db, source_fcsc_gdp as source
+from htfa.monitoring.uae.jobs import db, source_fcsc_gdp as source
 
 
 def payload(system="CON", through=2):
@@ -129,7 +129,7 @@ def test_merge_reads_database_and_preserves_unrelated_columns(tmp_path, monkeypa
     assert sheet.cell(7, columns["阿联酋:GDP:现价"]).value is None
     assert sheet.cell(8, columns["其他指标"]).value == 123
     workbook.close()
-    from htfa.jobs.uae_data import workbook_sheet_writer
+    from htfa.monitoring.uae.jobs import workbook_sheet_writer
 
     before = path.read_bytes()
 

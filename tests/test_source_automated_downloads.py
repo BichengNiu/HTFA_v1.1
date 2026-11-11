@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from htfa.jobs.uae_data import (
+from htfa.monitoring.uae.jobs import (
     source_baker_hughes,
     source_comtrade_vehicles,
     source_dubai_customs_air,
@@ -102,7 +102,7 @@ def test_salik_extracts_absolute_value_but_not_yoy_percentage(monkeypatch):
 def test_t100_downloader_uses_repository_relative_output():
     script = (
         Path(__file__).parents[1]
-        / "htfa" / "jobs" / "uae_data" / "download_t100.py"
+        / "htfa" / "monitoring" / "uae" / "jobs" / "download_t100.py"
     ).read_text(encoding="utf-8")
     assert "def download_recent(directory" in script
     assert "C:/Users/NIU/Desktop/HTFA_v1.1/htfa/monitoring/uae/assets/raw/t100/csv" not in script

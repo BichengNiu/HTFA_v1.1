@@ -32,8 +32,10 @@ def _imports(path):
 
 def test_uae_dependencies_only_point_down_the_three_layers():
     forbidden = {
-        "data": (PREFIX + ".processing", PREFIX + ".ui", "htfa.jobs", "streamlit"),
+        "data": (PREFIX + ".processing", PREFIX + ".ui", "htfa.monitoring.uae.jobs", "htfa.monitoring.energy_supply.jobs", "streamlit"),
         "processing": (
+            "htfa.monitoring.uae.jobs",
+            "htfa.monitoring.energy_supply.jobs",
             PREFIX + ".ui",
             "streamlit",
             "duckdb",
@@ -42,8 +44,10 @@ def test_uae_dependencies_only_point_down_the_three_layers():
             "Ts",
             "matplotlib",
         ),
-        "ui": (PREFIX + ".data", "duckdb", "requests", "urllib.request", "htfa.jobs"),
+        "ui": (PREFIX + ".data", "duckdb", "requests", "urllib.request", "htfa.monitoring.uae.jobs", "htfa.monitoring.energy_supply.jobs"),
         "contracts": (
+            "htfa.monitoring.uae.jobs",
+            "htfa.monitoring.energy_supply.jobs",
             PREFIX + ".data",
             PREFIX + ".processing",
             PREFIX + ".ui",
@@ -75,7 +79,7 @@ def test_uae_layers_have_no_import_cycles():
     sources = {
         ".".join(path.relative_to(PROJECT).with_suffix("").parts): path
         for path in python_sources(ROOT)
-        if path.name != "__init__.py"
+        if path.name != "__init__.py" and "jobs" not in path.relative_to(ROOT).parts
     }
     visited, active = set(), set()
 
@@ -97,7 +101,7 @@ def test_uae_imports_do_not_access_a_database_or_network():
     modules = sorted(
         ".".join(path.relative_to(PROJECT).with_suffix("").parts)
         for path in python_sources(ROOT)
-        if path.name != "__init__.py"
+        if path.name != "__init__.py" and "jobs" not in path.relative_to(ROOT).parts
     )
     script = f"""
 import importlib
@@ -127,7 +131,7 @@ def test_uae_callers_have_no_old_flat_imports():
             for module in _imports(path):
                 if module.startswith(PREFIX + "."):
                     layer = module[len(PREFIX) + 1 :].split(".")[0]
-                    assert layer in {"contracts", "data", "processing", "ui"}, (
+                    assert layer in {"contracts", "data", "processing", "ui", "jobs"}, (
                         path,
                         module,
                     )
@@ -151,7 +155,7 @@ def test_script_strings_have_no_legacy_uae_imports():
 
     pattern = re.compile(
         r"(?:from|import) htfa\.monitoring\.uae\."
-        r"(?!contracts(?:\.|\s)|data(?:\.|\s)|processing(?:\.|\s)|ui(?:\.|\s))"
+        r"(?!contracts(?:\.|\s)|data(?:\.|\s)|processing(?:\.|\s)|ui(?:\.|\s)|jobs(?:\.|\s))"
     )
     for folder in (PROJECT / "htfa", PROJECT / "tests", PROJECT / "scripts"):
         for path in python_sources(folder):

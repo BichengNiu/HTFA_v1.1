@@ -1,14 +1,14 @@
-﻿@echo off
+@echo off
 rem Fetch, clean and load all data sources into htfa\monitoring\uae\assets\uae.duckdb.
 rem Usage: update_data.bat [--source cbuae,gfs] [--skip-download] [--force]
-cd /d "%~dp0..\..\.."
+cd /d "%~dp0..\..\..\.."
 if errorlevel 1 goto :failed
 if not exist "runtime\python.exe" (
     echo [ERROR] Bundled runtime\python.exe was not found.
     echo [HINT] Run htfa.bat first.
     goto :failed
 )
-"runtime\python.exe" -B -m htfa.jobs.uae_data.update_data %*
+"runtime\python.exe" -B -m htfa.monitoring.uae.jobs.update_data %*
 if errorlevel 1 (
     echo.
     echo [ERROR] At least one source failed. Review the messages above.
@@ -16,7 +16,7 @@ if errorlevel 1 (
     exit /b 1
 )
 echo.
-echo [OK] All requested sources updated in data\uae.duckdb.
+echo [OK] All requested sources updated in htfa\monitoring\uae\assets\uae.duckdb.
 pause
 exit /b 0
 

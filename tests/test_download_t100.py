@@ -11,7 +11,7 @@ import zipfile
 import duckdb
 import pytest
 
-from htfa.jobs.uae_data import db, download_t100 as downloader, source_dot_t100 as source
+from htfa.monitoring.uae.jobs import db, download_t100 as downloader, source_dot_t100 as source
 
 
 def archive(year=2026, months=(7,)):

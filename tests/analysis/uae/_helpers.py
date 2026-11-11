@@ -24,7 +24,7 @@ def report_source(content):
 
     import duckdb
     import pandas as pd
-    from htfa.jobs.uae_data.publish_report import _heading
+    from htfa.monitoring.uae.jobs.publish_report import _heading
     from htfa.monitoring.uae.contracts.publication import PublishedUAEData
     from htfa.monitoring.uae.data.database import published_source
 

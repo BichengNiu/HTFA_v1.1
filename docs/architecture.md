@@ -2,7 +2,7 @@
 
 ## 模块职责
 
-- HTFA 是进程内模块化单体。五个领域模块为 `preview`、`monitoring`、`exploration`、`models/univariate`、`models/dfm`；`app`、`workspace`、`ui_shared`、`jobs` 是横向能力。领域按业务能力划分，不按页面标签划分。
+- HTFA 是进程内模块化单体。五个领域模块为 `preview`、`monitoring`、`exploration`、`models/univariate`、`models/dfm`；`app`、`workspace`、`ui_shared` 是横向能力。领域按业务能力划分，不按页面标签划分。
 - 应用组装层可以依赖领域 UI；领域核心不得依赖应用组装层、Streamlit 或其他领域页面。模型家族之间不得相互引用。
 - 普通表格解析、原始行、数据集契约与数值变量识别归 `htfa.exploration.data.tabular`；共享概览 UI 归 `htfa.ui_shared.data_overview`，依赖方向从 UI 到解析层。文件字节读取与指纹归 `htfa.workspace.data.files`。
 - 每个功能拥有自己的 `data`、`processing`、`ui`，不建立顶层公共数据层或公共处理层。解析协议由明确的功能维护唯一实现，其他功能通过自己的数据入口消费协议；不复制解析器，也不依赖对方页面。
@@ -27,7 +27,7 @@
 - 数据层负责连接、查询、版本和来源校验、事务、分页完整性及数据访问适配；不依赖计算层、页面或维护作业。
 - 计算层负责聚合、日期窗口、同比环比、单位转换、目录业务补全及下载数据构建；不依赖 Streamlit、绘图库、数据库执行接口或网络传输库。
 - 显示层负责页面、图表、打印、下载按钮及查询缓存；页面不直接执行 SQL、写库或调用采集客户端。主题失败应相互隔离。
-- 采集与发布由 `htfa/jobs/uae_data/`、`htfa/jobs/energy_supply/` 显式编排。模块导入不得访问数据库或网络，也不得靠重新导入模块刷新资产目录。
+- 采集与发布由各业务内部的 `htfa/monitoring/uae/jobs/`、`htfa/monitoring/energy_supply/jobs/` 显式编排；维护入口不属于在线三层，页面、数据读取层与纯处理层不得调用维护入口。不得建立顶层公共作业包。模块导入不得访问数据库或网络，也不得靠重新导入模块刷新资产目录。
 - 能源资产构建显式返回新记录，维护作业负责业务补全和保存；页面只消费发布快照。不增加独立数据库、HTTP 服务、消息队列或部署单元。
 - 缓存身份必须包含数据库绝对路径、物理文件身份和相关发布版本；同路径替换的文件及不同候选库不得共用过期结果。
 

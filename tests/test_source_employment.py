@@ -11,9 +11,9 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-from htfa.jobs.uae_data import source_employment as se
-from htfa.jobs.uae_data import db
-from htfa.jobs.uae_data.uae_metadata import complete_metadata
+from htfa.monitoring.uae.jobs import source_employment as se
+from htfa.monitoring.uae.jobs import db
+from htfa.monitoring.uae.jobs.uae_metadata import complete_metadata
 from openpyxl import Workbook, load_workbook
 
 

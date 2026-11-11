@@ -3,7 +3,7 @@
 import json
 from datetime import date
 
-from htfa.jobs.uae_data import db, source_cloudflare_radar as source
+from htfa.monitoring.uae.jobs import db, source_cloudflare_radar as source
 
 
 def test_weekly_cutoff_preserves_october_and_excludes_a_november_crossing(tmp_path, monkeypatch):

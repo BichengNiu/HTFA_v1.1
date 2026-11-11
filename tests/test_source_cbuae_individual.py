@@ -7,8 +7,8 @@ from pathlib import Path
 
 from openpyxl import Workbook
 
-from htfa.jobs.uae_data import db  # noqa: E402
-from htfa.jobs.uae_data import source_cbuae as source  # noqa: E402
+from htfa.monitoring.uae.jobs import db  # noqa: E402
+from htfa.monitoring.uae.jobs import source_cbuae as source  # noqa: E402
 
 
 def _bulletin_workbook(path: Path, *, style: str) -> None:

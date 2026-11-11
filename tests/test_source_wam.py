@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from htfa.jobs.uae_data import db  # noqa: E402
-from htfa.jobs.uae_data import source_wam as source  # noqa: E402
+from htfa.monitoring.uae.jobs import db  # noqa: E402
+from htfa.monitoring.uae.jobs import source_wam as source  # noqa: E402
 
 
 def test_monthly_aggregation_ignores_partial_latest_month() -> None:

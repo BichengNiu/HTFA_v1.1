@@ -9,7 +9,7 @@ from math import prod
 import duckdb
 import pytest
 
-from htfa.jobs.uae_data import db, source_fcsc
+from htfa.monitoring.uae.jobs import db, source_fcsc
 
 
 def _csv_payload(

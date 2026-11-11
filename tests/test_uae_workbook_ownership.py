@@ -8,8 +8,8 @@ import duckdb
 import pytest
 from openpyxl import Workbook, load_workbook
 
-from htfa.jobs.uae_data.workbook_sheet_writer import write_indicator_sheets  # noqa: E402
-from htfa.jobs.uae_data import (
+from htfa.monitoring.uae.jobs.workbook_sheet_writer import write_indicator_sheets  # noqa: E402
+from htfa.monitoring.uae.jobs import (
     db, source_dot_t100, source_dubai_customs_air, source_employment,
     source_fcsc, source_salik, update_data, merge_workbook,
 )

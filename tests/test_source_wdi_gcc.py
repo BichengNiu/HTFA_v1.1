@@ -6,7 +6,7 @@ import duckdb
 import pandas as pd
 import pytest
 
-from htfa.jobs.uae_data import db, source_wdi_gcc as source
+from htfa.monitoring.uae.jobs import db, source_wdi_gcc as source
 from htfa.monitoring.uae.contracts.annual_comparison_contracts import GDP_SHEET, GCC_NAME, LEVEL_SUFFIX, GROWTH_SUFFIX
 
 

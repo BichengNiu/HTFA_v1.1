@@ -9,8 +9,8 @@ import re
 
 import duckdb
 
-from htfa.jobs.uae_data import db
-from htfa.jobs.uae_data.paths import DB_PATH
+from htfa.monitoring.uae.jobs import db
+from htfa.monitoring.uae.jobs.paths import DB_PATH
 from htfa.monitoring.energy_supply.data.storage import SCHEMA
 
 SOURCE_COMMIT = "72f3b04ba9205f66ec1b34231ec6ae3d927dfc9c"

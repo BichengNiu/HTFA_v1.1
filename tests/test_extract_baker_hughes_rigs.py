@@ -7,7 +7,7 @@ from pathlib import Path
 
 from openpyxl import Workbook
 
-from htfa.jobs.uae_data.source_baker_hughes import (  # noqa: E402
+from htfa.monitoring.uae.jobs.source_baker_hughes import (  # noqa: E402
     INDICATORS,
     RigObservation,
     extract_uae_monthly,

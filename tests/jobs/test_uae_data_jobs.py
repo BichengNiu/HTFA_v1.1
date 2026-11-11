@@ -9,17 +9,17 @@ from contextlib import nullcontext
 
 import pytest
 
-from htfa.jobs.uae_data._official_download import write_json_atomic
+from htfa.monitoring.uae.jobs._official_download import write_json_atomic
 
-from htfa.jobs.uae_data import db
+from htfa.monitoring.uae.jobs import db
 
-from htfa.jobs.uae_data import merge_workbook, update_data
+from htfa.monitoring.uae.jobs import merge_workbook, update_data
 
 
 @pytest.fixture(autouse=True)
 def isolate_job_control_tests(monkeypatch, tmp_path):
     """Controller doubles must neither retire nor open the production database."""
-    from htfa.jobs.uae_data import retired_sources
+    from htfa.monitoring.uae.jobs import retired_sources
 
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "controller.duckdb")
     monkeypatch.setattr(retired_sources, "retire_database", lambda con: None)
@@ -41,7 +41,7 @@ def test_failed_transaction_preserves_old_rows_and_connection(error_type):
 
 
 def test_ded_authentication_uses_final_urllib_response_url():
-    from htfa.jobs.uae_data.source_ded import AuthRequiredError, raise_if_sso_url
+    from htfa.monitoring.uae.jobs.source_ded import AuthRequiredError, raise_if_sso_url
 
     response = SimpleNamespace(geturl=lambda: "https://smartsso.dubai.gov.ae/login")
     with pytest.raises(AuthRequiredError):
@@ -101,7 +101,7 @@ def test_update_sources_use_package_imports_and_isolate_failures(monkeypatch) ->
     )
 
     def import_source(module_name: str, *, package: str | None = None):
-        assert package == "htfa.jobs.uae_data"
+        assert package == "htfa.monitoring.uae.jobs"
         name = module_name.removeprefix(".source_")
         if name == "cbuae":
             def fail(*args, **kwargs):
@@ -129,7 +129,7 @@ def test_merge_does_not_sync_dictionary_after_source_failure(monkeypatch, tmp_pa
     imported: list[str] = []
 
     def import_source(module_name: str, *, package: str | None = None):
-        assert package == "htfa.jobs.uae_data"
+        assert package == "htfa.monitoring.uae.jobs"
         imported.append(module_name)
         if module_name == ".source_cbuae":
             def fail(path):

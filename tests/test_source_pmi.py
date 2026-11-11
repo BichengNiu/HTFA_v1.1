@@ -10,8 +10,8 @@ from types import SimpleNamespace
 import pytest
 from openpyxl import Workbook
 
-from htfa.jobs.uae_data import db  # noqa: E402
-from htfa.jobs.uae_data import source_pmi as source  # noqa: E402
+from htfa.monitoring.uae.jobs import db  # noqa: E402
+from htfa.monitoring.uae.jobs import source_pmi as source  # noqa: E402
 
 
 def _make_payload(periods, values=None) -> list:

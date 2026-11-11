@@ -72,7 +72,7 @@ jobs:
             git pull --ff-only origin main
             git lfs pull --include=htfa/monitoring/uae/assets/uae.duckdb
             base=$(git rev-parse HEAD)
-            python -m htfa.jobs.uae_data.daily_refresh --results-dir "$RUNNER_TEMP/daily-refresh"
+            python -m htfa.monitoring.uae.jobs.daily_refresh --results-dir "$RUNNER_TEMP/daily-refresh"
             git fetch origin main
             if [[ "$base" != "$(git rev-parse origin/main)" ]]; then
               git restore --source=HEAD -- htfa/monitoring/uae/assets/uae.duckdb htfa/monitoring/uae/assets/阿联酋.xlsx
@@ -91,7 +91,7 @@ jobs:
             git push origin main
             git fetch origin main
             test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-            python -m htfa.jobs.uae_data.verify_publication "$(git rev-parse HEAD)" | tee "$RUNNER_TEMP/daily-refresh/remote-verification.json"
+            python -m htfa.monitoring.uae.jobs.verify_publication "$(git rev-parse HEAD)" | tee "$RUNNER_TEMP/daily-refresh/remote-verification.json"
             echo "Published and verified $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
             publication_complete=true
             break

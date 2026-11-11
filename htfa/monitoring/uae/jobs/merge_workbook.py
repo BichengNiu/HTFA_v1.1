@@ -8,8 +8,8 @@ and rollback behaviour.
 
 Examples::
 
-    htfa\\jobs\\uae_data\\merge_workbook.bat            # all sources
-    htfa\\jobs\\uae_data\\merge_workbook.bat --source cbuae
+    htfa\\monitoring\\uae\\jobs\\merge_workbook.bat            # all sources
+    htfa\\monitoring\\uae\\jobs\\merge_workbook.bat --source cbuae
 """
 
 from __future__ import annotations

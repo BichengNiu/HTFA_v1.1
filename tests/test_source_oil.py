@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 from openpyxl import load_workbook
 
-from htfa.jobs.uae_data import db, source_oil, publish_report
+from htfa.monitoring.uae.jobs import db, source_oil, publish_report
 from htfa.monitoring.uae.data.database import published_source
 from htfa.monitoring.uae.processing.oil.data import load_oil_market_data
 

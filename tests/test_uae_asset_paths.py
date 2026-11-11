@@ -7,7 +7,7 @@ import sys
 from htfa.monitoring.uae.contracts.paths import ASSETS_DIR, ASSETS_RELATIVE_PATH
 from htfa.monitoring.uae.data.database import DEFAULT_DATABASE
 from htfa.monitoring.energy_supply.data.storage import DB_PATH as ENERGY_DATABASE
-from htfa.jobs.uae_data.paths import DATA_DIR, DB_PATH, WORKBOOK_PATH
+from htfa.monitoring.uae.jobs.paths import DATA_DIR, DB_PATH, WORKBOOK_PATH
 from tooling.source_tree import python_sources
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,7 +27,7 @@ def test_worker_override_does_not_repoint_the_publication_reader(tmp_path):
     env = {**os.environ, 'HTFA_UAE_DATA_DIR': str(tmp_path)}
     code = (
         'from pathlib import Path; '
-        'from htfa.jobs.uae_data.paths import DATA_DIR; '
+        'from htfa.monitoring.uae.jobs.paths import DATA_DIR; '
         'from htfa.monitoring.uae.data.database import DEFAULT_DATABASE; '
         f'assert DATA_DIR == Path({str(tmp_path)!r}); '
         f'assert DEFAULT_DATABASE == Path({str(DEFAULT_DATABASE)!r})'

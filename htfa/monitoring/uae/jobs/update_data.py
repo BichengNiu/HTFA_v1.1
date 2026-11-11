@@ -8,10 +8,10 @@ written back as if they were freshly downloaded.
 
 Examples::
 
-    htfa\\jobs\\uae_data\\update_data.bat                 # all sources
-    htfa\\jobs\\uae_data\\update_data.bat --source cbuae,gfs
-    htfa\\jobs\\uae_data\\update_data.bat --skip-download  # reuse raw files
-    htfa\\jobs\\uae_data\\update_data.bat --force
+    htfa\\monitoring\\uae\\jobs\\update_data.bat                 # all sources
+    htfa\\monitoring\\uae\\jobs\\update_data.bat --source cbuae,gfs
+    htfa\\monitoring\\uae\\jobs\\update_data.bat --skip-download  # reuse raw files
+    htfa\\monitoring\\uae\\jobs\\update_data.bat --force
 """
 
 from __future__ import annotations

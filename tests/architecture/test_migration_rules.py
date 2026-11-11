@@ -94,7 +94,7 @@ def test_legacy_dashboard_imports_and_source_paths_are_gone() -> None:
 
 
 def test_uae_maintenance_jobs_have_one_package_boundary() -> None:
-    jobs_root = PROJECT_ROOT / "htfa/jobs/uae_data"
+    jobs_root = PROJECT_ROOT / "htfa/monitoring/uae/jobs"
     assert (jobs_root / "update_data.py").is_file()
     assert (jobs_root / "merge_workbook.py").is_file()
     assert (jobs_root / "paths.py").is_file()
@@ -108,16 +108,16 @@ def test_uae_maintenance_jobs_have_one_package_boundary() -> None:
         assert "sys.path" not in source_file.read_text(encoding="utf-8")
 
     for relative_path in (
-        "htfa/jobs/uae_data/update_data.bat",
-        "htfa/jobs/uae_data/merge_workbook.bat",
+        "htfa/monitoring/uae/jobs/update_data.bat",
+        "htfa/monitoring/uae/jobs/merge_workbook.bat",
         "htfa/monitoring/uae/assets/auto_update_all.bat",
     ):
         launcher = (PROJECT_ROOT / relative_path).read_text(
             encoding="utf-8-sig"
         )
         assert "sys.path.insert" not in launcher
-        assert "htfa.jobs.uae_data" in launcher
-        assert "-m htfa.jobs.uae_data" in launcher
+        assert "htfa.monitoring.uae.jobs" in launcher
+        assert "-m htfa.monitoring.uae.jobs" in launcher
 
 
 def test_model_domains_have_no_cross_family_or_application_imports() -> None:
@@ -204,7 +204,7 @@ def _discovered_core_modules() -> dict[str, set[str]]:
     return discovered
 
 
-_NON_CORE_PATH_PARTS = {"ui", "pages", "components", "modules", "charts"}
+_NON_CORE_PATH_PARTS = {"jobs", "ui", "pages", "components", "modules", "charts"}
 _NON_CORE_FILE_NAMES = {
     "charts.py",
     "download_utils.py",

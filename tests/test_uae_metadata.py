@@ -10,8 +10,8 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-from htfa.jobs.uae_data import db  # noqa: E402
-from htfa.jobs.uae_data import uae_metadata  # noqa: E402
+from htfa.monitoring.uae.jobs import db  # noqa: E402
+from htfa.monitoring.uae.jobs import uae_metadata  # noqa: E402
 
 
 def test_complete_metadata_registers_extended_indicators_and_columns() -> None:
@@ -159,7 +159,7 @@ def test_legacy_workbook_indicators_have_source_metadata() -> None:
         row["indicator_name"]: row for row in uae_metadata.INDICATOR_DEFINITIONS
     }
 
-    from htfa.jobs.uae_data.retired_sources import RETIRED_INDICATORS
+    from htfa.monitoring.uae.jobs.retired_sources import RETIRED_INDICATORS
 
     retired = {name for group in RETIRED_INDICATORS.values() for name in group}
     assert not definitions.keys() & retired

@@ -11,7 +11,7 @@ manifest whenever a signed URL expires (HTTP 403).
 
 Usage::
 
-    runtime\\python.exe -m htfa.jobs.uae_data.download_dubai_customs_air
+    runtime\\python.exe -m htfa.monitoring.uae.jobs.download_dubai_customs_air
         [--dataset 459114] [--limit 1] [--page-size 30] [--out DIR]
 """
 
@@ -32,6 +32,7 @@ from urllib.error import HTTPError
 import certifi
 
 
+
 def _ssl_context() -> ssl.SSLContext:
     return ssl.create_default_context(cafile=certifi.where())
 
@@ -42,8 +43,9 @@ UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 )
+
 DEFAULT_OUT = (
-    Path(__file__).resolve().parents[3]
+    Path(__file__).resolve().parents[4]
     / "htfa/monitoring/uae/assets/raw/dubai_customs_air/csv"
 )
 RANGE_BYTES = 4 * 1024 * 1024

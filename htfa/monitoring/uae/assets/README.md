@@ -3,7 +3,7 @@
 UAE 模块的数据资产与维护作业分区管理：
 
 - `htfa/monitoring/uae/assets/`：**数据区** —— 数据库、工作簿、原始件、文档与自动运行配置；
-- `htfa/jobs/uae_data/`：**作业区** —— 全部管线脚本（update/merge 总控、各源模块、
+- `htfa/monitoring/uae/jobs/`：**作业区** —— 全部管线脚本（update/merge 总控、各源模块、
   Excel 写表助手）统一集中于此。
 
 原始文件、缓存、备份、日志和凭据只保存在本机；正式脚本以及 `uae.duckdb`、`阿联酋.xlsx`
@@ -22,7 +22,7 @@ DuckDB，并自动同步到工作簿；完整来源清单与口径见 `数据说
 - `auto_update_all.bat`：手动在线更新入口（更新 + 合并一步完成，不创建或依赖定时任务）；
 - `.env`：数据源密钥（如 `COMTRADE_API_KEY`，不入 Git）。
 
-## 作业区（htfa/jobs/uae_data/）
+## 作业区（htfa/monitoring/uae/jobs/）
 
 - `update_data.py` / `update_data.bat`：抓取 → 清洗 → 入库 → 按来源合并对应工作簿 sheet；
 - `merge_workbook.py` / `merge_workbook.bat`：单独重建工作簿 sheet（用于修复或重跑合并）；
@@ -38,10 +38,10 @@ DuckDB，并自动同步到工作簿；完整来源清单与口径见 `数据说
 
 ```powershell
 htfa\monitoring\uae\assets\auto_update_all.bat                 # 在线更新全部来源并合并（务必先关闭 Excel）
-.\htfa\jobs\uae_data\update_data.bat --source cbuae,gfs  # 更新指定来源并自动合并对应 sheet
+.\htfa\monitoring\uae\jobs\update_data.bat --source cbuae,gfs  # 更新指定来源并自动合并对应 sheet
 ```
 
-也可用 `runtime\python.exe -m htfa.jobs.uae_data.update_data --source cbuae --skip-download`
+也可用 `runtime\python.exe -m htfa.monitoring.uae.jobs.update_data --source cbuae --skip-download`
 离线读取缓存并同步对应 sheet。`auto_update_all.bat` 只在用户运行时执行，不设置定时任务。
 
 ## 其他本地数据（data/ 根目录，与 UAE 管线无关）

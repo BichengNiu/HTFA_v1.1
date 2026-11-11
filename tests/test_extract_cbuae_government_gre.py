@@ -4,8 +4,8 @@ import sys
 from decimal import Decimal
 from pathlib import Path
 
-from htfa.jobs.uae_data._excel_helpers import records_latest_first  # noqa: E402
-from htfa.jobs.uae_data.source_cbuae import (  # noqa: E402
+from htfa.monitoring.uae.jobs._excel_helpers import records_latest_first  # noqa: E402
+from htfa.monitoring.uae.jobs.source_cbuae import (  # noqa: E402
     Observation,
     _normalize_label,
     select_latest_vintages,

@@ -94,8 +94,8 @@ Remove-ItemNow (Join-Path $root '.coverage')
 Remove-ItemNow (Join-Path $root 'htfa\monitoring\uae\assets\backups') -Recurse
 Remove-ItemNow (Join-Path $root 'htfa\monitoring\uae\assets\processed') -Recurse
 Remove-ItemNow (Join-Path $root 'htfa\monitoring\uae\assets\.cache') -Recurse
-Remove-ItemNow (Join-Path $root 'htfa\jobs\uae_data\backups') -Recurse
-Remove-ItemNow (Join-Path $root 'htfa\jobs\uae_data\processed') -Recurse
+Remove-ItemNow (Join-Path $root 'htfa\monitoring\uae\jobs\backups') -Recurse
+Remove-ItemNow (Join-Path $root 'htfa\monitoring\uae\jobs\processed') -Recurse
 Get-ChildItem -Path (Join-Path $root 'htfa\monitoring\uae\assets') -File -Force -ErrorAction SilentlyContinue |
     Where-Object {
         $_.Name -like '.mesteel-wide-*.csv' -or $_.Name -like '.dld_indices_*.csv' -or

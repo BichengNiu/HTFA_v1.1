@@ -32,7 +32,7 @@ def worker(name):
     """Run one source or final publication in its isolated process."""
     from . import db
     if name == "energy":
-        from htfa.jobs.energy_supply.publish import run
+        from htfa.monitoring.energy_supply.jobs.publish import run
         outcome = run(publish=True, retry_only=False)
         if outcome.get("status") == "skipped_no_successful_source":
             raise RuntimeError(json.dumps(outcome, ensure_ascii=False, default=str))
@@ -71,7 +71,7 @@ def run_worker(name, directory, results_dir, *, timeout=None):
     try:
         with (results_dir / f"{name}.log").open("w", encoding="utf-8") as log:
             completed = subprocess.run(
-                [sys.executable, "-m", "htfa.jobs.uae_data.daily_refresh",
+                [sys.executable, "-m", "htfa.monitoring.uae.jobs.daily_refresh",
                  "--worker", name, "--result", str(result_path)],
                 env=env, stdout=log, stderr=subprocess.STDOUT, timeout=timeout,
             )
@@ -93,8 +93,8 @@ def copy_pair(source, destination):
 
 def refresh(results_dir, *, sources=HIGH_FREQUENCY_SOURCES, collect_energy=True):
     """Install one validated pair while preserving every failed source baseline."""
-    from htfa.jobs.energy_supply.publish import install_pair, publication_lock
-    from htfa.jobs.energy_supply.snapshot_update import inspect, validate_progress
+    from htfa.monitoring.energy_supply.jobs.publish import install_pair, publication_lock
+    from htfa.monitoring.energy_supply.jobs.snapshot_update import inspect, validate_progress
 
     results_dir = Path(results_dir).resolve()
     results_dir.mkdir(parents=True, exist_ok=True)

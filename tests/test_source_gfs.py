@@ -12,8 +12,8 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-from htfa.jobs.uae_data import source_gfs as sg
-from htfa.jobs.uae_data import db
+from htfa.monitoring.uae.jobs import source_gfs as sg
+from htfa.monitoring.uae.jobs import db
 
 # 每个科目的 PDF/XLSX 行标签（与 source_gfs 内置正则一一对应）
 PDF_LABELS = {

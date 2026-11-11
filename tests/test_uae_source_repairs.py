@@ -6,8 +6,8 @@ from types import SimpleNamespace
 import duckdb
 import pytest
 
-from htfa.jobs.uae_data import source_rta
-from htfa.jobs.uae_data import source_employment
+from htfa.monitoring.uae.jobs import source_rta
+from htfa.monitoring.uae.jobs import source_employment
 
 
 def test_rta_mixed_line_endings_preserve_all_rows(tmp_path):

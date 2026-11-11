@@ -4,7 +4,7 @@ import ast
 from datetime import date
 from pathlib import Path
 
-from htfa.jobs.uae_data import db, source_portwatch
+from htfa.monitoring.uae.jobs import db, source_portwatch
 
 
 def test_source_writes_qualify_known_detail_tables():

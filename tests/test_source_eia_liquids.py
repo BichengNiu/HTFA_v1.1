@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 
-from htfa.jobs.uae_data import db, source_eia_liquids as source
+from htfa.monitoring.uae.jobs import db, source_eia_liquids as source
 
 
 def record(period, value):

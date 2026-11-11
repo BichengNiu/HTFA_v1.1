@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 import unittest
 
-from htfa.jobs.energy_supply.snapshot_retry import decision
+from htfa.monitoring.energy_supply.jobs.snapshot_retry import decision
 
 
 def full_snapshot(when):

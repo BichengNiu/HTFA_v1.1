@@ -1,16 +1,16 @@
-# htfa/jobs/uae_data —— UAE 数据维护作业
+# htfa/monitoring/uae/jobs —— UAE 数据维护作业
 
-本目录是 `htfa.jobs.uae_data` 包；数据资产（`uae.duckdb`、`阿联酋.xlsx`、
+本目录是 `htfa.monitoring.uae.jobs` 包；数据资产（`uae.duckdb`、`阿联酋.xlsx`、
 `raw/`、`.env`）仍位于 `htfa/monitoring/uae/assets/`。所有路径由 `paths.py` 集中解析，作业模块
 使用包内相对导入，不依赖运行时 `sys.path` 注入。
 
 ## 入口
 
 ```powershell
-runtime\python.exe -m htfa.jobs.uae_data.update_data      # 抓取→清洗→入库→合并对应工作簿工作表
-runtime\python.exe -m htfa.jobs.uae_data.merge_workbook   # 单独重跑库→阿联酋.xlsx 合并
-.\htfa\jobs\uae_data\update_data.bat                    # 双击等价入口（同上）
-.\htfa\jobs\uae_data\merge_workbook.bat
+runtime\python.exe -m htfa.monitoring.uae.jobs.update_data      # 抓取→清洗→入库→合并对应工作簿工作表
+runtime\python.exe -m htfa.monitoring.uae.jobs.merge_workbook   # 单独重跑库→阿联酋.xlsx 合并
+.\htfa\monitoring\uae\jobs\update_data.bat                    # 双击等价入口（同上）
+.\htfa\monitoring\uae\jobs\merge_workbook.bat
 ```
 
 常用参数：`--source cbuae,gfs`、`--skip-download`（只用 raw 缓存）、`--force`。
@@ -162,4 +162,4 @@ DED 仅由 `source_ded.merge()` 使用共享原子写表工具写入四个指标
 - TDRA 旧解析器作为归档工具保留，不参加活动更新。
 - Google Trends 使用同一 Chrome 请求会话获取查询令牌和时间线；429 有限退避重试，仍失败则报错，不自动转用缓存。
 - 迪拜海关航空下载器为正式源码 `download_dubai_customs_air.py`：按当前完整清单下载，支持 HTTP Range 断点续传，校验响应长度及 gzip CRC 后原子替换。单次请求和重试次数有限，不再按整批累计 30 分钟强制终止；缺少任一分片即拒绝入库。
-- 嵌入式运行时的 `python313._pth` 包含项目根目录，支持直接执行 `runtime\python.exe -m htfa.jobs.uae_data.update_data`；运行时生成脚本同步维护此配置。
+- 嵌入式运行时的 `python313._pth` 包含项目根目录，支持直接执行 `runtime\python.exe -m htfa.monitoring.uae.jobs.update_data`；运行时生成脚本同步维护此配置。

@@ -6,16 +6,16 @@ from importlib.util import find_spec
 from openpyxl import Workbook, load_workbook
 import pytest
 
-from htfa.jobs.uae_data import db
-from htfa.jobs.uae_data.retired_sources import retire_database, retire_workbook
-from htfa.jobs.uae_data.source_registry import resolve_source_names
+from htfa.monitoring.uae.jobs import db
+from htfa.monitoring.uae.jobs.retired_sources import retire_database, retire_workbook
+from htfa.monitoring.uae.jobs.source_registry import resolve_source_names
 
 
 def test_retired_sources_are_not_registered_or_created():
     retired = ("steel", "tdra", "scad", "uaewps", "emirates_post", "eurostat_air")
     assert not set(retired) & set(resolve_source_names("all"))
     for name in retired:
-        assert find_spec(f"htfa.jobs.uae_data.source_{name}") is None
+        assert find_spec(f"htfa.monitoring.uae.jobs.source_{name}") is None
         with pytest.raises(ValueError, match="Unknown source"):
             resolve_source_names(name)
     with db.connect(":memory:") as con:
@@ -78,7 +78,7 @@ def test_retirement_preserves_replacement_and_unrelated_data(tmp_path, monkeypat
 
 
 def test_retirement_removes_legacy_hotel_columns_without_removing_other_scad_data(tmp_path, monkeypatch):
-    import htfa.jobs.uae_data.uae_metadata as metadata
+    import htfa.monitoring.uae.jobs.uae_metadata as metadata
 
     monkeypatch.setattr(metadata, "sync_workbook_dictionary", lambda path: {})
     database = tmp_path / "uae.duckdb"

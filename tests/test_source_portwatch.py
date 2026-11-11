@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, urlsplit
 import duckdb
 import pytest
 
-from htfa.jobs.uae_data import source_portwatch as source
+from htfa.monitoring.uae.jobs import source_portwatch as source
 
 
 def _hub_payload(service, layer):

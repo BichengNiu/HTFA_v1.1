@@ -5,7 +5,7 @@ from io import BytesIO
 
 import pytest
 
-from htfa.jobs.uae_data import download_dubai_customs_air as downloader
+from htfa.monitoring.uae.jobs import download_dubai_customs_air as downloader
 
 
 class Response(BytesIO):

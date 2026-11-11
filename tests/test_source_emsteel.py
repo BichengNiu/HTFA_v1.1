@@ -9,7 +9,7 @@ from decimal import Decimal
 import pytest
 from openpyxl import Workbook, load_workbook
 
-from htfa.jobs.uae_data import db, source_emsteel as source
+from htfa.monitoring.uae.jobs import db, source_emsteel as source
 
 
 def payload():

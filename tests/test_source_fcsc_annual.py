@@ -7,7 +7,7 @@ from datetime import date
 import duckdb
 import pytest
 
-from htfa.jobs.uae_data import db, source_fcsc_annual as source
+from htfa.monitoring.uae.jobs import db, source_fcsc_annual as source
 
 
 def _csv(dataset, *, years=(2010, 2011), frequency="A", country="826"):
