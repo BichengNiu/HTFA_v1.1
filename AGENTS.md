@@ -106,16 +106,12 @@ Use four-space indentation and PEP 8 naming. Keep UI rendering separate from dat
 - [ ] User instructed push: run `tooling/scripts/clean_temps.ps1` → `git status` 复核 → commit → push（见「推送规范」）
 - [ ] User reminded to restart `htfa.bat`
 
-## Agent skills
+## Current development constraints
 
-### Issue tracker
-
-Issues and specs are tracked in this repository's GitHub Issues. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Uses the default five canonical triage labels. See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Uses a single-context domain-doc layout. See `docs/agents/domain.md`.
+- `CONTEXT.md` defines domain vocabulary.
+- `docs/architecture.md` defines module ownership, input protocols and dependency boundaries.
+- `docs/model-contracts.md` defines model state, evaluation and statistical semantics.
+- `docs/data-pipeline.md` defines storage, source validation and publication safety.
+- `docs/runtime.md` defines startup, runtime and deployment constraints.
+- `docs/development.md` defines issue tracking and documentation rules.
+- Keep `docs/` limited to current rules; do not add historical plans, investigations, execution logs or dated data inventories.

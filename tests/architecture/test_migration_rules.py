@@ -1,4 +1,4 @@
-"""Executable phase-A checks for the five-domain migration decisions."""
+"""Executable checks for the current domain and dependency contracts."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ DOMAIN_NAMES = (
 )
 
 
-def test_migration_decisions_are_recorded_in_domain_docs() -> None:
+def test_architecture_contracts_are_recorded_in_domain_docs() -> None:
     context = (PROJECT_ROOT / "CONTEXT.md").read_text(encoding="utf-8")
 
     for term in (
@@ -32,15 +32,17 @@ def test_migration_decisions_are_recorded_in_domain_docs() -> None:
         assert term in context
 
     for relative_path in (
-        "docs/adr/0006-five-domain-modular-monolith.md",
-        "docs/adr/0007-economic-workbook-and-tabular-input-seams.md",
-        "docs/adr/0008-direct-cutover-without-migration-compatibility.md",
+        "docs/architecture.md",
+        "docs/model-contracts.md",
+        "docs/data-pipeline.md",
+        "docs/runtime.md",
+        "docs/development.md",
     ):
         assert (PROJECT_ROOT / relative_path).is_file()
 
-    architecture = (
-        PROJECT_ROOT / "docs/adr/0006-five-domain-modular-monolith.md"
-    ).read_text(encoding="utf-8")
+    architecture = (PROJECT_ROOT / "docs/architecture.md").read_text(
+        encoding="utf-8"
+    )
     for domain_name in DOMAIN_NAMES:
         assert f"`{domain_name}`" in architecture
         assert (PROJECT_ROOT / "htfa" / domain_name).is_dir()

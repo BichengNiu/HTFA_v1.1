@@ -32,9 +32,6 @@ INTENTIONAL_CHECK_FILES = {
     PROJECT_ROOT / "tests/architecture/test_data_overview_boundaries.py",
     PROJECT_ROOT / "tests/test_core_boundaries.py",
 }
-HISTORICAL_DOCUMENT_ROOTS = (
-    PROJECT_ROOT / "docs/adr",
-)
 LEGACY_PATH_PATTERN = re.compile(
     r"(?:from\s+dashboard\b|import\s+dashboard\b|"
     r"dashboard[/\\]|components[/\\]data_overview|"
@@ -74,15 +71,6 @@ def _python_files() -> tuple[Path, ...]:
     return tuple(path for path in files if path.is_file())
 
 
-def _is_historical_document(source_file: Path) -> bool:
-    if not any(root in source_file.parents for root in HISTORICAL_DOCUMENT_ROOTS):
-        return False
-    header = "\n".join(
-        source_file.read_text(encoding="utf-8", errors="ignore").splitlines()[:8]
-    )
-    return "**Archive:**" in header or "**History:**" in header
-
-
 def _active_text_files() -> tuple[Path, ...]:
     files: list[Path] = []
     for root in ACTIVE_TEXT_ROOTS:
@@ -95,7 +83,6 @@ def _active_text_files() -> tuple[Path, ...]:
         for path in files
         if path.suffix.lower() in TEXT_SUFFIXES
         and path not in INTENTIONAL_CHECK_FILES
-        and not _is_historical_document(path)
     )
 
 
