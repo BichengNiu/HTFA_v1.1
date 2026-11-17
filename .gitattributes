@@ -12,3 +12,4 @@
 *.xls binary
 *.sqlite binary
 *.db binary
+htfa/monitoring/uae/assets/uae.duckdb filter=lfs diff=lfs merge=lfs -text

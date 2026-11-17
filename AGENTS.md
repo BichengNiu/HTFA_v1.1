@@ -15,7 +15,7 @@
 
 ## Project layout
 
-`app.py` is the Streamlit entry point. Application code lives under `htfa/`, maintenance and data-source jobs inside the corresponding business module (`htfa/monitoring/uae/jobs/`, `htfa/monitoring/energy_supply/jobs/`), deployment configuration under `tooling/`, and reusable documentation under `docs/`. UAE data assets belong in `htfa/monitoring/uae/assets/`; other local data belongs in `data/`; local binary references belong in `references-local/`. Do not commit credentials, databases, raw data, binary research files, logs, caches, or temporary exports.
+`app.py` is the Streamlit entry point. Application code lives under `htfa/`, maintenance and data-source jobs inside the corresponding business module (`htfa/monitoring/uae/jobs/`, `htfa/monitoring/energy_supply/jobs/`), deployment configuration under `tooling/`, and reusable documentation under `docs/`. UAE data assets belong in `htfa/monitoring/uae/assets/`; other local data belongs in `data/`; local binary references belong in `references-local/`. Only the formal UAE database may be committed through Git LFS. Do not commit credentials, other databases, raw data, binary research files, logs, caches, or temporary exports.
 
 **功能内分层边界**：每个功能拥有自己的 `data / processing / ui`；不得恢复顶层公共数据层或公共处理层。经济工作簿协议归 `htfa/preview/data/`，普通表格协议归 `htfa/exploration/data/tabular/`；各模型通过自己的数据层构造模型输入。纯解析规则保留唯一实现，功能间只复用明确的纯协议接口，不依赖其他功能的页面。共享概览控件继续归 `htfa/ui_shared/data_overview/`，不拥有业务读取规则。
 
@@ -67,8 +67,9 @@ Any change touching plotting (chart style, axes, legend, titles, grid, multi-axi
 - 执行提交或推送前，必须确认 `git branch --show-current` 返回 `main`，并核对本地 `main` 与远端 `origin/main` 的关系。
 - 后续提交统一直接推送到远端 `main`；如发现当前不在 `main`，先停止并切回 `main`，不得在其他分支继续修改。
 
-仓库远端只应收到**正式源文件与工作簿**（`htfa/monitoring/uae/assets/阿联酋.xlsx`）；
-`htfa/monitoring/uae/assets/uae.duckdb` 仅保存在本地，不由 Git 或 Git LFS 跟踪，不提交、不推送。
+用户于2026-11-17明确要求恢复每日云端采集和LFS数据发布。
+仓库远端只应收到**正式源文件与两份数据文件**：`htfa/monitoring/uae/assets/阿联酋.xlsx`
+及通过 Git LFS 跟踪的 `htfa/monitoring/uae/assets/uae.duckdb`。
 任何缓存、临时、中间产物、调试文件一律**不入 git、不推送**。
 
 **绝不 add/提交/推送**（无论 .gitignore 是否已忽略，都不要碰）：
@@ -90,7 +91,7 @@ Any change touching plotting (chart style, axes, legend, titles, grid, multi-axi
 
 **防线**：`tooling/hooks/pre-push` 已通过 `git config core.hooksPath tooling/hooks` 启用，
 推送前会拦截任何暂存的临时/缓存文件；被拦截时回到第 1 步清理后重推。
-`.gitignore` 已整体覆盖上述临时形态，`*.duckdb*` 全局忽略，正式数据库也不入 Git。
+`.gitignore` 已整体覆盖上述临时形态；数据库全局忽略，只有正式 `uae.duckdb` 例外入库并使用LFS。
 
 ## Code changes
 

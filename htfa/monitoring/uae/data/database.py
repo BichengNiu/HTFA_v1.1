@@ -87,10 +87,10 @@ def published_source(database: Path | None = None) -> PublishedUAEData:
     """Get the current release, rejecting missing files and LFS pointers."""
     path = Path(database or DEFAULT_DATABASE).resolve()
     if not path.is_file():
-        raise FileNotFoundError("未找到 UAE 数据库，请在部署资产目录单独提供真实数据库文件")
+        raise FileNotFoundError("未找到 UAE 数据库，请确认部署已拉取完整 Git LFS 数据")
     with path.open("rb") as stream:
         if stream.read(64).startswith(b"version https://git-lfs.github.com/spec/"):
-            raise ValueError("UAE 数据库仍是 Git LFS 指针，请替换为真实数据库文件")
+            raise ValueError("UAE 数据库仍是 Git LFS 指针，请检查部署的 LFS 下载")
     try:
         with duckdb.connect(str(path), read_only=True) as con:
             version, _, published_at = _release(con)

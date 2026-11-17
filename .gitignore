@@ -95,4 +95,5 @@ data/nul
 /htfa/monitoring/uae/assets/*
 !/htfa/monitoring/uae/assets/*.md
 !/htfa/monitoring/uae/assets/auto_update_all.bat
+!/htfa/monitoring/uae/assets/uae.duckdb
 !/htfa/monitoring/uae/assets/阿联酋.xlsx
