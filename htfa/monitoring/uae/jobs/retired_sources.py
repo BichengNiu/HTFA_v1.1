@@ -20,7 +20,13 @@ from .source_registry import RETIRED_SOURCES
 RETIRED_INDICATORS = json.loads(
     Path(__file__).with_name("retired_indicators.json").read_text(encoding="utf-8")
 )
+RETIRED_EXTRA_SHEETS = (
+    "周度_CloudflareRadar", "日度_RTA交通", "年度_GFS",
+    "月度_能源通道", "月度_能源船舶",
+)
 RETIRED_TABLES = (
+    "cloudflare_radar_coverage", "detail.comtrade_partner_detail",
+    "detail.comtrade_quantity_detail", "rta_transport_daily", "gfs_annual",
     "dld_lease_monthly", "ded_official_news_candidates", "ded_official_news_scan_state",
 )
 RETIRED_WEEKLY_COLUMNS = (
@@ -69,6 +75,15 @@ def retire_database(con) -> None:
             "INSERT OR IGNORE INTO meta_retired_indicators VALUES (?, ?)",
             [(sheet, name) for sheet, names in RETIRED_INDICATORS.items() for name in names],
         )
+        # Record full-sheet retirements from the current DB publication before
+        # dropping their source tables. Never infer retirements from Excel.
+        retired_sheets = [sheet for _, sheet in RETIRED_SOURCES.values()] + list(RETIRED_EXTRA_SHEETS)
+        if con.execute("SELECT 1 FROM information_schema.tables WHERE table_catalog=current_database() AND table_schema='report' AND table_name='sheets'").fetchone():
+            for sheet, heading in con.execute("SELECT sheet_name,heading FROM report.sheets").fetchall():
+                if sheet in retired_sheets:
+                    names = json.loads(heading)[1][1:]
+                    con.executemany("INSERT OR IGNORE INTO meta_retired_indicators VALUES (?, ?)",
+                                    [(sheet, name) for name in names if name is not None])
         for table, _sheet in RETIRED_SOURCES.values():
             _drop_owned_table(con, table)
         for table in RETIRED_TABLES:
@@ -79,8 +94,13 @@ def retire_database(con) -> None:
                     f"DELETE FROM {table} WHERE indicator IN "
                     "(SELECT indicator_name FROM meta_retired_indicators)"
                 )
+        for table in ("cbuae_monthly", "dubai_airway_bill_monthly"):
+            if _main_table_exists(con, table):
+                con.execute(f"DELETE FROM {table} WHERE indicator IN (SELECT indicator_name FROM meta_retired_indicators)")
+        if _main_table_exists(con, "foreign_labour_monthly"):
+            con.execute("DELETE FROM foreign_labour_monthly WHERE series NOT IN ('nepal_with_reentry','bangladesh_clearance')")
         if _main_table_exists(con, "ded_monthly"):
-            con.execute("DELETE FROM ded_monthly WHERE series='official_new_licenses'")
+            con.execute("DELETE FROM ded_monthly WHERE series IN ('official_new_licenses','records')")
         if _main_table_exists(con, "fcsc_investment_annual"):
             con.execute("DELETE FROM fcsc_investment_annual WHERE dataset='DF_NA_EXPEND_CON'")
         if _main_table_exists(con, "dld_investment_pipeline_weekly"):
@@ -104,7 +124,7 @@ def retire_database(con) -> None:
         )
 
 
-def retire_workbook(workbook_path: Path) -> list[str]:
+def retire_workbook(workbook_path: Path, *, database: Path | None = None) -> list[str]:
     """Atomically remove retired sheets; dictionary synchronization is DB-driven."""
     from .uae_metadata import sync_workbook_dictionary
 
@@ -114,13 +134,13 @@ def retire_workbook(workbook_path: Path) -> list[str]:
     book = load_workbook(path, keep_links=True)
     temporary = None
     try:
-        removed = [sheet for _table, sheet in RETIRED_SOURCES.values()
-                   if sheet in book.sheetnames]
+        retired_sheets = [sheet for _, sheet in RETIRED_SOURCES.values()] + list(RETIRED_EXTRA_SHEETS)
+        removed = [sheet for sheet in retired_sheets if sheet in book.sheetnames]
         for sheet in removed:
             book.remove(book[sheet])
         # The retirement decision is first recorded in DuckDB by retire_database.
         # Column names are resolved again at merge time, never stale column indexes.
-        with db.connect(read_only=True) as con:
+        with db.connect(**({"path": database} if database else {}), read_only=True) as con:
             decisions = con.execute(
                 "SELECT sheet_name,indicator_name FROM meta_retired_indicators"
             ).fetchall()
@@ -162,7 +182,7 @@ def retire_workbook(workbook_path: Path) -> list[str]:
         temporary = Path(name)
         book.save(temporary)
         book.close()
-        sync_workbook_dictionary(temporary)
+        sync_workbook_dictionary(temporary, **({"database": database} if database else {}))
         backups = path.parent / "backups"
         backups.mkdir(exist_ok=True)
         shutil.copy2(path, backups / f"retired_{datetime.now():%Y%m%d_%H%M%S_%f}.xlsx")

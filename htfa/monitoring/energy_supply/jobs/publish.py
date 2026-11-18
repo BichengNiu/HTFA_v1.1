@@ -14,7 +14,7 @@ from pathlib import Path
 import shutil
 import tempfile
 
-from htfa.monitoring.uae.jobs import db, source_energy_supply
+from htfa.monitoring.uae.jobs import db
 from htfa.monitoring.uae.jobs.paths import DB_PATH, WORKBOOK_PATH
 from htfa.monitoring.uae.jobs.publish_report import publish_workbook
 from htfa.monitoring.uae.jobs.history_validation import validate_history
@@ -95,10 +95,8 @@ def run(*, publish=False, retry_only=True, prepare_only=False,
             with db.connect(candidate) as con:
                 con.execute("SET memory_limit='512MB'")
                 con.execute("SET threads=2")
-                summary["indicators"] = source_energy_supply.update(con, skip_download=True)
                 summary["metadata"] = complete_metadata(con)
             shutil.copy2(workbook, candidate_workbook)
-            summary["workbook"] = source_energy_supply.merge(candidate_workbook, database=candidate)
             summary["dictionary"] = sync_workbook_dictionary(candidate_workbook, database=candidate)
             with db.connect(candidate) as con:
                 summary["report"] = publish_workbook(con, candidate_workbook)

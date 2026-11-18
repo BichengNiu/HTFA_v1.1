@@ -80,16 +80,14 @@ UAE_INDICATORS = (
 # 海峡侧只保留霍尔木兹（chokepoint6），指标名加「霍尔木兹:」前缀自明
 CHOKEPOINT_INDICATORS = (
     ("霍尔木兹:过境总次数:当月值", "数量", "艘次"),
-    ("霍尔木兹:载货容量:当月值", "数量", "吨"),
     ("霍尔木兹:油轮过境次数:当月值", "数量", "艘次"),
-    ("霍尔木兹:油轮载货容量:当月值", "数量", "吨"),
 )
 ALL_INDICATORS = UAE_INDICATORS + CHOKEPOINT_INDICATORS
 
 
 @dataclass
 class Observation:
-    """一次月度聚合观测（每月一行：UAE 9 + 霍尔木兹 4 个指标值）。"""
+    """一次月度聚合观测（每月一行：UAE 9 + 霍尔木兹 2 个指标值）。"""
 
     period: str
     values: tuple
@@ -830,9 +828,7 @@ def _monthly_observations(con) -> list["Observation"]:
         """
         SELECT strftime(date_trunc('month', date), '%Y-%m') AS month,
                SUM(n_total) AS v0,
-               SUM(capacity) AS v1,
-               SUM(n_tanker) AS v2,
-               SUM(capacity_tanker) AS v3
+               SUM(n_tanker) AS v1
         FROM detail.portwatch_chokepoint_daily
         WHERE portid = 'chokepoint6'
           AND date <= ?
@@ -845,7 +841,7 @@ def _monthly_observations(con) -> list["Observation"]:
     return [
         Observation(
             period=row[0],
-            values=tuple(row[1:]) + hormuz_by_month.get(row[0], (None,) * 4),
+            values=tuple(row[1:]) + hormuz_by_month.get(row[0], (None,) * 2),
         )
         for row in uae_rows
     ]

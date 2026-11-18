@@ -81,7 +81,7 @@ def test_db_roundtrip_with_unknown_excluded(tmp_path) -> None:
     monthly_rows = sd._ded_monthly_rows(stats)
     by_type_rows = sd._ded_by_type_rows(stats)
 
-    assert {"records", "enterprises", "licences"} == {
+    assert {"enterprises", "licences"} == {
         row["series"] for row in monthly_rows
     }
 
@@ -91,13 +91,8 @@ def test_db_roundtrip_with_unknown_excluded(tmp_path) -> None:
         db.replace(con, "ded_monthly", monthly_rows)
         db.replace(con, "ded_monthly_by_type", by_type_rows)
 
-    assert con.execute(
-        "SELECT month, series, value FROM ded_monthly WHERE series='records' ORDER BY month"
-    ).fetchall() == [
-        (datetime(2024, 1, 31).date(), "records", 2.0),
-        (datetime(2024, 2, 29).date(), "records", 2.0),
-        (datetime(2024, 3, 31).date(), "records", 1.0),
-    ]
+    assert con.execute("SELECT count(*) FROM ded_monthly WHERE series='records'").fetchone()[0] == 0
+    assert con.execute("SELECT sum(value) FROM ded_monthly WHERE series='licences'").fetchone()[0] > 0
     # unknown 月（空日期行）只在 CSV 审计文件里，不在 DB
     assert "unknown" not in {row["month"] for row in by_type_rows}
     assert con.execute("SELECT count(*) FROM ded_monthly_by_type").fetchone()[0] == 4
@@ -165,10 +160,10 @@ def test_ded_sheet_spec_keeps_all_series_and_missing_values() -> None:
         spec = sd._sheet_spec(con)
     finally:
         con.close()
-    assert len(spec["indicators"]) == 3
+    assert len(spec["indicators"]) == 2
     rows = dict(spec["rows"])
-    assert rows[datetime(2024, 2, 29).date()].get(spec["indicators"][1]) is None
-    assert rows[datetime(2024, 1, 31).date()].get(spec["indicators"][0]) is None
+    assert datetime(2024, 2, 29).date() not in rows
+    assert rows[datetime(2024, 1, 31).date()][spec["indicators"][0]] == 10
     assert sd._month_end_date("2023-02") == datetime(2023, 2, 28).date()
 
 

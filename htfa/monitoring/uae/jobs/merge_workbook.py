@@ -94,6 +94,7 @@ def main(argv: list[str] | None = None) -> int:
         finally:
             if os.name == "nt":
                 cleanup_excel_automation()
+    retire_workbook(workbook_path)
     if failures == 0:
         try:
             dictionary = sync_workbook_dictionary(workbook_path)
@@ -110,6 +111,7 @@ def main(argv: list[str] | None = None) -> int:
                 traceback.format_exception_only(type(exc), exc)
             ).strip()
             print(f"[merge_workbook] metadata         FAILED  {detail}", flush=True)
+    retire_workbook(workbook_path)
     if failures == 0:
         try:
             with db.connect() as con:

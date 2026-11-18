@@ -144,7 +144,7 @@ def test_update_roundtrip_long_table_without_wind_dependency(
     outcome = source.update(con, skip_download=True)
 
     assert outcome["status"] == "ok"
-    assert outcome["rows"] == 30  # 2020-01 and 2020-02 × 15 indicators
+    assert outcome["rows"] == 24  # Two months × 12 retained credit/deposit indicators
 
     periods = con.execute(
         "SELECT DISTINCT period FROM cbuae_monthly ORDER BY period"

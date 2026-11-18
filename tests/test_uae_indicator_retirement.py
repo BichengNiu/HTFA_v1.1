@@ -32,7 +32,7 @@ def test_retirement_cleans_old_tables_aliases_rows_and_columns_idempotently():
         assert con.execute("SELECT series,value FROM ded_monthly").fetchall() == [("enterprises",10)]
         assert con.execute("SELECT * FROM dld_investment_pipeline_weekly").fetchall() == [(date(2026,9,27),4,7)]
         assert not con.execute("SELECT * FROM information_schema.tables WHERE table_name IN ('emirates_post_monthly','eurostat_air_monthly','uaewps_monthly','dld_lease_monthly','ded_official_news_candidates','ded_official_news_scan_state')").fetchall()
-        assert sum(map(len, RETIRED_INDICATORS.values())) == 182
+        assert sum(map(len, RETIRED_INDICATORS.values())) == 206
 
 
 def test_workbook_retirement_resolves_names_after_column_reordering(tmp_path, monkeypatch):

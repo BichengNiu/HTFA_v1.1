@@ -199,7 +199,7 @@ def test_monthly_aggregation_ignores_partial_latest_month() -> None:
 
         assert [item.period for item in observations] == ["2026-07"]
         assert observations[0].values[:3] == (10, 10, 10)
-        assert observations[0].values[-4:] == (5, 5, 5, 5)
+        assert observations[0].values[-2:] == (5, 5)
     finally:
         con.close()
 

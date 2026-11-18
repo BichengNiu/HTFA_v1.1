@@ -106,16 +106,9 @@ INDICATOR_TPL = {
     ("import", "weight_t"): "迪拜航空货运_进口总量(吨)",
     ("export", "weight_t"): "迪拜航空货运_出口总量(吨)",
     ("transit", "weight_t"): "迪拜航空货运_转运总量(吨)",
-    ("domestic", "weight_t"): "迪拜航空货运_境内总量(吨)",
     ("all", "weight_t"): "迪拜航空货运_合计总量(吨)",
-    ("import", "pieces"): "迪拜航空货运_进口件数(件)",
-    ("export", "pieces"): "迪拜航空货运_出口件数(件)",
-    ("all", "pieces"): "迪拜航空货运_合计件数(件)",
     ("import", "awbs"): "迪拜航空货运_进口运单数(张)",
     ("export", "awbs"): "迪拜航空货运_出口运单数(张)",
-    ("all", "awbs"): "迪拜航空货运_合计运单数(张)",
-    ("import", "volume_m3"): "迪拜航空货运_进口体积(立方米)",
-    ("export", "volume_m3"): "迪拜航空货运_出口体积(立方米)",
 }
 
 

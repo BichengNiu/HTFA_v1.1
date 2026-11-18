@@ -28,8 +28,6 @@ jobs:
       PYTHONUNBUFFERED: '1'
       PYTHONDONTWRITEBYTECODE: '1'
       GIT_LFS_SKIP_SMUDGE: '1'
-      CF_RADAR_TOKEN: ${{ secrets.CF_RADAR_TOKEN }}
-      COMTRADE_API_KEY: ${{ secrets.COMTRADE_API_KEY }}
       HTFA_EIA_API_KEY: ${{ secrets.HTFA_EIA_API_KEY }}
     steps:
       - uses: actions/checkout@v4
@@ -46,14 +44,6 @@ jobs:
         run: |
           python -m pip install -r tooling/requirements/requirements-daily-collector.txt
           python -m pip check
-      - name: Check source credentials
-        shell: bash
-        run: |
-          for variable in CF_RADAR_TOKEN COMTRADE_API_KEY; do
-            if [[ -z "${!variable}" ]]; then
-              echo "::warning::$variable is missing; its source will retain the previous validated data. Configure Repository Secrets to enable it."
-            fi
-          done
       - name: Restore validated raw download cache
         id: raw-cache
         uses: actions/cache/restore@v4

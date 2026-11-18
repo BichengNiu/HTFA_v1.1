@@ -180,9 +180,9 @@ def test_merge_publishes_once_after_all_sources_and_dictionary(monkeypatch, tmp_
     ))
 
     assert merge_workbook.main([
-        "--source", "salik,employment", "--workbook", str(tmp_path / "book.xlsx")
+        "--source", "cbuae,employment", "--workbook", str(tmp_path / "book.xlsx")
     ]) == 0
-    assert calls == [".source_salik", ".source_employment", "dictionary", "publish"]
+    assert calls == [".source_cbuae", ".source_employment", "dictionary", "publish"]
 
 
 @pytest.mark.parametrize("error_type", [RuntimeError, KeyboardInterrupt])

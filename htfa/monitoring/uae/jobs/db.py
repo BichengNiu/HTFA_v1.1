@@ -294,8 +294,13 @@ def init_schema(con) -> None:
 
     con.execute("CREATE SCHEMA IF NOT EXISTS detail")
     con.execute("CREATE SCHEMA IF NOT EXISTS dld")
+    from .retired_sources import RETIRED_TABLES
+    from .source_registry import RETIRED_SOURCES
+    retired = {name for name, _ in RETIRED_SOURCES.values()} | set(RETIRED_TABLES)
     for statement in _BASE_DDL:
-        con.execute(statement)
+        table = statement.split("IF NOT EXISTS", 1)[1].split("(", 1)[0].strip()
+        if table not in retired:
+            con.execute(statement)
 
 
 def table_exists(con, name: str) -> bool:
@@ -394,8 +399,13 @@ def merge_observations(con, table: str, rows: Iterable[dict[str, Any]], keys: tu
 def upsert_dictionary_rows(con, rows: Iterable[dict[str, Any]]) -> None:
     """Merge indicator dictionary rows keyed on ``indicator_name``."""
 
+    from .retired_sources import RETIRED_INDICATORS
+
+    retired = {name for names in RETIRED_INDICATORS.values() for name in names}
     for row in rows:
         record = dict(row)
+        if record["indicator_name"] in retired or record["indicator_name"].startswith("能源保供:"):
+            continue
         con.execute(
             """
             INSERT OR REPLACE INTO meta_indicator_dictionary

@@ -13,7 +13,7 @@ runtime\python.exe -m htfa.monitoring.uae.jobs.merge_workbook   # 单独重跑�
 .\htfa\monitoring\uae\jobs\merge_workbook.bat
 ```
 
-常用参数：`--source cbuae,gfs`、`--skip-download`（只用 raw 缓存）、`--force`。
+常用参数：`--source cbuae,pmi`、`--skip-download`（只用 raw 缓存）、`--force`。
 
 `--source emsteel` 将 Quanto 的 Emsteel 月度公开报价与缺月的 SteelOrbis、
 SEAISI、AISU 当期报道合并，先写 `emsteel_monthly`，再重建 `月度_EMSTEEL`。
@@ -145,13 +145,12 @@ EIA Brent 同时读取官方 XLS 和 RBRTE daily API 完整分页，校验系列
   既有 T-100 Node 下载器仅供手动获取离线年包。
 
 来源模块仅供总控导入，不提供独立执行或内嵌自检入口；维护检查使用 `tests/`
-中的来源测试。更新和合并各注册同一组有效来源，`--source salik` 等单来源
+中的来源测试。更新和合并各注册同一组有效来源，`--source cbuae` 等单来源
 命令只写该来源的工作表。搜索热度直接从 DuckDB 写入工作簿，不再导出页面
-已不使用的 `工作搜索热度.csv`；本地既有 CSV 不删除。汽车进口工作表仅由
-专用来源写入乘用车、商用车两列台数，金额及零件明细仍保存在 DuckDB。
-
-Comtrade 仅由 `source_comtrade.merge()` 写入工作表，使用共享原子写表 helper，
-备份保存在 `htfa/monitoring/uae/assets/backups/`；不再导出中间 CSV，也不在 extended 合并中重复写表。
+已不使用的 `工作搜索热度.csv`；本地既有 CSV 不删除。
+Cloudflare、Comtrade设备/汽车、RTA、Salik、GFS已退役，总控入口不再接受这些来源。
+外籍劳动力只采集尼泊尔和孟加拉国；不再获取菲律宾或重建三国合计。
+能源采集保留完整日度事实及AIS，不再重复生成三张能源月度工作表。
 
 DED 仅由 `source_ded.merge()` 使用共享原子写表工具写入快照聚合指标，保留写前备份。
 

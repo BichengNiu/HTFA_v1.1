@@ -119,19 +119,19 @@ def test_update_roundtrip_with_single_source(tmp_path, monkeypatch) -> None:
             "quality_flag": None,
         }
     ]
-    monkeypatch.setattr(source, "build_rows", lambda: fixed_rows)
+    monkeypatch.setattr(source, "build_display_rows", lambda: fixed_rows)
 
     con = db.connect(":memory:")
     db.init_schema(con)
     outcome = source.update(con, skip_download=True)
 
     assert outcome["status"] == "ok"
-    assert outcome["rows"] == 9
+    assert outcome["rows"] == 2
     rows = con.execute(
         "SELECT period, series, value FROM foreign_labour_monthly"
     ).fetchall()
     assert (date(2026, 6, 30), "bangladesh_clearance", 100.0) in rows
-    assert (date(2026, 6, 30), "proxy_sum", 250.0) in rows
+    assert {row[1] for row in rows} == {"nepal_with_reentry", "bangladesh_clearance"}
     con.close()
 
 

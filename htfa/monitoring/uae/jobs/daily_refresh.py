@@ -52,6 +52,8 @@ def worker(name):
         raise RuntimeError(json.dumps(results, ensure_ascii=False, default=str))
     module = importlib.import_module(f".source_{name}", package=__package__)
     result = module.merge(WORKBOOK_PATH)
+    from .retired_sources import retire_workbook
+    retire_workbook(WORKBOOK_PATH)
     if result.get("status") not in {"ok", "skipped"}:
         raise RuntimeError(f"Workbook merge failed: {result}")
     return {"status": "ok", "update": results[name], "merge": result}

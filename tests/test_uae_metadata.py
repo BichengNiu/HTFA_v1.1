@@ -42,7 +42,8 @@ def test_complete_metadata_registers_extended_indicators_and_columns() -> None:
                 "SELECT indicator_name FROM meta_indicator_dictionary"
             ).fetchall()
         }
-        assert "菲律宾_DMW部署_总计" in names
+        assert "菲律宾_DMW部署_总计" not in names
+        assert "尼泊尔_DoFE批准_含再入境" in names
         assert "迪拜:当月新发执照数(执照号筛重)" in names
         assert "阿联酋:Google搜索热度(work in uae)" in names
 
@@ -98,7 +99,7 @@ def test_detail_schema_separates_fine_grained_physical_tables() -> None:
                 "WHERE table_schema='main' AND table_name=?",
                 [table],
             ).fetchone()
-            assert physical == ("BASE TABLE",)
+            assert physical is None
             assert compatibility is None
     finally:
         con.close()

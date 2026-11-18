@@ -62,6 +62,9 @@ def run_sources(
 ) -> dict[str, dict]:
     """Run the named source modules and return one status record each."""
 
+    unknown = set(source_names) - set(SOURCES)
+    if unknown:
+        raise ValueError(f"Unknown source(s): {sorted(unknown)}")
     con = db.connect()
     try:
         db.init_schema(con)

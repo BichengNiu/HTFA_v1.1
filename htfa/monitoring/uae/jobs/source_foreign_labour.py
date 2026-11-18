@@ -1,9 +1,8 @@
-"""UAE 外籍劳工流入代理指标：入库与写表。
+"""Displayed UAE labour-flow proxies: Nepal approvals and Bangladesh clearances.
 
-逻辑移植自 ``data/foreignEmployer/``（download_data.py 下载 +
-process_data.py 解析/质检/写表）。原始文件写入 ``htfa/monitoring/uae/assets/raw/foreign_labour/``；
-入库表 ``foreign_labour_monthly`` 以 (period, series) 长表保存全部序列（含辅助
-字段）；工作簿 ``月度_外籍劳动力`` 只写 8 列（日期+三国原始官方指标+合计）。
+Only these two countries are acquired by the active updater. Historical DMW
+parsers remain available to validate old offline evidence, but daily updates
+never call them or build the retired three-country proxies.
 """
 
 from __future__ import annotations
@@ -438,7 +437,7 @@ def download_all(refresh: bool = False) -> None:
     if MANIFEST_PATH.exists():
         existing = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
         manifest["sources"].update(existing.get("sources", {}))
-    manifest["sources"]["philippines"] = download_philippines(session, refresh)
+    manifest["sources"].pop("philippines", None)
     from curl_cffi import requests as browser_requests
 
     with browser_requests.Session(impersonate="chrome") as nepal_session:
@@ -714,11 +713,12 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
         # Monthly files and API responses may be revised behind stable names;
         # online mode must refresh them, while skip_download stays offline.
         download_all(refresh=True)
-    rows = build_rows()
-    long_rows = _rows_to_long(rows)
+    rows = build_display_rows()
+    long_rows = [row for row in _rows_to_long(rows)
+                 if row["series"] in ACTIVE_SERIES]
     with transaction(con):
         db.merge_observations(con, "foreign_labour_monthly", long_rows, ("period", "series"))
-        validate(_rows_from_db(con), None)
+        validate_display_rows(_rows_from_db(con))
     note = f"{len(long_rows)} 条序列观测（{rows[-1]['date']} 至 {rows[0]['date']}）"
     return {"status": "ok", "rows": len(long_rows), "note": note}
 
@@ -906,22 +906,60 @@ def validate(rows: list[dict[str, Any]], workbook_path: Path | None) -> None:
             workbook.close()
 
 
+ACTIVE_SERIES = {
+    "nepal_with_reentry": ("尼泊尔_DoFE批准_含再入境", "尼泊尔 DoFE monthly final labour approval"),
+    "bangladesh_clearance": ("孟加拉国_BMET出境许可", "孟加拉国 BMET/OEP Country Clearance"),
+}
+
+
+def build_display_rows() -> list[dict[str, Any]]:
+    """Parse only the two displayed countries; DMW and three-country proxies retire."""
+    nepal, bangladesh = parse_nepal(), parse_bangladesh()
+    if not nepal or not bangladesh:
+        raise ValueError("Displayed labour source is empty: Nepal or Bangladesh")
+    rows = []
+    for month in sorted(set(nepal) | set(bangladesh), reverse=True):
+        year, number = map(int, month.split("-"))
+        rows.append({
+            "date": calendar_month_end(year, number),
+            "nepal_with_reentry": nepal.get(month, {}).get("with_reentry"),
+            "bangladesh_clearance": bangladesh.get(month),
+        })
+    validate_display_rows(rows)
+    return rows
+
+
+def validate_display_rows(rows) -> None:
+    """Retain date, missingness and nonnegative whole-person checks."""
+    import math
+
+    dates = [row["date"] for row in rows]
+    if not dates or dates != sorted(set(dates), reverse=True):
+        raise ValueError("Labour dates must be unique and newest first")
+    for row in rows:
+        for series in ACTIVE_SERIES:
+            value = row.get(series)
+            if value is not None and (not math.isfinite(value) or value < 0 or int(value) != value):
+                raise ValueError(f"Invalid displayed labour value: {series}/{row['date']}")
+
+
 def merge(workbook_path: Path) -> dict:
-    """把 foreign_labour_monthly 写回 月度_外籍劳动力 sheet。"""
+    """Publish the two displayed labour series from preserved DuckDB history."""
+    from .workbook_sheet_writer import merge_source_sheet
 
-    workbook_path = workbook_path.resolve()
-    con = db.connect(read_only=True)
-    try:
+    def specification(con):
         rows = _rows_from_db(con)
-    finally:
-        con.close()
-    if not rows:
-        raise ValueError("foreign_labour_monthly is empty; nothing to merge")
+        validate_display_rows(rows)
+        return {"name": SHEET_NAME, "title": "各国官方劳工输出登记/审批数据",
+                "indicators": [item[0] for item in ACTIVE_SERIES.values()],
+                "rows": [(row["date"], {name: row.get(series)
+                          for series, (name, _) in ACTIVE_SERIES.items()}) for row in rows]}
 
-    output_path, backup = write_workbook(rows, workbook_path, allow_open=False)
-    validate(rows, output_path)
-    note = (
-        f"{len(rows)} 个月写入 {output_path.name}"
-        + (f"（备份 {backup.name}）" if backup else "")
-    )
-    return {"status": "ok", "note": note}
+    # Dictionary rows are inserted in DuckDB before the workbook reads them.
+    with db.connect() as con:
+        db.upsert_dictionary_rows(con, [
+            {"indicator_name": name, "frequency": "月", "unit": "人", "source": source,
+             "type": "就业流量", "industry": "劳工", "updated_at": date.today()}
+            for name, source in ACTIVE_SERIES.values()
+        ])
+    return merge_source_sheet(workbook_path.resolve(), specification)

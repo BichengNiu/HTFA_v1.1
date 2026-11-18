@@ -634,7 +634,6 @@ def _ded_monthly_rows(stats) -> list[dict[str, object]]:
 
     rows: list[dict[str, object]] = []
     series_map = {
-        "records": stats["monthly"],
         "enterprises": stats["monthly_enterprise"],
         "licences": stats["monthly_licence"],
     }
@@ -682,13 +681,12 @@ def _ded_by_type_rows(stats) -> list[dict[str, object]]:
 
 def _sheet_spec(con) -> dict[str, Any]:
     series_names = {
-        "records": "迪拜:DED:当月快照记录数",
         "enterprises": "迪拜:当月有发证活动的企业数(企业号筛重)",
         "licences": "迪拜:当月新发执照数(执照号筛重)",
     }
     periods = {}
     for period, series, value in con.execute(
-        "SELECT month, series, value FROM ded_monthly ORDER BY month"
+        "SELECT month, series, value FROM ded_monthly WHERE series IN ('enterprises','licences') ORDER BY month"
     ).fetchall():
         periods.setdefault(period, {})[series_names[series]] = value
     rows = list(periods.items())

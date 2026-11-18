@@ -85,7 +85,7 @@ def test_cbuae_partial_bulletin_keeps_lfs_history(tmp_path, monkeypatch):
         ])
         source.update(con, skip_download=True)
         assert con.execute("SELECT value,source_file FROM cbuae_monthly WHERE period='2020-01-31'").fetchone() == (5, "historic.xlsx")
-        assert con.execute("SELECT COUNT(*) FROM cbuae_monthly WHERE period='2026-01-31'").fetchone()[0] == len(source.CBUAE_CREDIT_INDICATORS)
+        assert con.execute("SELECT COUNT(*) FROM cbuae_monthly WHERE period='2026-01-31'").fetchone()[0] == sum(name not in source._RETIRED_CBUAE for name, _ in source.CBUAE_CREDIT_INDICATORS)
 
 
 def test_foreign_labour_refuses_ytd_gap_on_cold_cache(tmp_path, monkeypatch):

@@ -245,7 +245,11 @@ CBUAE_PAYMENT_INDICATORS = (
     ("阿联酋:FTS国内资金转账总额金额(累计)Total Fund Transfers Amount", "支付"),
 )
 
-CBUAE_INDICATORS = CBUAE_CREDIT_INDICATORS + CBUAE_PAYMENT_INDICATORS
+from .retired_sources import RETIRED_INDICATORS
+
+_RETIRED_CBUAE = set(RETIRED_INDICATORS.get(TARGET_SHEET, ()))
+CBUAE_INDICATORS = tuple(item for item in CBUAE_CREDIT_INDICATORS + CBUAE_PAYMENT_INDICATORS
+                         if item[0] not in _RETIRED_CBUAE)
 INDICATOR_ORDER = {name: index for index, (name, _) in enumerate(CBUAE_INDICATORS)}
 
 CBUAE_PRIMARY_START = "2020-01"
@@ -1029,7 +1033,8 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     )
 
     payment_selected = _payment_rows_selected(payment_rows, primary_start)
-    rows = _long_rows(selected) + payment_selected
+    rows = [row for row in _long_rows(selected) + payment_selected
+            if row["indicator"] not in _RETIRED_CBUAE]
     with transaction(con):
         db.merge_observations(con, "cbuae_monthly", rows, ("period", "indicator"))
         db.upsert_dictionary_rows(con, _dictionary_rows())

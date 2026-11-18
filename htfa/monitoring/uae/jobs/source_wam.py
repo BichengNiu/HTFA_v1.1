@@ -74,8 +74,6 @@ INDICATORS = (
     ("阿联酋军事打击:巡航导弹数量(Cruise Missiles)", "cruise_missiles", "枚", "数量"),
     ("阿联酋军事打击:无人机数量(UAVs)", "uavs", "架", "数量"),
     ("阿联酋战争压力指标(强权重log1p之和,0-100归一化)", "strike_intensity_index", "指数", "指数"),
-    ("阿联酋军事打击:未分类导弹数量(Unclassified Missiles)", "unclassified_missiles", "枚", "数量"),
-    ("阿联酋军事打击:攻击天数(Attack Days)", "attack_days", "天", "数量"),
     ("阿联酋军事打击:观测天数(Observation Days)", "observation_days", "天", "数量"),
 )
 
