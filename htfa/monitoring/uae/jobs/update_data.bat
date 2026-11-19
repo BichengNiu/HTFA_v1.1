@@ -1,6 +1,6 @@
 @echo off
 rem Fetch, clean and load all data sources into htfa\monitoring\uae\assets\uae.duckdb.
-rem Usage: update_data.bat [--source cbuae,gfs] [--skip-download] [--force]
+rem Usage: update_data.bat [--source cbuae,pmi] [--skip-download] [--force]
 cd /d "%~dp0..\..\..\.."
 if errorlevel 1 goto :failed
 if not exist "runtime\python.exe" (

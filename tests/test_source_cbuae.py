@@ -90,12 +90,9 @@ def test_extract_workbook_returns_both_periods(tmp_path) -> None:
         Decimal("300.000"),
         Decimal("260.000"),
         Decimal("300.000"),
-        Decimal("260.000"),
         Decimal("50.000"),
         Decimal("60.000"),
-        Decimal("40.000"),
         Decimal("400.000"),
-        Decimal("500.000"),
         Decimal("600.000"),
         Decimal("200.000"),
     )
@@ -235,3 +232,25 @@ def test_select_latest_vintages_prefers_newer_bulletin() -> None:
     assert selected[0] is new
     assert missing == []
     assert revised == 1
+
+
+def test_fts_customer_metrics_are_not_overwritten_by_retired_bank_sections():
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(['FTS', 'January 2026'])
+    for row in [
+        ['Customer to Customer', None],
+        ['Number of Transfers', 10],
+        ['Amount', 100],
+        ['Bank to Bank', None],
+        ['Number of Transfers', 999],
+        ['Amount', 9999],
+        ['Total Domestic Fund Transfers', None],
+        ['Number of Transfers', 1009],
+        ['Amount', 10099],
+    ]:
+        sheet.append(row)
+    assert source._extract_fts_rows(sheet) == {
+        '2026-01': {'customer_number': Decimal('10'), 'customer_amount': Decimal('100')}
+    }
+    workbook.close()

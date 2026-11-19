@@ -12,7 +12,9 @@ from htfa.monitoring.uae.jobs.source_registry import resolve_source_names
 
 
 def test_retired_sources_are_not_registered_or_created():
-    retired = ("steel", "tdra", "scad", "uaewps", "emirates_post", "eurostat_air")
+    retired = ("steel", "tdra", "scad", "uaewps", "emirates_post", "eurostat_air",
+               "cloudflare_radar", "comtrade", "comtrade_vehicles", "rta",
+               "salik", "gfs", "energy_supply")
     assert not set(retired) & set(resolve_source_names("all"))
     for name in retired:
         assert find_spec(f"htfa.monitoring.uae.jobs.source_{name}") is None
@@ -106,3 +108,12 @@ def test_retirement_removes_legacy_hotel_columns_without_removing_other_scad_dat
     assert book.active.cell(7, 2).value == 30
     assert book.active.cell(2, 3).value == "其他地区:酒店"
     book.close()
+
+
+def test_retired_energy_monthly_pipeline_modules_are_removed():
+    for name in (
+        "htfa.monitoring.energy_supply.processing.workbook_reporting",
+        "htfa.monitoring.energy_supply.data.report_repository",
+        "htfa.monitoring.uae.jobs.source_comtrade_scope",
+    ):
+        assert find_spec(name) is None

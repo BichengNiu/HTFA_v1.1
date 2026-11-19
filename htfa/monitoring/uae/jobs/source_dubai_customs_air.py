@@ -19,18 +19,14 @@
     - 出口：起运地在迪拜、目的地非迪拜；
     - 境内：两端均在迪拜；
     - 转运：两端均非迪拜（经由迪拜海关监管的货运）。
-- 重量统一折算为吨（Pounds→kg 按 0.45359237），体积统一折算为立方米
-  （Cubic Feet→m³ 按 0.0283168466，Cubic Inches→m³ 按 1.6387064e-5，
-  Cubic Centimetres→m³ 按 1e-6）。
+- 重量统一折算为吨（Pounds→kg 按 0.45359237）。件数和体积只用于原始件质检，不生成停用指标。
 - 数据含少量负值行（重量/件数为负，疑为海关冲销/调整记录），聚合按净值
   加总并保留，质检报告中单独披露负值占比。
 - 聚合按 ``createddate`` 所在月份归期。
 
 指标（月度）：
-- 迪拜航空货运_进口总量(吨) / 出口总量(吨) / 转运总量(吨) / 境内总量(吨) / 合计(吨)
-- 迪拜航空货运_进口件数(件) / 出口件数(件) / 合计件数(件)
-- 迪拜航空货运_进口运单数(张) / 出口运单数(张) / 合计运单数(张)
-- 迪拜航空货运_进口体积(立方米) / 出口体积(立方米)
+- 迪拜航空货运_进口总量(吨) / 出口总量(吨) / 转运总量(吨) / 合计总量(吨)
+- 迪拜航空货运_进口运单数(张) / 出口运单数(张)
 """
 
 from __future__ import annotations
@@ -64,9 +60,6 @@ DOWNLOAD_SCRIPT = Path(__file__).with_name("download_dubai_customs_air.py")
 TARGET_SHEET = "月度_迪拜海关航空"
 
 LB_TO_KG = 0.45359237
-FT3_TO_M3 = 0.0283168466
-IN3_TO_M3 = 1.6387064e-5
-CM3_TO_M3 = 1e-6
 
 COLUMNS = (
     "airwaybilldetailid", "airwaybillid", "createddate", "modifieddate",
@@ -93,12 +86,7 @@ WEIGHT_UNIT_MULT = {
     "KILOS": 1.0,
     "POUNDS": LB_TO_KG,
 }
-VOLUME_UNIT_MULT = {
-    "CUBIC METRES": 1.0,
-    "CUBIC FEET": FT3_TO_M3,
-    "CUBIC INCHES": IN3_TO_M3,
-    "CUBIC CENTIMETRES": CM3_TO_M3,
-}
+VOLUME_UNITS = {"CUBIC METRES", "CUBIC FEET", "CUBIC INCHES", "CUBIC CENTIMETRES"}
 
 
 INDICATOR_TPL = {
@@ -143,7 +131,7 @@ def _month_key(d: date) -> tuple[int, int]:
 
 
 def collect_rows(shard_paths: list[Path]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """流式扫描各分片，按 (月份, 方向) 聚合重量/件数/运单数/体积。
+    """流式扫描各分片，按 (月份, 方向) 聚合保留的重量和运单数。
 
     返回 (长表行, 质量统计)。运单数按月度方向去重 airwaybillid 集合。
     """
@@ -197,15 +185,13 @@ def collect_rows(shard_paths: list[Path]) -> tuple[list[dict[str, Any]], dict[st
                 if pieces is not None:
                     if pieces < 0:
                         stats["neg_pieces_rows"] += 1
-                    _bump(agg, (mk, direction, "pieces"), pieces)
 
-                v_val = _to_float(row.get("volume"))
-                if v_val is not None:
-                    mult = VOLUME_UNIT_MULT.get((row.get("volumetypename") or "").upper().strip())
-                    if mult is None:
+                # Preserve unit-quality auditing of the unchanged raw schema,
+                # without calculating the retired volume series.
+                if _to_float(row.get("volume")) is not None:
+                    unit = (row.get("volumetypename") or "").upper().strip()
+                    if unit not in VOLUME_UNITS:
                         stats["unknown_unit_volume"] += 1
-                        mult = 1.0
-                    _bump(agg, (mk, direction, "volume_m3"), v_val * mult)
         stats["rows_read"] += seen_rows
         stats["files"].append(path.name)
 
@@ -214,8 +200,6 @@ def collect_rows(shard_paths: list[Path]) -> tuple[list[dict[str, Any]], dict[st
         if direction == "all":
             continue
         key = (mk, "all", measure)
-        if measure == "awbs":
-            continue  # 运单数按集合合并计算
         agg[key] = agg.get(key, 0.0) + value
     rows: list[dict[str, Any]] = []
     for (mk, direction, measure), value in sorted(agg.items()):
@@ -304,11 +288,8 @@ def _distinct_awb_counts(
                 )
                 SELECT month, direction, count(DISTINCT airwaybillid) AS count
                 FROM base
+                WHERE direction IN ('import','export')
                 GROUP BY month, direction
-                UNION ALL
-                SELECT month, 'all' AS direction, count(DISTINCT airwaybillid) AS count
-                FROM base
-                GROUP BY month
             """
             result = con.execute(query).fetchall()
         finally:

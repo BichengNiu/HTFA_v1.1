@@ -10,7 +10,6 @@ from openpyxl import Workbook, load_workbook
 from htfa.monitoring.uae.jobs import source_ded as ded
 from htfa.monitoring.uae.jobs import source_foreign_labour as labour
 from htfa.monitoring.uae.jobs import source_public_market as market
-from htfa.monitoring.uae.jobs import source_salik as salik
 
 
 def test_adx_deduplicates_daily_closes_and_preserves_conflicts_as_null():
@@ -60,13 +59,6 @@ def test_public_merge_adds_adx_column_from_database(monkeypatch, tmp_path):
     updated.close()
 
 
-@pytest.mark.parametrize("name, expected", [
-    ("Salik-Earnings-Presentation-9M-2025.pdf", date(2025, 9, 30)),
-    ("Salik-_-Earnings-Presentation_H1-_2024.pdf", date(2024, 6, 30)),
-    ("Salik-Investor-Presentation-H1_2026.pdf", date(2026, 6, 30)),
-])
-def test_salik_financial_period_filename_variants(name, expected):
-    assert salik._period_from_filename(name) == expected
 
 
 def test_ded_future_source_row_is_preserved_but_not_aggregated():

@@ -9,7 +9,7 @@ written back as if they were freshly downloaded.
 Examples::
 
     htfa\\monitoring\\uae\\jobs\\update_data.bat                 # all sources
-    htfa\\monitoring\\uae\\jobs\\update_data.bat --source cbuae,gfs
+    htfa\\monitoring\\uae\\jobs\\update_data.bat --source cbuae,pmi
     htfa\\monitoring\\uae\\jobs\\update_data.bat --skip-download  # reuse raw files
     htfa\\monitoring\\uae\\jobs\\update_data.bat --force
 """

@@ -1,7 +1,7 @@
 @echo off
 rem Merge DuckDB data into htfa\monitoring\uae\assets\阿联酋.xlsx sheets.
 rem Close the workbook in Excel before running.
-rem Usage: merge_workbook.bat [--source cbuae,gfs]
+rem Usage: merge_workbook.bat [--source cbuae,pmi]
 cd /d "%~dp0..\..\..\.."
 if errorlevel 1 goto :failed
 if not exist "runtime\python.exe" (

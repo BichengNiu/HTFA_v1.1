@@ -6,9 +6,7 @@ from types import SimpleNamespace
 
 from htfa.monitoring.uae.jobs import (
     source_baker_hughes,
-    source_comtrade_vehicles,
     source_dubai_customs_air,
-    source_salik,
 )
 
 
@@ -42,22 +40,6 @@ def test_dubai_shards_follow_the_latest_manifest(tmp_path, monkeypatch):
     assert source_dubai_customs_air._current_shards() == [current]
 
 
-def test_comtrade_adapter_calls_the_official_downloader(monkeypatch, tmp_path):
-    calls = []
-    helper = tmp_path / "download_hs87.py"
-    helper.write_text("# subprocess fixture\n")
-    monkeypatch.setattr(source_comtrade_vehicles, "DOWNLOAD_SCRIPT", helper)
-
-    def fake_run(command, **kwargs):
-        calls.append((command, kwargs))
-        return SimpleNamespace(returncode=0, stdout="summary", stderr="")
-
-    monkeypatch.setattr(source_comtrade_vehicles.subprocess, "run", fake_run)
-    note = source_comtrade_vehicles._download_official_data(force=False)
-
-    assert "summary" in note
-    assert calls[0][0][0] == source_comtrade_vehicles.sys.executable
-    assert "--start" in calls[0][0]
 
 
 def test_customs_downloader_creates_clean_runner_working_directory(monkeypatch, tmp_path):
@@ -78,25 +60,6 @@ def test_customs_downloader_creates_clean_runner_working_directory(monkeypatch, 
     assert "1" in source._download_official_shards(force=True)
 
 
-def test_salik_extracts_absolute_value_but_not_yoy_percentage(monkeypatch):
-    class FakePage:
-        def __init__(self, text: str):
-            self.text = text
-
-        def extract_text(self):
-            return self.text
-
-    class FakeReader:
-        def __init__(self, _path: str):
-            self.pages = [
-                FakePage(
-                    "# OF REGISTERED ACTIVE VEHICLES as of Jun 30, 2026 c. 4.88 MN"
-                )
-            ]
-
-    monkeypatch.setattr(source_salik, "PdfReader", FakeReader)
-    assert source_salik._period_from_filename("Salik-Investor-Presentation-H1_2026.pdf")
-    assert source_salik._extract_absolute_value(Path("fake.pdf")) == 4.88
 
 
 def test_t100_downloader_uses_repository_relative_output():

@@ -79,11 +79,11 @@ def test_extract_individual_from_old_and_new_format(tmp_path) -> None:
     _bulletin_workbook(old, style="old")
     observations = source.extract_workbook(old)
     assert len(observations) == 1
-    assert len(observations[0].values) == 15
+    assert len(observations[0].values) == 12
     # 老格式：Private - Corporate=300，Business=280，Private - Retail=200
     assert observations[0].values[4] == Decimal("300.000")
     assert observations[0].values[5] == Decimal("280.000")
-    assert observations[0].values[14] == Decimal("200.000")
+    assert observations[0].values[11] == Decimal("200.000")
 
     new = tmp_path / "2026-06.xlsx"
     _bulletin_workbook(new, style="new")
@@ -92,7 +92,7 @@ def test_extract_individual_from_old_and_new_format(tmp_path) -> None:
     # 新格式：Corporate=300，Business=300-20 推导，Individual=200
     assert observations_new[0].values[4] == Decimal("300.000")
     assert observations_new[0].values[5] == Decimal("280.000")
-    assert observations_new[0].values[14] == Decimal("200.000")
+    assert observations_new[0].values[11] == Decimal("200.000")
 
 
 def test_update_writes_individual_credit_row_and_dictionary(tmp_path, monkeypatch) -> None:

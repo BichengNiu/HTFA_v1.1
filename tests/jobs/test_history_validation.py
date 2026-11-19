@@ -85,27 +85,9 @@ def test_cbuae_partial_bulletin_keeps_lfs_history(tmp_path, monkeypatch):
         ])
         source.update(con, skip_download=True)
         assert con.execute("SELECT value,source_file FROM cbuae_monthly WHERE period='2020-01-31'").fetchone() == (5, "historic.xlsx")
-        assert con.execute("SELECT COUNT(*) FROM cbuae_monthly WHERE period='2026-01-31'").fetchone()[0] == sum(name not in source._RETIRED_CBUAE for name, _ in source.CBUAE_CREDIT_INDICATORS)
+        assert con.execute("SELECT COUNT(*) FROM cbuae_monthly WHERE period='2026-01-31'").fetchone()[0] == len(source.CBUAE_CREDIT_INDICATORS)
 
 
-def test_foreign_labour_refuses_ytd_gap_on_cold_cache(tmp_path, monkeypatch):
-    from openpyxl import Workbook
-    from htfa.monitoring.uae.jobs import source_foreign_labour as source
-    monkeypatch.setattr(source, "RAW_DIR", tmp_path)
-    folder = tmp_path / "philippines"
-    folder.mkdir()
-    for month in [1, 3]:
-        book = Workbook()
-        sheet = book.active
-        sheet.title = "Tab 11"
-        values = [None] * 12
-        values[0], values[3], values[7], values[11] = "UNITED ARAB EMIRATES", month * 10, month * 4, month * 6
-        sheet.append(values)
-        book.save(folder / f"dmw_2026_{month:02d}.xlsx")
-        book.close()
-    monkeypatch.setattr(source, "find_uae_row", lambda sheet: list(next(sheet.iter_rows(values_only=True))))
-    with pytest.raises(RuntimeError, match="Missing preceding DMW YTD"):
-        source.parse_philippines()
 
 
 def test_report_guard_matches_names_after_column_reordering_and_rejects_loss(tmp_path):

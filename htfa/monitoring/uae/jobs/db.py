@@ -64,23 +64,6 @@ _BASE_DDL = (
     )
     """,
     """
-    CREATE TABLE IF NOT EXISTS gfs_quarterly (
-        year      SMALLINT      NOT NULL,
-        quarter   TINYINT       NOT NULL,
-        indicator VARCHAR       NOT NULL,
-        value     DECIMAL(28, 3),
-        PRIMARY KEY (year, quarter, indicator)
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS gfs_annual (
-        year      SMALLINT      NOT NULL,
-        indicator VARCHAR       NOT NULL,
-        value     DECIMAL(28, 3),
-        PRIMARY KEY (year, indicator)
-    )
-    """,
-    """
     CREATE TABLE IF NOT EXISTS pmi_monthly (
         period       DATE    PRIMARY KEY,
         value        DOUBLE,
@@ -95,36 +78,6 @@ _BASE_DDL = (
         value        DOUBLE,
         quality_flag VARCHAR,
         PRIMARY KEY (period, series)
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS comtrade_monthly (
-        period   DATE    NOT NULL,
-        category VARCHAR NOT NULL,
-        value    DOUBLE,
-        units    DOUBLE,
-        PRIMARY KEY (period, category)
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS detail.comtrade_partner_detail (
-        period   DATE    NOT NULL,
-        category VARCHAR NOT NULL,
-        reporter VARCHAR NOT NULL,
-        partner  VARCHAR NOT NULL,
-        value    DOUBLE,
-        PRIMARY KEY (period, category, reporter, partner)
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS detail.comtrade_quantity_detail (
-        period                DATE    NOT NULL,
-        hs6                   VARCHAR NOT NULL,
-        item_count            DOUBLE,
-        source_type           VARCHAR,
-        reported_estimated    VARCHAR,
-        mirror_reporter_count BIGINT,
-        PRIMARY KEY (period, hs6)
     )
     """,
     """
@@ -174,31 +127,6 @@ _BASE_DDL = (
         indicator   VARCHAR        NOT NULL,
         value       DECIMAL(28, 3),
         source_file VARCHAR,
-        PRIMARY KEY (period, indicator)
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS cloudflare_radar_daily (
-        period      DATE           NOT NULL,
-        indicator   VARCHAR        NOT NULL,
-        value       DECIMAL(12, 3),
-        source_file VARCHAR,
-        PRIMARY KEY (period, indicator)
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS rta_transport_monthly (
-        period    DATE    NOT NULL,
-        indicator VARCHAR NOT NULL,
-        value     DECIMAL(20, 3),
-        PRIMARY KEY (period, indicator)
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS rta_transport_daily (
-        period    DATE    NOT NULL,
-        indicator VARCHAR NOT NULL,
-        value     DECIMAL(20, 3),
         PRIMARY KEY (period, indicator)
     )
     """,

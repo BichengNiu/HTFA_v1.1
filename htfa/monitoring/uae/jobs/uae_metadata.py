@@ -255,14 +255,6 @@ _COLUMN_MEANINGS: dict[str, tuple[str, str, str | None, str | None]] = {
     "keyword": ("搜索维度", "Google Trends 搜索关键词", "employment_search_index.value", None),
     "legal_form": ("法律形式", "企业法律形式分类", "ded_monthly_by_type.records", None),
     "records": ("记录数", "该月份/法律形式的原始记录数", None, "缺行不等于零"),
-    "category": ("分类维度", "资本品或设备类别", None, None),
-    "reporter": ("申报国", "UN Comtrade 申报国", None, None),
-    "partner": ("贸易伙伴", "UN Comtrade 贸易伙伴", None, None),
-    "hs6": ("HS6 分类", "UN Comtrade 六位商品编码", None, None),
-    "item_count": ("数量", "HS6 商品数量", None, "单位随源文件口径，需结合 source_type 解读"),
-    "source_type": ("来源口径", "直报或镜像来源类型", None, None),
-    "reported_estimated": ("估算标记", "直报/估算状态标志", None, None),
-    "mirror_reporter_count": ("镜像覆盖", "参与镜像汇总的申报国数量", None, None),
     "portid": ("港口/海峡标识", "PortWatch 港口或海峡 ID", None, None),
     "portname": ("港口/海峡名称", "PortWatch 港口或海峡名称", None, None),
     "country": ("国家维度", "港口所在国家名称", None, None),
@@ -303,7 +295,6 @@ _DETAIL_OBJECTS = (
     "energy_supply.sea_coverage",
     "energy_supply.sea_vessel_checkpoints",
     "energy_supply.collection_runs",
-    "energy_supply.report_indicators",
 )
 
 _PORTWATCH_VALUE_PREFIXES = {

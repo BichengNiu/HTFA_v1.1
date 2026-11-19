@@ -2,17 +2,17 @@
 
 逻辑移植自 ``scripts/data_sources/cbuae/update_cbuae_monthly.py``：扫描
 ``htfa/monitoring/uae/assets/raw/cbuae/`` 下全部 YYYY-MM.xlsx / YYYY-MM.pdf 统计公报，读取全银行口径的
-国内信贷、居民/非居民存款、按币种存款、国外资产负债等多张表，为每个观测月保留
+国内信贷、居民/非居民存款、按币种存款、国外负债等多张表，为每个观测月保留
 最新 vintage；只发布 PDF 的期间解析 PDF 版本公报。入库为长表 ``cbuae_monthly``
 （(period, indicator) 一行），单位百万迪拉姆。数据一律直接来自 CBUAE 公报，不依赖
 任何 Wind 序列。
 
 外资流向口径：非居民存款分项（个人/政府及非商业实体/其他金融企业）取自存款表
-「非居民」块(2)；外币存款总额取自按币种存款表；银行国外资产/负债取自国外资产负债表
+「非居民」块(2)；外币存款总额取自按币种存款表；银行国外负债取自国外资产负债表
 （All Banks）。均为月度存量，表征外资流入须结合环比增量解读，不含 FDI。
 
 支付体系月度数据：同批 CBUAE 月度公报的 Cheques(ICCS) 与 FTS 两表（表 36/37 或
-47/48）亦一并入库为 ``cbuae_monthly`` 的 8 个「支付」指标（金额百万迪拉姆、笔数
+47/48）亦一并入库为 ``cbuae_monthly`` 的 4 个「支付」指标（金额百万迪拉姆、笔数
 为张/笔），口径为公报原样发布的年内累计(YTD，每年 1 月重置)；单月增量需在分析层
 差分。PDF 版本公报（如 2020-01）不覆盖支付表。
 """
@@ -221,12 +221,9 @@ CBUAE_CREDIT_INDICATORS = (
     ("阿联酋:国内信贷:私人企业信贷(Private Corporate Credit)", "信贷"),
     ("阿联酋:国内信贷:商业及工业部门信贷(Business & Industrial Sector Credit)", "信贷"),
     ("阿联酋:非居民存款:私人企业存款(Private Corporate Deposit)", "存款"),
-    ("阿联酋:非居民存款:商业及工业部门存款(Business & Industrial Sector Deposit)", "存款"),
     ("阿联酋:非居民存款:个人存款(Individuals Deposit)", "存款"),
     ("阿联酋:非居民存款:政府及非商业实体存款(Government & Non Commercial Entities Deposit)", "存款"),
-    ("阿联酋:非居民存款:其他金融企业存款(Other Financial Corporations Deposit)", "存款"),
     ("阿联酋:外币存款(Total Foreign Currencies)", "存款"),
-    ("阿联酋:银行国外资产(Foreign Assets)", "资产"),
     ("阿联酋:银行国外负债(Foreign Liabilities)", "负债"),
     ("阿联酋:国内信贷:个人信贷(Individual Credit)", "信贷"),
 )
@@ -239,17 +236,9 @@ CBUAE_PAYMENT_INDICATORS = (
     ("阿联酋:支票清算金额(累计)Cheques Cleared Amount", "支付"),
     ("阿联酋:FTS客户转账笔数(累计)Customer Transfers Number", "支付"),
     ("阿联酋:FTS客户转账金额(累计)Customer Transfers Amount", "支付"),
-    ("阿联酋:FTS银行转账笔数(累计)Bank Transfers Number", "支付"),
-    ("阿联酋:FTS银行转账金额(累计)Bank Transfers Amount", "支付"),
-    ("阿联酋:FTS国内资金转账总额笔数(累计)Total Fund Transfers Number", "支付"),
-    ("阿联酋:FTS国内资金转账总额金额(累计)Total Fund Transfers Amount", "支付"),
 )
 
-from .retired_sources import RETIRED_INDICATORS
-
-_RETIRED_CBUAE = set(RETIRED_INDICATORS.get(TARGET_SHEET, ()))
-CBUAE_INDICATORS = tuple(item for item in CBUAE_CREDIT_INDICATORS + CBUAE_PAYMENT_INDICATORS
-                         if item[0] not in _RETIRED_CBUAE)
+CBUAE_INDICATORS = CBUAE_CREDIT_INDICATORS + CBUAE_PAYMENT_INDICATORS
 INDICATOR_ORDER = {name: index for index, (name, _) in enumerate(CBUAE_INDICATORS)}
 
 CBUAE_PRIMARY_START = "2020-01"
@@ -260,10 +249,6 @@ PAYMENT_UNITS = {
     "阿联酋:支票清算金额(累计)Cheques Cleared Amount": "百万迪拉姆",
     "阿联酋:FTS客户转账笔数(累计)Customer Transfers Number": "笔",
     "阿联酋:FTS客户转账金额(累计)Customer Transfers Amount": "百万迪拉姆",
-    "阿联酋:FTS银行转账笔数(累计)Bank Transfers Number": "笔",
-    "阿联酋:FTS银行转账金额(累计)Bank Transfers Amount": "百万迪拉姆",
-    "阿联酋:FTS国内资金转账总额笔数(累计)Total Fund Transfers Number": "笔",
-    "阿联酋:FTS国内资金转账总额金额(累计)Total Fund Transfers Amount": "百万迪拉姆",
 }
 
 # 2020 起月频连续；更早公报只含季/年度参考列，不入连续月度序列
@@ -274,10 +259,6 @@ PAYMENT_METRIC_INDICATOR = {
     "cheques_amount": "阿联酋:支票清算金额(累计)Cheques Cleared Amount",
     "customer_number": "阿联酋:FTS客户转账笔数(累计)Customer Transfers Number",
     "customer_amount": "阿联酋:FTS客户转账金额(累计)Customer Transfers Amount",
-    "bank_number": "阿联酋:FTS银行转账笔数(累计)Bank Transfers Number",
-    "bank_amount": "阿联酋:FTS银行转账金额(累计)Bank Transfers Amount",
-    "total_number": "阿联酋:FTS国内资金转账总额笔数(累计)Total Fund Transfers Number",
-    "total_amount": "阿联酋:FTS国内资金转账总额金额(累计)Total Fund Transfers Amount",
 }
 
 
@@ -544,8 +525,8 @@ def _extract_individual_row(
 
 def _extract_nonresident_deposits(
     sheet: Worksheet,
-) -> tuple[dict[str, Decimal], dict[str, Decimal], dict[str, Decimal], dict[str, Decimal]]:
-    """提取存款表「非居民」块(2) 的私人企业 / 个人 / 政府及非商业实体 / 其他金融企业存款。
+) -> tuple[dict[str, Decimal], dict[str, Decimal], dict[str, Decimal]]:
+    """提取存款表「非居民」块(2) 的私人企业 / 个人 / 政府及非商业实体存款。
 
     存款表分两块：(1) 居民 Residents / (2) 非居民 Non-Residents。用户口径取**非居民块
     (2)**，按行首标签（而非块内编号）定位各子项，因新旧公报块内编号顺序不同
@@ -553,21 +534,18 @@ def _extract_nonresident_deposits(
     新格式 2.2=Individuals/2.3=Government/2.4=Other Financial Corporations），
     故必须按语义标签匹配。
 
-    返回四行：corporate、individuals、government_non_commercial、other_financial；
-    ``other_financial`` 兼容 "Other Financial Corporations"（新）与
-    "Non Banking Financial Institutions"（旧）。
+    返回 corporate、individuals、government_non_commercial 三行。
     """
 
     try:
         columns = _header_columns(sheet)
     except ValueError:
-        return {}, {}, {}, {}
+        return {}, {}, {}
 
     block2_start: int | None = None
     corporate_row: int | None = None
     individuals_row: int | None = None
     government_row: int | None = None
-    financial_row: int | None = None
     for row_number, row in enumerate(sheet.iter_rows(), start=1):
         block_label = _normalize_label(row[1].value)
         if block_label == "(2)":
@@ -583,16 +561,11 @@ def _extract_nonresident_deposits(
             individuals_row = row_number
         elif government_row is None and "government and non commercial" in label:
             government_row = row_number
-        elif financial_row is None and (
-            "non banking financial" in label or "other financial" in label
-        ):
-            financial_row = row_number
 
     corporate = _extract_one_row(sheet, columns, corporate_row)
     individuals = _extract_one_row(sheet, columns, individuals_row)
     government = _extract_one_row(sheet, columns, government_row)
-    other_financial = _extract_one_row(sheet, columns, financial_row)
-    return corporate, individuals, government, other_financial
+    return corporate, individuals, government
 
 
 def _extract_total_foreign_currencies(
@@ -612,21 +585,14 @@ def _extract_total_foreign_currencies(
     return _extract_one_row(sheet, columns, row)
 
 
-def _extract_foreign_assets_liabilities(
-    sheet: Worksheet,
-) -> tuple[dict[str, Decimal], dict[str, Decimal]]:
-    """提取国外资产负债表中「Foreign Assets」与「Foreign Liabilities」两个汇总行。"""
-
+def _extract_foreign_liabilities(sheet: Worksheet) -> dict[str, Decimal]:
+    """Read the foreign-liabilities total used by the displayed bank-debt series."""
     try:
         columns = _header_columns(sheet)
     except ValueError:
-        return {}, {}
-    assets_row = _find_row_optional(sheet, {"foreign assets"})
-    liabilities_row = _find_row_optional(sheet, {"foreign liabilities"})
-    return (
-        _extract_one_row(sheet, columns, assets_row),
-        _extract_one_row(sheet, columns, liabilities_row),
-    )
+        return {}
+    row = _find_row_optional(sheet, {"foreign liabilities"})
+    return _extract_one_row(sheet, columns, row)
 
 
 def _find_row_contains(sheet: Worksheet, tokens: tuple[str, ...]) -> int | None:
@@ -666,7 +632,7 @@ def _extract_payment_sheet(
 
 
 def _extract_fts_rows(sheet: Worksheet) -> dict[str, dict[str, Decimal]]:
-    """提取 FTS 表三块（Customer / Bank / Total）的笔数与金额。
+    """仅提取 FTS 客户转账的笔数与金额。
 
     行结构：分区标题（Customer to Customer / Bank to Bank / Total Domestic Fund
     Transfers）后跟 "Number of Transfers" 与 "Amount" 两行。
@@ -682,10 +648,8 @@ def _extract_fts_rows(sheet: Worksheet) -> dict[str, dict[str, Decimal]]:
         label = _row_default_label(row)
         if "customer to customer" in label:
             section = "customer"
-        elif "bank to bank" in label:
-            section = "bank"
-        elif "total domestic" in label:
-            section = "total"
+        elif "bank to bank" in label or "total domestic" in label:
+            section = None
         if section is None:
             continue
         if "number of trans" in label:
@@ -803,18 +767,9 @@ def extract_workbook(path: Path) -> list[Observation]:
             nonres_corporate,
             nonres_individuals,
             nonres_government,
-            nonres_other_financial,
         ) = _extract_nonresident_deposits(deposit_sheet)
-        # 商业及工业部门存款 = Corporate − OtherFinancial（与信贷侧同口径恒等推导）
-        deposit_business = {
-            period: corporate_value - nonres_other_financial[period]
-            for period, corporate_value in nonres_corporate.items()
-            if period in nonres_other_financial
-        }
         total_foreign_currencies = _extract_total_foreign_currencies(currency_sheet)
-        foreign_assets, foreign_liabilities = _extract_foreign_assets_liabilities(
-            foreign_sheet
-        )
+        foreign_liabilities = _extract_foreign_liabilities(foreign_sheet)
     finally:
         workbook.close()
 
@@ -834,12 +789,9 @@ def extract_workbook(path: Path) -> list[Observation]:
                     corporate.get(period),
                     business.get(period),
                     nonres_corporate.get(period),
-                    deposit_business.get(period),
                     nonres_individuals.get(period),
                     nonres_government.get(period),
-                    nonres_other_financial.get(period),
                     total_foreign_currencies.get(period),
-                    foreign_assets.get(period),
                     foreign_liabilities.get(period),
                     individual.get(period),
                 ),
@@ -902,11 +854,11 @@ def extract_pdf_bulletin(path: Path) -> Observation:
     period = _source_period(path)
     return Observation(
         period=period,
-        # PDF 版本公报仅提供政府存贷 4 项；其余 10 项以 None 占位
+        # PDF 版本公报仅提供政府存贷 4 项，其余保留指标以 None 占位
         values=(
             *deposit_values,
             *credit_values,
-            None, None, None, None, None, None, None, None, None, None, None,
+            *(None for _ in CBUAE_CREDIT_INDICATORS[4:]),
         ),
         source_period=period,
         source_file=path.name,
@@ -1033,8 +985,7 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict:
     )
 
     payment_selected = _payment_rows_selected(payment_rows, primary_start)
-    rows = [row for row in _long_rows(selected) + payment_selected
-            if row["indicator"] not in _RETIRED_CBUAE]
+    rows = _long_rows(selected) + payment_selected
     with transaction(con):
         db.merge_observations(con, "cbuae_monthly", rows, ("period", "indicator"))
         db.upsert_dictionary_rows(con, _dictionary_rows())

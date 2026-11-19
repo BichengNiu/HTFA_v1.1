@@ -11,7 +11,7 @@ from openpyxl import Workbook, load_workbook
 from htfa.monitoring.uae.jobs.workbook_sheet_writer import write_indicator_sheets  # noqa: E402
 from htfa.monitoring.uae.jobs import (
     db, source_dot_t100, source_dubai_customs_air, source_employment,
-    source_fcsc, source_salik, update_data, merge_workbook,
+    source_fcsc, update_data, merge_workbook,
 )
 
 
@@ -28,9 +28,6 @@ def test_all_update_sources_have_exactly_one_merge_owner():
     (source_dubai_customs_air,
      "CREATE TABLE dubai_airway_bill_monthly(period DATE,indicator VARCHAR,value DOUBLE)",
      "INSERT INTO dubai_airway_bill_monthly VALUES ('2026-06-01','迪拜航空货运_进口总量(吨)',123)"),
-    (source_salik,
-     "CREATE TABLE salik_active_vehicles_quarterly(period DATE,value DOUBLE)",
-     "INSERT INTO salik_active_vehicles_quarterly VALUES ('2026-06-30',123)"),
     (source_employment,
      "CREATE TABLE employment_search_index(month DATE,keyword VARCHAR,value DOUBLE)",
      "INSERT INTO employment_search_index VALUES ('2026-06-01','work in dubai',123)"),

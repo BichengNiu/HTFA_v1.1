@@ -93,7 +93,7 @@ def test_retired_sources_cannot_be_selected_by_python_or_daily_runner():
 
 
 def test_labour_refresh_no_longer_depends_on_philippines_or_three_country_baseline(monkeypatch):
-    monkeypatch.setattr(labour, 'parse_philippines', lambda: pytest.fail('DMW must not be called'))
+    assert not hasattr(labour, 'parse_philippines')
     monkeypatch.setattr(labour, 'parse_nepal', lambda: {'2026-01': {'with_reentry': 20, 'without_reentry': 15}})
     monkeypatch.setattr(labour, 'parse_bangladesh', lambda: {'2026-02': 30})
     rows = labour.build_display_rows()

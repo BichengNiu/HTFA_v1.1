@@ -156,8 +156,6 @@ DED 仅由 `source_ded.merge()` 使用共享原子写表工具写入快照聚合
 
 ### 官方来源读取约定
 
-- RTA 公交速度 CSV 先统一换行格式，保留全部字段和记录；水运固定使用官方 JSON 导出，逐条读取原文完整的 `txn_date` 字段计数。JSON 拼接分隔符不计为记录，每条记录缺日期、重复日期字段或日期无效均报错，不启用忽略错误行。
-- RTA 在线运行保存各数据集的 `download_manifest.json`；显式离线模式只读取清单指定文件并核对大小，不访问元数据接口、不扫描混用历史版本。缺失清单或文件即报错。
 - Google Trends 使用同一 Chrome 请求会话获取查询令牌和时间线；429 有限退避重试，仍失败则报错，不自动转用缓存。
 - 迪拜海关航空下载器为正式源码 `download_dubai_customs_air.py`：按当前完整清单下载，支持 HTTP Range 断点续传，校验响应长度及 gzip CRC 后原子替换。单次请求和重试次数有限，不再按整批累计 30 分钟强制终止；缺少任一分片即拒绝入库。
 - 嵌入式运行时的 `python313._pth` 包含项目根目录，支持直接执行 `runtime\python.exe -m htfa.monitoring.uae.jobs.update_data`；运行时生成脚本同步维护此配置。

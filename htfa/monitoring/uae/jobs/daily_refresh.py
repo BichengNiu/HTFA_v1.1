@@ -20,11 +20,10 @@ from .paths import DATA_DIR, DB_PATH, WORKBOOK_PATH
 from .source_registry import SOURCES
 from .history_validation import validate_history
 
-# The quarterly/annual jobs remain manual. Energy has its own live collector;
-# source_energy_supply.update alone only rebuilds existing facts.
+# The quarterly/annual jobs remain manual; energy has its own live collector.
 HIGH_FREQUENCY_SOURCES = tuple(name for name in SOURCES if name not in {
-    "energy_supply", "eia_liquids", "fcsc_gdp", "fcsc_annual",
-    "wdi_gcc", "gfs", "salik",
+    "eia_liquids", "fcsc_gdp", "fcsc_annual",
+    "wdi_gcc",
 })
 
 
