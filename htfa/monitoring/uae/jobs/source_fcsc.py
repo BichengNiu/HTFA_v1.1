@@ -29,7 +29,7 @@ DATAFLOW = "FCSA:DF_CPI(3.3.0)"
 DATA_URL = (
     "https://releaseeuaestat.fcsc.gov.ae/rest/data/"
     "FCSA,DF_CPI/all?startPeriod=2021-01"
-    "&dimensionAtObservation=AllDimensions"
+    "&dimensionAtObservation=AllDimensions&format=csvfile"
 )
 EXPLORER_URL = "https://uaestat.fcsc.gov.ae/"
 ACCEPT_CSV = "application/vnd.sdmx.data+csv;version=2.0.0"
@@ -293,6 +293,8 @@ def _validate_yoy_rows(rows: list[dict]) -> None:
 def _download_csv() -> str:
     """Refresh the small live SDMX CSV on every online update."""
 
+    # Select the official CSV route in the URL as well as content negotiation.
+    # GitHub-hosted requests without format=csvfile can receive an HTML challenge.
     # The endpoint is a small mutable national dataflow; always refresh it so
     # a cached raw file cannot silently hide newly released monthly values.
     return download_file(

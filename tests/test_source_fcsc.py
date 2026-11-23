@@ -5,11 +5,37 @@ from __future__ import annotations
 from calendar import monthrange
 from datetime import date
 from math import prod
+from urllib.error import HTTPError
+from urllib.parse import parse_qs, urlsplit
 
 import duckdb
 import pytest
 
 from htfa.monitoring.uae.jobs import db, source_fcsc
+from htfa.monitoring.uae.jobs import _official_download
+
+
+def test_online_refresh_uses_csv_export_route_and_replaces_stale_raw(monkeypatch, tmp_path):
+    raw = tmp_path / "cpi.csv"
+    raw.write_bytes(_csv_payload(months=60))
+    monkeypatch.setattr(source_fcsc, "RAW_CSV", raw)
+
+    def official_response(url, **kwargs):
+        # Reproduce the hosted-runner failure: Accept alone is insufficient.
+        if parse_qs(urlsplit(url).query).get("format") != ["csvfile"]:
+            raise HTTPError(url, 403, "HTML challenge", None, None)
+        return _csv_payload(months=66)
+
+    monkeypatch.setattr(_official_download, "fetch_bytes", official_response)
+    with db.connect(":memory:") as con:
+        db.init_schema(con)
+        outcome = source_fcsc.update(con)
+        assert outcome["status"] == "ok"
+        assert con.execute("SELECT count(*), max(period) FROM fcsc_monthly").fetchone() == (
+            108, date(2026, 6, 30),
+        )
+        assert {row[0] for row in con.execute("SELECT DISTINCT indicator FROM fcsc_monthly").fetchall()} == set(source_fcsc.INDICATORS.values())
+    assert raw.read_bytes() == _csv_payload(months=66)
 
 
 def _csv_payload(

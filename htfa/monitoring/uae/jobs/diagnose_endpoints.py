@@ -29,13 +29,6 @@ def endpoint_plans() -> list[tuple[str, str, dict]]:
         ("FCSC CPI", source_fcsc.DATA_URL, {"headers": {
             "Accept": source_fcsc.ACCEPT_CSV, "Referer": source_fcsc.EXPLORER_URL,
         }}),
-        ("FCSC CPI pinned dataflow", source_fcsc.DATA_URL.replace(
-            "FCSA,DF_CPI/all", "FCSA,DF_CPI,3.3.0/all"), {"headers": {
-                "Accept": source_fcsc.ACCEPT_CSV, "Referer": source_fcsc.EXPLORER_URL,
-            }}),
-        ("FCSC CPI CSV format", source_fcsc.DATA_URL + "&format=csvfile", {"headers": {
-            "Accept": source_fcsc.ACCEPT_CSV, "Referer": source_fcsc.EXPLORER_URL,
-        }}),
         ("Nepal DoFE", source_foreign_labour.DOFE_MONTHLY_URL, {}),
         ("Bangladesh OEP", source_foreign_labour.BMET_OEP_URL, {}),
         ("CBUAE EIBOR", source_public_market.EIBOR_URL, {}),
