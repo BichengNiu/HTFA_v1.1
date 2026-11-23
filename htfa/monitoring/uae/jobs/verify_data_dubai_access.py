@@ -24,7 +24,8 @@ def verify_access(session, api_key: str, api_secret: str) -> dict:
     try:
         response = session.post(
             TOKEN_URL, params={"grant_type": "client_credentials"},
-            data={"client_id": api_key, "client_secret": api_secret}, timeout=60,
+            data={"client_id": api_key, "client_secret": api_secret},
+            headers={"Accept": "application/json"}, timeout=60,
         )
     except requests.RequestException:
         raise RuntimeError("Data Dubai OAuth connection failed; credentials were not logged") from None
