@@ -42,6 +42,7 @@ IMF_DUBAI_API_URL = (
     "IMF.RES,PCPS/G001.POILDUB.USD.M?startPeriod=1992-01"
 )
 OPEC_MOMR_HOME_URL = "https://publications.opec.org/momr/"
+OPEC_PDF_INDEX_URL = "https://www.opec.org/monthly-oil-market-report.html"
 OPEC_PRODUCTION_TABLE = "opec_crude_production_monthly"
 EIA_PRICE_TABLE = "eia_brent_spot_daily"
 DUBAI_PRICE_TABLE = "imf_dubai_crude_monthly"
@@ -289,6 +290,76 @@ def parse_opec_production_reports(
     if not observations:
         raise ValueError("OPEC MOMR 历史月报没有有效的阿联酋原油产量")
     return [observations[key] for key in sorted(observations)]
+
+
+def parse_opec_pdf_text(text: str, source_file: str) -> list[ProductionObservation]:
+    """Parse the secondary-source UAE monthly columns, excluding direct reports."""
+    section = re.split(r"based on secondary sources,?\s*tb/d", text, flags=re.I)
+    if len(section) != 2:
+        raise ValueError(f"OPEC PDF missing unambiguous secondary-source table: {source_file}")
+    table = section[1].split("Direct communication")[0]
+    header = table.split("Algeria", 1)[0]
+    months = re.findall(r"\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{2})\b", header)
+    row = re.search(r"^UAE\s+(.+)$", table, re.M)
+    if not months or row is None:
+        raise ValueError(f"OPEC PDF missing UAE monthly observations: {source_file}")
+    values = re.sub(r"(?<=\d,)\s+(?=\d)", "", row.group(1)).split()
+    expected = (len(re.findall(r"\b20\d{2}\b", header))
+                + len(re.findall(r"\b[1-4]Q\s*\d{2}\b", header)) + len(months) + 1)
+    if len(values) != expected:
+        raise ValueError(f"OPEC PDF incomplete UAE row: {source_file}")
+    # The last column is the monthly change; preceding columns are monthly
+    # production. Annual and quarterly averages precede these columns.
+    monthly = values[-len(months)-1:-1]
+    return [ProductionObservation(
+        period=date(2000 + int(year), datetime.strptime(month, "%b").month,
+                    calendar.monthrange(2000 + int(year), datetime.strptime(month, "%b").month)[1]),
+        production_bpd=_positive_number(value, field="OPEC secondary-source production") * 1000,
+        source_period=f"{2000 + int(year)}-{datetime.strptime(month, '%b').month:02d}",
+        source_file=source_file,
+    ) for (month, year), value in zip(months, monthly)]
+
+
+def _pdf_production(paths: list[Path]) -> list[ProductionObservation]:
+    from pypdf import PdfReader
+
+    observations = {}
+    for path in paths:
+        matches = []
+        for page in PdfReader(path).pages:
+            text = page.extract_text()
+            if re.search(r"based on secondary sources,?\s*tb/d", text, re.I) and re.search(r"^UAE\s", text, re.M):
+                matches.extend(parse_opec_pdf_text(text, path.name))
+        if not matches:
+            raise ValueError(f"OPEC PDF missing production table: {path.name}")
+        for item in matches:
+            observations.setdefault(item.period, item)
+    return [observations[key] for key in sorted(observations)]
+
+
+def _download_opec_pdfs(*, force: bool) -> str:
+    """Refresh OPEC's official PDF index and validate all advertised reports."""
+    index = RAW_DIR / "momr_pdf_index.html"
+    download_file(OPEC_PDF_INDEX_URL, index, force=True, min_bytes=10000)
+    links = list(dict.fromkeys(re.findall(
+        r'["\']([^"\']*assets/assetdb/momr-[^"\']+\.pdf)["\']',
+        index.read_text(encoding="utf-8"), re.I,
+    )))
+    if not links:
+        raise ValueError("OPEC official index contains no monthly report PDFs")
+    paths = []
+    for link in links[:36]:
+        url = urljoin(OPEC_PDF_INDEX_URL, link)
+        if not url.startswith("https://www.opec.org/assets/assetdb/"):
+            raise ValueError("Unexpected OPEC report origin")
+        path = RAW_DIR / Path(link).name
+        download_file(url, path, force=force or not paths, min_bytes=10000)
+        paths.append(path)
+    _pdf_production(paths)
+    (RAW_DIR / "opec_pdf_manifest.json").write_text(
+        json.dumps([path.name for path in paths]), encoding="utf-8",
+    )
+    return f"OPEC official PDF reports: {len(paths)}"
 
 
 def _opec_supply_sort_key(path: Path) -> int:
@@ -585,53 +656,8 @@ def _download_inputs(*, force: bool) -> str:
         )
         notes.append(f"{target.name}:{status}")
 
-    download_file(
-        OPEC_MOMR_HOME_URL,
-        OPEC_HOME_RAW_PATH,
-        # 首页链接会随月报切换，不能按固定文件名长期复用旧首页。
-        force=True,
-        min_bytes=10_000,
-        browser_transport=True,
-    )
-    momr_home = OPEC_HOME_RAW_PATH.read_bytes()
-    current_supply_url = discover_opec_supply_url(momr_home)
-    current_status = download_file(
-        current_supply_url,
-        OPEC_RAW_PATH,
-        # 当前月报的 World oil supply 页面会随新一期月报切换。
-        force=True,
-        min_bytes=10_000,
-        referer=OPEC_MOMR_HOME_URL,
-        browser_transport=True,
-    )
-    notes.append(f"{OPEC_RAW_PATH.name}:{current_status}")
-
-    archive_links = discover_opec_archive_links(momr_home)[:36]
-    for release_date, archive_url in archive_links:
-        report_id = archive_url.rstrip("/").rsplit("/", 1)[-1]
-        archive_path = RAW_DIR / f"momr_archive_{report_id}.html"
-        archive_status = download_file(
-            archive_url,
-            archive_path,
-            force=force,
-            min_bytes=10_000,
-            referer=OPEC_MOMR_HOME_URL,
-            browser_transport=True,
-        )
-        archive_supply_url = discover_opec_supply_url(archive_path.read_bytes())
-        supply_path = RAW_DIR / f"momr_supply_{report_id}.html"
-        supply_status = download_file(
-            archive_supply_url,
-            supply_path,
-            force=force,
-            min_bytes=10_000,
-            referer=archive_url,
-            browser_transport=True,
-        )
-        notes.append(
-            f"{release_date:%Y-%m}:{archive_status}/{supply_status}"
-        )
-    return "；".join(notes)
+    notes.append(_download_opec_pdfs(force=force))
+    return "; ".join(notes)
 
 
 def update(con, *, force: bool = False, skip_download: bool = False) -> dict[str, object]:
@@ -646,7 +672,11 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict[str
             reverse=True,
         ),
     ]
-    production = parse_opec_production_reports(opec_paths)
+    manifest = RAW_DIR / "opec_pdf_manifest.json"
+    production = (
+        _pdf_production([RAW_DIR / name for name in json.loads(manifest.read_text(encoding="utf-8"))])
+        if manifest.is_file() else parse_opec_production_reports(opec_paths)
+    )
     api_path = _brent_api_raw_path()
     if not skip_download and not api_path.is_file():
         raise FileNotFoundError(api_path)
@@ -691,7 +721,14 @@ def update(con, *, force: bool = False, skip_download: bool = False) -> dict[str
         for item in dubai_prices
     ]
     with transaction(con):
-        db.replace(con, OPEC_PRODUCTION_TABLE, production_rows)
+        latest = con.execute(f"SELECT max(period) FROM {OPEC_PRODUCTION_TABLE}").fetchone()[0]
+        if latest is not None and production[-1].period < latest:
+            raise ValueError("OPEC production coverage regressed; refusing stale publication")
+        con.executemany(
+            f"INSERT OR REPLACE INTO {OPEC_PRODUCTION_TABLE} "
+            "(period,production_bpd,source_period,source_file) VALUES (?,?,?,?)",
+            [(row["period"],row["production_bpd"],row["source_period"],row["source_file"]) for row in production_rows],
+        )
         db.replace(con, EIA_PRICE_TABLE, price_rows)
         db.replace(con, DUBAI_PRICE_TABLE, dubai_price_rows)
         db.upsert_dictionary_rows(con, _dictionary_rows())

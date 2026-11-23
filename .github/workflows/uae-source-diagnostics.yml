@@ -10,6 +10,7 @@ on:
           - ubuntu-latest
           - ubuntu-24.04-arm
           - macos-latest
+          - windows-latest
         default: ubuntu-latest
       verify_updates:
         description: Verify labour and daily market collection against an isolated snapshot
