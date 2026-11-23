@@ -340,7 +340,8 @@ def _pdf_production(paths: list[Path]) -> list[ProductionObservation]:
 def _download_opec_pdfs(*, force: bool) -> str:
     """Refresh OPEC's official PDF index and validate all advertised reports."""
     index = RAW_DIR / "momr_pdf_index.html"
-    download_file(OPEC_PDF_INDEX_URL, index, force=True, min_bytes=10000)
+    download_file(OPEC_PDF_INDEX_URL, index, force=True, min_bytes=10000,
+                  browser_transport=True)
     links = list(dict.fromkeys(re.findall(
         r'["\']([^"\']*assets/assetdb/momr-[^"\']+\.pdf)["\']',
         index.read_text(encoding="utf-8"), re.I,
@@ -353,7 +354,8 @@ def _download_opec_pdfs(*, force: bool) -> str:
         if not url.startswith("https://www.opec.org/assets/assetdb/"):
             raise ValueError("Unexpected OPEC report origin")
         path = RAW_DIR / Path(link).name
-        download_file(url, path, force=force or not paths, min_bytes=10000)
+        download_file(url, path, force=force or not paths, min_bytes=10000,
+                      browser_transport=True, referer=OPEC_PDF_INDEX_URL)
         paths.append(path)
     _pdf_production(paths)
     (RAW_DIR / "opec_pdf_manifest.json").write_text(
