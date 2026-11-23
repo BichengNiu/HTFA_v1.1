@@ -85,7 +85,33 @@ def main() -> None:
     """Probe each institution with bounded concurrency and report all failures."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--verify-updates", action="store_true")
+    parser.add_argument("--browser", action="store_true")
     args = parser.parse_args()
+    if args.browser:
+        from playwright.sync_api import sync_playwright
+
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            context = browser.new_context()
+            page = context.new_page()
+            for name, url in [
+                ("Data Dubai", "https://data.dubai/en/l/470061"),
+                ("Nepal PDF", "https://giwmscdnone.gov.np/media/pdf_upload/Final_merged_bbqpepk.pdf"),
+            ]:
+                try:
+                    response = context.request.get(url, timeout=60000)
+                    payload = response.body()
+                    print(json.dumps({"source": name, "browser": True,
+                                      "http_status": response.status, "bytes": len(payload),
+                                      "pdf": payload.startswith(b"%PDF"),
+                                      "blocked": b"Request Rejected" in payload}), flush=True)
+                    if name == "Data Dubai":
+                        page.goto(url, wait_until="domcontentloaded", timeout=60000)
+                        print(json.dumps({"browser_page_title": page.title()}), flush=True)
+                except Exception as exc:
+                    print(json.dumps({"source": name, "error": str(exc)[:300]}), flush=True)
+            browser.close()
+        return
     if args.verify_updates:
         from htfa.monitoring.uae.contracts.paths import ASSETS_DIR
         from htfa.monitoring.uae.data.snapshot_store import REPOSITORY, ReleaseStore
@@ -102,7 +128,8 @@ def main() -> None:
         store.download(snapshot, DATA_DIR, include_workbook=True)
         summary = refresh(
             Path(os.environ["RUNNER_TEMP"]) / "source-verification",
-            sources=("foreign_labour", "public_market"), collect_energy=False,
+            sources=tuple(os.environ.get("VERIFY_SOURCES", "foreign_labour,public_market").split(",")),
+            collect_energy=False,
         )
         print(json.dumps(summary, ensure_ascii=False, default=str), flush=True)
         raise SystemExit(0 if summary["status"] == "ok" else 1)
