@@ -22,6 +22,7 @@ from pathlib import Path
 
 import duckdb
 from htfa.monitoring.uae.contracts.paths import ASSETS_DIR
+from htfa.monitoring.uae.data.snapshot_cache import published_database_path
 
 DB_PATH = ASSETS_DIR / "uae.duckdb"
 
@@ -50,7 +51,7 @@ def read_only():
 
 
 def database_path():
-    return _JOB_DATABASE.get() or DB_PATH
+    return _JOB_DATABASE.get() or published_database_path(DB_PATH)
 
 
 def database_identity():

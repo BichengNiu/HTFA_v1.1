@@ -65,10 +65,12 @@ def run_worker(name, directory, results_dir, *, timeout=None):
         timeout = 2700 if name == "energy" else 1800 if name in {
             "ded", "dld", "dubai_customs_air",
         } else 600
-    # A remote-main retry must never consume a previous attempt's result.
+    # A retry must never consume a previous attempt's result.
     result_path.unlink(missing_ok=True)
     env = {**os.environ, "HTFA_UAE_DATA_DIR": str(directory),
            "PYTHONUNBUFFERED": "1", "PYTHONDONTWRITEBYTECODE": "1"}
+    env.pop("HTFA_SNAPSHOT_ACCESS_KEY_ID", None)
+    env.pop("HTFA_SNAPSHOT_SECRET_ACCESS_KEY", None)
     try:
         with (results_dir / f"{name}.log").open("w", encoding="utf-8") as log:
             completed = subprocess.run(

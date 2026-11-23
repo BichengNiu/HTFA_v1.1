@@ -11,12 +11,17 @@ on:
     # 09:00 Asia/Dubai (UTC+4), once per day.
     - cron: '0 5 * * *'
   workflow_dispatch:
+    inputs:
+      bootstrap:
+        description: Initialize an empty bucket key from the Git LFS baseline
+        type: boolean
+        default: false
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: htfa-main-writer
+  group: htfa-snapshot-writer
   cancel-in-progress: false
 
 jobs:
@@ -29,11 +34,13 @@ jobs:
       PYTHONDONTWRITEBYTECODE: '1'
       GIT_LFS_SKIP_SMUDGE: '1'
       HTFA_EIA_API_KEY: ${{ secrets.HTFA_EIA_API_KEY }}
+      HTFA_SNAPSHOT_BUCKET: ${{ vars.HTFA_SNAPSHOT_BUCKET }}
+      HTFA_SNAPSHOT_ENDPOINT: ${{ vars.HTFA_SNAPSHOT_ENDPOINT }}
+      HTFA_SNAPSHOT_REGION: ${{ vars.HTFA_SNAPSHOT_REGION }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
-          fetch-depth: 0
           lfs: false
       - uses: actions/setup-python@v5
         with:
@@ -48,48 +55,22 @@ jobs:
         id: raw-cache
         uses: actions/cache/restore@v4
         with:
-          path: htfa/monitoring/uae/assets/raw
+          path: ${{ runner.temp }}/htfa-snapshot/raw
           key: uae-assets-raw-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: uae-assets-raw-${{ runner.os }}-
-      - name: Collect, publish and verify the database and workbook together
-        shell: bash
+      - name: Collect, validate and replace the published snapshot
+        env:
+          HTFA_UAE_DATA_DIR: ${{ runner.temp }}/htfa-snapshot
+          BOOTSTRAP_SNAPSHOT: ${{ inputs.bootstrap && '--bootstrap' || '' }}
+          HTFA_SNAPSHOT_ACCESS_KEY_ID: ${{ secrets.HTFA_SNAPSHOT_ACCESS_KEY_ID }}
+          HTFA_SNAPSHOT_SECRET_ACCESS_KEY: ${{ secrets.HTFA_SNAPSHOT_SECRET_ACCESS_KEY }}
         run: |
-          set -euo pipefail
-          test "$(git branch --show-current)" = main
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          publication_complete=false
-          for attempt in 1 2; do
-            git pull --ff-only origin main
-            git lfs pull --include=htfa/monitoring/uae/assets/uae.duckdb
-            base=$(git rev-parse HEAD)
-            python -m htfa.monitoring.uae.jobs.daily_refresh --results-dir "$RUNNER_TEMP/daily-refresh"
-            git fetch origin main
-            if [[ "$base" != "$(git rev-parse origin/main)" ]]; then
-              git restore --source=HEAD -- htfa/monitoring/uae/assets/uae.duckdb htfa/monitoring/uae/assets/阿联酋.xlsx
-              continue
-            fi
-            pwsh -NoProfile -File tooling/scripts/clean_temps.ps1
-            git status --short
-            git add -- htfa/monitoring/uae/assets/uae.duckdb htfa/monitoring/uae/assets/阿联酋.xlsx
-            if git diff --cached --quiet; then
-              python -m htfa.monitoring.uae.jobs.verify_publication "$base" | tee "$RUNNER_TEMP/daily-refresh/remote-verification.json"
-              echo 'No new validated observations; no commit created.' >> "$GITHUB_STEP_SUMMARY"
-              publication_complete=true
-              break
-            fi
-            git commit -m 'chore: publish UAE and energy supply daily observations'
-            git lfs push origin main
-            git push origin main
-            git fetch origin main
-            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-            python -m htfa.monitoring.uae.jobs.verify_publication "$(git rev-parse HEAD)" | tee "$RUNNER_TEMP/daily-refresh/remote-verification.json"
-            echo "Published and verified $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
-            publication_complete=true
-            break
-          done
-          test "$publication_complete" = true
-          test -z "$(git status --porcelain -- htfa/monitoring/uae/assets/uae.duckdb htfa/monitoring/uae/assets/阿联酋.xlsx)"
+          args=(--results-dir "$RUNNER_TEMP/daily-refresh")
+          if [[ -n "$BOOTSTRAP_SNAPSHOT" ]]; then
+            args+=(--bootstrap)
+          fi
+          python -m htfa.monitoring.uae.jobs.publish_snapshot "${args[@]}"
+          printf 'Verified latest object storage snapshot.\n' >> "$GITHUB_STEP_SUMMARY"
       - name: Report every source status
         if: always()
         shell: python
@@ -122,5 +103,5 @@ jobs:
         continue-on-error: true
         uses: actions/cache/save@v4
         with:
-          path: htfa/monitoring/uae/assets/raw
+          path: ${{ runner.temp }}/htfa-snapshot/raw
           key: ${{ steps.raw-cache.outputs.cache-primary-key }}

@@ -5,6 +5,7 @@ from functools import lru_cache
 import json
 from pathlib import Path
 from htfa.monitoring.uae.contracts.paths import ASSETS_DIR
+from htfa.monitoring.uae.data.snapshot_cache import published_database_path
 import duckdb
 import pandas as pd
 from htfa.preview.contracts.tables import EconomicTableSource, TableWorkbook
@@ -85,7 +86,7 @@ class _PublishedTableSource(EconomicTableSource):
 
 def published_source(database: Path | None = None) -> PublishedUAEData:
     """Get the current release, rejecting missing files and LFS pointers."""
-    path = Path(database or DEFAULT_DATABASE).resolve()
+    path = Path(database if database is not None else published_database_path(DEFAULT_DATABASE)).resolve()
     if not path.is_file():
         raise FileNotFoundError("未找到 UAE 数据库，请确认部署已拉取完整 Git LFS 数据")
     with path.open("rb") as stream:
