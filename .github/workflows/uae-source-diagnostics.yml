@@ -1,0 +1,28 @@
+name: Diagnose UAE source endpoints
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONUNBUFFERED: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+      GIT_LFS_SKIP_SMUDGE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          lfs: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install collector dependencies
+        run: python -m pip install -r tooling/requirements/requirements-daily-collector.txt
+      - name: Inspect public source responses from the runner
+        run: python -m htfa.monitoring.uae.jobs.diagnose_endpoints
