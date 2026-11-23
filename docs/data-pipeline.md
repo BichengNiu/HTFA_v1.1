@@ -40,14 +40,8 @@
 
 ## 调度与远端验证
 
-- `.github/workflows/energy-supply.yml` 在迪拜时间每日 09:00 执行，GitHub 调度可能延迟。保活工作流独立运行，对象存储只有一个日更写入流程。
+- `.github/workflows/energy-supply.yml` 在迪拜时间每日 09:00 执行，GitHub 调度可能延迟。保活工作流独立运行。
 - 更新范围以 `source_registry.py`、`daily_refresh.py` 为准。能源更新必须实际采集，不以重算旧事实宣称完成在线更新；部分成功须明确列出失败来源，全部失败不发布。
-- 每次从对象存储的最新快照继续，保留源级回滚及历史完整性校验。通过校验后以一次条件上传覆盖 `htfa/latest.zip`，内含完整 DuckDB 和对应 Excel。上传由对象存储校验 MD5，上传后核对对象标识、大小和 SHA-256 元数据，下载时重新计算 SHA-256。首次发布时若对象尚不存在，先从 Git LFS 校验并迁移现有基准库和配套工作簿。
-- 凭据通过本地 `.env` 或云端 Secrets 提供，缺失、权限不足或上游不完整按来源失败处理；日志必须能区分真实在线采集、显式离线与来源失败。
-
-### 配置私有快照桶
-
-1. 创建一个 Cloudflare R2 私有桶，或使用关闭版本保留并支持条件上传的 S3 桶。保留固定对象键 `htfa/latest.zip`。R2 不启用公开访问，AWS S3 关闭该桶的版本保留。
-2. 在 GitHub **Settings → Secrets and variables → Actions** 的 Variables 中配置 `HTFA_SNAPSHOT_BUCKET`、`HTFA_SNAPSHOT_ENDPOINT` 和 `HTFA_SNAPSHOT_REGION`。R2 用 S3 API 端点 `https://<account-id>.r2.cloudflarestorage.com`，区域为 `auto`。AWS S3 可留空端点，区域填桶所在区域。在 Secrets 中配置 `HTFA_SNAPSHOT_ACCESS_KEY_ID`、`HTFA_SNAPSHOT_SECRET_ACCESS_KEY`，凭据需要该桶的 Head、Get 和 Put 权限，并能把缺失对象识别为 404。
-3. 在 GitHub Actions 手动运行 **Daily UAE and energy supply refresh**，仅首次迁移时勾选 `bootstrap`。确认快照对象已出现，并查看 `remote-verification.json` 核对发布状态及每个来源的结果。
-4. 在 Streamlit **App settings → Secrets** 根级配置同样的桶、端点、区域和变量名。为两个密钥项填专用的只读凭据。重启应用后，核对 UAE 数据库发布时间及船舶页 CSV 的最新采样时间。运行中，下次页面重跑时每五分钟最多检查一次版本，下载校验失败时继续使用当前进程最近验证的快照。
+- 每次从公开 GitHub Release `htfa-data` 的最新快照继续，保留源级回滚及历史完整性校验。使用一个 ZIP 打包完整 DuckDB 和对应 Excel；附件名包含 SHA-256，发布后核对 GitHub 返回的大小和摘要，再清理同一 Release 中的旧快照附件。下载时重新计算摘要。
+- 首次迁移在 GitHub Actions 手动运行 **Daily UAE and energy supply refresh**，勾选 `bootstrap` 从已验证的 Git LFS 基准初始化。此后计划任务自动发布，`remote-verification.json` 记录远端校验结果。发布使用工作流内置令牌。
+- Streamlit Community Cloud 自动读取公开 Release。独立部署可设置 `HTFA_RELEASE_SNAPSHOT=1` 启用；页面重跑时每五分钟最多检查一次版本。下载失败时继续使用当前进程最近验证的快照。首次迁移前可读取仓库基准。

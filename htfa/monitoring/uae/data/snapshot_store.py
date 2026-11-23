@@ -1,64 +1,86 @@
-"""Transfer the published DuckDB and workbook together as one S3 object."""
+"""Read and publish the monitoring snapshot attached to a GitHub Release."""
 
-from contextlib import closing
 from dataclasses import dataclass
-import base64
 import hashlib
 import os
 from pathlib import Path
+import re
 import tempfile
 from zipfile import ZIP_DEFLATED, ZipFile
+
+import requests
+
+from htfa.monitoring.uae.contracts.paths import PROJECT_ROOT
 
 
 DATABASE_NAME = "uae.duckdb"
 WORKBOOK_NAME = "阿联酋.xlsx"
-DEFAULT_KEY = "htfa/latest.zip"
+REPOSITORY = "BichengNiu/HTFA_v1.1"
+RELEASE_TAG = "htfa-data"
+ASSET_NAME = re.compile(r"htfa-snapshot-([0-9a-f]{64})\.zip")
 CHUNK_SIZE = 1024 * 1024
 
 
 @dataclass(frozen=True)
 class Snapshot:
-    etag: str
+    asset_id: int
+    name: str
     size: int
     sha256: str
 
-    @classmethod
-    def from_response(cls, response):
-        return cls(
-            response["ETag"],
-            response["ContentLength"],
-            response["Metadata"]["sha256"],
+
+def _snapshot(asset):
+    match = ASSET_NAME.fullmatch(asset["name"])
+    if not match or asset["state"] != "uploaded":
+        return None
+    digest = match[1]
+    if asset.get("digest") != f"sha256:{digest}":
+        return None
+    return Snapshot(asset["id"], asset["name"], asset["size"], digest)
+
+
+class ReleaseStore:
+    def __init__(self, repository=REPOSITORY, *, token=None):
+        self.repository = repository
+        self.api = f"https://api.github.com/repos/{repository}"
+        self.upload = f"https://uploads.github.com/repos/{repository}/releases"
+        self.session = requests.Session()
+        self.session.headers["Accept"] = "application/vnd.github+json"
+        if token:
+            self.session.headers["Authorization"] = f"Bearer {token}"
+
+    def _release(self):
+        with self.session.get(f"{self.api}/releases/tags/{RELEASE_TAG}", timeout=30) as response:
+            if response.status_code == 404:
+                return None
+            response.raise_for_status()
+            return response.json()
+
+    @staticmethod
+    def _current(release):
+        assets = () if release is None else release["assets"]
+        return max(
+            (snapshot for asset in assets if (snapshot := _snapshot(asset))),
+            key=lambda snapshot: snapshot.asset_id,
+            default=None,
         )
 
-
-class SnapshotStore:
-    def __init__(self, client, bucket, key=DEFAULT_KEY):
-        self.client = client
-        self.location = {"Bucket": bucket, "Key": key}
-
     def current(self):
-        from botocore.exceptions import ClientError
-
-        try:
-            response = self.client.head_object(**self.location)
-        except ClientError as exc:
-            if exc.response["Error"]["Code"] in {"404", "NoSuchKey", "NotFound"}:
-                return None
-            raise
-        return Snapshot.from_response(response)
+        return self._current(self._release())
 
     def download(self, snapshot, destination, *, include_workbook=False):
-        """Check the object hash and ZIP members before returning the files."""
-        response = self.client.get_object(**self.location, IfMatch=snapshot.etag)
-        with closing(response["Body"]) as body, tempfile.TemporaryFile() as archive:
+        """Download and verify the complete archive before unpacking it."""
+        url = f"https://github.com/{self.repository}/releases/download/{RELEASE_TAG}/{snapshot.name}"
+        with requests.get(url, stream=True, timeout=(15, 60)) as response, tempfile.TemporaryFile() as archive:
+            response.raise_for_status()
             digest = hashlib.sha256()
             size = 0
-            for chunk in body.iter_chunks(chunk_size=CHUNK_SIZE):
+            for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
                 archive.write(chunk)
                 digest.update(chunk)
                 size += len(chunk)
             if size != snapshot.size or digest.hexdigest() != snapshot.sha256:
-                raise ValueError("对象存储快照的大小或 SHA-256 校验失败")
+                raise ValueError("GitHub 快照的大小或 SHA-256 校验失败")
             with ZipFile(archive) as bundle:
                 if sorted(bundle.namelist()) != sorted((DATABASE_NAME, WORKBOOK_NAME)):
                     raise ValueError("快照必须包含一份数据库和对应工作簿")
@@ -67,60 +89,61 @@ class SnapshotStore:
                     bundle.extract(WORKBOOK_NAME, destination)
 
     def publish(self, directory, *, previous):
-        """Atomically replace the fixed key if its current version is the baseline."""
+        """Upload under a unique name, verify it, then remove older snapshots."""
+        release = self._release()
+        if self._current(release) != previous:
+            raise RuntimeError("远端快照已变化，请重新采集")
+        if release is None:
+            response = self.session.post(
+                f"{self.api}/releases",
+                json={"tag_name": RELEASE_TAG, "name": "HTFA Data Snapshot",
+                      "prerelease": True, "make_latest": "false"},
+                timeout=30,
+            )
+            response.raise_for_status()
+            release = response.json()
         with tempfile.TemporaryFile() as archive:
             with ZipFile(archive, mode="w", compression=ZIP_DEFLATED, compresslevel=1) as bundle:
                 for name in (DATABASE_NAME, WORKBOOK_NAME):
                     bundle.write(Path(directory) / name, name)
-            archive.seek(0)
-            sha = hashlib.sha256()
-            md5 = hashlib.md5(usedforsecurity=False)
-            for chunk in iter(lambda: archive.read(CHUNK_SIZE), b""):
-                sha.update(chunk)
-                md5.update(chunk)
             size = archive.tell()
             archive.seek(0)
-            condition = {"IfMatch": previous.etag} if previous else {"IfNoneMatch": "*"}
-            response = self.client.put_object(
-                **self.location,
-                **condition,
-                Body=archive,
-                ContentLength=size,
-                ContentType="application/zip",
-                ContentMD5=base64.b64encode(md5.digest()).decode("ascii"),
-                Metadata={"sha256": sha.hexdigest()},
+            digest = hashlib.file_digest(archive, "sha256").hexdigest()
+            archive.seek(0)
+            name = f"htfa-snapshot-{digest}.zip"
+            if previous and previous.name == name:
+                self._remove_older_assets(release, previous)
+                return previous
+            for asset in release["assets"]:
+                if asset["name"] == name and asset["state"] == "starter":
+                    self._delete_asset(asset["id"])
+            response = self.session.post(
+                f"{self.upload}/{release['id']}/assets",
+                params={"name": name},
+                headers={"Content-Type": "application/zip"},
+                data=archive,
+                timeout=(15, 600),
             )
-        expected = Snapshot(response["ETag"], size, sha.hexdigest())
-        if self.current() != expected:
-            raise RuntimeError("已上传快照的远端 ETag、大小或 SHA-256 元数据不匹配")
-        return expected
+            response.raise_for_status()
+            published = _snapshot(response.json())
+        if published is None or published.name != name or published.size != size:
+            raise RuntimeError("GitHub 发布附件的名称、大小或 SHA-256 校验失败")
+        self._remove_older_assets(release, published)
+        return published
+
+    def _remove_older_assets(self, release, current):
+        for asset in release["assets"]:
+            if ASSET_NAME.fullmatch(asset["name"]) and asset["id"] != current.asset_id:
+                self._delete_asset(asset["id"])
+
+    def _delete_asset(self, asset_id):
+        response = self.session.delete(f"{self.api}/releases/assets/{asset_id}", timeout=30)
+        if response.status_code != 404:
+            response.raise_for_status()
 
 
 def configured_store():
-    """Build a client only when object storage has been configured."""
-    bucket = os.getenv("HTFA_SNAPSHOT_BUCKET", "").strip()
-    if not bucket:
-        return None
-    import boto3
-    from botocore.config import Config
-
-    endpoint = os.getenv("HTFA_SNAPSHOT_ENDPOINT") or None
-    if endpoint and not endpoint.startswith("https://"):
-        raise ValueError("HTFA_SNAPSHOT_ENDPOINT 必须使用 HTTPS")
-    access_key = os.getenv("HTFA_SNAPSHOT_ACCESS_KEY_ID")
-    secret_key = os.getenv("HTFA_SNAPSHOT_SECRET_ACCESS_KEY")
-    if not access_key or not secret_key:
-        raise ValueError("缺少对象存储访问凭据")
-    client = boto3.client(
-        "s3",
-        endpoint_url=endpoint,
-        region_name=os.getenv("HTFA_SNAPSHOT_REGION") or ("auto" if endpoint else "us-east-1"),
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key,
-        config=Config(
-            request_checksum_calculation="when_required",
-            response_checksum_validation="when_required",
-            s3={"addressing_style": "path"},
-        ),
-    )
-    return SnapshotStore(client, bucket, os.getenv("HTFA_SNAPSHOT_KEY") or DEFAULT_KEY)
+    """Enable GitHub snapshot reads in Streamlit Cloud and explicit deployments."""
+    if PROJECT_ROOT.is_relative_to(Path("/mount/src")) or os.getenv("HTFA_RELEASE_SNAPSHOT") == "1":
+        return ReleaseStore()
+    return None

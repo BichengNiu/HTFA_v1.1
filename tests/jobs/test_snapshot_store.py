@@ -1,41 +1,65 @@
 import hashlib
-import io
 
-from botocore.exceptions import ClientError
-from botocore.response import StreamingBody
 import duckdb
 import pytest
+from requests import HTTPError
 
 from htfa.monitoring.uae.data.snapshot_cache import SnapshotCache
-from htfa.monitoring.uae.data.snapshot_store import DATABASE_NAME, WORKBOOK_NAME, SnapshotStore
+from htfa.monitoring.uae.data.snapshot_store import DATABASE_NAME, WORKBOOK_NAME, ReleaseStore
 
 
-class Bucket:
+class Response:
+    def __init__(self, code=200, value=None):
+        self.status_code = code
+        self.value = value
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+    def json(self):
+        return self.value
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise HTTPError(str(self.status_code), response=self)
+
+    def iter_content(self, chunk_size):
+        yield self.value
+
+
+class Release:
     def __init__(self):
-        self.objects = {}
+        self.assets = {}
+        self.exists = False
+        self.reject_upload = False
 
-    def head_object(self, *, Bucket, Key):
-        try:
-            data, tag, metadata = self.objects[Bucket, Key]
-        except KeyError:
-            raise ClientError({"Error": {"Code": "404"}}, "HeadObject") from None
-        return {"ETag": tag, "ContentLength": len(data), "Metadata": metadata}
+    def get(self, url, **kwargs):
+        if "/releases/tags/" in url:
+            if not self.exists:
+                return Response(404)
+            return Response(value={"id": 1, "assets": [a for a, _ in self.assets.values()]})
+        _, data = next((asset, data) for asset, data in self.assets.values() if url.endswith(asset["name"]))
+        return Response(value=data)
 
-    def put_object(self, *, Bucket, Key, Body, Metadata, **params):
-        old = self.objects.get((Bucket, Key))
-        if old and params.get("IfMatch") != old[1]:
-            raise ClientError({"Error": {"Code": "412"}}, "PutObject")
-        if not old:
-            assert params["IfNoneMatch"] == "*"
-        data = Body.read()
-        tag = f'"{hashlib.sha256(data).hexdigest()}"'
-        self.objects[Bucket, Key] = (data, tag, Metadata)
-        return {"ETag": tag}
+    def post(self, url, **kwargs):
+        if url.endswith("/releases"):
+            self.exists = True
+            return Response(201, {"id": 1, "assets": []})
+        if self.reject_upload:
+            return Response(502)
+        data = kwargs["data"].read()
+        asset = {"name": kwargs["params"]["name"], "state": "uploaded",
+                 "id": max(self.assets, default=0) + 1, "size": len(data),
+                 "digest": "sha256:" + hashlib.sha256(data).hexdigest()}
+        self.assets[asset["id"]] = (asset, data)
+        return Response(201, asset)
 
-    def get_object(self, *, Bucket, Key, IfMatch):
-        data, tag, _ = self.objects[Bucket, Key]
-        assert tag == IfMatch
-        return {"Body": StreamingBody(io.BytesIO(data), len(data))}
+    def delete(self, url, **kwargs):
+        del self.assets[int(url.rsplit("/", 1)[-1])]
+        return Response(204)
 
 
 def write_snapshot(directory, version):
@@ -47,20 +71,30 @@ def write_snapshot(directory, version):
     (directory / WORKBOOK_NAME).write_bytes(version.encode())
 
 
-def test_single_key_rejects_a_stale_writer_and_keeps_a_verified_read_cache(tmp_path):
-    bucket = Bucket()
-    store = SnapshotStore(bucket, "private")
+def test_release_replacement_preserves_verified_snapshot_on_upload_failure(tmp_path, monkeypatch):
+    release = Release()
+    monkeypatch.setattr("htfa.monitoring.uae.data.snapshot_store.requests.get", release.get)
+    store = ReleaseStore()
+    store.session = release
     assert store.current() is None
     write_snapshot(tmp_path, "first")
     first = store.publish(tmp_path, previous=None)
+
     cache = SnapshotCache(store)
     with cache.directory:
         first_path = cache.database_path()
         write_snapshot(tmp_path, "second")
+        release.reject_upload = True
+        with pytest.raises(HTTPError, match="502"):
+            store.publish(tmp_path, previous=first)
+        assert store.current() == first
+        assert list(release.assets) == [first.asset_id]
+
+        release.reject_upload = False
         second = store.publish(tmp_path, previous=first)
         assert store.current() == second
-        assert len(bucket.objects) == 1
-        with pytest.raises(ClientError, match="412"):
+        assert list(release.assets) == [second.asset_id]
+        with pytest.raises(RuntimeError, match="远端快照已变化"):
             store.publish(tmp_path, previous=first)
 
         target = tmp_path / "download"
@@ -72,8 +106,7 @@ def test_single_key_rejects_a_stale_writer_and_keeps_a_verified_read_cache(tmp_p
         with duckdb.connect(str(second_path), read_only=True) as connection:
             assert connection.execute("SELECT version FROM report.release").fetchone() == ("second",)
 
-        location = ("private", "htfa/latest.zip")
-        data, tag, metadata = bucket.objects[location]
-        bucket.objects[location] = (data[:-1], tag, metadata)
+        asset, data = release.assets[second.asset_id]
+        release.assets[second.asset_id] = ({**asset, "size": len(data) - 1}, data)
         cache.check_after = 0
         assert cache.database_path() == second_path

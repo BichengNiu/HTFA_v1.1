@@ -21,19 +21,22 @@ class SnapshotCache:
         self.path = None
         self.check_after = 0.0
 
-    def database_path(self):
+    def database_path(self, local_path=None):
         with self.lock:
-            if time.monotonic() < self.check_after and self.path is not None:
-                return self.path
+            if time.monotonic() < self.check_after:
+                return self.path or local_path
             try:
                 current = self.store.current()
                 if current is None:
-                    raise FileNotFoundError("对象存储中还没有发布快照")
+                    if self.path is not None or local_path is None:
+                        raise FileNotFoundError("GitHub Release 中还没有发布快照")
+                    self.check_after = time.monotonic() + 60
+                    return local_path
                 if current != self.snapshot:
                     self._load(current)
             except Exception as exc:
                 if self.path is None:
-                    raise RuntimeError("无法读取对象存储中的监测快照") from exc
+                    raise RuntimeError("无法读取 GitHub Release 中的监测快照") from exc
                 logging.warning("刷新监测快照失败，继续使用已验证的缓存 (%s)", type(exc).__name__)
                 self.check_after = time.monotonic() + 30
             else:
@@ -74,4 +77,4 @@ def _configured_cache():
 
 def published_database_path(local_path):
     cache = _configured_cache()
-    return cache.database_path() if cache else local_path
+    return cache.database_path(local_path) if cache else local_path

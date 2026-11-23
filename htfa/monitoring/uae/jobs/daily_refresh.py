@@ -69,8 +69,7 @@ def run_worker(name, directory, results_dir, *, timeout=None):
     result_path.unlink(missing_ok=True)
     env = {**os.environ, "HTFA_UAE_DATA_DIR": str(directory),
            "PYTHONUNBUFFERED": "1", "PYTHONDONTWRITEBYTECODE": "1"}
-    env.pop("HTFA_SNAPSHOT_ACCESS_KEY_ID", None)
-    env.pop("HTFA_SNAPSHOT_SECRET_ACCESS_KEY", None)
+    env.pop("GH_TOKEN", None)
     try:
         with (results_dir / f"{name}.log").open("w", encoding="utf-8") as log:
             completed = subprocess.run(

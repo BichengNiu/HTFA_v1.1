@@ -1,8 +1,9 @@
-"""Refresh all scheduled sources against the latest published S3 snapshot."""
+"""Refresh all scheduled sources against the latest published GitHub Release snapshot."""
 
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -10,7 +11,7 @@ from zipfile import ZipFile
 
 from htfa.monitoring.uae.contracts.paths import ASSETS_DIR, PROJECT_ROOT
 from htfa.monitoring.uae.data.database import published_source
-from htfa.monitoring.uae.data.snapshot_store import configured_store
+from htfa.monitoring.uae.data.snapshot_store import REPOSITORY, ReleaseStore
 
 from .daily_refresh import refresh
 from .paths import DATA_DIR, DB_PATH, WORKBOOK_PATH
@@ -72,9 +73,10 @@ def main():
     args = parser.parse_args()
     if DATA_DIR == ASSETS_DIR:
         parser.error("HTFA_UAE_DATA_DIR 必须指向独立的云端候选目录")
-    store = configured_store()
-    if store is None:
-        parser.error("尚未配置 HTFA_SNAPSHOT_BUCKET，无法发布云端快照")
+    token = os.environ.get("GH_TOKEN")
+    if not token:
+        parser.error("缺少 GitHub Release 发布凭据")
+    store = ReleaseStore(os.environ.get("GITHUB_REPOSITORY") or REPOSITORY, token=token)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     result = publish_daily(store, args.results_dir, bootstrap=args.bootstrap)
     (args.results_dir / "remote-verification.json").write_text(

@@ -6,8 +6,6 @@ arch==8.0.0
 attrs==26.1.0
 bcrypt==5.0.0
 blinker==1.9.0
-boto3==1.44.9
-botocore==1.44.9
 certifi==2026.7.22
 cffi==2.1.1
 charset-normalizer==3.4.9
@@ -26,7 +24,6 @@ idna==3.18
 iniconfig==2.3.0
 itsdangerous==2.2.0
 jinja2==3.1.6
-jmespath==1.1.0
 joblib==1.5.3
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
@@ -57,7 +54,6 @@ pytz==2026.3.post1
 referencing==0.37.0
 requests==2.34.2
 rpds-py==2026.6.3
-s3transfer==0.19.3
 scikit-learn==1.9.0
 scipy==1.18.0
 six==1.17.0
