@@ -3,6 +3,14 @@ name: Diagnose UAE source endpoints
 on:
   workflow_dispatch:
     inputs:
+      runner:
+        description: Collector host for comparing network and platform compatibility
+        type: choice
+        options:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+          - macos-latest
+        default: ubuntu-latest
       verify_updates:
         description: Verify labour and daily market collection against an isolated snapshot
         type: boolean
@@ -13,7 +21,7 @@ permissions:
 
 jobs:
   diagnose:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
     timeout-minutes: 30
     env:
       PYTHONUNBUFFERED: '1'
