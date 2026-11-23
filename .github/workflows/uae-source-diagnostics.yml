@@ -24,6 +24,10 @@ on:
         description: Compare native browser requests with the HTTP downloader
         type: boolean
         default: false
+      data_dubai:
+        description: Verify Data Dubai portal session and official download requests
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -48,7 +52,11 @@ jobs:
       - name: Install collector dependencies
         run: python -m pip install -r tooling/requirements/requirements-daily-collector.txt
       - name: Inspect public source responses from the runner
+        if: ${{ !inputs.data_dubai }}
         run: python -m htfa.monitoring.uae.jobs.diagnose_endpoints
+      - name: Verify Data Dubai session and download interfaces
+        if: inputs.data_dubai
+        run: python -m htfa.monitoring.uae.jobs.diagnose_endpoints --data-dubai
       - name: Install native browser
         if: inputs.browser
         run: |

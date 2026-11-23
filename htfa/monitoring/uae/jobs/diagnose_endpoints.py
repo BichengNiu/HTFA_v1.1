@@ -86,7 +86,51 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--verify-updates", action="store_true")
     parser.add_argument("--browser", action="store_true")
+    parser.add_argument("--data-dubai", action="store_true")
     args = parser.parse_args()
+    if args.data_dubai:
+        # Follow the public portal's entry/session and its documented JS calls.
+        # Response bodies and signed download URLs are deliberately not logged.
+        with requests.Session(impersonate="chrome") as session:
+            for name, url in [
+                ("portal home", "https://data.dubai/"),
+                ("English home", "https://data.dubai/en/"),
+                ("Arabic home", "https://data.dubai/ar/"),
+            ]:
+                response = session.get(url, timeout=45)
+                print(json.dumps({"test": name, "status": response.status_code,
+                                  "bytes": len(response.content),
+                                  "blocked": "Request Rejected" in response.text}), flush=True)
+            for name, identifier in [("DED", 460521), ("DLD", 470061), ("Customs", 459114)]:
+                page_url = f"https://data.dubai/en/l/{identifier}"
+                page = session.get(page_url, timeout=45)
+                token = re.search(r"Liferay\.authToken\s*=\s*['\"]([^'\"]+)", page.text)
+                print(json.dumps({"test": name + " session page", "status": page.status_code,
+                                  "bytes": len(page.content), "csrf": bool(token)}), flush=True)
+                headers = {"Accept": "application/json", "Content-Type": "application/json",
+                           "Referer": page_url}
+                if token:
+                    headers["X-CSRF-Token"] = token.group(1)
+                for kind, query in [
+                    ("dataset-download", f"datasetId={identifier}&page=1&pageSize=10&sortDir=desc"),
+                    ("dataset-metadata", f"datasetId={identifier}&download=true"),
+                    ("dataset-metadata", f"datasetId={identifier}&cacheCheck=true"),
+                ]:
+                    response = session.get("https://data.dubai/o/dda/data-services/" + kind + "?" + query,
+                                           headers=headers, timeout=45)
+                    result = {"test": name + " " + kind + " " + query.split("&")[-1],
+                              "status": response.status_code, "bytes": len(response.content),
+                              "content_type": response.headers.get("Content-Type"),
+                              "blocked": "Request Rejected" in response.text}
+                    try:
+                        payload = response.json()
+                        result["success"] = payload.get("success")
+                        data = payload.get("data") or {}
+                        result["data_keys"] = list(data) if isinstance(data, dict) else []
+                    except ValueError:
+                        pass
+                    print(json.dumps(result), flush=True)
+        return
     if args.browser:
         from playwright.sync_api import sync_playwright
 
