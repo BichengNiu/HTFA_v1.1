@@ -8,6 +8,7 @@ on:
         type: choice
         options:
           - ubuntu-latest
+          - ubuntu-slim
           - ubuntu-24.04-arm
           - macos-latest
           - windows-latest
