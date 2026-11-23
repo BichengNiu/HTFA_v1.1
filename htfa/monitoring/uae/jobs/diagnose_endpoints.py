@@ -113,6 +113,7 @@ def main() -> None:
                     headers["X-CSRF-Token"] = token.group(1)
                 for kind, query in [
                     ("dataset-download", f"datasetId={identifier}&page=1&pageSize=10&sortDir=desc"),
+                    ("dataset-download", f"datasetId={identifier}&page=1&pageSize=10&sortDir=desc&format=json"),
                     ("dataset-metadata", f"datasetId={identifier}&download=true"),
                     ("dataset-metadata", f"datasetId={identifier}&cacheCheck=true"),
                 ]:
