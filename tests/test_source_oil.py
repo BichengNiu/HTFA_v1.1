@@ -122,7 +122,6 @@ def test_update_merge_and_oil_loader_use_duckdb_as_source_of_truth(tmp_path, mon
         return "downloaded"
 
     monkeypatch.setattr(source_oil, "download_file", fake_download)
-    monkeypatch.setattr(source_oil, "_download_opec_pdfs", lambda **kwargs: fake_download("test", opec_path))
     api_rows = [
         {
             "period": item.period.isoformat(),
