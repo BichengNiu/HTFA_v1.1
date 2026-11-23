@@ -573,6 +573,8 @@ def _get_bulk_csv_files(dataset_id, dataset_page):
     opener = _data_dubai_opener()
     page_req = urllib.request.Request(dataset_page, headers={"User-Agent": _USER_AGENT})
     page = _http_read(page_req, opener=opener, timeout=60, retries=2)
+    from ._official_download import reject_access_page
+    reject_access_page(page, dataset_page)
     token_match = re.search(r"Liferay\.authToken\s*=\s*'([^']+)'", page)
     if not token_match:
         raise RuntimeError("Data Dubai page did not provide a CSRF token")

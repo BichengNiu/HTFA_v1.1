@@ -97,19 +97,33 @@ def build_session() -> requests.Session:
     return session
 
 
-def get_bytes(session: requests.Session, url: str) -> tuple[bytes, str]:
-    last_error: Exception | None = None
+def _get_response(session, url: str, **kwargs):
+    """Retry transient requests/curl failures on the same official session."""
+    from curl_cffi.requests.exceptions import ConnectionError as CurlConnectionError
+    from curl_cffi.requests.exceptions import Timeout as CurlTimeout
+    from ._official_download import public_endpoint
+
+    endpoint = public_endpoint(url)
     for attempt in range(3):
+        print(f"[foreign_labour] GET {endpoint} (attempt {attempt + 1})", flush=True)
         try:
-            response = session.get(url, timeout=(30, 240))
-            response.raise_for_status()
-            return response.content, response.headers.get("Content-Type", "")
-        except (requests.ConnectionError, requests.Timeout) as error:
-            last_error = error
+            response = session.get(url, **kwargs)
+            return response
+        except (requests.ConnectionError, requests.Timeout,
+                CurlConnectionError, CurlTimeout) as error:
             if attempt < 2:
                 time.sleep(2**attempt)
-    assert last_error is not None
-    raise last_error
+                continue
+            raise RuntimeError(
+                f"Official connection failed after 3 attempts; endpoint={endpoint}; "
+                f"{type(error).__name__}: {error}"
+            ) from error
+
+
+def get_bytes(session: requests.Session, url: str) -> tuple[bytes, str]:
+    response = _get_response(session, url, timeout=(30, 240))
+    response.raise_for_status()
+    return response.content, response.headers.get("Content-Type", "")
 
 
 def save_download(
@@ -141,7 +155,7 @@ def strip_tags(value: str) -> str:
 def discover_nepal_reports(session: requests.Session) -> list[dict[str, Any]]:
     reports: dict[tuple[int, int], dict[str, Any]] = {}
     for page in range(1, 8):
-        response = session.get(DOFE_MONTHLY_URL, params={"page": page}, timeout=90)
+        response = _get_response(session, DOFE_MONTHLY_URL, params={"page": page}, timeout=90)
         if response.status_code == 404 and page > 1:
             break
         response.raise_for_status()
@@ -191,7 +205,7 @@ def discover_nepal_reports(session: requests.Session) -> list[dict[str, Any]]:
             break
 
     for record in reports.values():
-        response = session.get(record["detail_url"], timeout=90)
+        response = _get_response(session, record["detail_url"], timeout=90)
         response.raise_for_status()
         match = re.search(
             r'https://giwmscdnone\.gov\.np/media/pdf_upload/[^"\']+?\.pdf',

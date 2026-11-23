@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
+import time
 from collections.abc import Mapping
 from pathlib import Path
 from urllib.error import HTTPError
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 
@@ -20,6 +23,38 @@ USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 HTFA/1.1"
 )
+
+
+def public_endpoint(url: str) -> str:
+    """Identify an endpoint in logs without disclosing credentials or signatures."""
+    parts = urlsplit(url)
+    query = [
+        (key, "REDACTED" if any(word in key.casefold() for word in (
+            "key", "token", "secret", "password", "signature", "credential",
+        )) else value)
+        for key, value in parse_qsl(parts.query, keep_blank_values=True)
+    ]
+    host = parts.hostname or ""
+    if parts.port:
+        host += f":{parts.port}"
+    return urlunsplit((parts.scheme, host, parts.path, urlencode(query), ""))
+
+
+def reject_access_page(payload: bytes | str, url: str) -> None:
+    """Reject known access-denial HTML, including WAF responses with HTTP 200."""
+    text = payload.decode("utf-8", errors="replace") if isinstance(payload, bytes) else payload
+    title = re.search(r"<title\b[^>]*>(.*?)</title>", text, re.I | re.S)
+    if title is None:
+        return
+    name = " ".join(title.group(1).split())
+    if name.casefold() in {
+        "request rejected", "just a moment...", "attention required! | cloudflare",
+        "access denied",
+    }:
+        raise RuntimeError(
+            f"官方端点返回访问拦截页 ({name})；endpoint={public_endpoint(url)}；"
+            "当前采集主机未获上游访问许可，并非缺少数据或本地密钥"
+        )
 
 
 def fetch_bytes(
@@ -45,11 +80,24 @@ def fetch_bytes(
         request_headers = dict(headers or {})
         if referer:
             request_headers.setdefault("Referer", referer)
-        response = requests.get(
-            url, impersonate="chrome", timeout=timeout, headers=request_headers
-        )
+        endpoint = public_endpoint(url)
+        for attempt in range(3):
+            print(f"[download] GET {endpoint} (attempt {attempt + 1})", flush=True)
+            response = requests.get(
+                url, impersonate="chrome", timeout=timeout, headers=request_headers
+            )
+            if response.status_code not in {429, 500, 502, 503, 504} or attempt == 2:
+                break
+            retry_after = (getattr(response, "headers", None) or {}).get("Retry-After", "")
+            delay = int(retry_after) if str(retry_after).isdigit() else 2 ** (attempt + 1)
+            time.sleep(min(max(delay, 1), 60))
         if response.status_code != 200:
-            raise HTTPError(url, response.status_code, "Official download failed", None, None)
+            raise HTTPError(
+                endpoint, response.status_code,
+                f"Official download failed; endpoint={endpoint}",
+                getattr(response, "headers", None), None,
+            )
+        reject_access_page(response.content, url)
         return response.content
 
     request_headers = {"User-Agent": user_agent, "Accept": "*/*"}
@@ -57,8 +105,16 @@ def fetch_bytes(
     if referer:
         request_headers.setdefault("Referer", referer)
     request = Request(url, headers=request_headers)
-    with urlopen(request, timeout=timeout) as response:
-        return response.read()
+    endpoint = public_endpoint(url)
+    print(f"[download] GET {endpoint}", flush=True)
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            return response.read()
+    except HTTPError as exc:
+        raise HTTPError(
+            endpoint, exc.code, f"Official download failed; endpoint={endpoint}",
+            exc.headers, None,
+        ) from None
 
 
 def download_file(

@@ -56,7 +56,19 @@ def fetch_json(url: str) -> dict:
     with urlopen(req, timeout=120, context=_ssl_context()) as resp:
         if resp.status != 200:
             raise RuntimeError(f"HTTP {resp.status} while fetching {url}")
-        return json.loads(resp.read().decode("utf-8"))
+        text = resp.read().decode("utf-8")
+        title = re.search(r"<title\b[^>]*>(.*?)</title>", text, re.I | re.S)
+        if title and title.group(1).strip().casefold() == "request rejected":
+            raise RuntimeError(
+                f"Data Dubai rejected this collector host (HTTP 200 access-denial page); endpoint={url}"
+            )
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(
+                f"Data Dubai returned non-JSON content; endpoint={url}; "
+                f"content-type={resp.headers.get('Content-Type', '')}"
+            ) from exc
 
 
 def fetch_manifest_pages(dataset_id: int, page_size: int = 30) -> list[dict]:

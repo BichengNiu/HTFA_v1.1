@@ -238,6 +238,8 @@ def fetch_data_dubai_files(opener, dataset_id, headers=None, prefer="csv"):
     )
     print(f"抓取数据集页面: {page_url}")
     html_text = read_text(opener, page_url, headers, timeout=60, retries=2)
+    from ._official_download import reject_access_page
+    reject_access_page(html_text, page_url)
     token_match = re.search(r"Liferay\.authToken\s*=\s*'([^']+)'", html_text)
     if not token_match:
         raise RuntimeError("Data Dubai 页面未提供 CSRF token")

@@ -78,11 +78,19 @@ jobs:
               raise SystemExit('Refresh did not produce a result; inspect collection logs.')
           result = json.loads(path.read_text(encoding='utf-8'))
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as out:
-              out.write('\n| Source | Status |\n| --- | --- |\n')
+              out.write('\n| Source | Status | Detail |\n| --- | --- | --- |\n')
               for name, source in result['sources'].items():
-                  out.write(f"| {name} | {source.get('status', 'ok')} |\n")
+                  detail = source.get('error', '')
+                  try:
+                      nested = json.loads(detail)
+                      detail = nested.get(name, {}).get('note', detail)
+                  except (ValueError, TypeError):
+                      pass
+                  detail = str(detail).replace('|', '&#124;').replace('\n', ' ')
+                  out.write(f"| {name} | {source.get('status', 'ok')} | {detail} |\n")
                   for kind, detail in source.get('source_results', {}).items():
-                      out.write(f"| energy/{kind} | {detail['status']} |\n")
+                      message = str(detail.get('error', '')).replace('|', '&#124;').replace('\n', ' ')
+                      out.write(f"| energy/{kind} | {detail['status']} | {message} |\n")
           if result['status'] != 'ok':
               raise SystemExit('Some sources failed; validated successful sources were preserved. See artifacts for exact errors.')
       - name: Save source results and collection logs

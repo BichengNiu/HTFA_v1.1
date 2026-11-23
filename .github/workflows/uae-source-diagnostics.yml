@@ -2,6 +2,11 @@ name: Diagnose UAE source endpoints
 
 on:
   workflow_dispatch:
+    inputs:
+      verify_updates:
+        description: Verify labour and daily market collection against an isolated snapshot
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -9,7 +14,7 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     env:
       PYTHONUNBUFFERED: '1'
       PYTHONDONTWRITEBYTECODE: '1'
@@ -26,3 +31,16 @@ jobs:
         run: python -m pip install -r tooling/requirements/requirements-daily-collector.txt
       - name: Inspect public source responses from the runner
         run: python -m htfa.monitoring.uae.jobs.diagnose_endpoints
+      - name: Verify download, database, workbook and history validation
+        if: inputs.verify_updates
+        env:
+          HTFA_UAE_DATA_DIR: ${{ runner.temp }}/source-verification-data
+          GH_TOKEN: ${{ github.token }}
+        run: python -m htfa.monitoring.uae.jobs.diagnose_endpoints --verify-updates
+      - name: Save verification results
+        if: always() && inputs.verify_updates
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-verification-${{ github.run_id }}
+          path: ${{ runner.temp }}/source-verification
+          retention-days: 14

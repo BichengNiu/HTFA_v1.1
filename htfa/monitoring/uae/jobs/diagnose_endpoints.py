@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import argparse
+import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
+from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 
 from curl_cffi import requests
@@ -80,6 +83,29 @@ def probe(plan: tuple[str, str, dict]) -> dict:
 
 def main() -> None:
     """Probe each institution with bounded concurrency and report all failures."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--verify-updates", action="store_true")
+    args = parser.parse_args()
+    if args.verify_updates:
+        from htfa.monitoring.uae.contracts.paths import ASSETS_DIR
+        from htfa.monitoring.uae.data.snapshot_store import REPOSITORY, ReleaseStore
+        from .daily_refresh import refresh
+        from .paths import DATA_DIR
+
+        if DATA_DIR.resolve() == ASSETS_DIR.resolve():
+            parser.error("Update verification requires an isolated HTFA_UAE_DATA_DIR")
+        store = ReleaseStore(REPOSITORY, token=os.environ.get("GH_TOKEN"))
+        snapshot = store.current()
+        if snapshot is None:
+            raise FileNotFoundError("No published baseline is available")
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        store.download(snapshot, DATA_DIR, include_workbook=True)
+        summary = refresh(
+            Path(os.environ["RUNNER_TEMP"]) / "source-verification",
+            sources=("foreign_labour", "public_market"), collect_energy=False,
+        )
+        print(json.dumps(summary, ensure_ascii=False, default=str), flush=True)
+        raise SystemExit(0 if summary["status"] == "ok" else 1)
     with ThreadPoolExecutor(max_workers=3) as pool:
         list(pool.map(probe, endpoint_plans()))
 
