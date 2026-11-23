@@ -56,7 +56,13 @@ jobs:
           python -m playwright install --with-deps chromium
       - name: Compare native browser responses
         if: inputs.browser
-        run: python -m htfa.monitoring.uae.jobs.diagnose_endpoints --browser
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            xvfb-run -a python -m htfa.monitoring.uae.jobs.diagnose_endpoints --browser
+          else
+            python -m htfa.monitoring.uae.jobs.diagnose_endpoints --browser
+          fi
       - name: Verify download, database, workbook and history validation
         if: inputs.verify_updates
         env:

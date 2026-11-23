@@ -91,7 +91,7 @@ def main() -> None:
         from playwright.sync_api import sync_playwright
 
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch()
+            browser = playwright.chromium.launch(headless=not bool(os.environ.get("DISPLAY")))
             context = browser.new_context()
             page = context.new_page()
             for name, url in [
