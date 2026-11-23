@@ -33,6 +33,10 @@ on:
         description: Verify the three official dataset grants using repository Secrets
         type: boolean
         default: false
+      network:
+        description: Compare DNS, TLS and identical anonymous requests
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -57,8 +61,11 @@ jobs:
       - name: Install collector dependencies
         run: python -m pip install -r tooling/requirements/requirements-daily-collector.txt
       - name: Inspect public source responses from the runner
-        if: ${{ !inputs.data_dubai && !inputs.data_dubai_api }}
+        if: ${{ !inputs.data_dubai && !inputs.data_dubai_api && !inputs.network }}
         run: python -m htfa.monitoring.uae.jobs.diagnose_endpoints
+      - name: Compare network, TLS and identical request bytes
+        if: inputs.network
+        run: python -m htfa.monitoring.uae.jobs.diagnose_endpoints --network
       - name: Verify Data Dubai session and download interfaces
         if: inputs.data_dubai
         run: python -m htfa.monitoring.uae.jobs.diagnose_endpoints --data-dubai

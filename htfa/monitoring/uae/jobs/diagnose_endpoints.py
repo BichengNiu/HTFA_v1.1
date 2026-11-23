@@ -81,13 +81,104 @@ def probe(plan: tuple[str, str, dict]) -> dict:
     return result
 
 
+def _client_hello_template(context, host: str) -> str:
+    """Fingerprint a fresh TLS 1.2 ClientHello after masking random/session bytes."""
+    import hashlib
+    import ssl
+
+    outgoing = ssl.MemoryBIO()
+    client = context.wrap_bio(ssl.MemoryBIO(), outgoing, server_hostname=host)
+    try:
+        client.do_handshake()
+    except ssl.SSLWantReadError:
+        pass
+    hello = bytearray(outgoing.read())
+    if len(hello) < 44 or hello[0] != 22 or hello[5] != 1:
+        raise ValueError("Expected a TLS ClientHello record")
+    hello[11:43] = bytes(32)
+    session_length = hello[43]
+    hello[44:44 + session_length] = bytes(session_length)
+    return hashlib.sha256(hello).hexdigest()
+
+
+def diagnose_network() -> None:
+    """Compare DNS, verified TLS and identical anonymous HTTP request bytes."""
+    import hashlib
+    import http.client
+    import importlib.metadata
+    import socket
+    import ssl
+    import sys
+
+    host = "data.dubai"
+    context = ssl.create_default_context()
+    context.minimum_version = context.maximum_version = ssl.TLSVersion.TLSv1_2
+    context.set_ciphers("ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256")
+    print(json.dumps({"python": sys.version.split()[0], "openssl": ssl.OPENSSL_VERSION,
+                      "curl_cffi": importlib.metadata.version("curl_cffi"),
+                      "dns": sorted({a[4][0] for a in socket.getaddrinfo(
+                          host, 443, type=socket.SOCK_STREAM)}),
+                      "client_hello_template_sha256": _client_hello_template(context, host),
+                      "proxy_env_names": [k for k in os.environ if k.upper().endswith("_PROXY")]}), flush=True)
+    trace = requests.get("https://www.cloudflare.com/cdn-cgi/trace", timeout=30)
+    fields = dict(line.split("=", 1) for line in trace.text.splitlines() if "=" in line)
+    print(json.dumps({"public_network": {k: fields.get(k) for k in ("ip", "loc", "colo")}}), flush=True)
+    ipv4 = requests.get("https://api.ipify.org?format=json", timeout=30).json().get("ip")
+    info = requests.get("https://stat.ripe.net/data/network-info/data.json",
+                        params={"resource": ipv4}, timeout=30).json().get("data", {})
+    print(json.dumps({"public_ipv4": ipv4, "asns": info.get("asns"),
+                      "prefix": info.get("prefix")}), flush=True)
+    for path in ["/", *[
+        f"/o/dda/data-services/dataset-download?datasetId={identifier}&page=1&pageSize=30&sortDir=desc"
+        for identifier in (460521, 470061, 459114)
+    ]]:
+        # Send the same byte sequence on both hosts, with no cookie, token,
+        # browser impersonation or automatic proxy configuration.
+        request = (f"GET {path} HTTP/1.1\r\nHost: {host}\r\n"
+                   "User-Agent: HTFA/1.1 data-source-diagnostic\r\n"
+                   "Accept: application/json\r\nAccept-Encoding: identity\r\n"
+                   "Connection: close\r\n\r\n").encode("ascii")
+        result = {"path": path, "request_sha256": hashlib.sha256(request).hexdigest()}
+        connection = http.client.HTTPSConnection(host, context=context, timeout=45)
+        try:
+            connection.connect()
+            result.update(peer_ip=connection.sock.getpeername()[0], tls=connection.sock.version(),
+                          cipher=connection.sock.cipher()[0],
+                          certificate_sha256=hashlib.sha256(connection.sock.getpeercert(binary_form=True)).hexdigest())
+            connection.sock.sendall(request)
+            response = http.client.HTTPResponse(connection.sock)
+            response.begin()
+            payload = response.read(1024 * 1024 + 1)
+            text_body = payload.decode("utf-8", errors="replace")
+            title = re.search(r"<title[^>]*>(.*?)</title>", text_body, re.I | re.S)
+            support = re.search(r"support\s+ID\s+is:\s*([^<\s]+)", text_body, re.I)
+            result.update(http_status=response.status, bytes=len(payload),
+                          title=title.group(1) if title else None,
+                          response_sha256=hashlib.sha256(payload).hexdigest(),
+                          support_id=support.group(1) if support else None,
+                          cookie_names=[value.split("=", 1)[0] for key, value in response.getheaders()
+                                        if key.lower() == "set-cookie"],
+                          headers={key: response.getheader(key) for key in (
+                              "Content-Type", "Content-Length", "Server", "Via", "CF-Ray",
+                              "CF-Cache-Status", "X-Cache", "X-Content-Type-Options")})
+        except Exception as exc:
+            result["error_type"] = type(exc).__name__
+        finally:
+            connection.close()
+        print(json.dumps(result), flush=True)
+
+
 def main() -> None:
     """Probe each institution with bounded concurrency and report all failures."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--verify-updates", action="store_true")
     parser.add_argument("--browser", action="store_true")
     parser.add_argument("--data-dubai", action="store_true")
+    parser.add_argument("--network", action="store_true")
     args = parser.parse_args()
+    if args.network:
+        diagnose_network()
+        return
     if args.data_dubai:
         from .verify_data_dubai_access import DATASET_URLS
 
