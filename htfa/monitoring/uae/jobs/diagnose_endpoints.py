@@ -89,6 +89,8 @@ def main() -> None:
     parser.add_argument("--data-dubai", action="store_true")
     args = parser.parse_args()
     if args.data_dubai:
+        from .verify_data_dubai_access import DATASET_URLS
+
         # Follow the public portal's entry/session and its documented JS calls.
         # Response bodies and signed download URLs are deliberately not logged.
         with requests.Session(impersonate="chrome") as session:
@@ -102,6 +104,12 @@ def main() -> None:
                                   "bytes": len(response.content),
                                   "blocked": "Request Rejected" in response.text}), flush=True)
             for name, identifier in [("DED", 460521), ("DLD", 470061), ("Customs", 459114)]:
+                source = {460521: "ded", 470061: "dld", 459114: "dubai_customs_air"}[identifier]
+                gateway = session.get(DATASET_URLS[source], params={"limit": 1},
+                                      headers={"Accept": "application/json"}, timeout=45)
+                print(json.dumps({"test": name + " official API gateway without credentials",
+                                  "status": gateway.status_code,
+                                  "content_type": gateway.headers.get("Content-Type")}), flush=True)
                 page_url = f"https://data.dubai/en/l/{identifier}"
                 page = session.get(page_url, timeout=45)
                 token = re.search(r"Liferay\.authToken\s*=\s*['\"]([^'\"]+)", page.text)

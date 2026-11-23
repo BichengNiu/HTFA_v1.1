@@ -29,6 +29,10 @@ on:
         description: Verify Data Dubai portal session and official download requests
         type: boolean
         default: false
+      data_dubai_api:
+        description: Verify the three official dataset grants using repository Secrets
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -53,11 +57,17 @@ jobs:
       - name: Install collector dependencies
         run: python -m pip install -r tooling/requirements/requirements-daily-collector.txt
       - name: Inspect public source responses from the runner
-        if: ${{ !inputs.data_dubai }}
+        if: ${{ !inputs.data_dubai && !inputs.data_dubai_api }}
         run: python -m htfa.monitoring.uae.jobs.diagnose_endpoints
       - name: Verify Data Dubai session and download interfaces
         if: inputs.data_dubai
         run: python -m htfa.monitoring.uae.jobs.diagnose_endpoints --data-dubai
+      - name: Verify official Data Dubai OAuth and dataset grants
+        if: inputs.data_dubai_api
+        env:
+          DATA_DUBAI_API_KEY: ${{ secrets.DATA_DUBAI_API_KEY }}
+          DATA_DUBAI_API_SECRET: ${{ secrets.DATA_DUBAI_API_SECRET }}
+        run: python -m htfa.monitoring.uae.jobs.verify_data_dubai_access
       - name: Install native browser
         if: inputs.browser
         run: |
