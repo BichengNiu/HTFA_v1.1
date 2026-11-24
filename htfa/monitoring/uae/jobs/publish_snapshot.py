@@ -13,7 +13,8 @@ from htfa.monitoring.uae.contracts.paths import ASSETS_DIR, PROJECT_ROOT
 from htfa.monitoring.uae.data.database import published_source
 from htfa.monitoring.uae.data.snapshot_store import REPOSITORY, ReleaseStore
 
-from .daily_refresh import refresh
+from .daily_refresh import HIGH_FREQUENCY_SOURCES, refresh
+from .data_dubai_proxy import SOURCES as DATA_DUBAI_SOURCES
 from .paths import DATA_DIR, DB_PATH, WORKBOOK_PATH
 
 
@@ -48,7 +49,7 @@ def seed_from_repository():
     shutil.copy2(seed_workbook, WORKBOOK_PATH)
 
 
-def publish_daily(store, results_dir, *, bootstrap=False):
+def publish_daily(store, results_dir, *, bootstrap=False, data_dubai_only=False):
     previous = store.current()
     if previous is None:
         if not bootstrap:
@@ -58,7 +59,11 @@ def publish_daily(store, results_dir, *, bootstrap=False):
         print("已发布验证通过的基准快照", flush=True)
     else:
         store.download(previous, DATA_DIR, include_workbook=True)
-    summary = refresh(results_dir)
+    sources = tuple(
+        name for name in HIGH_FREQUENCY_SOURCES
+        if (name in DATA_DUBAI_SOURCES) == data_dubai_only
+    )
+    summary = refresh(results_dir, sources=sources, collect_energy=not data_dubai_only)
     print(json.dumps(summary, ensure_ascii=False, default=str), flush=True)
     if not summary.get("installed"):
         raise RuntimeError("本次采集没有生成通过验证的快照")
@@ -70,6 +75,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--results-dir", required=True, type=Path)
     parser.add_argument("--bootstrap", action="store_true")
+    parser.add_argument("--data-dubai-only", action="store_true")
     args = parser.parse_args()
     if DATA_DIR == ASSETS_DIR:
         parser.error("HTFA_UAE_DATA_DIR 必须指向独立的云端候选目录")
@@ -78,11 +84,17 @@ def main():
         parser.error("缺少 GitHub Release 发布凭据")
     store = ReleaseStore(os.environ.get("GITHUB_REPOSITORY") or REPOSITORY, token=token)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    result = publish_daily(store, args.results_dir, bootstrap=args.bootstrap)
+    result = publish_daily(
+        store, args.results_dir, bootstrap=args.bootstrap, data_dubai_only=args.data_dubai_only,
+    )
     (args.results_dir / "remote-verification.json").write_text(
         json.dumps(result), encoding="utf-8",
     )
     print(json.dumps(result))
+    if args.data_dubai_only:
+        summary = json.loads((args.results_dir / "summary.json").read_text(encoding="utf-8"))
+        if summary["status"] != "ok":
+            raise SystemExit("部分 Data Dubai 来源采集失败，已发布通过校验的来源；请查看采集日志")
 
 
 if __name__ == "__main__":

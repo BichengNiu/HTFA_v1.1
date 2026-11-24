@@ -44,6 +44,7 @@
 - 启用代理后，先手动运行 **Diagnose UAE source endpoints** 的 `data_dubai_proxy` 检查实时清单及 CDN 下载，再以 `verify_updates` 和 `verify_sources=ded,dld,dubai_customs_air` 验证隔离快照的完整入库与合并。出口国家或服务商标签不代表实际可用，检查失败不得视为采集恢复。
 
 - `.github/workflows/energy-supply.yml` 在迪拜时间每日 09:00 执行，GitHub 调度可能延迟。保活工作流独立运行。
+- DED、DLD 和迪拜海关航空运单由 Windows 计划任务每日迪拜时间 10:00 执行 `tooling/scripts/refresh_data_dubai.ps1`。任务使用已保存的 Git Credential Manager 凭据，需本机联网且任务账号已登录。候选数据及日志位于 `%LOCALAPPDATA%\HTFA\DataDubai`。两个发布入口均使用最新 Release 作为基线，远端基线变化时重新采集。
 - 更新范围以 `source_registry.py`、`daily_refresh.py` 为准。能源更新必须实际采集，不以重算旧事实宣称完成在线更新；部分成功须明确列出失败来源，全部失败不发布。
 - 每次从公开 GitHub Release `htfa-data` 的最新快照继续，保留源级回滚及历史完整性校验。使用一个 ZIP 打包完整 DuckDB 和对应 Excel；附件名包含 SHA-256，发布后核对 GitHub 返回的大小和摘要，再清理同一 Release 中的旧快照附件。下载时重新计算摘要。
 - 首次迁移在 GitHub Actions 手动运行 **Daily UAE and energy supply refresh**，勾选 `bootstrap` 从已验证的 Git LFS 基准初始化。此后计划任务自动发布，`remote-verification.json` 记录远端校验结果。发布使用工作流内置令牌。

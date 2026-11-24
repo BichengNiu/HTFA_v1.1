@@ -6,6 +6,7 @@ from requests import HTTPError
 
 from htfa.monitoring.uae.data.snapshot_cache import SnapshotCache
 from htfa.monitoring.uae.data.snapshot_store import DATABASE_NAME, WORKBOOK_NAME, ReleaseStore
+from htfa.monitoring.uae.jobs import publish_snapshot
 
 
 class Response:
@@ -110,3 +111,54 @@ def test_release_replacement_preserves_verified_snapshot_on_upload_failure(tmp_p
         release.assets[second.asset_id] = ({**asset, "size": len(data) - 1}, data)
         cache.check_after = 0
         assert cache.database_path() == second_path
+
+
+def test_release_discards_stale_upload_when_another_writer_publishes(tmp_path, monkeypatch):
+    release = Release()
+    store = ReleaseStore()
+    store.session = release
+    write_snapshot(tmp_path, "first")
+    first = store.publish(tmp_path, previous=None)
+
+    post = release.post
+    competing_digest = "a" * 64
+    competing = {
+        "name": f"htfa-snapshot-{competing_digest}.zip",
+        "state": "uploaded", "id": 3, "size": 5,
+        "digest": f"sha256:{competing_digest}",
+    }
+
+    def publish_concurrently(url, **kwargs):
+        response = post(url, **kwargs)
+        release.assets[3] = (competing, b"other")
+        return response
+
+    monkeypatch.setattr(release, "post", publish_concurrently)
+    write_snapshot(tmp_path, "second")
+    with pytest.raises(RuntimeError, match="远端快照已变化"):
+        store.publish(tmp_path, previous=first)
+    assert set(release.assets) == {first.asset_id, competing["id"]}
+    assert store.current().asset_id == competing["id"]
+
+
+@pytest.mark.parametrize("local", [True, False])
+def test_publisher_splits_data_dubai_from_cloud_sources(tmp_path, monkeypatch, local):
+    from types import SimpleNamespace
+
+    def collect(results_dir, *, sources, collect_energy):
+        assert set(sources) == (
+            publish_snapshot.DATA_DUBAI_SOURCES if local
+            else set(publish_snapshot.HIGH_FREQUENCY_SOURCES) - publish_snapshot.DATA_DUBAI_SOURCES
+        )
+        assert collect_energy is not local
+        return {"installed": True}
+
+    baseline = object()
+    store = SimpleNamespace(
+        current=lambda: baseline,
+        download=lambda snapshot, path, *, include_workbook: None,
+        publish=lambda path, *, previous: SimpleNamespace(size=10, sha256="digest"),
+    )
+    monkeypatch.setattr(publish_snapshot, "refresh", collect)
+    result = publish_snapshot.publish_daily(store, tmp_path, data_dubai_only=local)
+    assert result["status"] == "verified"

@@ -111,6 +111,9 @@ class ReleaseStore:
             digest = hashlib.file_digest(archive, "sha256").hexdigest()
             archive.seek(0)
             name = f"htfa-snapshot-{digest}.zip"
+            release = self._release()
+            if self._current(release) != previous:
+                raise RuntimeError("远端快照已变化，请重新采集")
             if previous and previous.name == name:
                 self._remove_older_assets(release, previous)
                 return previous
@@ -128,6 +131,13 @@ class ReleaseStore:
             published = _snapshot(response.json())
         if published is None or published.name != name or published.size != size:
             raise RuntimeError("GitHub 发布附件的名称、大小或 SHA-256 校验失败")
+        latest = self._release()
+        other_assets = {"assets": [
+            asset for asset in latest["assets"] if asset["id"] != published.asset_id
+        ]}
+        if self._current(other_assets) != previous:
+            self._delete_asset(published.asset_id)
+            raise RuntimeError("远端快照已变化，请重新采集")
         self._remove_older_assets(release, published)
         return published
 

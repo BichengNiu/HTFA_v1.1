@@ -60,7 +60,6 @@ jobs:
           HTFA_UAE_DATA_DIR: ${{ runner.temp }}/htfa-snapshot
           BOOTSTRAP_SNAPSHOT: ${{ inputs.bootstrap && '--bootstrap' || '' }}
           GH_TOKEN: ${{ github.token }}
-          HTFA_DATA_DUBAI_PROXY_URL: ${{ secrets.HTFA_DATA_DUBAI_PROXY_URL }}
         run: |
           args=(--results-dir "$RUNNER_TEMP/daily-refresh")
           if [[ -n "$BOOTSTRAP_SNAPSHOT" ]]; then

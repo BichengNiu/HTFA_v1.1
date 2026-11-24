@@ -9,5 +9,5 @@
 - 保活工作流仅负责打开和验证应用，不采集、写库、生成 Excel 或发布业务数据；不得将保活成功解释为数据更新成功。
 - 保活验证必须实际渲染监测标题与指标，并持续正常显示；HTTP 200、前端空壳、休眠页、超时或页面异常均不算成功。遇到登录或私有访问限制时失败，不绕过认证。
 - 保活空提交失败时仍可尝试唤醒，但作业须保留失败状态。失败截图不得附带 HTML、Cookie、浏览器存储或凭据；证书错误通过代理与 CA 配置处理，不关闭 TLS 验证。
-- UAE 与能源数据每日迪拜时间 09:00 采集，校验后将数据库和 Excel 成对发布为 GitHub Release 附件。Streamlit Community Cloud 匿名只读加载；独立部署可通过 `HTFA_RELEASE_SNAPSHOT=1` 启用。本地维护继续使用资产目录中的文件。
+- GitHub Actions 每日迪拜时间 09:00 采集能源及其他 UAE 日常来源。DED、DLD 和迪拜海关航空运单由 Windows 计划任务在迪拜时间 10:00 采集。两边均从最新 GitHub Release 快照继续，经校验后将 DuckDB 与 Excel 成对发布。Streamlit Community Cloud 匿名只读加载；独立部署可通过 `HTFA_RELEASE_SNAPSHOT=1` 启用。
 - 精确依赖锁文件位于 `tooling/requirements/`，Docker 配置位于 `tooling/docker/`；本地与部署依赖保持一致。

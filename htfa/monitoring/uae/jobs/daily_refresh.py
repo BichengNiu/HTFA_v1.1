@@ -120,10 +120,20 @@ def refresh(results_dir, *, sources=HIGH_FREQUENCY_SOURCES, collect_energy=True)
         copy_pair(DATA_DIR, candidate)
         # Raw downloads remain an untracked, reusable cache. Secrets are never
         # copied into a publication, result file or log.
-        (DATA_DIR / "raw").mkdir(exist_ok=True)
-        (candidate / "raw").symlink_to(DATA_DIR / "raw", target_is_directory=True)
-        if (DATA_DIR / ".env").is_file():
-            (candidate / ".env").symlink_to(DATA_DIR / ".env")
+        cache = DATA_DIR / "raw"
+        cache.mkdir(exist_ok=True)
+        if os.name == "nt":
+            from _winapi import CreateJunction
+
+            CreateJunction(str(cache), str(candidate / "raw"))
+        else:
+            (candidate / "raw").symlink_to(cache, target_is_directory=True)
+        secrets = DATA_DIR / ".env"
+        if secrets.is_file():
+            if os.name == "nt":
+                (candidate / ".env").hardlink_to(secrets)
+            else:
+                (candidate / ".env").symlink_to(secrets)
         checkpoint = candidate / "checkpoint"
         checkpoint.mkdir()
         successful = []
