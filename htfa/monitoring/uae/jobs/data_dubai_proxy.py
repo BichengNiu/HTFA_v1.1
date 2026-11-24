@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import argparse
 import json
 import os
 from pathlib import Path
@@ -78,15 +79,22 @@ def redact_result(value, proxy: str):
     return value
 
 
-def verify() -> dict:
+def verify(*, require_proxy: bool = True) -> dict:
     """Verify live manifests and a direct signed-CDN range, without writing data."""
     from urllib.request import Request, proxy_bypass, urlopen
     from . import source_ded, source_dld, download_dubai_customs_air
 
     proxy = os.environ.get(PROXY_KEY, "").strip()
-    if not proxy:
+    if require_proxy and not proxy:
         raise ValueError(f"Missing repository Secret {PROXY_KEY}")
-    environment = worker_environment("ded", dict(os.environ))
+    environment = dict(os.environ)
+    if require_proxy:
+        environment = worker_environment("ded", environment)
+    else:
+        for key in (PROXY_KEY, "HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy",
+                    "ALL_PROXY", "all_proxy"):
+            environment.pop(key, None)
+        environment["NO_PROXY"] = environment["no_proxy"] = "*"
     # This CLI is a dedicated process: its environment is never reused by the
     # publisher or by another source worker.
     os.environ.clear()
@@ -126,11 +134,15 @@ def verify() -> dict:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--direct", action="store_true", help="Test the same sources without a proxy")
+    args = parser.parse_args()
     try:
-        result = verify()
+        result = verify(require_proxy=not args.direct)
     except ValueError as exc:
         result = {"status": "error", "error": str(exc)}
-    output = Path(os.environ["RUNNER_TEMP"]) / "data-dubai-proxy-verification.json"
+    kind = "direct" if args.direct else "proxy"
+    output = Path(os.environ["RUNNER_TEMP"]) / f"data-dubai-{kind}-verification.json"
     output.write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result), flush=True)
     raise SystemExit(0 if result["status"] == "ok" else 1)

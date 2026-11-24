@@ -1,0 +1,58 @@
+name: Verify free Data Dubai egress
+
+on:
+  workflow_dispatch:
+    inputs:
+      verify_updates:
+        description: Verify all three collectors, database, workbook and history
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      PYTHONUNBUFFERED: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+      GIT_LFS_SKIP_SMUDGE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          lfs: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install collector dependencies
+        run: python -m pip install -r tooling/requirements/requirements-daily-collector.txt
+      - name: Check the original direct download route
+        id: direct
+        continue-on-error: true
+        run: python -m htfa.monitoring.uae.jobs.data_dubai_proxy --direct
+      - name: Start the free WARP local route only if needed
+        if: steps.direct.outcome != 'success'
+        run: bash tooling/scripts/setup_data_dubai_warp.sh
+      - name: Verify all live manifests and direct CDN ranges
+        if: steps.direct.outcome != 'success'
+        run: python -m htfa.monitoring.uae.jobs.data_dubai_proxy
+      - name: Verify isolated collection, database and workbook
+        if: inputs.verify_updates
+        env:
+          HTFA_UAE_DATA_DIR: ${{ runner.temp }}/free-egress-data
+          GH_TOKEN: ${{ github.token }}
+          VERIFY_SOURCES: ded,dld,dubai_customs_air
+        run: python -m htfa.monitoring.uae.jobs.diagnose_endpoints --verify-updates
+      - name: Save source verification results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-dubai-free-egress-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/data-dubai-direct-verification.json
+            ${{ runner.temp }}/data-dubai-proxy-verification.json
+            ${{ runner.temp }}/source-verification
+          retention-days: 14
