@@ -129,6 +129,11 @@ def verify(*, require_proxy: bool = True) -> dict:
         except Exception as exc:
             # Signed file URLs and proxy credentials must not enter artifacts.
             results[name] = {"status": "error", "error_type": type(exc).__name__}
+            for marker in ("Request Rejected", "Access Denied", "Just a moment...",
+                           "Attention Required! | Cloudflare"):
+                if marker.casefold() in str(exc).casefold():
+                    results[name]["access_page"] = marker
+                    break
     return {"status": "ok" if all(r["status"] == "ok" for r in results.values()) else "error",
             "sources": results}
 

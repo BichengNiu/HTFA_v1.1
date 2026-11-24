@@ -125,3 +125,25 @@ def test_direct_probe_ignores_inherited_proxy_and_checks_every_source(monkeypatc
     assert set(result["sources"]) == {"ded", "dld", "dubai_customs_air"}
     assert len(calls) == 3
     assert "temporary" not in str(result)
+
+
+def test_probe_identifies_rejection_without_logging_upstream_secrets(monkeypatch):
+    from htfa.monitoring.uae.jobs import data_dubai_proxy as proxy
+    from htfa.monitoring.uae.jobs import source_ded, source_dld, download_dubai_customs_air
+
+    monkeypatch.setattr(proxy.os, "environ", {PROXY_KEY: PROXY})
+
+    def rejected(*args, **kwargs):
+        raise RuntimeError(f"Request Rejected; {PROXY}; ?signature=private-signature")
+
+    monkeypatch.setattr(source_ded, "fetch_data_dubai_files", rejected)
+    monkeypatch.setattr(source_dld, "_get_bulk_csv_files", rejected)
+    monkeypatch.setattr(download_dubai_customs_air, "fetch_manifest_pages", rejected)
+    result = proxy.verify()
+    assert result["status"] == "error"
+    assert len(result["sources"]) == 3
+    for source in result["sources"].values():
+        assert source == {"status": "error", "error_type": "RuntimeError",
+                          "access_page": "Request Rejected"}
+    assert PROXY not in str(result)
+    assert "private-signature" not in str(result)
