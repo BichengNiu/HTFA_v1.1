@@ -179,6 +179,9 @@ def test_update_writes_files_and_db(tmp_path, monkeypatch) -> None:
 
     con = db.connect(":memory:")
     db.init_schema(con)
+    con.execute("INSERT INTO ded_monthly VALUES ('2023-12-31', 'licences', 30)")
+    con.execute("INSERT INTO ded_monthly_by_type VALUES ('2024-01-31', 'Archived form', 9)")
+    con.execute("INSERT INTO ded_monthly_by_type VALUES ('2024-01-31', 'Sole Establishment', 99)")
     outcome = sd.update(con, skip_download=True)
     assert outcome["status"] == "ok"
     assert (out_dir / "monthly_counts.csv").exists()
@@ -189,5 +192,12 @@ def test_update_writes_files_and_db(tmp_path, monkeypatch) -> None:
     assert con.execute(
         "SELECT count(*) FROM ded_monthly WHERE series='official_new_licenses'"
     ).fetchone()[0] == 0
-    assert con.execute("SELECT count(*) FROM ded_monthly_by_type").fetchone()[0] == 4
+    assert con.execute("SELECT count(*) FROM ded_monthly_by_type").fetchone()[0] == 5
+    assert con.execute("SELECT value FROM ded_monthly WHERE month='2023-12-31'").fetchone() == (30,)
+    assert con.execute(
+        "SELECT records FROM ded_monthly_by_type WHERE legal_form='Archived form'"
+    ).fetchone() == (9,)
+    assert con.execute(
+        "SELECT records FROM ded_monthly_by_type WHERE month='2024-01-31' AND legal_form='Sole Establishment'"
+    ).fetchone() == (2,)
     con.close()

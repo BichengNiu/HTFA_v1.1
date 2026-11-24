@@ -39,7 +39,7 @@ from .paths import DATA_DIR
 
 from .db import (  # noqa: E402
     connect,
-    replace,
+    merge_observations,
 )
 from .workbook_sheet_writer import read_indicator_metadata, write_indicator_sheets
 
@@ -800,8 +800,11 @@ def update(
     by_type_rows = _ded_by_type_rows(stats)
     with transaction(con):
         monthly_rows = _ded_monthly_rows(stats)
-        replace(con, MONTHLY_TABLE, monthly_rows)
-        replace(con, BY_TYPE_TABLE, by_type_rows)
+        merge_observations(con, MONTHLY_TABLE, monthly_rows, ("month", "series"))
+        if by_type_rows:
+            merge_observations(
+                con, BY_TYPE_TABLE, by_type_rows, ("month", "legal_form"), value_column="records",
+            )
 
     print()
     print("=" * 60)

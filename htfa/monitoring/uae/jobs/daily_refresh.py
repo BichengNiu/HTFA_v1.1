@@ -62,9 +62,7 @@ def run_worker(name, directory, results_dir, *, timeout=None):
     """Execute a bounded worker; keep logs and structured results outside Git."""
     result_path = results_dir / f"{name}.json"
     if timeout is None:
-        timeout = 2700 if name == "energy" else 1800 if name in {
-            "ded", "dld", "dubai_customs_air",
-        } else 600
+        timeout = {"energy": 2700, "dubai_customs_air": 5400, "ded": 1800, "dld": 1800}.get(name, 600)
     # A retry must never consume a previous attempt's result.
     result_path.unlink(missing_ok=True)
     env = {**os.environ, "HTFA_UAE_DATA_DIR": str(directory),
@@ -154,7 +152,8 @@ def refresh(results_dir, *, sources=HIGH_FREQUENCY_SOURCES, collect_energy=True)
                 # candidate. Never replay it onto the restored checkpoint.
                 (candidate / (DB_PATH.name + ".wal")).unlink(missing_ok=True)
                 copy_pair(checkpoint, candidate)
-                print(f"[daily] {name}: failed; checkpoint restored", flush=True)
+                detail = outcome.get("error", "Worker failed without error details")
+                print(f"[daily] {name}: failed; checkpoint restored: {detail}", flush=True)
             else:
                 successful.append(name)
                 print(f"[daily] {name}: {outcome.get('status', 'ok')}", flush=True)
