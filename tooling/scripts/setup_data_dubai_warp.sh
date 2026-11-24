@@ -34,6 +34,9 @@ if [[ ${#packages[@]} != 1 || ! -f "${packages[0]}" ]]; then
     exit 1
 fi
 dpkg-deb --extract "${packages[0]}" "$warp_workdir/root"
+# The headless daemon needs the TPM loader; desktop dependencies are unused.
+sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 \
+    install --yes --no-install-recommends libtss2-tctildr0
 warp_svc=$(find "$warp_workdir/root" -type f -name warp-svc -print -quit)
 warp_cli=$(find "$warp_workdir/root" -type f -name warp-cli -print -quit)
 if [[ -z "$warp_svc" || -z "$warp_cli" ]]; then
