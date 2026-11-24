@@ -1,6 +1,8 @@
 """A source-specific proxy must not redirect publication or disclose credentials."""
 
 import base64
+import gzip
+from io import BytesIO
 import json
 import subprocess
 from types import SimpleNamespace
@@ -92,3 +94,34 @@ def test_invalid_source_proxy_is_an_isolated_source_failure(monkeypatch, tmp_pat
     result = daily_refresh.run_worker("ded", tmp_path, tmp_path)
     assert result["status"] == "error"
     assert "invalid-private-proxy" not in str(result)
+
+
+def test_direct_probe_ignores_inherited_proxy_and_checks_every_source(monkeypatch):
+    import urllib.request
+    from htfa.monitoring.uae.jobs import data_dubai_proxy as proxy
+    from htfa.monitoring.uae.jobs import source_ded, source_dld, download_dubai_customs_air
+
+    environment = {PROXY_KEY: PROXY, "HTTPS_PROXY": PROXY, "ALL_PROXY": PROXY}
+    monkeypatch.setattr(proxy.os, "environ", environment)
+    files = [{"file_name": "part.csv.gz", "file_extension": "csv",
+              "file_url": "https://cdn.data.dubai/part.csv.gz?signature=temporary"}]
+    monkeypatch.setattr(source_ded, "fetch_data_dubai_files", lambda *a, **k: files)
+    monkeypatch.setattr(source_dld, "_get_bulk_csv_files", lambda *a, **k: files)
+    monkeypatch.setattr(download_dubai_customs_air, "fetch_manifest_pages", lambda *a, **k: files)
+    calls = []
+
+    def open_url(request, **kwargs):
+        assert not any(k in environment for k in (PROXY_KEY, "HTTPS_PROXY", "ALL_PROXY"))
+        assert urllib.request.proxy_bypass("cdn.data.dubai")
+        assert request.get_header("Range") == "bytes=0-1023"
+        calls.append(request)
+        response = BytesIO(gzip.compress(b"public-data\n"))
+        response.status = 206
+        return response
+
+    monkeypatch.setattr(urllib.request, "urlopen", open_url)
+    result = proxy.verify(require_proxy=False)
+    assert result["status"] == "ok"
+    assert set(result["sources"]) == {"ded", "dld", "dubai_customs_air"}
+    assert len(calls) == 3
+    assert "temporary" not in str(result)

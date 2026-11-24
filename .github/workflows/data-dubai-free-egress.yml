@@ -35,6 +35,7 @@ jobs:
         run: python -m htfa.monitoring.uae.jobs.data_dubai_proxy --direct
       - name: Start the free WARP local route only if needed
         if: steps.direct.outcome != 'success'
+        timeout-minutes: 10
         run: bash tooling/scripts/setup_data_dubai_warp.sh
       - name: Verify all live manifests and direct CDN ranges
         if: steps.direct.outcome != 'success'
