@@ -42,6 +42,14 @@ on:
         description: Python version for controlled runtime comparisons
         type: string
         default: '3.13'
+      data_dubai_proxy:
+        description: Verify configured proxy manifests and direct CDN downloads
+        type: boolean
+        default: false
+      test_proxy:
+        description: Run source proxy, rollback and download regression tests
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -66,11 +74,21 @@ jobs:
       - name: Install collector dependencies
         run: python -m pip install -r tooling/requirements/requirements-daily-collector.txt
       - name: Inspect public source responses from the runner
-        if: ${{ !inputs.data_dubai && !inputs.data_dubai_api && !inputs.network }}
+        if: ${{ !inputs.data_dubai && !inputs.data_dubai_api && !inputs.network && !inputs.data_dubai_proxy && !inputs.test_proxy }}
         run: python -m htfa.monitoring.uae.jobs.diagnose_endpoints
       - name: Compare network, TLS and identical request bytes
         if: inputs.network
         run: python -m htfa.monitoring.uae.jobs.diagnose_endpoints --network
+      - name: Verify Data Dubai proxy and direct CDN downloads
+        if: inputs.data_dubai_proxy
+        env:
+          HTFA_DATA_DUBAI_PROXY_URL: ${{ secrets.HTFA_DATA_DUBAI_PROXY_URL }}
+        run: python -m htfa.monitoring.uae.jobs.data_dubai_proxy
+      - name: Run proxy and source integrity regression tests
+        if: inputs.test_proxy
+        run: |
+          python -m pip install pytest
+          python -m pytest -c tooling/pytest.ini tests/jobs/test_data_dubai_proxy.py tests/jobs/test_daily_refresh.py tests/test_source_ded.py tests/test_source_dld.py tests/test_source_dubai_customs_air.py tests/test_dubai_customs_download.py -q
       - name: Verify Data Dubai session and download interfaces
         if: inputs.data_dubai
         run: python -m htfa.monitoring.uae.jobs.diagnose_endpoints --data-dubai
@@ -100,6 +118,7 @@ jobs:
           HTFA_UAE_DATA_DIR: ${{ runner.temp }}/source-verification-data
           GH_TOKEN: ${{ github.token }}
           VERIFY_SOURCES: ${{ inputs.verify_sources }}
+          HTFA_DATA_DUBAI_PROXY_URL: ${{ secrets.HTFA_DATA_DUBAI_PROXY_URL }}
         run: python -m htfa.monitoring.uae.jobs.diagnose_endpoints --verify-updates
       - name: Save verification results
         if: always() && inputs.verify_updates
@@ -107,4 +126,11 @@ jobs:
         with:
           name: source-verification-${{ github.run_id }}
           path: ${{ runner.temp }}/source-verification
+          retention-days: 14
+      - name: Save proxy verification result
+        if: always() && inputs.data_dubai_proxy
+        uses: actions/upload-artifact@v4
+        with:
+          name: proxy-verification-${{ github.run_id }}
+          path: ${{ runner.temp }}/data-dubai-proxy-verification.json
           retention-days: 14

@@ -40,6 +40,9 @@
 
 ## 调度与远端验证
 
+- 可选 Actions Secret `HTFA_DATA_DUBAI_PROXY_URL` 为 DED、DLD、海关航空三个采集子进程配置 HTTP/HTTPS 代理；其他来源与 Release 发布不使用该配置。`cdn.data.dubai` 保持直连，代理用于门户和下载清单。配置必须是有权使用的代理 URL，凭据不入库、不入日志；目标站 TLS 校验保持启用。
+- 启用代理后，先手动运行 **Diagnose UAE source endpoints** 的 `data_dubai_proxy` 检查实时清单及 CDN 下载，再以 `verify_updates` 和 `verify_sources=ded,dld,dubai_customs_air` 验证隔离快照的完整入库与合并。出口国家或服务商标签不代表实际可用，检查失败不得视为采集恢复。
+
 - `.github/workflows/energy-supply.yml` 在迪拜时间每日 09:00 执行，GitHub 调度可能延迟。保活工作流独立运行。
 - 更新范围以 `source_registry.py`、`daily_refresh.py` 为准。能源更新必须实际采集，不以重算旧事实宣称完成在线更新；部分成功须明确列出失败来源，全部失败不发布。
 - 每次从公开 GitHub Release `htfa-data` 的最新快照继续，保留源级回滚及历史完整性校验。使用一个 ZIP 打包完整 DuckDB 和对应 Excel；附件名包含 SHA-256，发布后核对 GitHub 返回的大小和摘要，再清理同一 Release 中的旧快照附件。下载时重新计算摘要。

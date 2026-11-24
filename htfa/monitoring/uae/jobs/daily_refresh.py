@@ -70,6 +70,12 @@ def run_worker(name, directory, results_dir, *, timeout=None):
     env = {**os.environ, "HTFA_UAE_DATA_DIR": str(directory),
            "PYTHONUNBUFFERED": "1", "PYTHONDONTWRITEBYTECODE": "1"}
     env.pop("GH_TOKEN", None)
+    from .data_dubai_proxy import PROXY_KEY, SOURCES, redact, redact_result, worker_environment
+    proxy = env.get(PROXY_KEY, "").strip() if name in SOURCES else ""
+    try:
+        env = worker_environment(name, env)
+    except ValueError as exc:
+        return {"status": "error", "error": str(exc)}
     try:
         with (results_dir / f"{name}.log").open("w", encoding="utf-8") as log:
             completed = subprocess.run(
@@ -78,7 +84,7 @@ def run_worker(name, directory, results_dir, *, timeout=None):
                 env=env, stdout=log, stderr=subprocess.STDOUT, timeout=timeout,
             )
         if result_path.exists():
-            result = json.loads(result_path.read_text(encoding="utf-8"))
+            result = redact_result(json.loads(result_path.read_text(encoding="utf-8")), proxy)
         else:
             result = {"status": "error", "error": f"Worker exited {completed.returncode} without result"}
         if completed.returncode:
@@ -86,6 +92,14 @@ def run_worker(name, directory, results_dir, *, timeout=None):
         return result
     except subprocess.TimeoutExpired:
         return {"status": "error", "error": f"Source exceeded {timeout} seconds"}
+    finally:
+        if proxy:
+            for path in (results_dir / f"{name}.log", result_path):
+                if path.is_file():
+                    text = path.read_text(encoding="utf-8", errors="replace")
+                    cleaned = redact(text, proxy)
+                    if cleaned != text:
+                        path.write_text(cleaned, encoding="utf-8")
 
 
 def copy_pair(source, destination):
